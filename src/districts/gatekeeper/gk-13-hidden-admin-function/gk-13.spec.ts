@@ -1,22 +1,18 @@
 // src/districts/gatekeeper/gk-13-hidden-admin-function/gk-13.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import type { Express } from 'express';
-import {
-  freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, type Agent,
-} from '../../../../tests/helpers.js';
+import { bare, describeExploitMatrix, FLAG_RE } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { describePilgrimLab, newCtx, pilgrimClient, type PilgrimCtx } from '../_shared/pilgrim-lab.testkit.js';
 import { GK13 } from './challenge.js'; // registers GK-13 before createApp() inside freshSession
 import { labState } from './model.js';
 
 const LAB = '/d/gatekeeper/hidden-admin-function';
-interface Ctx { agent: Agent; level: Level; sid: string; app: Express }
+type Ctx = PilgrimCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 type Spec = { paths: Record<string, { get: { deprecated?: boolean } }> };
 
-const home = (c: Ctx) => c.agent.get(`${LAB}?level=${c.level}`);
-const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
-const get = (c: Ctx, path: string) => c.agent.get(`${LAB}${path}?level=${c.level}`);
+const { home, login, get } = pilgrimClient(LAB);
 
 // Acolyte: the function is unlinked, but robots.txt names it, and nothing asks who you are.
 const acolyteExploit: Script = async (c) => {
@@ -40,6 +36,7 @@ describeExploitMatrix<Script>({
   send: (agent, level, script, _url, { sid, app }) => script({ agent, level, sid, app }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Admin only/,
+  resistedStatus: 403,
   legit: [
     { name: 'sign in', input: async (c) => login(c), expect: 'Signed in as pilgrim' },
     { name: 'robots.txt is public', input: async (c) => get(c, '/robots.txt'), expect: 'User-agent' },
@@ -53,17 +50,9 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK13, path: LAB, account: /pilgrim<\/code> \/ <code>pilgrim/, echoField: 'username', extra: { password: 'x' },
-  oddBodies: [{ username: { a: 1 }, password: ['x'] }, { username: [], password: null }, []],
-  ok: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }),
-  bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'no' }),
-});
+describePilgrimLab({ challenge: GK13, path: LAB, curl: () => ({ path: '/robots.txt' }) });
 
-async function ctxFor(level: Level): Promise<Ctx> {
-  const { agent, sid, app } = await freshSession();
-  return { agent, level, sid, app };
-}
+const ctxFor = newCtx;
 
 describe('GK-13 routing and guards', () => {
   it('acolyte: robots.txt names the function and it opens without signing in', async () => {
@@ -75,6 +64,7 @@ describe('GK-13 routing and guards', () => {
   it('templar: /admin/export is refused, only the spelling gets through', async () => {
     const c = await ctxFor('templar');
     await login(c);
+    expect((await get(c, '/admin/export')).status).toBe(403);
     expect((await get(c, '/admin/export')).text).toContain('Admin only');
     expect((await get(c, '/Admin/export')).text).toMatch(FLAG_RE);
     expect((await get(c, '/ADMIN/EXPORT')).text).toMatch(FLAG_RE);
@@ -85,12 +75,15 @@ describe('GK-13 routing and guards', () => {
     await login(c);
     for (const p of ['/admin/export', '/Admin/export', '/ADMIN/EXPORT', '/%41dmin/export', '//admin/export', '/admin/export/']) {
       const res = await get(c, p);
+      expect(res.status, p).toBe(403);
+      expect(res.text, p).toContain('Admin only');
       expect(res.text, p).not.toMatch(FLAG_RE);
     }
   });
 
   it('inquisitor: the deprecated alias is published in openapi.json and is the way in', async () => {
     const c = await ctxFor('inquisitor');
+    await login(c);
     const spec = (await get(c, '/openapi.json')).body as Spec;
     const deprecated = Object.entries(spec.paths).filter(([, op]) => op.get.deprecated).map(([p]) => p);
     expect(deprecated).toHaveLength(1);
@@ -111,7 +104,7 @@ describe('GK-13 routing and guards', () => {
     for (const p of ['/admin/export', '/Admin/export', '/ADMIN/EXPORT', '/%41dmin/export', '//admin/export', '/legacy/export-all',
       '/nothing', '/__proto__', '/admin%2Fexport', `/${'x'.repeat(3000)}`]) {
       const res = await get(c, p);
-      expect(res.status, p).toBe(200);
+      expect(res.status, p).toBe(403);
       expect(res.text, p).toContain('Admin only');
       expect(res.text, p).not.toMatch(FLAG_RE);
     }
@@ -138,10 +131,36 @@ describe('GK-13 routing and guards', () => {
     expect(labState(a.sid, 'divine').user).toBe('none');
   });
 
-  it('a request carrying only the session cookie (not signed in) gets no export and no flag', async () => {
-    const c = await ctxFor('templar');
-    const res = await bare(c.app, c.sid).get(`${LAB}/admin/export?level=templar`);
-    expect(res.text).toContain('Admin only');
-    expect(res.text).not.toMatch(FLAG_RE);
+  it('templar and inquisitor: the export needs a sign-in too: a never-signed-in request is 401 even by the bypass spelling', async () => {
+    const t = await ctxFor('templar');
+    const noSignIn = await get(t, '/Admin/export');
+    expect(noSignIn.status).toBe(401);
+    expect(noSignIn.text).toContain('Sign in first');
+    expect(noSignIn.text).not.toMatch(FLAG_RE);
+    const i = await ctxFor('inquisitor');
+    const alias = await get(i, '/legacy/export-all');
+    expect(alias.status).toBe(401);
+    expect(alias.text).not.toMatch(FLAG_RE);
+    await login(t);
+    expect((await get(t, '/Admin/export')).text).toMatch(FLAG_RE);
+  });
+
+  it('a request carrying only the session cookie (never signed in) gets no export and no flag, by any spelling', async () => {
+    for (const [level, path] of [['acolyte', null], ['templar', '/Admin/export'], ['inquisitor', '/legacy/export-all'], ['divine', '/admin/export']] as const) {
+      const c = await ctxFor(level);
+      if (path === null) continue; // acolyte is open by design
+      const res = await bare(c.app, c.sid).get(`${LAB}${path}?level=${level}`);
+      expect([401, 403], level).toContain(res.status);
+      expect(res.text, level).not.toMatch(FLAG_RE);
+    }
+  });
+
+  it('robots.txt is plain text and only names a path at acolyte', async () => {
+    for (const level of LEVELS) {
+      const c = await ctxFor(level);
+      const res = await get(c, '/robots.txt');
+      expect(res.headers['content-type'], level).toMatch(/^text\/plain/);
+      expect(res.text, level).toMatch(/^User-agent: \*/);
+    }
   });
 });

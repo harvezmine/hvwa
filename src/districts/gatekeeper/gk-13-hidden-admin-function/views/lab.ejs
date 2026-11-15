@@ -2,12 +2,6 @@
 <section class="lab">
   <h1>Citadel Console</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the admin-only member export. The citadel publishes <a href="<%= base %>/robots.txt?level=<%= level %>">robots.txt</a> and an API description, <a href="<%= base %>/openapi.json?level=<%= level %>">openapi.json</a>.</p>
-  <form method="post">
-    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
-    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
-    <button type="submit">Sign in</button>
-  </form>
-<% if (result) { -%>
-  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
-<% } -%>
+  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
 </section>

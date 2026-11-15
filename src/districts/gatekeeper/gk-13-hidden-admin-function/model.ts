@@ -1,6 +1,6 @@
 // model.ts — GK-13's per-player sign-in state and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts.
-import type { Request, RequestHandler, Router } from 'express';
+import type { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 
@@ -17,8 +17,14 @@ export interface Wiring {
   isAdmin(req: Request): boolean;
   /** The admin function itself: the member export. */
   exportPage: RequestHandler;
-  /** The "Admin only" answer. */
-  denied: RequestHandler;
+  /**
+   * Answer "Admin only" (403) and END the request. It never calls `next()`: a level that calls it must not
+   * continue down its chain. It is synchronous (a failing render goes to the error handler through `next(err)`),
+   * so level files can call it without awaiting anything.
+   */
+  denied(req: Request, res: Response, next: NextFunction): void;
+  /** Middleware for the routes that need a signed-in caller: 401 "Sign in first." and no `next()` when nobody signed in. */
+  requireSignIn: RequestHandler;
 }
 
 export interface AdminLevel {

@@ -3,7 +3,8 @@ import type { AdminLevel, Wiring } from '../model.js';
 
 // INQUISITOR — the guard is right: it decodes, lower-cases and collapses the path before the
 // prefix test, so no spelling of /admin slips past it. The flaw is ordering: a deprecated alias
-// of the export, still documented in openapi.json, is mounted BEFORE the guard.
+// of the export, still documented in openapi.json, is mounted BEFORE the guard, and (like the route)
+// only asks for a signed-in caller.
 export const robots: AdminLevel['robots'] = ['Disallow: /admin/'];
 export const openapi: AdminLevel['openapi'] = {
   '/admin/export': { summary: 'Member export (admin only)' },
@@ -17,10 +18,10 @@ function normalize(path: string): string {
 }
 
 export function install(router: Router, w: Wiring): void {
-  router.get('/legacy/export-all', w.exportPage); // deprecated alias, mounted before the guard
+  router.get('/legacy/export-all', w.requireSignIn, w.exportPage); // deprecated alias, mounted before the guard
   router.use((req, res, next) => {
     if (normalize(req.path).startsWith('/admin') && !w.isAdmin(req)) { w.denied(req, res, next); return; }
     next();
   });
-  router.get('/admin/export', w.exportPage);
+  router.get('/admin/export', w.requireSignIn, w.exportPage);
 }
