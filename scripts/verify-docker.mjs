@@ -7,16 +7,17 @@
 import { spawnSync } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { connect, createServer } from 'node:net';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 1337;
 const BASE = `http://127.0.0.1:${PORT}`;
+const COMPOSE_FILE = join(root, 'docker-compose.yml');
 // Every compose call names the file AND the project explicitly, so `down`,
 // `restart` etc. can only ever touch HVWA's own containers/networks — never
 // another compose project on this machine.
-const COMPOSE = ['compose', '-f', join(root, 'docker-compose.yml'), '-p', 'hvwa'];
+const COMPOSE = ['compose', '-f', COMPOSE_FILE, '-p', 'hvwa'];
 const say = (msg) => console.log(`verify:docker ${msg}`);
 
 // The persisted-secret path (/data/flag-secret) and the loopback-only Host
@@ -115,9 +116,11 @@ async function withEchoUpstream(fn) {
 /** Status of GET http://127.0.0.1:1337/healthz with Host `host`, sent from INSIDE the app container (bypasses the proxy). */
 function appStatusFor(host) {
   const r = exec('app', ['node', '-e',
-    `require('node:http').get({host:'127.0.0.1',port:1337,path:'/healthz',headers:{host:${JSON.stringify(host)}}},` +
-    '(res)=>{console.log(res.statusCode);process.exit(0)}).on(\'error\',(e)=>{console.log(e.code);process.exit(3)})']);
-  if (r.code !== 0) throw new Error(`in-container request with Host ${host} did not run (${show(r)})`);
+    `require('node:http').get({host:'127.0.0.1',port:1337,path:'/healthz',headers:{host:${JSON.stringify(host)}},timeout:5000},` +
+    '(res)=>{console.log(res.statusCode);process.exit(0)})' +
+    '.on(\'timeout\',function(){this.destroy(new Error(\'TIMEOUT\'))})' +
+    '.on(\'error\',(e)=>{console.log(e.code||e.message);process.exit(3)})']);
+  if (r.code !== 0) throw new Error(`in-container request with Host ${host} failed (${show(r)})`);
   return Number(r.out);
 }
 
@@ -299,6 +302,41 @@ const checks = [
   }],
   ['hardening flags on every container', () =>
     ['app', 'proxy'].map((s) => `${s}: ${checkHostConfig(s)}`).join(' | ')],
+  ['mounts: app = data volume + noexec /tmp (+ init), proxy = read-only nginx.conf + noexec tmpfs; no Docker socket', () => {
+    const app = inspect('container', containerId('app'));
+    const proxy = inspect('container', containerId('proxy'));
+    const problems = [];
+    if (app.HostConfig.Init !== true) problems.push('app: init is not enabled');
+    const describe = (m) => `${m.Type}:${m.Name ?? m.Source}->${m.Destination}${m.RW ? '' : ':ro'}`;
+    for (const c of [app, proxy]) {
+      for (const m of c.Mounts ?? []) {
+        if (/docker\.sock/.test(`${m.Source} ${m.Destination}`)) problems.push(`${c.Name}: mounts the Docker socket (${describe(m)})`);
+      }
+    }
+    const appMounts = app.Mounts ?? [];
+    if (appMounts.length !== 1 || appMounts[0].Type !== 'volume' || appMounts[0].Destination !== '/data') {
+      problems.push(`app mounts ${appMounts.map(describe).join(', ') || 'nothing'}, expected only the data volume at /data`);
+    }
+    const proxyMounts = proxy.Mounts ?? [];
+    if (proxyMounts.length !== 1 || proxyMounts[0].Type !== 'bind' || proxyMounts[0].Destination !== '/etc/nginx/nginx.conf' ||
+      proxyMounts[0].RW !== false) {
+      problems.push(`proxy mounts ${proxyMounts.map(describe).join(', ') || 'nothing'}, expected only nginx.conf read-only`);
+    }
+    // tmpfs: the only other writable paths; never executable.
+    const tmpfs = (c, expected) => {
+      const t = c.HostConfig.Tmpfs ?? {};
+      if (Object.keys(t).sort().join(',') !== [...expected].sort().join(',')) {
+        problems.push(`${c.Name}: tmpfs ${Object.keys(t).join(', ') || 'none'}, expected ${expected.join(', ')}`);
+      }
+      for (const [path, o] of Object.entries(t)) {
+        for (const flag of ['noexec', 'nosuid', 'nodev']) if (!o.split(',').includes(flag)) problems.push(`${c.Name}: tmpfs ${path} lacks ${flag}`);
+      }
+    };
+    tmpfs(app, ['/tmp']);
+    tmpfs(proxy, ['/tmp', '/var/cache/nginx']);
+    if (problems.length) throw new Error(problems.join('; '));
+    return `app: ${describe(appMounts[0])} + tmpfs /tmp, init; proxy: ${describe({ ...proxyMounts[0], Source: 'nginx.conf' })} + tmpfs; tmpfs all noexec,nosuid,nodev`;
+  }],
   ['app is only on the internal lab network, whose gateway is isolated', () => {
     const lab = labNetwork();
     if (lab.Internal !== true) throw new Error(`app is on non-internal network ${lab.Name}`);
@@ -426,11 +464,40 @@ async function portBusy(port) {
   });
 }
 
-/** Host port 1337 must be free — or already held by HVWA's own proxy (a previous run). */
+/** Comparable form of a path (compose writes Windows paths with backslashes; drive-letter case varies). */
+const samePath = (a, b) => {
+  const norm = (p) => resolve(p).replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
+};
+
+/**
+ * The project name `hvwa` is shared by every checkout of the repo, so a stack
+ * started from ANOTHER checkout (main repo, a git worktree...) looks like ours
+ * to compose. Refuse to touch it: `up` would recreate it from this checkout's
+ * files and `down` would remove it.
+ */
+function assertNoForeignStack() {
+  const ps = run('docker', ['ps', '-a', '--filter', 'label=com.docker.compose.project=hvwa', '--format', '{{.ID}}']);
+  if (ps.code !== 0) throw new Error(`docker ps: ${show(ps)}`);
+  const ids = ps.out.split(/\r?\n/).filter(Boolean);
+  for (const id of ids) {
+    const c = inspect('container', id);
+    const labels = c.Config?.Labels ?? {};
+    const dir = labels['com.docker.compose.project.working_dir'] ?? '';
+    const files = (labels['com.docker.compose.project.config_files'] ?? '').split(',').filter(Boolean);
+    if (dir && samePath(dir, root)) continue;
+    throw new Error(`BLOCKED: an HVWA stack from another checkout exists (container ${c.Name.replace(/^\//, '')}, ` +
+      `${c.State?.Status ?? 'unknown state'}): ${files.join(', ') || dir || '(no compose labels)'}. Stop it from that ` +
+      `checkout (docker compose -p hvwa down) and re-run. Nothing was changed.`);
+  }
+  return ids.length ? `${ids.length} existing HVWA container(s), all from this checkout` : 'no existing HVWA containers';
+}
+
+/** Host port 1337 must be free — or already held by this checkout's own proxy (a previous run). */
 async function assertPortAvailable() {
   if (!(await portBusy(PORT))) return `host port ${PORT} is free`;
   const ours = compose(['port', 'proxy', '8080']);
-  if (ours.code === 0 && ours.out === `127.0.0.1:${PORT}`) return `host port ${PORT} is held by HVWA's own proxy (will be recreated)`;
+  if (ours.code === 0 && ours.out === `127.0.0.1:${PORT}`) return `host port ${PORT} is held by this checkout's HVWA proxy (will be recreated)`;
   throw new Error(`BLOCKED: host port ${PORT} is in use by something that is not HVWA's compose project; ` +
     'refusing to start (nothing was changed)');
 }
@@ -438,11 +505,17 @@ async function assertPortAvailable() {
 let started = false;
 
 async function main() {
+  say(assertNoForeignStack());
   say(await assertPortAvailable());
   started = true;
   say('building and starting: docker compose -p hvwa up -d --build --wait');
   const up = compose(['up', '-d', '--build', '--wait', '--wait-timeout', '180'], { inherit: true, timeoutMs: 900_000 });
-  if (up.code !== 0) throw new Error(`docker compose up failed (exit ${up.code})`);
+  if (up.code !== 0) {
+    const ps = compose(['ps', '-a']);
+    const logs = compose(['logs', '--no-color', '--tail', '60']);
+    console.error([ps.out || ps.err, logs.out || logs.err].join('\n'));
+    throw new Error(`docker compose up failed (exit ${up.code})`);
+  }
 
   const failures = [];
   for (const [name, fn] of checks) {
@@ -463,13 +536,25 @@ async function main() {
 
 function down() {
   if (!started) return;
+  started = false;
   say('stopping: docker compose -p hvwa down (data volume kept)');
   try {
+    run('docker', ['rm', '-f', ECHO_NAME]); // a one-off from the transparency check, if interrupted
     const r = compose(['down'], { timeoutMs: 180_000 });
     if (r.code !== 0) say(`docker compose down: ${show(r)}`);
   } catch (err) {
     say(`docker compose down: ${err.message}`);
   }
+}
+
+// Ctrl+C / kill / closed terminal: still stop the stack. (A signal that
+// arrives during a docker command is handled once that command returns.)
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+  process.on(signal, () => {
+    say(`${signal}: interrupted, cleaning up`);
+    down();
+    process.exit(code);
+  });
 }
 
 main().then(
