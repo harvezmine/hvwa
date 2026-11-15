@@ -308,10 +308,55 @@ describe('portal POST without htmx (303 + one-shot result)', () => {
     const { agent, sid } = await fresh();
     const res = await agent.post('/c/CP-01/submit?lang=en').type('form').send({ submission: issueFlag('CP-01', sid, 'templar') });
     expect(res.status).toBe(303);
-    expect(res.headers.location).toBe('/c/CP-01?r=new_best&lvl=templar&g=150');
+    expect(res.headers.location).toBe('/c/CP-01?r=new_best&lvl=templar');
     const page = (await agent.get(res.headers.location)).text;
     expect(page).toContain('data-result="new_best"');
-    expect(page).toContain('+150');
+    expect(page).toMatch(/New best level: Templar/);
+    expect(page).not.toContain('+150');
+  });
+
+  it('a genuine no-JS lower solve shows "best remains <stored best>"', async () => {
+    const { agent, sid } = await fresh();
+    await agent.post('/c/CP-01/submit').type('form').send({ submission: issueFlag('CP-01', sid, 'templar') });
+    const res = await agent.post('/c/CP-01/submit').type('form').send({ submission: issueFlag('CP-01', sid, 'acolyte') });
+    expect(res.headers.location).toBe('/c/CP-01?r=lower&lvl=acolyte');
+    const page = (await agent.get(res.headers.location + '&lang=en')).text;
+    expect(page).toMatch(/data-result="lower"[^>]*>[^<]*best remains Templar/);
+    const again = await agent.post('/c/CP-01/submit').type('form').send({ submission: issueFlag('CP-01', sid, 'templar') });
+    expect(again.headers.location).toBe('/c/CP-01?r=already&lvl=templar');
+    expect((await agent.get(again.headers.location)).text).toContain('data-result="already"');
+  });
+
+  it('spoofed result links render no message', async () => {
+    const { agent, sid } = await fresh();
+    const none = async (q: string) => expect((await agent.get('/c/CP-01' + q)).text, q).not.toContain('data-result');
+    // nothing solved yet
+    await none('?r=new_best&lvl=templar&g=999999');
+    await none('?r=already&lvl=acolyte');
+    await none('?r=lower&lvl=acolyte');
+    await agent.post('/c/CP-01/submit').type('form').send({ submission: issueFlag('CP-01', sid, 'acolyte') });
+    await none('?r=new_best&lvl=templar&g=999999'); // best is acolyte, not templar
+    await none('?r=new_best&lvl=inquisitor&g=999999');
+    await none('?r=new_best'); // no lvl
+    await none('?r=already'); await none('?r=lower');
+    await none('?r=already&lvl=templar');
+    await none('?r=lower&lvl=divine');
+    await none('?r=lower&lvl=acolyte'); // best acolyte is not above acolyte
+    await none('?r=new_best&lvl=divine');
+    // consistent with the stored best: shown, and g is never rendered
+    const ok = (await agent.get('/c/CP-01?r=new_best&lvl=acolyte&g=999999')).text;
+    expect(ok).toContain('data-result="new_best"');
+    expect(ok).not.toContain('999999');
+  });
+
+  it('no-JS hint errors render beside the hints list, not in the submit result', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-01?r=err_unknown_tier')).text;
+    const hintFlash = /data-testid="hint-flash"[^>]*>([\s\S]*?)<\/div>/.exec(html);
+    expect(hintFlash).not.toBeNull();
+    expect(hintFlash![1]).toContain('data-error="err_unknown_tier"');
+    const submit = /id="submit-result"[^>]*>([\s\S]*?)<\/div>/.exec(html)!;
+    expect(submit[1]).not.toContain('data-error');
   });
 
   it('wrong submission redirects without echoing it', async () => {

@@ -21,7 +21,9 @@ const view = (name: string) => join(portalViewsDir, `${name}.ejs`);
 // keys are ever rendered; `lvl` must be a real level and `g` a small integer.
 const FLASH_KEYS = ['new_best', 'already', 'lower', 'wrong', 'err_invalid_tier', 'err_unknown_tier'] as const;
 type FlashKey = (typeof FLASH_KEYS)[number];
-interface Flash { key: FlashKey; level?: Level; gained?: number }
+// level = the level this result is about; best = the stored best (lower only);
+// gained is set only on the htmx path, where it is computed in the same request.
+interface Flash { key: FlashKey; level?: Level; best?: Level; gained?: number }
 type Translate = (key: string) => string;
 
 const isHtmx = (req: Request): boolean => req.get('HX-Request') === 'true';
@@ -29,16 +31,22 @@ const isHtmx = (req: Request): boolean => req.get('HX-Request') === 'true';
 function flashQuery(f: Flash): string {
   const q = new URLSearchParams({ r: f.key });
   if (f.level) q.set('lvl', f.level);
-  if (f.gained !== undefined) q.set('g', String(f.gained));
   return `?${q.toString()}`;
 }
 
-function flashFrom(query: Request['query']): Flash | undefined {
+/**
+ * Rebuild a result from a redirect link. Never trusted: new_best/already/lower
+ * need a scored `lvl` and are shown only when consistent with this session's
+ * stored best (the message data comes from the DB, not the URL).
+ */
+function flashFrom(query: Request['query'], best: { level: Level } | undefined): Flash | undefined {
   const key = FLASH_KEYS.find((k) => k === query.r);
   if (!key) return undefined;
-  const lvl = isLevel(query.lvl) ? query.lvl : undefined;
-  const g = typeof query.g === 'string' && /^\d{1,6}$/.test(query.g) ? Number(query.g) : undefined;
-  return { key, level: lvl, gained: g };
+  if (key === 'wrong' || key === 'err_invalid_tier' || key === 'err_unknown_tier') return { key };
+  const lvl = isLevel(query.lvl) && FLAG_LEVELS.includes(query.lvl) ? query.lvl : undefined;
+  if (!lvl || !best) return undefined;
+  if (key === 'lower') return levelRank(best.level) > levelRank(lvl) ? { key, level: lvl, best: best.level } : undefined;
+  return best.level === lvl ? { key, level: lvl } : undefined;
 }
 
 function flashHtml(f: Flash, t: Translate): string {
@@ -51,7 +59,9 @@ function flashHtml(f: Flash, t: Translate): string {
   const lvl = f.level ? t(`level.${f.level}`) : '';
   const msg = f.key === 'new_best'
     ? `${t('challenge.result_new_best')} ${lvl}${f.gained === undefined ? '' : ` (+${f.gained} ${t('challenge.points')})`}`
-    : `${t(`challenge.result_${f.key}`)} ${lvl}`;
+    : f.key === 'lower'
+      ? `${t('challenge.result_lower')} ${f.best ? t(`level.${f.best}`) : ''}`
+      : `${t(`challenge.result_${f.key}`)} ${lvl}`;
   return `<p class="result result-ok" data-solved="true" data-result="${f.key}" role="status">${escapeHtml(msg)}</p>`;
 }
 
@@ -100,7 +110,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const sources = LEVELS.filter((l) => c.levels.includes(l) && levelSource(c, l) !== undefined);
     await sendPage(res, view('challenge'), {
       title: c.title[req.lang], c, levels, hints, sources, hasDiff: diffPair(c) !== undefined,
-      labPath: challengePath(c), flash: flashFrom(req.query),
+      labPath: challengePath(c), flash: flashFrom(req.query, best),
       flashHtml: (f: Flash) => flashHtml(f, res.locals.t),
     });
   });
@@ -117,7 +127,9 @@ export function portalRouter(db: DatabaseSync): Router {
       ? { key: 'wrong' }
       : result.status === 'new_best'
         ? { key: 'new_best', level: result.level, gained: result.gained }
-        : result.level === result.best.level ? { key: 'already', level: result.level } : { key: 'lower', level: result.best.level };
+        : result.level === result.best.level
+          ? { key: 'already', level: result.level }
+          : { key: 'lower', level: result.level, best: result.best.level };
     if (isHtmx(req)) { res.type('html').send(flashHtml(view, res.locals.t)); return; }
     res.redirect(303, `/c/${c.id}${flashQuery(view)}`);
   });

@@ -25,6 +25,7 @@
 
 <section class="card panel">
   <h2><%= t('challenge.hints') %></h2>
+  <div data-testid="hint-flash" aria-live="polite"><% if (flash && flash.key.startsWith('err_')) { %><%- flashHtml(flash) %><% } %></div>
   <ul class="hint-list">
   <% hints.forEach(function (h) { %>
     <li id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>">
@@ -47,7 +48,7 @@
     <label><%= t('challenge.submit_label') %> <input type="text" name="submission" autocomplete="off" required></label>
     <button type="submit"><%= t('challenge.submit_button') %></button>
   </form>
-  <div id="submit-result" aria-live="polite"><% if (flash) { %><%- flashHtml(flash) %><% } %></div>
+  <div id="submit-result" aria-live="polite"><% if (flash && !flash.key.startsWith('err_')) { %><%- flashHtml(flash) %><% } %></div>
 </section>
 
 <section class="card panel">
