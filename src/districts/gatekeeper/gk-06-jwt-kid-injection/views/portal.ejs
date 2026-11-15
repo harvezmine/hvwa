@@ -1,0 +1,17 @@
+<%# GK-06 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Archive API</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Sign in to receive a JSON Web Token (HS256). Every token names its signing key in the header field <code>kid</code>, and the server looks that key up. The vault only opens for the citadel admin: <a href="<%= base %>/vault?level=<%= level %>">GET <code>/vault</code></a>. The archive's public web root is served too: <a href="<%= base %>/robots.txt?level=<%= level %>"><code>/robots.txt</code></a>.</p>
+  <p class="lab-note">The token is also stored in the cookie <code><%= cookie %></code> (not HttpOnly: edit it in the browser devtools storage). Or send it yourself: <code>curl -H "Authorization: Bearer &lt;token&gt;" <%= base %>/vault?level=<%= level %></code>. A header wins over the cookie.</p>
+<% if (token) { -%>
+  <p class="lab-note">Your token: <code><%= token %></code></p>
+<% } -%>
+  <form method="post">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
+    <button type="submit">Sign in</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+</section>
