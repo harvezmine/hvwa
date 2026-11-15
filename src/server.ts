@@ -13,6 +13,15 @@ const app = createApp({
   dbPath: join(dataDir, 'hvwa.db'),
   flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
 });
-app.listen(config.PORT, config.HOST, () => {
+const server = app.listen(config.PORT, config.HOST, () => {
   console.log(`HVWA on http://${config.HOST}:${config.PORT} — DO NOT expose to untrusted networks`);
 });
+
+// Graceful stop: stop accepting connections, then close the SQLite handle.
+function shutdown(): void {
+  server.close();
+  app.locals.db.close();
+  process.exit(0);
+}
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);

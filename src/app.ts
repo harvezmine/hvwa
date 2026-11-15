@@ -37,6 +37,9 @@ export function createApp(opts: AppOptions = {}): Express {
   const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);
   seed(db);
+  // The app's DB handle: closed by server.ts on shutdown, and by tests that
+  // use a file DB (Windows cannot delete a file SQLite still holds open).
+  app.locals.db = db;
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
