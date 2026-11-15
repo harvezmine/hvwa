@@ -7,13 +7,13 @@ import { freshSession } from './helpers.js';
 
 // All four levels, default check (level-bound flag verification).
 register(defineChallenge({
-  id: 'ZZ-01', district: 'test', slug: 't', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
+  id: 'ZZ-01', district: 'test', dir: process.cwd(), slug: 't', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
   maps: ['x'], levels: ['acolyte', 'templar', 'inquisitor', 'divine'], hints: [], mount: () => {},
 }));
 
 // Only Acolyte + Divine implemented.
 register(defineChallenge({
-  id: 'ZZ-02', district: 'test', slug: 't2', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
+  id: 'ZZ-02', district: 'test', dir: process.cwd(), slug: 't2', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
   maps: ['x'], levels: ['acolyte', 'divine'], hints: [],
   check: (ctx) => verifyFlag('ZZ-02', ctx.sessionId, ctx.level, ctx.submission), mount: () => {},
 }));
@@ -21,7 +21,7 @@ register(defineChallenge({
 // Records the order in which levels are tried.
 const tried: Level[] = [];
 register(defineChallenge({
-  id: 'ZZ-04', district: 'test', slug: 't4', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
+  id: 'ZZ-04', district: 'test', dir: process.cwd(), slug: 't4', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
   maps: ['x'], levels: ['divine', 'acolyte', 'inquisitor', 'templar'], hints: [],
   check: (ctx) => { tried.push(ctx.level); return false; }, mount: () => {},
 }));

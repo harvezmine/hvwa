@@ -6,7 +6,7 @@ import { issueFlag } from '../src/core/flags.js';
 import { freshSession } from './helpers.js';
 
 register(defineChallenge({
-  id: 'PT-01', district: 'gatekeeper', slug: 'portal-fixture',
+  id: 'PT-01', district: 'gatekeeper', dir: process.cwd(), slug: 'portal-fixture',
   title: { id: 'Fikstur', en: 'Fixture' }, summary: { id: 's', en: 's' },
   maps: ['A05:2025'], levels: ['acolyte', 'templar', 'divine'], mount: () => {},
   hints: [{ id: 1, text: { id: 'h', en: 'h' }, cost: 30 }],

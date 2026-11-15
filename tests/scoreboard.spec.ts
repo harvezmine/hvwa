@@ -6,7 +6,7 @@ import { register, defineChallenge } from '../src/core/registry.js';
 import { unlockHint } from '../src/core/hints.js';
 
 register(defineChallenge({
-  id: 'SB-01', district: 'test', slug: 'sb', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
+  id: 'SB-01', district: 'test', dir: process.cwd(), slug: 'sb', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
   maps: [], levels: ['acolyte', 'templar', 'inquisitor', 'divine'], mount: () => {},
   hints: [
     { id: 1, text: { id: 'a', en: 'a' }, cost: 10 },

@@ -1,5 +1,6 @@
 // src/core/registry.ts — the declarative challenge registry.
 import type { Router } from 'express';
+import { isAbsolute } from 'node:path';
 import { verifyFlag } from './flags.js';
 import { isLevel, type Level } from './levels.js';
 
@@ -19,6 +20,8 @@ export interface Challenge {
   readonly id: string;               // "GK-01": two capitals, dash, two digits
   readonly district: string;         // "gatekeeper" (kebab-case a-z0-9)
   readonly slug: string;             // "sqli-login" (kebab-case a-z0-9); served at /d/<district>/<slug>
+  /** Absolute path of the challenge folder; its levels/<level>.ts files back View Source and Diff. */
+  readonly dir: string;
   readonly title: Text;
   readonly summary: Text;
   readonly maps: readonly string[];  // ["A05:2025", "CWE-89"]
@@ -80,6 +83,9 @@ function validate(c: Challenge): void {
   }
   if (typeof c.slug !== 'string' || !KEBAB_RE.test(c.slug)) {
     throw new Error(`${at}: bad slug "${String(c.slug)}" (kebab-case a-z0-9)`);
+  }
+  if (typeof c.dir !== 'string' || !isAbsolute(c.dir)) {
+    throw new Error(`${at}: dir must be an absolute path (got ${String(c.dir)})`);
   }
   if (!Array.isArray(c.levels) || c.levels.length === 0) throw new Error(`${c.id} has no levels`);
   for (const l of c.levels) if (!isLevel(l)) throw new Error(`${at}: unknown level "${String(l)}"`);

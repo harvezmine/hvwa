@@ -9,7 +9,7 @@ const SECRET_DETAIL = 'mount-internal-detail-xyz';
 
 // Registered at import time, before any createApp() — exactly how districts work.
 const MT01 = register(defineChallenge({
-  id: 'MT-01', district: 'mount-test', slug: 'clamp-lab',
+  id: 'MT-01', district: 'mount-test', dir: process.cwd(), slug: 'clamp-lab',
   title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [],
   levels: ['acolyte', 'inquisitor', 'divine'], hints: [],
   mount: (router) => {
@@ -75,7 +75,7 @@ describe('mountChallenges', () => {
   it('mounts what is registered when createApp() runs', async () => {
     const before = createApp();
     register(defineChallenge({
-      id: 'MT-02', district: 'mount-test', slug: 'late', title: { id: 't', en: 't' },
+      id: 'MT-02', district: 'mount-test', dir: process.cwd(), slug: 'late', title: { id: 't', en: 't' },
       summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte'], hints: [],
       mount: (router) => { router.get('/', (_req, res) => { res.send('late'); }); },
     }));

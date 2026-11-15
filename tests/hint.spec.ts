@@ -3,7 +3,7 @@ import { register, defineChallenge } from '../src/core/registry.js';
 import { freshSession } from './helpers.js';
 
 register(defineChallenge({
-  id: 'HN-01', district: 'test', slug: 'hint-fixture', title: { id: 't', en: 't' },
+  id: 'HN-01', district: 'test', dir: process.cwd(), slug: 'hint-fixture', title: { id: 't', en: 't' },
   summary: { id: '', en: '' }, maps: [], levels: ['acolyte', 'divine'], mount: () => {},
   hints: [
     { id: 1, text: { id: 'petunjuk satu', en: 'hint one' }, cost: 10 },

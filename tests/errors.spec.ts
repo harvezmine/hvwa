@@ -9,7 +9,7 @@ import { TEST_SECRET } from './helpers.js';
 const SECRET_DETAIL = 'boom-internal-detail-xyz';
 
 register(defineChallenge({
-  id: 'ZZ-03', district: 'test', slug: 't3', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
+  id: 'ZZ-03', district: 'test', dir: process.cwd(), slug: 't3', title: { id: 't', en: 't' }, summary: { id: '', en: '' },
   maps: ['x'], levels: ['acolyte'], hints: [],
   check: () => { throw new Error(SECRET_DETAIL); }, mount: () => {},
 }));

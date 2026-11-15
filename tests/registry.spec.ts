@@ -12,7 +12,7 @@ let seq = 10;
 function input(over: Partial<Input> = {}): Input {
   const n = seq++;
   return {
-    id: `RV-${n}`, district: 'test-district', slug: `fixture-${n}`,
+    id: `RV-${n}`, district: 'test-district', dir: process.cwd(), slug: `fixture-${n}`,
     title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: ['A01:2025'],
     levels: ['acolyte', 'divine'], hints: [], mount: () => {},
     ...over,
@@ -21,6 +21,11 @@ function input(over: Partial<Input> = {}): Input {
 
 describe('defineChallenge', () => {
   beforeAll(() => setFlagSecret(TEST_SECRET));
+
+  it('requires an absolute dir', () => {
+    expect(() => defineChallenge(input({ dir: 'relative/dir' }))).toThrow(/dir must be an absolute path/);
+    expect(() => defineChallenge(input({ dir: undefined as never }))).toThrow(/dir/);
+  });
 
   it('accepts valid metadata and defaults points to 100', () => {
     const c: Challenge = defineChallenge(input({ check: () => true }));
