@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { diffView, page } from '../src/core/render.js';
+import { diffView, page, sendPage, RESERVED_VIEW_KEYS } from '../src/core/render.js';
 import { langMiddleware } from '../src/core/i18n.js';
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'hello.ejs');
@@ -97,12 +97,18 @@ describe('page() resists EJS option injection through data', () => {
     expectNormal((await request(app).get('/')).text);
   });
 
-  it('ignores top-level option keys (client, escapeFunction, delimiter, cache) in data', async () => {
-    delete g[MARKER];
-    const app = appWith((_req, res) => page(res, fixture, {
-      name: '<b>x</b>', client: true, escapeFunction: payload, delimiter: '?', cache: true,
-    }));
-    expectNormal((await request(app).get('/')).text);
+  // ejs 3.1.10 honours these top-level data keys as options in the two-argument
+  // renderFile form (its _OPTS_PASSABLE_WITH_DATA list), so each one fails this
+  // test against the vulnerable form: delimiter changes parsing, async makes
+  // the body a Promise.
+  it.each([
+    ['delimiter', { delimiter: '?' }],
+    ['async', { async: true }],
+  ])('a top-level %s key in data cannot change how the view renders', async (_key, extra) => {
+    const app = appWith((_req, res) => page(res, fixture, { name: '<b>x</b>', ...extra }));
+    const html = (await request(app).get('/')).text;
+    expectNormal(html);
+    expect(html).not.toContain('[object Promise]');
   });
 
   it('is safe when a handler spreads an extended-urlencoded body into data', async () => {
@@ -114,5 +120,49 @@ describe('page() resists EJS option injection through data', () => {
       `&settings[view options][escapeFunction]=${encodeURIComponent(payload)}`,
     );
     expectNormal(res.text);
+  });
+});
+
+describe('page() / sendPage() guards', () => {
+  function appWith(handler: (req: express.Request, res: express.Response) => Promise<void>) {
+    const app = express();
+    app.use(cookieParser());
+    app.use(langMiddleware());
+    app.get('/', async (req, res) => { await handler(req, res); });
+    app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      res.status(500).json({ message: err.message });
+    });
+    return app;
+  }
+
+  it('reserves exactly the keys ejs and the layout depend on', () => {
+    expect([...RESERVED_VIEW_KEYS].sort()).toEqual(
+      ['__append', '__output', 'body', 'escapeFn', 'include', 'lang', 'locals', 'rethrow', 't'].sort());
+  });
+
+  it.each(['escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang'])(
+    'rejects reserved data key %s', async (key) => {
+      const app = appWith(async (_req, res) => { res.send(await page(res, fixture, { name: 'x', [key]: 'y' })); });
+      const res = await request(app).get('/');
+      expect(res.status).toBe(500);
+      expect(res.body.message).toMatch(new RegExp(`reserved.*"${key}"`));
+    });
+
+  it('rejects a view path that does not end in .ejs', async () => {
+    const app = appWith(async (_req, res) => { res.send(await page(res, fixture.replace(/\.ejs$/, '.html'))); });
+    expect((await request(app).get('/')).body.message).toMatch(/\.ejs/);
+  });
+
+  it('rejects a relative view path', async () => {
+    const app = appWith(async (_req, res) => { res.send(await page(res, 'tests/fixtures/hello.ejs', { name: 'x' })); });
+    expect((await request(app).get('/')).body.message).toMatch(/absolute/);
+  });
+
+  it('sendPage() renders inside the layout and sends HTML', async () => {
+    const app = appWith(async (_req, res) => { await sendPage(res, fixture, { name: '<i>w</i>' }); });
+    const res = await request(app).get('/?lang=en');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.text).toContain('<p id="hello">Districts &lt;i&gt;w&lt;/i&gt;</p>');
   });
 });

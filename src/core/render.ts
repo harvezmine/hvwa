@@ -2,7 +2,7 @@
 import type { Response } from 'express';
 import { renderFile, type Options } from 'ejs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { t, DEFAULT_LANG, type Lang } from './i18n.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -29,13 +29,45 @@ function serverEjsOptions(): Options {
   return { async: false, strict: false, rmWhitespace: false };
 }
 
-// Render an EJS view (absolute path) and wrap it in the shared layout.
-// Context = res.locals (lang, t from langMiddleware) overlaid with `data`.
-// Exported for districts: page(res, join(myViewsDir, 'x.ejs'), { ... }).
+/**
+ * Data keys a view may not set: ejs's own template-function locals
+ * (escapeFn, include, rethrow, __append, __output, locals) and the context
+ * the engine provides (body for the layout; t and lang from res.locals).
+ */
+export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
+  'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
+]);
+
+function assertViewFile(viewFile: string): void {
+  if (!isAbsolute(viewFile)) throw new Error(`page(): view path must be absolute (got "${viewFile}")`);
+  if (!viewFile.endsWith('.ejs')) throw new Error(`page(): view must be an .ejs file (got "${viewFile}")`);
+}
+
+function assertNoReservedKeys(data: Record<string, unknown>): void {
+  for (const key of Object.keys(data)) {
+    if (RESERVED_VIEW_KEYS.has(key)) throw new Error(`page(): reserved data key "${key}"`);
+  }
+}
+
+/**
+ * Render an EJS view (absolute .ejs path) inside the shared layout and return
+ * the HTML. Context = res.locals (lang, t, and on challenge routes level and
+ * challenge) overlaid with `data`; reserved keys are rejected.
+ */
 export async function page(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<string> {
+  assertViewFile(viewFile);
+  assertNoReservedKeys(data);
   const ctx: Record<string, unknown> = { ...res.locals, ...data };
   const body = await renderFile(viewFile, ctx, serverEjsOptions());
   return renderFile(layoutFile, { ...ctx, body }, serverEjsOptions());
+}
+
+/**
+ * Render with page() and send it as text/html. The usual call from a
+ * challenge route: `await sendPage(res, view('login'), { message })`.
+ */
+export async function sendPage(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<void> {
+  res.type('html').send(await page(res, viewFile, data));
 }
 
 type Op = { kind: 'same' | 'del' | 'add'; text: string };

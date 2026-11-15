@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { allChallenges, type Challenge } from '../core/registry.js';
 import { scoreFor, progress } from '../core/scoreboard.js';
-import { page, portalViewsDir } from '../core/render.js';
+import { sendPage, portalViewsDir } from '../core/render.js';
 
 const view = (name: string) => join(portalViewsDir, `${name}.ejs`);
 
@@ -23,16 +23,16 @@ export function portalRouter(db: DatabaseSync): Router {
     const districts = [...byDistrict.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([id, challenges]) => ({ id, challenges }));
-    res.send(await page(res, view('index'), { title: res.locals.t('app.title'), districts }));
+    await sendPage(res, view('index'), { title: res.locals.t('app.title'), districts });
   });
 
   r.get('/scoreboard', async (req, res) => {
     const sid = req.sessionId;
-    res.send(await page(res, view('scoreboard'), {
+    await sendPage(res, view('scoreboard'), {
       title: res.locals.t('scoreboard.title'),
       score: scoreFor(db, sid),
       solved: progress(db, sid).solved,
-    }));
+    });
   });
 
   return r;
