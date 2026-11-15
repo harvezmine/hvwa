@@ -272,6 +272,78 @@ const MATRIX4: ExploitMatrix<string> = {
 };
 describeExploitMatrix(MATRIX4);
 
+// An access-control style fixture: Divine denies with 403 (or 200 when `divineStatus` says so),
+// Templar denies with 404 text but 200.
+const modeS = { divineStatus: 403 };
+afterEach(() => { modeS.divineStatus = 403; });
+const HM04 = register(defineChallenge({
+  id: 'HM-04', district: 'helpers-test', slug: 'status', dir: process.cwd(),
+  title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [],
+  levels: ['acolyte', 'templar', 'divine'], hints: [],
+  mount: (router) => {
+    router.post('/', (req, res) => {
+      const q = field(req, 'q');
+      if (req.level === 'divine') {
+        res.status(q === 'hello' ? 200 : (q === 'T-EXPLOIT' ? 404 : modeS.divineStatus)).type('text').send(q === 'hello' ? 'Hello, guest.' : 'Denied.');
+        return;
+      }
+      const wins = q === (req.level === 'acolyte' ? 'A-EXPLOIT' : 'T-EXPLOIT');
+      res.type('text').send(wins ? `Pwned. ${flagFor(req, HM04)}` : 'Denied.');
+    });
+  },
+}));
+const MATRIX_S: ExploitMatrix<string> = {
+  ...MATRIX, challenge: HM04, path: '/d/helpers-test/status', malformed: [], privileged: null,
+};
+const DIVINE_A = 'divine resists the acolyte exploit';
+const DIVINE_T = 'divine resists the templar exploit';
+
+describe('resistedStatus', () => {
+  it('defaults to 200: a Divine that denies with 403 fails, one that answers 200 passes', async () => {
+    await expect(caseNamed(MATRIX_S, DIVINE_A)).rejects.toThrow(/answered 403.*expected 200/);
+    modeS.divineStatus = 200;
+    await expect(caseNamed(MATRIX_S, DIVINE_A)).resolves.toBeUndefined();
+  });
+
+  it('a declared status passes at 403 and fails when the lab answers 200 instead', async () => {
+    const m = { ...MATRIX_S, resistedStatus: 403 };
+    await expect(caseNamed(m, DIVINE_A)).resolves.toBeUndefined();
+    modeS.divineStatus = 200;
+    await expect(caseNamed(m, DIVINE_A)).rejects.toThrow(/answered 200.*expected 403/);
+  });
+
+  it('a list accepts any of its statuses', async () => {
+    const m = { ...MATRIX_S, resistedStatus: [401, 403] as const };
+    await expect(caseNamed(m, DIVINE_A)).resolves.toBeUndefined();
+    modeS.divineStatus = 404;
+    await expect(caseNamed(m, DIVINE_A)).rejects.toThrow(/expected 401 or 403/);
+  });
+
+  it('a per-level map is keyed by the exploit level; missing levels expect 200', async () => {
+    const m = { ...MATRIX_S, resistedStatus: { acolyte: 403, templar: 404 } };
+    await expect(caseNamed(m, DIVINE_A)).resolves.toBeUndefined();
+    await expect(caseNamed(m, DIVINE_T)).resolves.toBeUndefined();
+    const swapped = { ...MATRIX_S, resistedStatus: { acolyte: 404, templar: 403 } };
+    await expect(caseNamed(swapped, DIVINE_A)).rejects.toThrow(/expected 404/);
+    await expect(caseNamed(swapped, DIVINE_T)).rejects.toThrow(/expected 403/);
+    const partial = { ...MATRIX_S, resistedStatus: { acolyte: 403 } };
+    await expect(caseNamed(partial, DIVINE_A)).resolves.toBeUndefined();
+    await expect(caseNamed(partial, DIVINE_T)).rejects.toThrow(/answered 404.*expected 200/);
+  });
+
+  it('a denial status does not excuse a flag or error text at Divine', async () => {
+    const m = { ...MATRIX_S, resisted: 'Pwned', resistedStatus: 403 };
+    await expect(caseNamed(m, DIVINE_A)).rejects.toThrow(/resisted text/);
+  });
+
+  it('is validated at setup', () => {
+    for (const bad of [600, 99, 0, 200.5, -403, Number.NaN, [], [403, 600], { acolyte: 600 }, { acolyte: [] }, { divine: 403 }, { bogus: 403 }]) {
+      expect(() => exploitMatrixCases({ ...MATRIX_S, resistedStatus: bad as never }), JSON.stringify(bad)).toThrow(/resistedStatus/);
+    }
+    expect(() => exploitMatrixCases({ ...MATRIX_S, resistedStatus: { acolyte: 403 } })).not.toThrow();
+  });
+});
+
 describe('matrix send()', () => {
   it('receives the session id of the fresh session as a 5th argument (for per-session test seams)', async () => {
     const seen: string[] = [];
