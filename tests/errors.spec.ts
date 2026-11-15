@@ -4,6 +4,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { errorHandler } from '../src/core/errors.js';
 import { register, defineChallenge } from '../src/core/registry.js';
+import { TEST_SECRET } from './helpers.js';
 
 const SECRET_DETAIL = 'boom-internal-detail-xyz';
 
@@ -51,7 +52,7 @@ describe('error handler', () => {
   });
 
   it('a throwing check() yields 500 JSON without stack text', async () => {
-    const res = await request(createApp({ flagSecret: 'test-secret' }))
+    const res = await request(createApp({ flagSecret: TEST_SECRET }))
       .post('/api/submit').send({ challengeId: 'ZZ-03', submission: 'x' });
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'internal_error' });
@@ -59,7 +60,7 @@ describe('error handler', () => {
   });
 
   it('malformed JSON is a 400, not a stack trace', async () => {
-    const res = await request(createApp({ flagSecret: 'test-secret' }))
+    const res = await request(createApp({ flagSecret: TEST_SECRET }))
       .post('/api/submit').set('Content-Type', 'application/json').send('{"challengeId":');
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: 'bad_request' });

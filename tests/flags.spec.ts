@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { issueFlag, verifyFlag, setFlagSecret } from '../src/core/flags.js';
+import { issueFlag, verifyFlag, setFlagSecret, MIN_FLAG_SECRET_LENGTH } from '../src/core/flags.js';
 import { TEST_SECRET } from './helpers.js';
 
 describe('flags', () => {
@@ -28,6 +28,26 @@ describe('flags', () => {
   it('Divine never issues a flag and never verifies one', () => {
     expect(() => issueFlag('GK-01', 'sessA', 'divine')).toThrow(/divine/i);
     expect(verifyFlag('GK-01', 'sessA', 'divine', issueFlag('GK-01', 'sessA', 'acolyte'))).toBe(false);
+  });
+
+  it.each(['', 'short', '0123456789abcde', '                '])(
+    'setFlagSecret rejects %j (fewer than 16 non-blank characters)', (s) => {
+      expect(() => setFlagSecret(s)).toThrow(/at least 16/);
+    });
+
+  it('setFlagSecret accepts exactly 16 characters', () => {
+    try {
+      expect(() => setFlagSecret('0123456789abcdef')).not.toThrow();
+    } finally {
+      setFlagSecret(TEST_SECRET);
+    }
+  });
+
+  it('MIN_FLAG_SECRET_LENGTH is 16 and is what config enforces', async () => {
+    expect(MIN_FLAG_SECRET_LENGTH).toBe(16);
+    const { parseConfig } = await import('../src/config.js');
+    expect(() => parseConfig({ FLAG_SECRET: 'x'.repeat(MIN_FLAG_SECRET_LENGTH - 1) })).toThrow();
+    expect(() => parseConfig({ FLAG_SECRET: 'x'.repeat(MIN_FLAG_SECRET_LENGTH) })).not.toThrow();
   });
 
   it('depends on the configured secret', () => {

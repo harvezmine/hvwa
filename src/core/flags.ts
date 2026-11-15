@@ -10,8 +10,17 @@ const isFlagLevel = (level: unknown): level is Level =>
 // given an explicit flagSecret; server.ts always passes the env/persisted one.
 let flagSecret: string = randomBytes(32).toString('hex');
 
+/** Minimum flag-secret length, enforced here for every source (config, data/flag-secret, createApp). */
+export const MIN_FLAG_SECRET_LENGTH = 16;
+
+export function isValidFlagSecret(secret: unknown): secret is string {
+  return typeof secret === 'string' && secret.trim().length >= MIN_FLAG_SECRET_LENGTH;
+}
+
 export function setFlagSecret(secret: string): void {
-  if (!secret) throw new Error('flag secret must be a non-empty string');
+  if (!isValidFlagSecret(secret)) {
+    throw new Error(`flag secret must be at least ${MIN_FLAG_SECRET_LENGTH} non-blank characters`);
+  }
   flagSecret = secret;
 }
 

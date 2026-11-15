@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MIN_FLAG_SECRET_LENGTH } from './core/flags.js';
 
 // Blank / whitespace-only env values (e.g. `PORT=` in a .env file) mean
 // "unset" — the default applies — rather than a validation error.
@@ -9,7 +10,7 @@ const schema = z.object({
   HOST: unsetIfBlank(z.string().trim().min(1).default('127.0.0.1')),
   PORT: unsetIfBlank(z.coerce.number().int().min(1).max(65535).default(1337)),
   // No default: server.ts falls back to a random secret persisted in <data>/flag-secret.
-  FLAG_SECRET: unsetIfBlank(z.string().trim().min(16, 'FLAG_SECRET must be at least 16 characters').optional()),
+  FLAG_SECRET: unsetIfBlank(z.string().trim().min(MIN_FLAG_SECRET_LENGTH, `must be at least ${MIN_FLAG_SECRET_LENGTH} characters`).optional()),
   AI_BACKEND: unsetIfBlank(z.enum(['sim', 'ollama', 'byo']).default('sim')),
   // Opt-in to a non-loopback HOST (the Docker image sets this inside the container).
   HVWA_ALLOW_REMOTE: unsetIfBlank(z.enum(['0', '1']).default('0')).transform((v) => v === '1'),

@@ -45,3 +45,9 @@ describe('smoke', () => {
     expect(existsSync(dir)).toBe(false);
   });
 });
+
+describe('createApp flag secret', () => {
+  it('rejects an explicit flagSecret shorter than 16 characters', () => {
+    expect(() => createApp({ flagSecret: 'test-secret' })).toThrow(/at least 16/);
+  });
+});
