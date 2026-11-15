@@ -1,5 +1,6 @@
 // src/core/lab.ts — helpers for challenge routes (the code behind /d/<district>/<slug>).
-import type { Request } from 'express';
+import { readFileSync } from 'node:fs';
+import type { Request, Response } from 'express';
 import { LEVELS, isLevel, type Level } from './levels.js';
 
 /** One lazily created value per level (see perLevel). */
@@ -229,4 +230,18 @@ export function labPath(res: { readonly locals: Record<string, unknown> }): stri
 export function header(req: { readonly headers: Record<string, string | string[] | undefined> }, name: string): string | undefined {
   const v = req.headers[name.toLowerCase()];
   return typeof v === 'string' ? v : undefined;
+}
+
+/**
+ * A lab's fixture list (one entry per line, blanks dropped), read lazily once. Resolve the file next to
+ * the module with `new URL('./fixtures/x.txt', import.meta.url)`; copy-assets ships fixtures into dist/.
+ */
+export function fixtureLines(url: URL): () => readonly string[] {
+  let lines: readonly string[] | undefined;
+  return () => (lines ??= Object.freeze(readFileSync(url, 'utf8').split(/\r?\n/).filter((l) => l !== '')));
+}
+
+/** Serve a fixture list from a lab route as text/plain, one entry per line. */
+export function sendLines(res: Pick<Response, 'type'>, lines: readonly string[]): void {
+  res.type('text/plain').send(`${lines.join('\n')}\n`);
 }

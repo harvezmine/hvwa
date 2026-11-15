@@ -1,6 +1,6 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, vi } from 'vitest';
-import { perLevel, perSession, byLevel, tryDb, field, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 
 describe('perLevel(factory)', () => {
@@ -309,5 +309,45 @@ describe('field(req, name)', () => {
     for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
       expect(field({ body: {} }, name), name).toBe('');
     }
+  });
+});
+
+describe('fixtureLines(url) / sendLines(res, lines)', () => {
+  const file = new URL('./fixtures/hello.ejs', import.meta.url);
+
+  it('reads the file once, lazily, dropping blank lines (CRLF or LF)', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { pathToFileURL } = await import('node:url');
+    const dir = mkdtempSync(join(tmpdir(), 'hvwa-fx-'));
+    try {
+      const p = join(dir, 'list.txt');
+      writeFileSync(p, 'one\r\n\r\ntwo\nthree\n\n');
+      const lines = fixtureLines(pathToFileURL(p));
+      expect(lines()).toEqual(['one', 'two', 'three']);
+      writeFileSync(p, 'changed'); // read once: the cached list stays
+      expect(lines()).toBe(lines());
+      expect(Object.isFrozen(lines())).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+    expect(() => fixtureLines(file)()).not.toThrow();
+    expect(() => fixtureLines(new URL('./fixtures/nope.txt', import.meta.url))()).toThrow();
+  });
+
+  it('sends text/plain, one entry per line with a trailing newline', () => {
+    const sent: string[] = [];
+    const types: string[] = [];
+    const res = { type(t: string) { types.push(t); return { send(b: string) { sent.push(b); } }; } };
+    sendLines(res as never, ['a', 'b']);
+    expect(types).toEqual(['text/plain']);
+    expect(sent).toEqual(['a\nb\n']);
+  });
+});
+
+describe('header(req, name)', () => {
+  it('returns a header sent once as a string; undefined when missing or repeated; name is case-insensitive', () => {
+    expect(header({ headers: { 'x-real-ip': '1.2.3.4' } }, 'X-Real-IP')).toBe('1.2.3.4');
+    expect(header({ headers: {} }, 'x-real-ip')).toBeUndefined();
+    expect(header({ headers: { 'x-real-ip': ['a', 'b'] } }, 'x-real-ip')).toBeUndefined();
   });
 });

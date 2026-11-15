@@ -1,12 +1,13 @@
 // Tests for the shared test helpers: FLAG_RE, DB_ERROR_RE, describeExploitMatrix.
 import { describe, it, expect, afterEach } from 'vitest';
+import request from 'supertest';
 import { register, defineChallenge } from '../src/core/registry.js';
 import { flagFor } from '../src/core/mount.js';
 import { issueFlag } from '../src/core/flags.js';
 import { field, tryDb, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import {
-  FLAG_RE, DB_ERROR_RE, TEST_SECRET, describeExploitMatrix, exploitMatrixCases, type ExploitMatrix,
+  FLAG_RE, DB_ERROR_RE, TEST_SECRET, bare, describeExploitMatrix, exploitMatrixCases, freshSession, type ExploitMatrix,
 } from './helpers.js';
 
 describe('FLAG_RE', () => {
@@ -283,6 +284,31 @@ describe('matrix send()', () => {
     expect(seen).toHaveLength(2);
     for (const sid of seen) expect(sid).toMatch(/^[0-9a-f-]{36}$/);
     expect(seen[0]).not.toBe(seen[1]); // a fresh session per case
+  });
+});
+
+describe('bare(app, sid)', () => {
+  it('sends only the session cookie (the session is recognised: no new hvwa_sid is issued) plus any extra cookie', async () => {
+    const { app, sid } = await freshSession();
+    const res = await bare(app, sid).get('/healthz');
+    expect(res.status).toBe(200);
+    expect(res.headers['set-cookie']).toBeUndefined();
+    const stranger = await request(app).get('/healthz');
+    expect(stranger.headers['set-cookie']).toBeDefined();
+    expect((await bare(app, sid, 'x=1').post('/api/submit').send({})).status).toBeLessThan(500);
+  });
+
+  it('the matrix hands send() the case app, usable with bare()', async () => {
+    let ok = false;
+    const m: ExploitMatrix<string> = {
+      ...MATRIX,
+      send: async (agent, _level, q, url, ctx) => {
+        ok = (await bare(ctx.app, ctx.sid).get('/healthz')).status === 200;
+        return agent.post(url).type('form').send({ q });
+      },
+    };
+    await caseNamed(m, 'acolyte: legit "greeting" works without a flag');
+    expect(ok).toBe(true);
   });
 });
 

@@ -47,6 +47,19 @@ export async function freshSession(app: Express = createApp({ flagSecret: TEST_S
   return { app, agent, sid };
 }
 
+/**
+ * Requests that carry ONLY the session cookie (plus `extraCookies`, e.g. 'lab_sid=abc'), like curl
+ * without a cookie jar: nothing the lab previously set is replayed. (The agent's jar always wins
+ * over a Cookie header set by hand, so use this to send a cookie the lab did not give you.)
+ */
+export function bare(app: Express, sid: string, extraCookies = '') {
+  const cookie = extraCookies === '' ? `hvwa_sid=${sid}` : `hvwa_sid=${sid}; ${extraCookies}`;
+  return {
+    get: (url: string) => request(app).get(url).set('Cookie', cookie),
+    post: (url: string) => request(app).post(url).set('Cookie', cookie),
+  };
+}
+
 /** A supertest agent with an established session (from freshSession). */
 export type Agent = Awaited<ReturnType<typeof freshSession>>['agent'];
 /** Expected response text: a substring, or a pattern. */
@@ -65,11 +78,12 @@ export interface ExploitMatrix<I> {
   readonly path: string;
   /**
    * Submit `input` to the lab at `level`. `url` is `${path}?level=${level}`; `ctx.sid` is the
-   * session id of this case's fresh session (for per-session test seams such as a secret).
+   * session id of this case's fresh session (for per-session test seams such as a secret) and
+   * `ctx.app` its app (for `bare(ctx.app, ctx.sid)` requests that carry no other cookie).
    * May send several requests (a scenario) and return the last response.
    */
   readonly send: (
-    agent: Agent, level: Level, input: I, url: string, ctx: { readonly sid: string },
+    agent: Agent, level: Level, input: I, url: string, ctx: { readonly sid: string; readonly app: Express },
   ) => PromiseLike<request.Response>;
   /** One working exploit per exploitable level: keys must equal the challenge's non-Divine levels. */
   readonly exploits: { readonly [L in ExploitLevel]?: I };
@@ -145,8 +159,8 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
   if (isMap) for (const l of exploitable) resistedFor(l);
   const implemented = LEVELS.filter((l) => c.levels.includes(l));
   const send = async (level: Level, input: I) => {
-    const { agent, sid } = await freshSession();
-    const res = await m.send(agent, level, input, `${m.path}?level=${level}`, { sid });
+    const { agent, sid, app } = await freshSession();
+    const res = await m.send(agent, level, input, `${m.path}?level=${level}`, { sid, app });
     return { agent, res, text: res.text ?? '' };
   };
   const cases: MatrixCase[] = [];
@@ -231,6 +245,82 @@ export function describeExploitMatrix<I>(m: ExploitMatrix<I>): void {
   const cases = exploitMatrixCases(m);
   describe(`${m.challenge.id} exploit matrix`, () => {
     for (const c of cases) it(c.name, c.run);
+  });
+}
+
+/** What describeLabView() needs to know about a lab. */
+export interface LabViewSpec {
+  readonly challenge: Pick<Challenge, 'id' | 'levels'>;
+  readonly path: string;
+  /** Matches the notice that tells the player their own account. */
+  readonly account: RegExp;
+  /** The text field a typed payload is kept in after a POST, and extra form fields that make that POST meaningful. */
+  readonly echoField: string;
+  readonly extra?: Readonly<Record<string, string>>;
+  /** Odd request bodies (JSON): each must answer 200 with no flag at every level. */
+  readonly oddBodies: readonly unknown[];
+  /** A request that succeeds / fails, to check the success and error message classes. */
+  readonly ok: (agent: Agent, level: Level, sid: string) => PromiseLike<request.Response>;
+  readonly bad: (agent: Agent, level: Level, sid: string) => PromiseLike<request.Response>;
+}
+
+/**
+ * The view basics every lab shares: the player's own account is told, no type="password" input, forms
+ * post back with no action, a typed payload is kept escaped, odd bodies are not a 500, and success and
+ * error messages carry the lab-success / lab-error classes.
+ */
+export function describeLabView(v: LabViewSpec): void {
+  const levels = LEVELS.filter((l) => v.challenge.levels.includes(l));
+  describe(`${v.challenge.id} lab view`, () => {
+    it('tells the player their account; no password-type inputs; forms post back with no action', async () => {
+      const { agent } = await freshSession();
+      for (const level of levels) {
+        const res = await agent.get(`${v.path}?level=${level}`);
+        expect(res.status, level).toBe(200);
+        expect(res.text, level).toMatch(v.account);
+        expect(res.text, level).not.toMatch(/type="password"/);
+        const forms = [...res.text.matchAll(/<form[^>]*>/g)].map((m) => m[0]).filter((f) => !f.includes('lab-restart'));
+        expect(forms.length, level).toBeGreaterThan(0);
+        for (const f of forms) expect(f, level).not.toMatch(/\saction=/);
+      }
+    });
+
+    it('keeps a typed payload escaped in its field', async () => {
+      const { agent } = await freshSession();
+      const res = await agent.post(`${v.path}?level=${levels[0]}`).type('form')
+        .send({ ...v.extra, [v.echoField]: '"><script>alert(1)</script>', password: 'x' });
+      expect(res.text).toContain('value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
+      expect(res.text).not.toContain('<script>alert(1)');
+    });
+
+    it('odd bodies (objects, arrays, nested values) are a failed request, never a 500 or a flag', async () => {
+      const { agent } = await freshSession();
+      for (const level of levels) {
+        for (const body of v.oddBodies) {
+          const res = await agent.post(`${v.path}?level=${level}`).send(body as object);
+          expect(res.status, `${level} ${JSON.stringify(body)}`).toBe(200);
+          expect(res.text, level).not.toMatch(FLAG_RE);
+        }
+      }
+    });
+
+    it('marks success and failure messages for styling', async () => {
+      const a = await freshSession();
+      expect((await v.ok(a.agent, 'templar', a.sid)).text).toMatch(/class="lab-message lab-success"/);
+      const b = await freshSession();
+      expect((await v.bad(b.agent, 'templar', b.sid)).text).toMatch(/class="lab-message lab-error"/);
+    });
+
+    it('upper-case request URLs still link and set cookies under the canonical lab path', async () => {
+      const { agent } = await freshSession();
+      const res = await agent.get(`${v.path.toUpperCase()}?level=${levels[0]}`);
+      expect(res.status).toBe(200);
+      expect(res.text).not.toContain(v.path.toUpperCase());
+      for (const line of [res.headers['set-cookie'] ?? []].flat()) {
+        if (line.startsWith('hvwa_')) continue;
+        expect(line).toContain(`Path=${v.path}`);
+      }
+    });
   });
 }
 
