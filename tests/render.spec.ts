@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -79,6 +79,9 @@ describe('page() resists EJS option injection through data', () => {
   const MARKER = '__hvwaEjsInjected';
   const payload = `function(){};globalThis.${MARKER}=1;`;
   const g = globalThis as Record<string, unknown>;
+  // Reset before every test so each one discriminates on its own (a marker
+  // leaked from an earlier test once made a non-discriminating case look red).
+  beforeEach(() => { delete g[MARKER]; });
 
   function appWith(handler: (req: express.Request, res: express.Response) => Promise<string>) {
     const app = express();
@@ -97,7 +100,6 @@ describe('page() resists EJS option injection through data', () => {
   }
 
   it('ignores settings["view options"] (client + escapeFunction) in data', async () => {
-    delete g[MARKER];
     const app = appWith((_req, res) => page(res, fixture, {
       name: '<b>x</b>',
       settings: { 'view options': { client: true, escapeFunction: payload } },
@@ -105,22 +107,16 @@ describe('page() resists EJS option injection through data', () => {
     expectNormal((await request(app).get('/')).text);
   });
 
-  // ejs 3.1.10 honours these top-level data keys as options in the two-argument
-  // renderFile form (its _OPTS_PASSABLE_WITH_DATA list), so each one fails this
-  // test against the vulnerable form: delimiter changes parsing, async makes
-  // the body a Promise.
-  it.each([
-    ['delimiter', { delimiter: '?' }],
-    ['async', { async: true }],
-  ])('a top-level %s key in data cannot change how the view renders', async (_key, extra) => {
-    const app = appWith((_req, res) => page(res, fixture, { name: '<b>x</b>', ...extra }));
-    const html = (await request(app).get('/')).text;
-    expectNormal(html);
-    expect(html).not.toContain('[object Promise]');
+  // In the two-argument renderFile form, ejs 3.1.10 copies a top-level
+  // `delimiter` from data into its options, so the view's <%= %> tags stop
+  // being parsed. Run alone, this test fails against that form and passes
+  // against the fix.
+  it('a top-level delimiter key in data cannot change how the view is parsed', async () => {
+    const app = appWith((_req, res) => page(res, fixture, { name: '<b>x</b>', delimiter: '?' }));
+    expectNormal((await request(app).get('/')).text);
   });
 
   it('is safe when a handler spreads an extended-urlencoded body into data', async () => {
-    delete g[MARKER];
     const app = appWith((req, res) => page(res, fixture, { ...req.body }));
     const res = await request(app).post('/').type('form').send(
       'name=%3Cb%3Ex%3C%2Fb%3E' +
