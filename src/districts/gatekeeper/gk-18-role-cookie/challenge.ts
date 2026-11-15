@@ -5,7 +5,7 @@ import { defineChallenge, register } from '../../../core/registry.js';
 import { byLevel, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import { PLAYER, adminNote, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
+import { PLAYER, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
 import { cookieName, labFor, type Identity, type RoleLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -65,7 +65,7 @@ export const GK18 = register(defineChallenge({
       const admin = identityOf(req)?.role === 'admin';
       // Only a request whose cookie claims admin sees the flag, and Divine never issues one.
       await sendAdminPage(res, {
-        admin, granted: `Citadel admin console. ${adminNote(req, GK18, admin)}`.trim(),
+        admin, granted: 'Citadel admin console.', flag: { req, challenge: GK18 },
         denial: 'Admin only. Your cookie does not say you are the citadel admin.',
       });
     });

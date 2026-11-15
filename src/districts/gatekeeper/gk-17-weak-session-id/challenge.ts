@@ -5,7 +5,7 @@ import { defineChallenge, register } from '../../../core/registry.js';
 import { byLevel, field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import { ADMIN_NAME, PLAYER, adminNote, curlFor, sendAdminPage, type Result } from '../_shared/lab.js';
+import { ADMIN_NAME, PLAYER, curlFor, sendAdminPage, type Result } from '../_shared/lab.js';
 import {
   GUEST_NAME, cookieName, giveToVisitor, labFor, resetLab, startSession, whoIs, type LabState, type TokenLevel,
 } from './model.js';
@@ -115,7 +115,7 @@ export const GK17 = register(defineChallenge({
       const admin = whoIs(state, cookieOf(req)) === ADMIN_NAME;
       // Only the admin's session sees the flag, and Divine never issues one.
       await sendAdminPage(res, {
-        admin, granted: `Citadel admin console. ${adminNote(req, GK17, admin)}`.trim(),
+        admin, granted: 'Citadel admin console.', flag: { req, challenge: GK17 },
         denial: 'Admin only. Present the session cookie of the citadel admin.', denyStatus: 200,
       });
     });

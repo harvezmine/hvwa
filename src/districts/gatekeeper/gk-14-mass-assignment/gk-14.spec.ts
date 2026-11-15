@@ -196,6 +196,19 @@ describe('GK-14 profile updates', () => {
     }
   });
 
+  it('one request is cut at its first 50 fields (the rest are dropped, in key order)', async () => {
+    for (const level of ['acolyte', 'templar'] as const) {
+      const c = await ctxFor(level);
+      await login(c);
+      const before = Object.keys(labState(c.sid, level).user).length;
+      await updateJson(c, Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`k${i}`, 'v'])));
+      const user = labState(c.sid, level).user;
+      expect(Object.keys(user).length - before, level).toBe(50);
+      expect(Object.hasOwn(user, 'k49'), level).toBe(true);
+      expect(Object.hasOwn(user, 'k50'), level).toBe(false);
+    }
+  });
+
   it('an invalid email is refused (422) where emails are read, and nothing changes', async () => {
     for (const level of ['inquisitor', 'divine'] as const) {
       const c = await ctxFor(level);

@@ -51,11 +51,10 @@ export function pilgrimLogin(req: Request): { readonly ok: boolean; readonly res
 }
 
 /**
- * The admin page's one line for the flag: nothing for a non-admin, a plain welcome at Divine (Divine never issues
- * a flag), else the flag. Call it only when `admin` is true because the lab's REAL access check said so.
+ * The flag line of an admin page: the flag below Divine, a plain welcome at Divine (Divine never issues a flag).
+ * It is for a caller the lab's REAL access check let in; `sendAdminPage` calls it when given `flag`.
  */
-export function adminNote(req: Pick<Request, 'sessionId' | 'level'>, challenge: Pick<Challenge, 'id' | 'levels'>, admin: boolean): string {
-  if (!admin) return '';
+export function flagLine(req: Pick<Request, 'sessionId' | 'level'>, challenge: Pick<Challenge, 'id' | 'levels'>): string {
   return req.level === 'divine' ? 'Welcome back.' : `Flag: ${flagFor(req, challenge)}`;
 }
 
@@ -63,8 +62,13 @@ export function adminNote(req: Pick<Request, 'sessionId' | 'level'>, challenge: 
 export interface AdminPage {
   /** Whether the caller got in. The page answers 403 when not. */
   readonly admin: boolean;
-  /** The success message (the flag line, if any, is part of it). */
+  /** The success message. */
   readonly granted: string;
+  /**
+   * Show the flag line after `granted` (only when `admin` is true: the caller got in). The page decides
+   * Divine's rule itself: "Welcome back." instead of a flag, whatever the lab passes.
+   */
+  readonly flag?: { readonly req: Pick<Request, 'sessionId' | 'level'>; readonly challenge: Pick<Challenge, 'id' | 'levels'> };
   /** The denial message. */
   readonly denial: string;
   /** Optional preformatted content shown to the admin only (an export). */
@@ -78,15 +82,20 @@ const adminView = fileURLToPath(new URL('./views/admin.ejs', import.meta.url));
 /** Render the shared admin page: 200 with `granted` for the admin, 403 (or `denyStatus`) with `denial` for everyone else. */
 export async function sendAdminPage(res: Response, o: AdminPage): Promise<void> {
   res.status(o.admin ? 200 : (o.denyStatus ?? 403));
-  await sendPage(res, adminView, { base: labPath(res), admin: o.admin, granted: o.granted, denial: o.denial, pre: o.admin ? (o.pre ?? '') : '' });
+  const granted = o.admin && o.flag ? `${o.granted} ${flagLine(o.flag.req, o.flag.challenge)}`.trim() : o.granted;
+  await sendPage(res, adminView, { base: labPath(res), admin: o.admin, granted, denial: o.denial, pre: o.admin ? (o.pre ?? '') : '' });
 }
 
 /** A curl example a player can actually use: the data `_shared/views/curl-note.ejs` renders. */
 export interface CurlView {
   readonly url: string;
+  /** '' for the default (GET, or POST when there is a body), else e.g. 'PUT'. */
+  readonly method: string;
   readonly headers: readonly string[];
   readonly cookies: readonly string[];
   readonly data: string;
+  /** Form fields, each already shell-quoted: `--data-urlencode '<field>'`. */
+  readonly form: readonly string[];
 }
 
 export interface CurlSpec {
@@ -96,8 +105,17 @@ export interface CurlSpec {
   readonly headers?: readonly string[];
   /** Extra cookies besides the platform session, "name=value" (use <placeholders>). */
   readonly cookies?: readonly string[];
-  /** A request body for a POST, shown in single quotes. */
+  /** An HTTP method for `-X` (PUT, PATCH, DELETE ...); omit for GET, or for a POST that has a body. */
+  readonly method?: string;
+  /** A request body (JSON), shown after `-d` in single quotes. */
   readonly data?: string;
+  /** Form fields, sent with `--data-urlencode 'name=value'` (curl encodes them). */
+  readonly form?: Readonly<Record<string, string>>;
+}
+
+/** Text for inside single quotes in a shell line: each `'` closes the quote, adds an escaped quote and reopens. */
+export function shellQuote(text: string): string {
+  return text.replace(/'/g, "'\\''");
 }
 
 /**
@@ -109,6 +127,7 @@ export function curlFor(req: Request, res: Response, spec: CurlSpec): CurlView {
   const origin = `${req.protocol}://${req.get('host') ?? '127.0.0.1'}`;
   return {
     url: `${origin}${labPath(res)}${spec.path}?level=${req.level}`,
-    headers: spec.headers ?? [], cookies: spec.cookies ?? [], data: spec.data ?? '',
+    method: spec.method ?? '', headers: spec.headers ?? [], cookies: spec.cookies ?? [],
+    data: shellQuote(spec.data ?? ''), form: Object.entries(spec.form ?? {}).map(([k, v]) => shellQuote(`${k}=${v}`)),
   };
 }

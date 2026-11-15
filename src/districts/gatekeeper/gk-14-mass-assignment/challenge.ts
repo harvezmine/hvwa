@@ -5,7 +5,7 @@ import { defineChallenge, register } from '../../../core/registry.js';
 import { byLevel, field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import { PLAYER, adminNote, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
+import { PLAYER, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
 import { labFor, type ProfileLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -73,7 +73,7 @@ export const GK14 = register(defineChallenge({
       const admin = labFor(req).user.role === 'admin';
       // Only an account that really became admin sees the flag, and Divine never issues one.
       await sendAdminPage(res, {
-        admin, granted: `Citadel admin console. ${adminNote(req, GK14, admin)}`.trim(),
+        admin, granted: 'Citadel admin console.', flag: { req, challenge: GK14 },
         denial: 'Admin only. Your account is not an admin.',
       });
     });

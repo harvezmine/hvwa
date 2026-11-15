@@ -1,5 +1,5 @@
 // A render failure on the denial path must reach the error handler (500), never hang the request or crash the process.
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
 import { freshSession } from '../../../../tests/helpers.js';
 import { LEVELS } from '../../../core/levels.js';
 import { GK13 } from './challenge.js'; // registers GK-13 before createApp() inside freshSession
@@ -19,6 +19,7 @@ const rejections: unknown[] = [];
 const onRejection = (e: unknown) => { rejections.push(e); };
 process.on('unhandledRejection', onRejection);
 afterEach(() => { fail.on = false; });
+afterAll(() => { process.off('unhandledRejection', onRejection); });
 
 describe('GK-13 denial path failures', () => {
   it('a failing render of the denial is a 500 from the error handler at every guarded level, and no unhandled rejection', async () => {

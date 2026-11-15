@@ -155,12 +155,15 @@ describe('GK-13 routing and guards', () => {
     }
   });
 
-  it('robots.txt is plain text and only names a path at acolyte', async () => {
+  it('robots.txt is plain text; only acolyte names the export, the other levels only a directory', async () => {
     for (const level of LEVELS) {
       const c = await ctxFor(level);
       const res = await get(c, '/robots.txt');
       expect(res.headers['content-type'], level).toMatch(/^text\/plain/);
-      expect(res.text, level).toMatch(/^User-agent: \*/);
+      expect(res.text, level).toMatch(/^User-agent: \*\n/);
+      expect(res.text, level).toContain('Disallow: /admin/');
+      if (level === 'acolyte') expect(res.text).toContain('Disallow: /admin/export');
+      else expect(res.text, level).not.toContain('/admin/export');
     }
   });
 });

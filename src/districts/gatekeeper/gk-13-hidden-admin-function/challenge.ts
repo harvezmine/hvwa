@@ -6,7 +6,7 @@ import { byLevel, labPath, sendLines } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import type { Level } from '../../../core/levels.js';
-import { ADMIN_NAME, PLAYER, adminNote, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
+import { ADMIN_NAME, PLAYER, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
 import { labFor, type AdminLevel, type Wiring } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -38,19 +38,20 @@ export const GK13 = register(defineChallenge({
       isAdmin: (req: Request) => labFor(req).user === 'admin',
       exportPage: async (req, res) => {
         const admin = labFor(req).user === 'admin';
-        // Anyone but the admin getting the export is the failure; Divine never issues a flag.
-        const flag = admin ? '' : adminNote(req, GK13, true);
-        await sendAdminPage(res, { admin: true, granted: 'Member export', denial, pre: `name,role
+        // Anyone but the admin getting the export is the failure and shows the flag line; Divine never gets one.
+        await sendAdminPage(res, {
+          admin: true, granted: 'Member export', denial,
+          pre: `name,role
 ${ADMIN_NAME},admin
-${PLAYER.username},user${flag ? `
-${flag}` : ''}` });
+${PLAYER.username},user`,
+          ...(admin ? {} : { flag: { req, challenge: GK13 } }),
+        });
       },
       denied: (_req: Request, res: Response, next: NextFunction) => {
         sendAdminPage(res, { admin: false, granted: '', denial }).catch(next); // never leave a rejection dangling
       },
       requireSignIn: (req, res, next) => {
         if (labFor(req).user !== 'none') { next(); return; }
-        res.status(401);
         sendAdminPage(res, { admin: false, granted: '', denial: 'Sign in first.', denyStatus: 401 }).catch(next);
       },
     };
