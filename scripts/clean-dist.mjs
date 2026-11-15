@@ -2,13 +2,14 @@
 // (deleted sources, renamed views). No dependencies beyond node:fs.
 import { rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { isMainModule } from './main-module.mjs';
 
 export function cleanDist(distDir) {
   rmSync(resolve(distDir), { recursive: true, force: true });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isMainModule(process.argv[1], import.meta.url)) {
   cleanDist(join(dirname(fileURLToPath(import.meta.url)), '..', 'dist'));
   console.log('clean-dist: removed dist/');
 }
