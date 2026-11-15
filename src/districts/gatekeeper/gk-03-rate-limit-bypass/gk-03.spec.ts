@@ -230,17 +230,17 @@ describe('GK-03 per-player state', () => {
   });
 });
 
-describe('GK-03 restart', () => {
-  it('Restart lab gives the level a fresh limiter and a new admin password; other levels are untouched', async () => {
-    const { agent, sid } = await freshSession();
-    for (let i = 0; i < 6; i++) await send(agent, 'templar', { creds: wrong(i) }, sid);
-    for (let i = 0; i < 6; i++) await send(agent, 'acolyte', { creds: wrong(i) }, sid);
-    expect((await send(agent, 'templar', { creds: FINAL_CREDS }, sid)).text).toContain('Too many attempts');
-    const res = await agent.post(`${LAB}/_reset?level=templar`);
-    expect(res.status).toBe(303);
-    expect(res.headers.location).toBe(`${LAB}?level=templar`);
-    expect((await send(agent, 'templar', { creds: FINAL_CREDS }, sid)).text).toMatch(FLAG_RE);
-    expect((await send(agent, 'acolyte', { creds: FINAL_CREDS }, sid)).text).toContain('Too many attempts');
+describe('GK-03 no restart', () => {
+  it('there is no Restart lab to refill the budget: /_reset is 404, and failures + reset attempts + the real password stay refused', async () => {
+    for (const level of ['acolyte', 'templar', 'inquisitor', 'divine'] as const) {
+      const { agent, sid } = await freshSession();
+      for (let i = 0; i < 6; i++) await send(agent, level, { creds: wrong(i) }, sid);
+      expect((await agent.post(`${LAB}/_reset?level=${level}`)).status, level).toBe(404);
+      const text = (await send(agent, level, { creds: FINAL_CREDS }, sid)).text;
+      expect(text, level).toContain('Too many attempts');
+      expect(text, level).not.toMatch(FLAG_RE);
+      expect((await agent.get(`${LAB}?level=${level}`)).text, level).not.toContain('lab-restart');
+    }
   });
 });
 
@@ -249,6 +249,7 @@ describeLabView({
   path: LAB,
   account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
   echoField: 'username',
+  extra: { password: 'x' },
   oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, null, 'x', [], { username: 5 }], []],
   ok: (agent, level, sid) => send(agent, level, { creds: PILGRIM }, sid),
   bad: (agent, level, sid) => send(agent, level, { creds: wrong(1) }, sid),

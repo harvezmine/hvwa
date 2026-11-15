@@ -73,7 +73,7 @@ describeExploitMatrix<Scenario>({
     acolyte: [LOGIN_ADMIN, ...times(12, WRONG), RIGHT],
     // 5-attempt limit, but "resend" zeroes the counter and keeps the code: 4 guesses, resend, repeat.
     templar: [LOGIN_ADMIN, ...[0, 1, 2].flatMap(() => [...times(4, WRONG), RESEND]), RIGHT],
-    // The counter lives in a cookie the client controls: just do not send it back.
+    // The counter lives in a cookie the client controls: send a forged otp_attempts=0 (bare steps do) instead of the one given.
     inquisitor: [LOGIN_ADMIN, ...times(12, { do: 'wrong', bare: true }), { do: 'right', bare: true }],
   },
   resisted: /Too many attempts/,
@@ -311,18 +311,17 @@ describe('GK-15 re-sign-in does not hand the budget back', () => {
   });
 });
 
-describe('GK-15 restart', () => {
-  it('Restart lab forgets the lock and the code at that level only', async () => {
-    const { agent, sid } = await session();
-    await run(agent, 'templar', [LOGIN_ADMIN, ...times(6, WRONG)], sid);
-    await step(agent, 'acolyte', sid, LOGIN_ADMIN);
-    const acolyteCode = labState(sid, 'acolyte').otp;
-    const res = await agent.post(`${LAB}/_reset?level=templar`);
-    expect(res.status).toBe(303);
-    expect(res.headers.location).toBe(`${LAB}?level=templar`);
-    expect(labState(sid, 'templar').pending).toBeNull();
-    expect((await run(agent, 'templar', [LOGIN_ADMIN, RIGHT], sid)).text).toMatch(FLAG_RE);
-    expect(labState(sid, 'acolyte').otp).toBe(acolyteCode);
+describe('GK-15 no restart', () => {
+  it('there is no Restart lab to refill the budget: /_reset is 404, and failures + reset attempts + the real code stay refused', async () => {
+    for (const level of ['templar', 'inquisitor', 'divine'] as const) {
+      const { agent, sid } = await session();
+      await run(agent, level, [LOGIN_ADMIN, ...times(5, WRONG)], sid);
+      expect((await agent.post(`${LAB}/_reset?level=${level}`)).status, level).toBe(404);
+      const res = await step(agent, level, sid, RIGHT);
+      expect(res.text, level).toContain('Too many attempts');
+      expect(res.text, level).not.toMatch(FLAG_RE);
+      expect((await agent.get(`${LAB}?level=${level}`)).text, level).not.toContain('lab-restart');
+    }
   });
 });
 
@@ -331,7 +330,7 @@ describeLabView({
   path: LAB,
   account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
   echoField: 'username',
-  extra: { step: 'login' },
+  extra: { step: 'login', password: 'x' },
   oddBodies: [{ step: { toString: 1 }, code: ['1'] }, { step: 'verify', code: { a: 1 } }, [1, 2], {}],
   ok: async (agent, level, sid) => step(agent, level, sid, LOGIN_PILGRIM),
   bad: async (agent, level, sid) => { await step(agent, level, sid, LOGIN_PILGRIM); return step(agent, level, sid, WRONG); },

@@ -162,10 +162,19 @@ fully attacker-chosen SQL must also cap result size.
   holder, so the worst case is `maxEntries` x the number of stateful labs: fine
   for a loopback single-player lab.
 
-**Restart lab.** A lab that keeps state a player can wedge (a lockout, a spent code, a hijacked session) passes
-`reset: (req) => holder.reset(req)` to `defineChallenge`. The engine then mounts `POST <lab>/_reset?level=<level>`
-(calls the hook, answers 303 back to the lab) and the lab bar shows a "Restart lab" button. Reset only the served
-level. Stateless labs omit it.
+**Restart lab (rare).** A lab whose state can get *stuck* (a hijacked or poisoned session, stored-XSS cleanup, a
+wedged workflow) may pass `reset: (req) => holder.reset(req)` to `defineChallenge`. The engine then mounts
+`POST <lab>/_reset?level=<level>` (calls the hook, answers 303 back to the lab) and the lab bar shows a
+"Restart lab" button. Reset only the served level. The route has a per-(session, level) cooldown
+(`resetCooldownMs`, default 10 s, answers 429 while cooling; tests inject `createApp({ resetClock })`), a safety net
+and not a licence for the rules below.
+
+**Restart must never refill a budget.** It must not refill an attempt budget, clear a lockout or limiter, or
+re-roll a guessable secret while clearing counters: "reset, guess 5 times, repeat" would beat every level without
+its designed flaw (the session survives a restart, so flags stay earnable). Therefore **labs with limiters,
+lockouts, OTP counters or attempt budgets must not define `reset`**: their state must heal on its own (locks expire,
+a sign-in issues a new code). Say it in the spec: `POST <lab>/_reset` is 404, and N failures + a reset attempt +
+the real secret is still refused with no flag (GK-02, GK-03, GK-15). GK-17 keeps Restart because it touches no limiter.
 
 **Every lab answers `GET /` at every implemented level** with 200, rendered
 with `sendPage` (so it has the lab bar); the `labs.spec.ts` smoke test and
@@ -287,7 +296,7 @@ Test plumbing for stateful labs (all in `tests/helpers.ts`): `send(..., { sid, a
 `bare(app, sid, 'name=value')` for requests that carry only the session cookie plus a cookie the lab did not
 give you (the agent's jar always wins over a hand-set Cookie header, so never reach into supertest internals);
 `runWarmupThenFinal(scenario, fire)` for "N failures, then the real secret"; and
-`describeLabView({ ... })` for the view basics every lab shares (own account told, no `type="password"`,
+`describeLabView({ ... })` (probes the first implemented non-Divine level; put every form field except the echoed one in `extra`) for the view basics every lab shares (own account told, no `type="password"`,
 forms without `action`, escaped payload, odd bodies not a 500, message classes, upper-case URL uses the canonical
 path). Do not write assertions inside an `if` that can pass vacuously: draw new sessions until the condition
 holds, then assert unconditionally. Exploit scripts must detect success by "not the denial text", not only by a
@@ -315,6 +324,6 @@ If a mutation stays green, the matrix is missing a case.
    bilingual title/summary/3 hints, routes using `field`, `tryDb`, `flagFor`, `sendPage`.
 6. `views/*.ejs`: `.lab` markup, escaped output, English lab content (API-only labs: an HTML landing page).
 7. Import `challenge.js` from the district `index.ts` (and the district from `src/districts/index.ts`).
-8. Mutation self-check (section 6). For a stateful lab also: wire `reset`, use `labPath` for links and cookie paths,
+8. Mutation self-check (section 6). For a stateful lab also: use `labPath` for links and cookie paths,
    bound attacker-keyed maps, and check that waiting and re-signing-in do not beat the limiter.
 9. `npm test`, `npm run typecheck`, `npm run verify:dist` all green; commit `feat(<district>): <ID> <title>`.

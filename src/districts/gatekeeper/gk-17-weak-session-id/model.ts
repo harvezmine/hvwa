@@ -23,6 +23,8 @@ export interface LabState {
   adminToken: string;
   /** Sign-ins, oldest first (shown in the activity panel). */
   readonly activity: Activity[];
+  /** The visitor's OWN session tokens in the order they were issued (guest, later sign-ins). Never the admin's. */
+  readonly ownTokens: string[];
   /** Whether the admin has signed in yet (the lab starts on the first request). */
   booted: boolean;
   /** Acolyte's counter: the next session id. */
@@ -63,6 +65,12 @@ export function startSession(level: TokenLevel, state: LabState, username: strin
   return token;
 }
 
+/** Record a token issued to the visitor (listed on the page so the issue order is visible). Bounded. */
+export function giveToVisitor(state: LabState, token: string): void {
+  state.ownTokens.push(token);
+  if (state.ownTokens.length > 20) state.ownTokens.shift();
+}
+
 /** Who a presented token belongs to, or undefined. Own-property lookup only (the map is not an object). */
 export function whoIs(state: LabState, token: unknown): string | undefined {
   return typeof token === 'string' ? state.sessions.get(token) : undefined;
@@ -74,6 +82,7 @@ const labs = perSession((): LabState => ({
   sessions: new Map(),
   adminToken: '',
   activity: [],
+  ownTokens: [],
   booted: false,
   counter: 1000 + randomInt(8000),
   lcg: BigInt(`0x${randomBytes(6).toString('hex')}`) & ((1n << 48n) - 1n),

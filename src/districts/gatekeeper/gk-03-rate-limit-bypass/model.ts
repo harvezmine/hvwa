@@ -47,7 +47,7 @@ export interface LimitLevel {
 
 /**
  * The limiter: at most `max` attempts per key per fixed window. The window is long (15 minutes) on
- * purpose: with the 40-entry list, a short window would let a patient attacker simply wait it out.
+ * purpose: with the 200-entry list, a short window would let a patient attacker simply wait it out.
  */
 export const LIMIT = Object.freeze({ max: 5, windowMs: 15 * 60_000 });
 
@@ -104,11 +104,6 @@ const labs = perSession((): LabState => ({
 /** The lab state for this request's session at the served level. */
 export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
-}
-
-/** The "Restart lab" hook: forget this player's limiter state at this level (and pick a new admin password). */
-export function resetLab(req: { sessionId: string; level: Level }): void {
-  labs.reset(req);
 }
 
 /** Test seam: the lab state of session `sessionId` at `level`. */

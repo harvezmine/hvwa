@@ -6,7 +6,7 @@ import { byLevel, field, header, labPath, sendLines } from '../../../core/lab.js
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
-import { labFor, leakedList, resetLab, type Attempt, type LimitLevel } from './model.js';
+import { labFor, leakedList, type Attempt, type LimitLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -48,5 +48,4 @@ export const GK03 = register(defineChallenge({
       await page(req, res, result, field(req, 'username'), field(req, 'password'));
     });
   },
-  reset: (req) => { resetLab(req); },
 }));

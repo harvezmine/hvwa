@@ -75,11 +75,6 @@ export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
 }
 
-/** The "Restart lab" hook: forget this player's code, counters and lockouts at this level. */
-export function resetLab(req: { sessionId: string; level: Level }): void {
-  labs.reset(req);
-}
-
 /** Test seam: the lab state of session `sessionId` at `level` (the live code is `.otp`). */
 export function labState(sessionId: string, level: Level): LabState {
   return labs.for({ sessionId, level });

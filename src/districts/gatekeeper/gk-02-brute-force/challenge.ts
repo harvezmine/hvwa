@@ -5,7 +5,7 @@ import { byLevel, field, labPath, sendLines } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
-import { labFor, resetLab, wordlist, type BruteLevel } from './model.js';
+import { labFor, wordlist, type BruteLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -43,5 +43,4 @@ export const GK02 = register(defineChallenge({
       await sendPage(res, view, data(res, result, username, password));
     });
   },
-  reset: (req) => { resetLab(req); },
 }));

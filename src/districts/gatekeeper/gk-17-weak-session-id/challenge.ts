@@ -8,7 +8,7 @@ import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, type Result } from '../_shared/lab.js';
 import {
-  GUEST_NAME, cookieName, labFor, resetLab, startSession, whoIs, type LabState, type TokenLevel,
+  GUEST_NAME, cookieName, giveToVisitor, labFor, resetLab, startSession, whoIs, type LabState, type TokenLevel,
 } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -30,11 +30,15 @@ function cookieOf(req: Request): unknown {
   return (req.cookies as Record<string, unknown> | undefined)?.[cookieName(req.level)];
 }
 
-/** Start the lab if this is its first request: a guest session, then the simulated citadel admin signs in. */
+/**
+ * Start the lab on the visitor's first sign-in-page request: a guest session, then the simulated citadel
+ * admin signs in. Returns the visitor's guest token on that first call, undefined afterwards.
+ */
 function boot(state: LabState, level: TokenLevel): string | undefined {
   if (state.booted) return undefined;
   state.booted = true;
   const guest = startSession(level, state, GUEST_NAME); // the visitor's token ...
+  giveToVisitor(state, guest);
   startSession(level, state, ADMIN_NAME);               // ... then the admin signs in; the visitor's next token comes after
   return guest;
 }
@@ -50,6 +54,7 @@ function sessionFor(req: Request, res: Response, state: LabState, level: TokenLe
   const cookie = cookieOf(req);
   if (typeof cookie === 'string' && whoIs(state, cookie) !== undefined) return cookie;
   const fresh = startSession(level, state, GUEST_NAME);
+  giveToVisitor(state, fresh);
   setSession(req, res, fresh);
   return fresh;
 }
@@ -76,6 +81,7 @@ export const GK17 = register(defineChallenge({
     ): Record<string, unknown> {
       return {
         base: labPath(res), cookie: cookieName(req.level), account: PLAYER, target: ADMIN_NAME, token, result, username, password,
+        ownTokens: state.ownTokens,
         activity: state.activity.map((a) => ({ user: a.user, epoch: level.showsLoginTime ? a.epoch : null })),
       };
     }
@@ -96,6 +102,7 @@ export const GK17 = register(defineChallenge({
       let result: Result;
       if (username === PLAYER.username && password === PLAYER.password) {
         token = startSession(level, state, PLAYER.username);
+        giveToVisitor(state, token);
         setSession(req, res, token);
         result = { ok: true, text: `Signed in as ${PLAYER.username}.` };
       } else {
@@ -106,7 +113,7 @@ export const GK17 = register(defineChallenge({
 
     router.get('/admin', async (req, res) => {
       const state = labFor(req);
-      boot(state, impl.for(req.level)); // may start the lab; never mints a session for the visitor
+      // Probing the admin page changes nothing: before the lab starts there is simply no admin session.
       const admin = whoIs(state, cookieOf(req)) === ADMIN_NAME;
       // Only the admin's session sees the flag, and Divine never issues one.
       const note = !admin ? '' : req.level === 'divine' ? 'Welcome back.' : `Flag: ${flagFor(req, GK17)}`;

@@ -7,7 +7,7 @@ import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
 import {
-  ACCOUNTS, ADMIN_PASSWORD, issueCode, labFor, resetLab, type OtpLevel, type Reply,
+  ACCOUNTS, ADMIN_PASSWORD, issueCode, labFor, type OtpLevel, type Reply,
 } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -92,5 +92,4 @@ export const GK15 = register(defineChallenge({
     router.get('/', (req, res) => render(req, res, null));
     router.post('/', (req, res) => render(req, res, step(req, res)));
   },
-  reset: (req) => { resetLab(req); },
 }));

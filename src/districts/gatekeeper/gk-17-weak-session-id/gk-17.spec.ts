@@ -273,6 +273,48 @@ describe('GK-17 sessions', () => {
   });
 });
 
+describe('GK-17 bracket robustness (request order does not matter)', () => {
+  it('/admin first changes nothing: no admin session exists yet, and the later sign-in still brackets the admin', async () => {
+    const { agent, sid } = await session();
+    const c: Ctx = { agent, level: 'inquisitor', sid };
+    for (let i = 0; i < 5; i++) expect((await adminWith(c, `probe${i}`)).text).toContain('Admin only');
+    expect(labState(sid, 'inquisitor').booted).toBe(false);
+    expect(labState(sid, 'inquisitor').sessions.size).toBe(0);
+    const guest = tokenOf(await visit(c), 'inquisitor');
+    const mine = tokenOf(await login(c), 'inquisitor');
+    expect(predictBetween(guest, mine)).toContain(labState(sid, 'inquisitor').adminToken);
+  });
+
+  it('POST-first (curl style): the page lists both own tokens in issue order, never the admin one, and they bracket the admin', async () => {
+    const { agent, sid } = await session();
+    const c: Ctx = { agent, level: 'inquisitor', sid };
+    const res = await login(c); // no GET before
+    const listed = /Sessions issued to you, oldest first: ([^<]*(?:<code>[^<]*<\/code>[^<]*)*)<\/p>/.exec(res.text)?.[1] ?? '';
+    const tokens = [...listed.matchAll(/<code>([0-9a-f]{8})<\/code>/g)].map((m) => m[1]);
+    expect(tokens).toHaveLength(2);
+    expect(tokens).not.toContain(labState(sid, 'inquisitor').adminToken);
+    // The response sets the cookie twice (boot guest, then the login token): the last one wins in a browser.
+    const lines = [res.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_sid_inquisitor='));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain(`citadel_sid_inquisitor=${tokens[1]}`);
+    expect(predictBetween(tokens[0], tokens[1])).toContain(labState(sid, 'inquisitor').adminToken);
+  });
+
+  it('the list shows guest then each later sign-in in order, at every level, and stays bounded', async () => {
+    for (const level of LEVELS) {
+      const { agent, sid } = await session();
+      const c: Ctx = { agent, level, sid };
+      const guest = tokenOf(await visit(c), level);
+      const a = tokenOf(await login(c), level);
+      const b = tokenOf(await login(c), level);
+      expect(labState(sid, level).ownTokens, level).toEqual([guest, a, b]);
+      expect(labState(sid, level).ownTokens, level).not.toContain(labState(sid, level).adminToken);
+      for (let i = 0; i < 30; i++) await login(c);
+      expect(labState(sid, level).ownTokens.length, level).toBeLessThanOrEqual(20);
+    }
+  });
+});
+
 describe('GK-17 the lab is not disturbed by probing', () => {
   it('wrong /admin guesses never mint sessions: the tokens still bracket the admin and the panel keeps its line', async () => {
     const { agent, sid } = await session();
@@ -349,6 +391,7 @@ describeLabView({
   path: LAB,
   account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
   echoField: 'username',
+  extra: { password: 'x' },
   oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
   ok: (agent, level, sid) => login({ agent, level, sid }),
   bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'x' }),

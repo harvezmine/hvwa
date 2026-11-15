@@ -265,9 +265,14 @@ export interface LabViewSpec {
   readonly path: string;
   /** Matches the notice that tells the player their own account. */
   readonly account: RegExp;
-  /** The text field a typed payload is kept in after a POST, and extra form fields that make that POST meaningful. */
+  /**
+   * The text field a typed payload is kept in after a POST, and extra form fields that make that POST meaningful.
+   * The payload is sent as `echoField` only: add every other field the lab's form needs (a password, a step) to `extra`.
+   */
   readonly echoField: string;
   readonly extra?: Readonly<Record<string, string>>;
+  /** The level the payload, success and failure checks use. Default: the first implemented non-Divine level. */
+  readonly level?: Level;
   /** Odd request bodies (JSON): each must answer 200 with no flag at every level. */
   readonly oddBodies: readonly unknown[];
   /** A request that succeeds / fails, to check the success and error message classes. */
@@ -282,6 +287,7 @@ export interface LabViewSpec {
  */
 export function describeLabView(v: LabViewSpec): void {
   const levels = LEVELS.filter((l) => v.challenge.levels.includes(l));
+  const probe: Level = v.level ?? levels.find((l) => l !== 'divine') ?? levels[0];
   describe(`${v.challenge.id} lab view`, () => {
     it('tells the player their account; no password-type inputs; forms post back with no action', async () => {
       const { agent } = await freshSession();
@@ -298,8 +304,8 @@ export function describeLabView(v: LabViewSpec): void {
 
     it('keeps a typed payload escaped in its field', async () => {
       const { agent } = await freshSession();
-      const res = await agent.post(`${v.path}?level=${levels[0]}`).type('form')
-        .send({ ...v.extra, [v.echoField]: '"><script>alert(1)</script>', password: 'x' });
+      const res = await agent.post(`${v.path}?level=${probe}`).type('form')
+        .send({ ...v.extra, [v.echoField]: '"><script>alert(1)</script>' });
       expect(res.text).toContain('value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
       expect(res.text).not.toContain('<script>alert(1)');
     });
@@ -317,9 +323,9 @@ export function describeLabView(v: LabViewSpec): void {
 
     it('marks success and failure messages for styling', async () => {
       const a = await freshSession();
-      expect((await v.ok(a.agent, 'templar', a.sid)).text).toMatch(/class="lab-message lab-success"/);
+      expect((await v.ok(a.agent, probe, a.sid)).text).toMatch(/class="lab-message lab-success"/);
       const b = await freshSession();
-      expect((await v.bad(b.agent, 'templar', b.sid)).text).toMatch(/class="lab-message lab-error"/);
+      expect((await v.bad(b.agent, probe, b.sid)).text).toMatch(/class="lab-message lab-error"/);
     });
 
     it('upper-case request URLs still link and set cookies under the canonical lab path', async () => {

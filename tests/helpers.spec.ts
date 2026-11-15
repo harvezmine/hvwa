@@ -7,7 +7,7 @@ import { issueFlag } from '../src/core/flags.js';
 import { field, tryDb, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import {
-  FLAG_RE, DB_ERROR_RE, TEST_SECRET, bare, describeExploitMatrix, exploitMatrixCases, freshSession, type ExploitMatrix,
+  FLAG_RE, DB_ERROR_RE, TEST_SECRET, bare, describeExploitMatrix, describeLabView, exploitMatrixCases, freshSession, type ExploitMatrix,
 } from './helpers.js';
 
 describe('FLAG_RE', () => {
@@ -326,4 +326,35 @@ describe('(g) step-up across all higher levels', () => {
 
 it('TEST_SECRET is a valid flag secret (used by freshSession)', () => {
   expect(TEST_SECRET.length).toBeGreaterThanOrEqual(16);
+});
+
+// describeLabView must not assume a Templar level or a password field: a lab with neither.
+const HM03 = register(defineChallenge({
+  id: 'HM-03', district: 'helpers-test', slug: 'view', dir: process.cwd(),
+  title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [],
+  levels: ['acolyte', 'inquisitor', 'divine'], hints: [],
+  mount: (router) => {
+    const page = (res: import('express').Response, text: string, q: string) => {
+      const esc = q.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&#34;');
+      res.type('html').send(`<p>Your note: <code>mine</code> / <code>mine</code></p><form method="post"><input name="q" value="${esc}"></form>${text}`);
+    };
+    router.get('/', (_req, res) => page(res, '', ''));
+    router.post('/', (req, res) => {
+      const q = field(req, 'q');
+      page(res, q === 'good' ? '<p class="lab-message lab-success">ok</p>' : '<p class="lab-message lab-error">no</p>', q);
+    });
+  },
+}));
+
+describeLabView({
+  challenge: HM03,
+  path: '/d/helpers-test/view',
+  account: /Your note/,
+  echoField: 'q',
+  oddBodies: [[1, 2], {}],
+  ok: (agent, level) => {
+    expect(level, 'the probe level must be an implemented non-Divine level, not a hard-coded templar').toBe('acolyte');
+    return agent.post(`/d/helpers-test/view?level=${level}`).type('form').send({ q: 'good' });
+  },
+  bad: (agent, level) => agent.post(`/d/helpers-test/view?level=${level}`).type('form').send({ q: 'bad' }),
 });

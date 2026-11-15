@@ -2,8 +2,8 @@ import type { LabState, LoginOutcome } from '../model.js';
 import { accounts } from '../model.js';
 
 const FREE_FAILURES = 5;
-const BASE_LOCK_MS = 30_000;
-const MAX_LOCK_MS = 15 * 60_000;
+const BASE_LOCK_MS = 30 * 60_000;
+const MAX_LOCK_MS = 24 * 60 * 60_000;
 
 // DIVINE — secure reference for brute force: the username is normalized ONCE and that
 // one form is used both to find the account and to key the counter. Every failure past

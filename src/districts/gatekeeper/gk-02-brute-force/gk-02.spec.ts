@@ -165,6 +165,24 @@ describe('GK-02 lockouts', () => {
     expect((await post(agent, 'divine', FINAL, sid)).text).toContain('Welcome, citadel_admin'); // expired lock: real password works
   });
 
+  it('divine locks are stronger than the 15-minute locks below it: 30 minutes first, doubling, capped at a day', async () => {
+    const { agent, sid } = await freshSession();
+    const state = labState(sid, 'divine');
+    let t = 4_000_000;
+    state.now = () => t;
+    for (const c of wrongs(ADMIN, 5)) await post(agent, 'divine', c, sid);
+    const first = state.counters.get(ADMIN)!.lockedUntil - t;
+    expect(first).toBe(30 * 60_000);
+    t += 16 * 60_000; // long enough to beat Templar and Inquisitor
+    expect((await post(agent, 'divine', FINAL, sid)).text).not.toMatch(FLAG_RE);
+    expect((await post(agent, 'divine', FINAL, sid)).text).toContain('Invalid username or password.');
+    for (let i = 0; i < 12; i++) {
+      t = state.counters.get(ADMIN)!.lockedUntil + 1;
+      await post(agent, 'divine', wrong(ADMIN, 100 + i), sid);
+    }
+    expect(state.counters.get(ADMIN)!.lockedUntil - t).toBe(24 * 60 * 60_000);
+  });
+
   it('templar and inquisitor locks last 15 minutes, then expire', async () => {
     for (const level of ['templar', 'inquisitor'] as const) {
       const { agent, sid } = await freshSession();
@@ -208,16 +226,17 @@ describe('GK-02 per-player state', () => {
     throw new Error('60 sessions in a row picked the same password at two levels: the pick is not random');
   });
 
-  it('Restart lab forgets the player counters and picks a new password at that level only', async () => {
-    const { agent, sid } = await freshSession();
-    for (const c of wrongs(ADMIN, 5)) await post(agent, 'templar', c, sid);
-    expect((await post(agent, 'templar', FINAL, sid)).text).toContain('Account locked');
-    const other = adminPassword(sid, 'inquisitor');
-    const res = await agent.post(`${LAB}/_reset?level=templar`);
-    expect(res.status).toBe(303);
-    expect(res.headers.location).toBe(`${LAB}?level=templar`);
-    expect((await post(agent, 'templar', FINAL, sid)).text).toMatch(FLAG_RE);
-    expect(adminPassword(sid, 'inquisitor')).toBe(other);
+  it('there is no Restart lab to refill the budget: /_reset is 404, and failures + reset attempts + the real password stay refused', async () => {
+    for (const level of ['templar', 'inquisitor', 'divine'] as const) {
+      const { agent, sid } = await freshSession();
+      for (const c of wrongs(ADMIN, 5)) await post(agent, level, c, sid);
+      const res = await agent.post(`${LAB}/_reset?level=${level}`);
+      expect(res.status, level).toBe(404);
+      const text = (await post(agent, level, FINAL, sid)).text;
+      expect(text, level).not.toMatch(FLAG_RE);
+      expect(text, level).toMatch(/locked|Invalid username or password/);
+      expect((await agent.get(`${LAB}?level=${level}`)).text, level).not.toContain('lab-restart');
+    }
   });
 
   it('waiting is not the way through: after the first lock the clock must run 15 minutes per 5 guesses', async () => {
@@ -261,6 +280,7 @@ describeLabView({
   path: LAB,
   account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
   echoField: 'username',
+  extra: { password: 'x' },
   oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, null, 'x'], {}],
   ok: (agent, level, sid) => post(agent, level, PILGRIM, sid),
   bad: (agent, level, sid) => post(agent, level, wrong(ADMIN, 1), sid),

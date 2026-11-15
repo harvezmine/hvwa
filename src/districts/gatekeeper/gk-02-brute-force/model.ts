@@ -48,11 +48,6 @@ export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
 }
 
-/** The "Restart lab" hook: forget this player's state at this level (counters, locks, admin password). */
-export function resetLab(req: { sessionId: string; level: Level }): void {
-  labs.reset(req);
-}
-
 /** Test seam: the lab state of session `sessionId` at `level`. */
 export function labState(sessionId: string, level: Level): LabState {
   return labs.for({ sessionId, level });
