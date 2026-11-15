@@ -54,6 +54,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'lab.current_level': { id: 'Level saat ini', en: 'Current level' },
   'lab.switch_level': { id: 'Ganti level', en: 'Switch level' },
   'lab.restart': { id: 'Mulai ulang lab', en: 'Restart lab' },
+  'lab.restart_cooldown': { id: 'Mulai ulang sedang jeda. Coba lagi sebentar lagi.', en: 'Restart is cooling down. Try again in a moment.' },
   'diff.vulnerable': { id: 'Rentan', en: 'Vulnerable' },
   'diff.secure': { id: 'Aman (Divine)', en: 'Secure (Divine)' },
   'safety.warning': {

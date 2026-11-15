@@ -4,9 +4,8 @@ import { dirname, join, resolve } from 'node:path';
 import './districts/index.js'; // registers every challenge; must precede createApp()
 import { allChallenges } from './core/registry.js';
 import { assertChallengeFiles } from './core/source.js';
-import { createApp } from './app.js';
+import { appOptionsFromConfig, createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
-import { resolveFlagSecret } from './core/secrets.js';
 import { listen, closeGracefully, listenUrl, startupBanner } from './lifecycle.js';
 import type { Server } from 'node:http';
 
@@ -35,11 +34,7 @@ mkdirSync(dataDir, { recursive: true });
 // A wrong challenge dir or a missing level file fails at startup, not on first View Source.
 for (const c of allChallenges()) assertChallengeFiles(c);
 
-const app = createApp({
-  dbPath: join(dataDir, 'hvwa.db'),
-  flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
-  allowedHosts: config.HVWA_ALLOWED_HOSTS,
-});
+const app = createApp(appOptionsFromConfig(config, dataDir));
 if (config.HVWA_ALLOWED_HOSTS.length > 0) {
   console.warn(`HVWA: also answering to Host ${config.HVWA_ALLOWED_HOSTS.join(', ')} (HVWA_ALLOWED_HOSTS)`);
 }

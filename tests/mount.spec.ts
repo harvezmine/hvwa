@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
+import { createServer } from 'node:http';
 import { createApp } from '../src/app.js';
+import { perSession } from '../src/core/lab.js';
 import { register, defineChallenge } from '../src/core/registry.js';
 import { flagFor, challengePath } from '../src/core/mount.js';
 import { freshSession, TEST_SECRET } from './helpers.js';
@@ -122,6 +124,11 @@ describe('mountChallenges', () => {
     const cooling = await reset('cooldown', 'acolyte');
     expect(cooling.status).toBe(429);
     expect(cooling.text).toMatch(/cooling down/);
+    // A browser form post (Accept: text/html) is sent back to the lab with a visible notice instead of a bare 429.
+    const browser = await reset('cooldown', 'acolyte').set('Accept', 'text/html,application/xhtml+xml');
+    expect(browser.status).toBe(303);
+    expect(browser.headers.location).toBe('/d/mount-test/cooldown?level=acolyte&restart=cooldown');
+    expect(calls).toHaveLength(1); // still not called
     expect((await reset('cooldown', 'divine')).status).toBe(303); // another level: its own cooldown
     expect(calls).toHaveLength(2);
     t += 2;
@@ -144,6 +151,40 @@ describe('mountChallenges', () => {
         summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte'], hints: [], mount: () => {}, reset: () => {}, resetCooldownMs,
       }), String(resetCooldownMs)).toThrow(/resetCooldownMs/);
     }
+  });
+
+  it('a cookieless flood cannot reset a locked lab: the app issues at most N sessions a minute, and a forged-cookie flood hits the holder limit', async () => {
+    const holder = perSession(() => ({ locked: false }), { maxEntries: 50, maxNewPerMinute: 10, now: () => 0 });
+    register(defineChallenge({
+      id: 'MT-07', district: 'mount-test', dir: process.cwd(), slug: 'flood', title: { id: 't', en: 't' },
+      summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte'], hints: [],
+      mount: (router) => {
+        router.post('/lock', (req, res) => { holder.for(req).locked = true; res.json({ ok: true }); });
+        router.get('/state', (req, res) => { res.json({ locked: holder.for(req).locked }); });
+      },
+    }));
+    const app = createApp({ flagSecret: TEST_SECRET, maxNewSessionsPerMinute: 30, sessionClock: () => 0 });
+    const victim = await freshSession(app);
+    await victim.agent.post('/d/mount-test/flood/lock');
+    const server = createServer(app).listen(0, '127.0.0.1'); // one listener for the whole flood (no port churn)
+    try {
+    // 1. cookieless flood: only the first few get a session, the rest are 429 before reaching any lab
+    let ok = 0;
+    let refused = 0;
+    for (let i = 0; i < 200; i++) {
+      const r = await request(server).post('/d/mount-test/flood/lock');
+      if (r.status === 429) refused += 1; else if (r.status === 200) ok += 1;
+    }
+    expect(ok).toBeLessThanOrEqual(29);
+    expect(refused).toBeGreaterThanOrEqual(171);
+    // 2. forged-UUID flood: the app cannot tell them from real sessions, the holder's own limit stops it
+    for (let i = 0; i < 200; i++) {
+      const forged = `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+      await request(server).post('/d/mount-test/flood/lock').set('Cookie', `hvwa_sid=${forged}`);
+    }
+    const still = await victim.agent.get('/d/mount-test/flood/state');
+    expect(still.body).toEqual({ locked: true });
+    } finally { server.close(); }
   });
 
   it('mounts what is registered when createApp() runs', async () => {

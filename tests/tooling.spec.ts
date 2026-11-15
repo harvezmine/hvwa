@@ -55,7 +55,9 @@ describe('source hygiene', () => {
     const src = readFileSync(join(root, 'src', 'server.ts'), 'utf8');
     const v = src.indexOf('assertChallengeFiles(c)');
     expect(v).toBeGreaterThan(-1);
-    expect(v).toBeLessThan(src.indexOf('createApp({'));
+    const call = src.indexOf('= createApp(');
+    expect(call).toBeGreaterThan(-1);
+    expect(v).toBeLessThan(call);
   });
 
   it('server.ts imports the district list before the app', () => {
@@ -87,5 +89,46 @@ describe('tooling', () => {
   it('npm run typecheck covers both tsconfigs', () => {
     expect(json('package.json').scripts.typecheck)
       .toBe('tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit');
+  });
+});
+
+describe('test servers', () => {
+  // supertest(app) with an Express app starts a new ephemeral server per request, and thousands of
+  // sockets in TIME_WAIT exhaust the ephemeral ports (EADDRINUSE). tests/support/supertest.ts (aliased
+  // over 'supertest' in vitest.config.ts) gives every app one listening server; never bypass it.
+  const specs = (dir: string): string[] => readdirSync(join(root, dir), { recursive: true }).map(String)
+    .filter((f) => f.endsWith('.spec.ts')).map((f) => join(dir, f));
+
+  it('vitest.config.ts aliases supertest to the one-server-per-app wrapper', () => {
+    const cfg = readFileSync(join(root, 'vitest.config.ts'), 'utf8');
+    expect(cfg).toContain('tests/support/supertest.ts');
+    expect(cfg).toContain('alias');
+    expect(existsSync(join(root, 'tests', 'support', 'supertest.ts'))).toBe(true);
+  });
+
+  it('no spec reaches past the wrapper to the real supertest (deep import, require, dynamic import)', () => {
+    const offenders = [...specs('src'), ...specs('tests')].filter((f) =>
+      /supertest\/|require\(\s*['"]supertest|import\(\s*['"]supertest|node_modules[\\/]supertest/.test(readFileSync(join(root, f), 'utf8'))
+      && !f.endsWith('tooling.spec.ts'));
+    expect(offenders).toEqual([]);
+  });
+
+  it('one app is served by one listening server across requests, and it is reused', async () => {
+    const { serve } = await import('./helpers.js');
+    const { default: request } = await import('supertest');
+    const { createApp } = await import('../src/app.js');
+    const app = createApp();
+    const server = serve(app);
+    const ports = new Set<number>();
+    const sockets = new Set<string>();
+    server.on('connection', (s) => { sockets.add(`${s.remotePort}`); });
+    for (let i = 0; i < 5; i++) {
+      await request(app).get('/healthz').expect(200);
+      ports.add((server.address() as { port: number }).port);
+    }
+    expect(serve(app)).toBe(server);
+    expect(ports.size).toBe(1);
+    expect(sockets.size).toBe(1); // keep-alive: five requests, one connection
+    app.locals.db.close();
   });
 });

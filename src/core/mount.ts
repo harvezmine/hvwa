@@ -31,6 +31,8 @@ export function mountChallenges(app: Express, opts: { now?: () => number } = {})
       // Canonical lab path: req.baseUrl echoes the request's spelling (/D/GATEKEEPER/...), which would
       // give wrong links and cookie paths (browsers match cookie paths case-sensitively).
       res.locals.labPath = challengePath(c);
+      // The lab bar's one-shot notice after a refused restart: a closed set, never echoed text.
+      if (req.query.restart === 'cooldown') res.locals.restartNotice = 'cooldown';
       next();
     });
     const reset = c.reset;
@@ -43,6 +45,10 @@ export function mountChallenges(app: Express, opts: { now?: () => number } = {})
         const t = now();
         const prev = last.get(key);
         if (prev !== undefined && t - prev < cooldownMs) {
+          if (req.accepts(['json', 'html']) === 'html' && req.get('accept')?.includes('text/html')) {
+            res.redirect(303, `${challengePath(c)}?level=${req.level}&restart=cooldown`); // browser: back to the lab, with a notice
+            return;
+          }
           res.status(429).type('text/plain').send(`Restart is cooling down. Try again in ${Math.ceil((cooldownMs - (t - prev)) / 1000)} s.`);
           return;
         }

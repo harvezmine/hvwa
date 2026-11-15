@@ -5,8 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
+import type { Config } from './config.js';
 import { setFlagSecret } from './core/flags.js';
 import { hostGuard } from './core/host-guard.js';
+import { resolveFlagSecret } from './core/secrets.js';
 import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
@@ -27,6 +29,10 @@ const htmxDistDir = join(
 export interface AppOptions {
   /** Clock (ms) for the Restart-lab cooldown; tests inject one. Default Date.now. */
   resetClock?: () => number;
+  /** Most new `hvwa_sid` sessions issued per rolling minute (default 60); beyond it: 429. */
+  maxNewSessionsPerMinute?: number;
+  /** Clock (ms) for the session-issuance limit; tests inject one. Default Date.now. */
+  sessionClock?: () => number;
   /** SQLite path. Defaults to an in-memory database (tests). */
   dbPath?: string;
   /**
@@ -42,6 +48,22 @@ export interface AppOptions {
    * (DNS-rebinding guard). server.ts passes HVWA_ALLOWED_HOSTS.
    */
   allowedHosts?: readonly string[];
+}
+
+/**
+ * The options server.ts builds the app with: the DB in the data dir, the
+ * configured or persisted flag secret (created on first use), and the extra
+ * Host names from HVWA_ALLOWED_HOSTS.
+ */
+export function appOptionsFromConfig(
+  config: Pick<Config, 'FLAG_SECRET' | 'HVWA_ALLOWED_HOSTS'>,
+  dataDir: string,
+): AppOptions {
+  return {
+    dbPath: join(dataDir, 'hvwa.db'),
+    flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
+    allowedHosts: config.HVWA_ALLOWED_HOSTS,
+  };
 }
 
 /** The Express app plus its typed platform DB handle on `locals.db`. */
@@ -64,7 +86,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
-  app.use(sessionMiddleware());
+  app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock }));
   app.use(levelMiddleware());
   app.use(langMiddleware());
   app.get('/static/vendor/htmx.min.js', (_req, res, next) => {

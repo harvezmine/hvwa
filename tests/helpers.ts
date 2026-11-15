@@ -1,12 +1,16 @@
 // tests/helpers.ts — shared test utilities.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { createApp } from '../src/app.js';
 import { LEVELS, type Level } from '../src/core/levels.js';
 import type { Challenge } from '../src/core/registry.js';
+
+// `supertest` is aliased to tests/support/supertest.ts (see vitest.config.ts): every app listens on ONE
+// server, closed when the test ends. Use `serve(app)` when you need the http.Server itself.
+export { serve } from './support/supertest.js';
 
 /** Flag secret used by tests that pass one explicitly (>= 16 chars, like FLAG_SECRET). */
 export const TEST_SECRET = 'hvwa-test-flag-secret';
@@ -39,7 +43,12 @@ export function setCookieValue(res: request.Response, name: string): string | un
  * session is established by its first request; the sid is read from the
  * hvwa_sid cookie by name.
  */
-export async function freshSession(app: Express = createApp({ flagSecret: TEST_SECRET })) {
+export async function freshSession(app?: Express) {
+  if (!app) {
+    const own = createApp({ flagSecret: TEST_SECRET });
+    onTestFinished(() => { try { own.locals.db.close(); } catch { /* already closed by the test */ } });
+    app = own;
+  }
   const agent = request.agent(app);
   const res = await agent.get('/healthz');
   const sid = setCookieValue(res, 'hvwa_sid');

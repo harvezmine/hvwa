@@ -2,15 +2,17 @@ import { describe, it, expect } from 'vitest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
+import { createServer } from 'node:http';
 import { sessionMiddleware } from '../src/core/session.js';
 import { setCookieHeader, setCookieValue } from './helpers.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function app() {
+function app(opts?: Parameters<typeof sessionMiddleware>[0]) {
   const a = express();
   a.use(cookieParser()); // mirrors createApp()
-  a.use(sessionMiddleware());
+  a.use(sessionMiddleware(opts));
+  a.get('/healthz', (req, res) => { res.json({ sid: req.sessionId }); });
   a.get('/me', (req, res) => { res.json({ sid: req.sessionId }); });
   return a;
 }
@@ -46,5 +48,40 @@ describe('session', () => {
     expect(res.body.sid).not.toBe('admin');
     expect(res.body.sid).toMatch(UUID);
     expect(setCookieValue(res, 'hvwa_sid')).toBe(res.body.sid);
+  });
+
+  describe('issuance limit (new sessions per rolling minute)', () => {
+    it('60 new sessions are issued per minute, the 61st request is a 429 with no cookie; existing sessions are unaffected', async () => {
+      let t = 0;
+      const server = createServer(app({ now: () => t })).listen(0, '127.0.0.1'); // one listener: no port churn
+      const a = server;
+      const keeper = request.agent(a);
+      expect((await keeper.get('/me')).status).toBe(200);
+      for (let i = 1; i < 60; i++) expect((await request(a).get('/me')).status, `#${i + 1}`).toBe(200);
+      const over = await request(a).get('/me');
+      expect(over.status).toBe(429);
+      expect(over.text).toMatch(/Too many new sessions/);
+      expect(over.headers['set-cookie']).toBeUndefined();
+      expect((await keeper.get('/me')).status).toBe(200); // its cookie still works
+      t = 59_999;
+      expect((await request(a).get('/me')).status).toBe(429);
+      t = 60_001; // the window rolls: the first issuance has aged out
+      expect((await request(a).get('/me')).status).toBe(200);
+      server.close();
+    });
+
+    it('the limit is configurable, and /healthz is never limited or counted', async () => {
+      const a = app({ maxNewPerMinute: 2, now: () => 0 });
+      for (let i = 0; i < 10; i++) expect((await request(a).get('/healthz')).status).toBe(200);
+      expect((await request(a).get('/me')).status).toBe(200);
+      expect((await request(a).get('/me')).status).toBe(200);
+      expect((await request(a).get('/me')).status).toBe(429);
+    });
+
+    it('rejects a bad limit', () => {
+      for (const maxNewPerMinute of [0, -1, 1.5, Number.NaN]) {
+        expect(() => sessionMiddleware({ maxNewPerMinute }), String(maxNewPerMinute)).toThrow(/maxNewPerMinute/);
+      }
+    });
   });
 });

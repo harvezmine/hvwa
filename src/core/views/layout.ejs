@@ -38,6 +38,9 @@
 <% if (labBar.resetAction) { -%>
       <form method="post" action="<%= labBar.resetAction %>" class="lab-restart"><button type="submit" data-testid="lab-restart"><%= labBar.resetLabel %></button></form>
 <% } -%>
+<% if (labBar.restartNotice) { -%>
+      <p class="lab-restart-notice" data-testid="lab-restart-notice" role="status"><%= labBar.restartNotice %></p>
+<% } -%>
     </nav>
 <% } -%>
     <%- body %>
