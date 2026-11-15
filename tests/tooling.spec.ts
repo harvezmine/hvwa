@@ -36,6 +36,19 @@ describe('source hygiene', () => {
     expect(bad).toEqual([]);
   });
 
+  it('no control characters (other than tab, LF, CR) in src/, tests/ or scripts/', () => {
+    const CONTROL = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
+    const bad: string[] = [];
+    for (const dir of ['src', 'tests', 'scripts']) {
+      for (const rel of readdirSync(join(root, dir), { recursive: true }).map(String)) {
+        const p = join(root, dir, rel);
+        if (!statSync(p).isFile() || /\.(png|jpe?g|gif|ico|zip|woff2?)$/i.test(rel)) continue;
+        if (CONTROL.test(readFileSync(p, 'latin1'))) bad.push(`${dir}/${rel}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('server.ts imports the district list before the app', () => {
     const src = readFileSync(join(root, 'src', 'server.ts'), 'utf8');
     const d = src.indexOf('./districts/index.js');

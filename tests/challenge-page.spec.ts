@@ -321,6 +321,12 @@ describe('GET /c/:id/diff', () => {
     expect(html).not.toContain('TEMPLAR_MARKER');
     expect(html).not.toContain('INQ_UNDECLARED');
   });
+  it('the diff page title is i18n-ed', async () => {
+    const { agent } = await fresh();
+    const title = /<title>([\s\S]*?)<\/title>/.exec((await agent.get('/c/CP-01/diff?lang=id')).text)![1];
+    expect(title).toContain('perbandingan');
+    expect(title).not.toContain('diff');
+  });
   it('labels the left column with the actual level (templar-lowest fixture)', async () => {
     const { agent } = await fresh();
     const html = (await agent.get('/c/CP-04/diff?lang=en')).text;
