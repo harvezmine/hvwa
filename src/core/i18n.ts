@@ -24,6 +24,8 @@ const DICT: Record<string, Entry> = {
   'level.templar': { id: 'Templar', en: 'Templar' },
   'level.inquisitor': { id: 'Inquisitor', en: 'Inquisitor' },
   'level.divine': { id: 'Divine', en: 'Divine' },
+  'diff.vulnerable': { id: 'Rentan (Acolyte)', en: 'Vulnerable (Acolyte)' },
+  'diff.secure': { id: 'Aman (Divine)', en: 'Secure (Divine)' },
   'safety.warning': {
     id: 'PERINGATAN: Aplikasi ini sengaja rentan. Jangan pernah mengeksposnya ke jaringan tepercaya.',
     en: 'WARNING: This app is deliberately vulnerable. Never expose it to an untrusted network.',
