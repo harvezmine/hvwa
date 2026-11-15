@@ -29,6 +29,9 @@ export interface Challenge {
    * - Must be side-effect free (no writes, no counters, no event logging): it
    *   may be called up to 3 times for a single submit. The checker records
    *   the solve itself.
+   * - Has NO access to the platform DB. A custom check that needs challenge
+   *   data reads the challenge's own DB (from challengeDb()) via closure,
+   *   read-only.
    * - Throwing yields a 500 `{ error: 'internal_error' }` with no details.
    *
    * Defaults to verifyFlag(id, ctx.sessionId, ctx.level, ctx.submission).
@@ -40,13 +43,12 @@ export interface Challenge {
 /**
  * Input to Challenge.check(). `level` is chosen by the server (never the
  * client) and is never 'divine'; check() may be invoked once per candidate
- * level for the same submission, so treat `db` as read-only here.
+ * level for the same submission.
  */
 export interface CheckContext {
   sessionId: string;
   level: Level;
   submission: string;         // flag or answer the player submits
-  db: import('node:sqlite').DatabaseSync;
 }
 
 // `points` defaults to 100; `check` defaults to verifying the level-bound flag.

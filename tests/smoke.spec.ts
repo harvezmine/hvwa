@@ -19,7 +19,7 @@ describe('smoke', () => {
     expect(res.body).toEqual({ status: 'ok' });
   });
 
-  it('createApp({ dbPath }) uses a persistent, migrated + seeded database file', () => {
+  it('createApp({ dbPath }) uses a persistent, migrated database file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-db-'));
     tempDirs.push(dir);
     const dbPath = join(dir, 'hvwa.db');
@@ -28,8 +28,9 @@ describe('smoke', () => {
 
     const check = openDb(dbPath);
     try {
-      const row = check.prepare('SELECT role FROM users WHERE username=?').get('templar_admin');
-      expect(row).toMatchObject({ role: 'admin' });
+      const names = check.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
+      expect(names.map((r) => r.name)).toEqual(['events', 'hint_unlocks', 'solves']);
+      expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 1 });
     } finally {
       check.close();
     }

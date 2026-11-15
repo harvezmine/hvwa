@@ -73,4 +73,19 @@ describe('scoreboard', () => {
     unlockHint(db, 's1', 'SB-01', 3);
     expect(scoreFor(db, 's1')).toBe(0);
   });
+
+  it('stores the hint cost at unlock time', () => {
+    const db = fresh();
+    unlockHint(db, 's1', 'SB-01', 2);
+    expect(db.prepare('SELECT cost FROM hint_unlocks WHERE session_id=? AND challenge_id=? AND tier=?')
+      .get('s1', 'SB-01', 2)).toMatchObject({ cost: 20 });
+  });
+
+  it('scores with the stored cost, not the registry (no retroactive changes)', () => {
+    const db = fresh();
+    recordSolve(db, 's1', 'GK-01', 'acolyte', 100);
+    // An unlock recorded for a challenge that is not (or no longer) registered.
+    db.prepare("INSERT INTO hint_unlocks (session_id,challenge_id,tier,cost) VALUES ('s1','GONE-01',1,25)").run();
+    expect(scoreFor(db, 's1')).toBe(75);
+  });
 });

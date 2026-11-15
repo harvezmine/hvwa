@@ -6,7 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/app.js';
 import type { Level } from '../src/core/levels.js';
 import type { Lang } from '../src/core/i18n.js';
-import type { Challenge } from '../src/core/registry.js';
+import type { Challenge, CheckContext } from '../src/core/registry.js';
 
 describe('typed express', () => {
   it('Request carries sessionId, level and lang', () => {
@@ -24,5 +24,10 @@ describe('typed express', () => {
 
   it('createApp().locals.db is a DatabaseSync', () => {
     expectTypeOf(createApp().locals.db).toEqualTypeOf<DatabaseSync>();
+  });
+
+  it('CheckContext does not expose the platform DB', () => {
+    expectTypeOf<CheckContext>().not.toHaveProperty('db');
+    expectTypeOf<keyof CheckContext>().toEqualTypeOf<'sessionId' | 'level' | 'submission'>();
   });
 });

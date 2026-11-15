@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
-import { seed } from './db/seed.js';
 import { setFlagSecret } from './core/flags.js';
 import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
@@ -41,7 +40,6 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
 
   const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);
-  seed(db);
 
   // The app's DB handle: closed by server.ts on shutdown, and by tests that
   // use a file DB (Windows cannot delete a file SQLite still holds open).

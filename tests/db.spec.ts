@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate, MIGRATIONS, SCHEMA_VERSION } from '../src/db/index.js';
-import { seed } from '../src/db/seed.js';
 
 const userVersion = (db: DatabaseSync) =>
   (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -9,13 +8,19 @@ const userVersion = (db: DatabaseSync) =>
 const columns = (db: DatabaseSync, table: string) =>
   (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
 
+const tables = (db: DatabaseSync) =>
+  (db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[])
+    .map((r) => r.name);
+
 describe('db', () => {
-  it('migrates and seeds the templar admin user', () => {
+  it('the platform schema holds only platform state: solves, hint_unlocks, events', () => {
     const db = openDb(':memory:');
     migrate(db);
-    seed(db);
-    const row = db.prepare('SELECT username, role FROM users WHERE username=?').get('templar_admin');
-    expect(row).toMatchObject({ username: 'templar_admin', role: 'admin' });
+    expect(tables(db)).toEqual(['events', 'hint_unlocks', 'solves']);
+    expect(columns(db, 'solves')).toEqual(
+      expect.arrayContaining(['session_id', 'challenge_id', 'level', 'points', 'solved_at']));
+    expect(columns(db, 'hint_unlocks')).toEqual(
+      expect.arrayContaining(['session_id', 'challenge_id', 'tier', 'cost']));
   });
 
   it('takes a version-0 database to the latest version and records it', () => {
@@ -31,12 +36,12 @@ describe('db', () => {
   it('is idempotent: migrating twice keeps data and version', () => {
     const db = openDb(':memory:');
     migrate(db);
-    seed(db);
     db.prepare("INSERT INTO solves (session_id,challenge_id,level,points,solved_at) VALUES ('s','GK-01','acolyte',100,1)").run();
+    db.prepare("INSERT INTO hint_unlocks (session_id,challenge_id,tier,cost) VALUES ('s','GK-01',1,10)").run();
     expect(() => migrate(db)).not.toThrow();
     expect(userVersion(db)).toBe(SCHEMA_VERSION);
     expect(db.prepare('SELECT COUNT(*) c FROM solves').get()).toMatchObject({ c: 1 });
-    expect(db.prepare('SELECT COUNT(*) c FROM users').get()).toMatchObject({ c: 2 });
+    expect(db.prepare('SELECT COUNT(*) c FROM hint_unlocks').get()).toMatchObject({ c: 1 });
   });
 
   it('applies only the steps above the stored version, in order', () => {
