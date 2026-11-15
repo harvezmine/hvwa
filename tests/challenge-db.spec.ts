@@ -112,7 +112,7 @@ describe('challengeDb rejects statements that escape the sandbox', () => {
 });
 
 describe('challengeDb: BOM (U+FEFF) is whitespace to SQLite and must not bypass the facade', () => {
-  const B = '﻿';
+  const B = '\uFEFF';
   const bomVariants = (target: string): string[] => [
     `${B}ATTACH ${target} AS p`,
     `${B}${B}ATTACH ${target} AS p`,
@@ -166,6 +166,40 @@ describe('challengeDb allowlist (fail closed)', () => {
       'explain query plan select 1',
     ];
     for (const sql of stmts) expect(() => db.prepare(sql).all(), sql).not.toThrow();
+  });
+});
+
+describe('challengeDb rejects CREATE VIRTUAL TABLE (shadow-table corruption class)', () => {
+  it.each([
+    'CREATE VIRTUAL TABLE t USING fts5(x)',
+    'create virtual table t using fts4(x)',
+    'CREATE TEMP VIRTUAL TABLE t USING fts5(x)',
+    'create temporary virtual table t using rtree(id, a, b)',
+    'CREATE /* c */ VIRTUAL TABLE t USING fts5(x)',
+    'CREATE -- c\n VIRTUAL TABLE t USING fts5(x)',
+    'CREATE\uFEFFVIRTUAL TABLE t USING fts5(x)',
+    '\uFEFFCREATE TEMP\uFEFF/* c */\uFEFFVIRTUAL TABLE t USING fts5(x)',
+    'EXPLAIN CREATE VIRTUAL TABLE t USING fts5(x)',
+  ])('rejects %j', (sql) => {
+    expect(() => challengeDb(SCHEMA).prepare(sql)).toThrow(/not allowed in a challenge DB/);
+  });
+
+  it('normal CREATE TABLE / INDEX / VIEW / TRIGGER / TEMP TABLE still work', () => {
+    const db = challengeDb(SCHEMA);
+    for (const sql of [
+      'CREATE TABLE t2 (a INTEGER)',
+      'CREATE TEMP TABLE t3 (a INTEGER)',
+      'CREATE INDEX i2 ON notes (body)',
+      'CREATE VIEW v2 AS SELECT 1 AS a',
+      'CREATE TRIGGER tr2 AFTER INSERT ON notes BEGIN SELECT 1; END',
+    ]) expect(() => db.prepare(sql).run(), sql).not.toThrow();
+  });
+
+  it('a virtual table created by the seed callback is still queryable via the facade', () => {
+    const db = challengeDb(SCHEMA, (raw) => {
+      raw.exec("CREATE VIRTUAL TABLE docs USING fts5(body); INSERT INTO docs (body) VALUES ('hello world')");
+    });
+    expect(db.prepare("SELECT body FROM docs WHERE docs MATCH 'hello'").get()).toMatchObject({ body: 'hello world' });
   });
 });
 

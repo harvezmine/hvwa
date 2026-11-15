@@ -12,7 +12,8 @@ export interface ChallengeDb {
 
 // Fail closed: only these first keywords may run. Everything else (ATTACH,
 // DETACH, PRAGMA, VACUUM, BEGIN/COMMIT, ANALYZE, REINDEX, ... and anything
-// unrecognised, including '') is rejected.
+// unrecognised, including '') is rejected. CREATE is allowed except CREATE
+// VIRTUAL TABLE (see NOT GUARANTEED below): virtual tables are excluded.
 const ALLOWED = new Set([
   'SELECT', 'VALUES', 'WITH', 'INSERT', 'REPLACE', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER',
 ]);
@@ -24,10 +25,23 @@ const ALLOWED = new Set([
  * empty statements (`;`). EXPLAIN [QUERY PLAN] is looked through.
  */
 export function firstKeyword(sql: string): string {
+  return scan(sql).kw;
+}
+
+/** True for CREATE [TEMP|TEMPORARY] VIRTUAL TABLE, however it is spaced or commented. */
+function isCreateVirtual(sql: string): boolean {
+  const { kw, word } = scan(sql);
+  if (kw !== 'CREATE') return false;
+  let next = word();
+  if (next === 'TEMP' || next === 'TEMPORARY') next = word();
+  return next === 'VIRTUAL';
+}
+
+function scan(sql: string): { kw: string; word: () => string } {
   let i = 0;
   const skipNoise = () => {
     for (;;) {
-      while (i < sql.length && /[ \t\n\f\r;﻿]/.test(sql[i])) i++;
+      while (i < sql.length && /[ \t\n\f\r;\uFEFF]/.test(sql[i])) i++;
       if (sql.startsWith('--', i)) {
         const nl = sql.indexOf('\n', i);
         i = nl === -1 ? sql.length : nl + 1;
@@ -51,7 +65,7 @@ export function firstKeyword(sql: string): string {
     kw = word();
     if (kw === 'QUERY') { word(); kw = word(); } // QUERY PLAN <stmt>
   }
-  return kw;
+  return { kw, word };
 }
 
 /**
@@ -74,6 +88,18 @@ export function firstKeyword(sql: string): string {
  * drop the challenge's own tables — that is the point of the lab. Code that
  * holds the raw handle (the seed callback) is trusted and unrestricted.
  *
+ * NOT GUARANTEED: integrity of virtual tables. prepare() rejects CREATE
+ * VIRTUAL TABLE (FTS3/4/5, R-Tree), but a virtual table created by the trusted
+ * seed/schema can still have its shadow tables (*_data, *_node, *_segdir, ...)
+ * overwritten by injected SQL, the bug class behind past SQLite memory-safety
+ * exploits. That cannot be prevented: Node 22 has no SQLite defensive mode.
+ * Labs needing FTS create it in the schema/seed through the raw handle.
+ *
+ * NOT GUARANTEED: isolation between players. The challenge DB is shared per
+ * process: writes from injected SQL (rows, DROP/ALTER, triggers, views)
+ * persist for EVERY player until restart. Stateful labs must keep per-session
+ * state instead (see RECIPES rule f).
+ *
  * NOT GUARANTEED: availability. DatabaseSync is synchronous and node:sqlite
  * (Node 22) has no query timeout or progress handler, so an injected unbounded
  * query (e.g. a recursive CTE) can block the whole server. Time-based labs
@@ -92,7 +118,7 @@ export function challengeDb(schemaSql: string, seed?: (db: DatabaseSync) => void
   return Object.freeze({
     prepare(sql: string): StatementSync {
       const kw = firstKeyword(sql);
-      if (!ALLOWED.has(kw)) throw new Error(`${kw || 'This statement'} is not allowed in a challenge DB`);
+      if (!ALLOWED.has(kw) || isCreateVirtual(sql)) throw new Error(`${kw === 'CREATE' ? 'CREATE VIRTUAL TABLE' : kw || 'This statement'} is not allowed in a challenge DB`);
       return raw.prepare(sql);
     },
   });
