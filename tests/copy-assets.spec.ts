@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { copyAssets, main } from '../scripts/copy-assets.mjs';
 import { cleanDist } from '../scripts/clean-dist.mjs';
@@ -65,6 +65,21 @@ describe('copyAssets', () => {
     expect(existsSync(join(dist, 'types/ejs.d.ts'))).toBe(false);
     expect(existsSync(join(dist, 'districts/gatekeeper/gk-01/gk-01.spec.ts'))).toBe(false);
     expect(existsSync(join(dist, 'districts/gatekeeper/gk-01/views/login.ejs'))).toBe(true);
+  });
+
+  it('excludes vitest snapshots: __snapshots__/ directories and *.snap files', () => {
+    const { src, dist } = tree({
+      'db/schema.sql': 'x',
+      'districts/gatekeeper/gk-01/__snapshots__/gk-01.spec.ts.snap': 'exports[...]',
+      'districts/gatekeeper/gk-01/__snapshots__/notes.txt': 'not an asset either',
+      'districts/gatekeeper/gk-01/inline.snap': 'x',
+      'districts/gatekeeper/gk-01/views/login.ejs': '<form></form>',
+    });
+    const copied = copyAssets(src, dist);
+    expect(copied.map((p: string) => p.split(sep).join('/')).sort())
+      .toEqual(['db/schema.sql', 'districts/gatekeeper/gk-01/views/login.ejs']);
+    expect(existsSync(join(dist, 'districts/gatekeeper/gk-01/__snapshots__'))).toBe(false);
+    expect(existsSync(join(dist, 'districts/gatekeeper/gk-01/inline.snap'))).toBe(false);
   });
 
   it('creates no empty directories for TypeScript-only or empty source folders', () => {

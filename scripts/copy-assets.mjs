@@ -3,28 +3,32 @@
 // the challenges read .sql, .ejs, src/public/** and fixtures of any type
 // (.xml, .json, .zip, images, prompt files, ...) at runtime.
 import { cpSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainModule } from './main-module.mjs';
 
 // TypeScript sources (including .d.ts and .spec.ts) are compiled or dropped,
-// never copied.
+// never copied; neither are vitest snapshots (__snapshots__/, *.snap).
 const TS_SOURCE = /\.(c|m)?tsx?$/i;
+const SNAPSHOT_FILE = /\.snap$/i;
+const SNAPSHOT_DIR = '__snapshots__';
 
-function isAssetFile(file) {
-  return !TS_SOURCE.test(file);
+/** `rel` is relative to src/, so only the source tree's own segments count. */
+function isAssetFile(rel) {
+  if (TS_SOURCE.test(rel) || SNAPSHOT_FILE.test(rel)) return false;
+  return !rel.split(/[\\/]/).includes(SNAPSHOT_DIR);
 }
 
 // A directory is copied only if some file beneath it is an asset, so dist/
-// gets no empty folders for TypeScript-only (or empty) source directories.
-function containsAsset(dir) {
-  return readdirSync(dir, { recursive: true }).some((rel) => {
-    const p = join(dir, String(rel));
-    return statSync(p).isFile() && isAssetFile(p);
+// gets no empty folders for TypeScript-only, snapshot-only or empty dirs.
+function containsAsset(src, dir) {
+  return readdirSync(dir, { recursive: true }).some((r) => {
+    const p = join(dir, String(r));
+    return statSync(p).isFile() && isAssetFile(relative(src, p));
   });
 }
 
-/** Copy every non-TypeScript file under srcDir into distDir; returns the copied relative paths. */
+/** Copy every non-TypeScript, non-snapshot file under srcDir into distDir; returns the copied relative paths. */
 export function copyAssets(srcDir, distDir) {
   const src = resolve(srcDir);
   const copied = [];
@@ -32,9 +36,10 @@ export function copyAssets(srcDir, distDir) {
     recursive: true,
     filter: (from) => {
       if (from === src) return true;
-      if (statSync(from).isDirectory()) return containsAsset(from);
-      const keep = isAssetFile(from);
-      if (keep) copied.push(from.slice(src.length + 1));
+      const rel = relative(src, from);
+      if (statSync(from).isDirectory()) return basename(from) !== SNAPSHOT_DIR && containsAsset(src, from);
+      const keep = isAssetFile(rel);
+      if (keep) copied.push(rel);
       return keep;
     },
   });

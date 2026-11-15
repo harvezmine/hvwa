@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createServer, type Server } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../src/app.js';
-import { listen, closeGracefully } from '../src/lifecycle.js';
+import { listen, closeGracefully, listenUrl } from '../src/lifecycle.js';
 
 function occupyPort(): Promise<{ blocker: Server; port: number }> {
   return new Promise((resolve) => {
@@ -55,7 +55,7 @@ describe('closeGracefully()', () => {
     expect(db.isOpen).toBe(false);
   });
 
-  it('waits for an in-flight keep-alive connection to be released', async () => {
+  it('closes an idle keep-alive socket right away instead of waiting for the timeout', async () => {
     const app = createApp();
     const server = await listen(app, 0, '127.0.0.1');
     const { port } = server.address() as AddressInfo;
@@ -64,5 +64,17 @@ describe('closeGracefully()', () => {
     await closeGracefully(server, app.locals.db, 2000);
     expect(Date.now() - started).toBeLessThan(2000); // idle sockets are closed, not waited out
     expect(app.locals.db.isOpen).toBe(false);
+  });
+});
+
+describe('listenUrl()', () => {
+  it.each([
+    ['127.0.0.1', 1337, 'http://127.0.0.1:1337'],
+    ['localhost', 8080, 'http://localhost:8080'],
+    ['::1', 1337, 'http://[::1]:1337'],
+    ['::', 80, 'http://[::]:80'],
+    ['[::1]', 1337, 'http://[::1]:1337'],
+  ])('%s:%i → %s', (host, port, url) => {
+    expect(listenUrl(host, port)).toBe(url);
   });
 });

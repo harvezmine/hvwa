@@ -3,6 +3,12 @@ import type { Server } from 'node:http';
 import type { DatabaseSync } from 'node:sqlite';
 import type { HvwaApp } from './app.js';
 
+/** Printable URL for host:port; IPv6 literals get brackets (http://[::1]:1337). */
+export function listenUrl(host: string, port: number): string {
+  const h = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `http://${h}:${port}`;
+}
+
 /** Listen on host:port; resolves once listening, rejects on bind errors (e.g. EADDRINUSE). */
 export function listen(app: HvwaApp, port: number, host: string): Promise<Server> {
   return new Promise((resolve, reject) => {

@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';
-import { listen, closeGracefully } from './lifecycle.js';
+import { listen, closeGracefully, listenUrl } from './lifecycle.js';
 import type { Server } from 'node:http';
 
 // Validate the environment: one readable line per problem, then exit 1.
@@ -39,11 +39,11 @@ try {
   server = await listen(app, config.PORT, config.HOST);
 } catch (err) {
   const reason = err instanceof Error ? err.message : String(err);
-  console.error(`HVWA could not listen on ${config.HOST}:${config.PORT}: ${reason}`);
+  console.error(`HVWA could not listen on ${listenUrl(config.HOST, config.PORT)}: ${reason}`);
   app.locals.db.close();
   process.exit(1);
 }
-console.log(`HVWA on http://${config.HOST}:${config.PORT} — DO NOT expose to untrusted networks`);
+console.log(`HVWA on ${listenUrl(config.HOST, config.PORT)} — DO NOT expose to untrusted networks`);
 
 // Graceful stop: wait for server.close() to finish, then close the DB, then exit.
 let stopping = false;
