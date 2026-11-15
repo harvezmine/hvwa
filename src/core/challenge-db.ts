@@ -106,10 +106,11 @@ function scan(sql: string): { kw: string; word: () => string } {
  * must simulate delay (e.g. `await` a timer when a condition holds) instead
  * of running heavy queries.
  *
- * Call once at module level in the challenge's routes.ts and close over the
- * facade in handlers and in a custom check():
+ * Create it in the challenge's model.ts and close over the facade in handlers
+ * and in a custom check(). Use perLevel() (core/lab.ts) when a secret in it
+ * could be extracted at one level and replayed at another (docs/RECIPES.md):
  *
- *   const db = challengeDb(SCHEMA, (raw) => { raw.exec(SEED_SQL); });
+ *   const users = perLevel(() => challengeDb(SCHEMA, (raw) => { raw.exec(SEED_SQL); }));
  */
 export function challengeDb(schemaSql: string, seed?: (db: DatabaseSync) => void): ChallengeDb {
   const raw = new DatabaseSync(':memory:', { allowExtension: false });
