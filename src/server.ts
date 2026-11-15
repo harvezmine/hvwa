@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import './districts/index.js'; // registers every challenge; must precede createApp()
 import { createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';

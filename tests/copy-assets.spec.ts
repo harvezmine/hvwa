@@ -67,6 +67,29 @@ describe('copyAssets', () => {
     expect(existsSync(join(dist, 'districts/gatekeeper/gk-01/views/login.ejs'))).toBe(true);
   });
 
+  it('copies districts/**/levels/*.ts verbatim (View Source) but no other .ts', () => {
+    const { src, dist } = tree({
+      'db/schema.sql': 'x',
+      'districts/gatekeeper/gk-01/levels/acolyte.ts': 'const vuln = "<x>";\n',
+      'districts/gatekeeper/gk-01/levels/divine.ts': 'const safe = 1;\n',
+      'districts/gatekeeper/gk-01/index.ts': 'export {}',
+      'districts/gatekeeper/gk-01/levels/helper.spec.ts': 'test',
+      'districts/gatekeeper/gk-01/levels/types.d.ts': 'declare const x: 1;',
+      'districts/gatekeeper/gk-01/levels/nested/deep.ts': 'export {}',
+      'districts/gatekeeper/index.ts': 'export {}',
+      'core/levels/acolyte.ts': 'not a district',
+      'core/registry.ts': 'export {}',
+    });
+    copyAssets(src, dist);
+    expect(readFileSync(join(dist, 'districts/gatekeeper/gk-01/levels/acolyte.ts'), 'utf8')).toBe('const vuln = "<x>";\n');
+    expect(existsSync(join(dist, 'districts/gatekeeper/gk-01/levels/divine.ts'))).toBe(true);
+    for (const rel of [
+      'districts/gatekeeper/gk-01/index.ts', 'districts/gatekeeper/gk-01/levels/helper.spec.ts',
+      'districts/gatekeeper/gk-01/levels/types.d.ts', 'districts/gatekeeper/gk-01/levels/nested/deep.ts',
+      'districts/gatekeeper/index.ts', 'core/levels/acolyte.ts', 'core/registry.ts',
+    ]) expect(existsSync(join(dist, rel)), rel).toBe(false);
+  });
+
   it('excludes vitest snapshots: __snapshots__/ directories and *.snap files', () => {
     const { src, dist } = tree({
       'db/schema.sql': 'x',

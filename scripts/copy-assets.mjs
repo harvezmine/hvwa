@@ -13,8 +13,14 @@ const TS_SOURCE = /\.(c|m)?tsx?$/i;
 const SNAPSHOT_FILE = /\.snap$/i;
 const SNAPSHOT_DIR = '__snapshots__';
 
+// View Source: a challenge's level files are shown to players verbatim, so
+// src/districts/<district>/<challenge>/levels/<level>.ts ship in dist/ too
+// (exactly that depth; .d.ts and .spec.ts never match).
+const LEVEL_SOURCE = /^districts[\\/][^\\/]+[\\/][^\\/]+[\\/]levels[\\/][^\\/]+(?<!\.d|\.spec)\.ts$/;
+
 /** `rel` is relative to src/, so only the source tree's own segments count. */
 function isAssetFile(rel) {
+  if (LEVEL_SOURCE.test(rel)) return true;
   if (TS_SOURCE.test(rel) || SNAPSHOT_FILE.test(rel)) return false;
   return !rel.split(/[\\/]/).includes(SNAPSHOT_DIR);
 }
