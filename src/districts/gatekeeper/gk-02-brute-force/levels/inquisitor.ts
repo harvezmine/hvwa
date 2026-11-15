@@ -2,7 +2,8 @@ import type { LabState, LoginOutcome } from '../model.js';
 import { accounts } from '../model.js';
 
 const MAX_FAILURES = 5;
-const LOCK_MS = 30_000;
+const MAX_COUNTERS = 1000; // a real name has few spellings; this only bounds memory
+const LOCK_MS = 15 * 60_000; // long enough that waiting is not the practical way through the list
 
 // INQUISITOR — real defense, subtly wrong: failures are counted per username and a
 // success only clears its own counter, but the counter is keyed on the username
@@ -23,6 +24,7 @@ export function login(state: LabState, username: string, password: string): Logi
     counter.failures += 1;
     if (counter.failures >= MAX_FAILURES) counter.lockedUntil = now + LOCK_MS;
     state.counters.set(username, counter);
+    if (state.counters.size > MAX_COUNTERS) state.counters.delete(state.counters.keys().next().value as string);
   }
   return { ok: false, message: 'Invalid username or password.' };
 }

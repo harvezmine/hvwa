@@ -1,12 +1,11 @@
 // challenge.ts — GK-01 metadata and routes. The vulnerable code is in levels/*.ts (served by View Source).
 import { join } from 'node:path';
-import type { Request } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
 import { byLevel, field, tryDb } from '../../../core/lab.js';
-import { flagFor } from '../../../core/mount.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import { PLAYER, usersDb, type LoginLevel, type UserRow } from './model.js';
+import { PLAYER, welcome, type Result } from '../_shared/lab.js';
+import { usersDb, type LoginLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -15,16 +14,6 @@ import * as divine from './levels/divine.js';
 const dir = challengeDir(import.meta.url);
 const view = join(dir, 'views', 'login.ejs');
 const impl = byLevel<LoginLevel>({ acolyte, templar, inquisitor, divine });
-
-/** The lab's message: ok selects the success/error style. */
-interface Result { ok: boolean; text: string }
-
-function welcome(req: Request, user: UserRow): Result {
-  const hello = `Welcome, ${user.username} (role: ${user.role}).`;
-  if (user.role !== 'admin') return { ok: true, text: `${hello} Only the citadel admin holds the flag.` };
-  if (req.level === 'divine') return { ok: true, text: hello }; // Divine never issues a flag
-  return { ok: true, text: `${hello} Flag: ${flagFor(req, GK01)}` };
-}
 
 export const GK01 = register(defineChallenge({
   id: 'GK-01', district: 'gatekeeper', slug: 'sqli-login', dir,
@@ -53,7 +42,7 @@ export const GK01 = register(defineChallenge({
       const result: Result = !found.ok
         ? { ok: false, text: found.message }
         : found.value
-          ? welcome(req, found.value)
+          ? welcome(req, GK01, found.value)
           : { ok: false, text: 'Invalid credentials.' };
       await sendPage(res, view, { account: PLAYER, result, username, password });
     });

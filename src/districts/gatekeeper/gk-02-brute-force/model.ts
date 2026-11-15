@@ -1,14 +1,11 @@
 // model.ts — GK-02's lab state and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
 import { randomInt } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { perSession } from '../../../core/lab.js';
+import { fixtureLines, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { accountsFor, type Account, type Counter } from '../_shared/lab.js';
 
-export interface Account { username: string; password: string; role: 'admin' | 'user' }
-
-/** Failed-attempt bookkeeping for one lockout key. */
-export interface Counter { failures: number; lockedUntil: number }
+export type { Account, Counter };
 
 /** What a login attempt came to. A failure carries the message the lab shows. */
 export type LoginOutcome =
@@ -30,26 +27,13 @@ export interface BruteLevel {
   login(state: LabState, username: string, password: string): LoginOutcome;
 }
 
-/** The player's own (unprivileged) account, shown on the lab page. */
-export const PLAYER = Object.freeze({ username: 'pilgrim', password: 'pilgrim' });
-export const ADMIN_NAME = 'citadel_admin';
-
 /** Both accounts of this lab. */
 export function accounts(state: LabState): readonly Account[] {
-  return [
-    { username: ADMIN_NAME, password: state.adminPassword, role: 'admin' },
-    { username: PLAYER.username, password: PLAYER.password, role: 'user' },
-  ];
+  return accountsFor(state.adminPassword);
 }
 
-// The wordlist the lab serves at ./wordlist.txt (and the admin password is drawn from).
-const WORDLIST_URL = new URL('./fixtures/wordlist.txt', import.meta.url);
-let words: readonly string[] | undefined;
-/** The served wordlist, one entry per line. */
-export function wordlist(): readonly string[] {
-  words ??= Object.freeze(readFileSync(WORDLIST_URL, 'utf8').split(/\r?\n/).filter((w) => w !== ''));
-  return words;
-}
+/** The wordlist the lab serves at ./wordlist.txt (and the admin password is drawn from). */
+export const wordlist = fixtureLines(new URL('./fixtures/wordlist.txt', import.meta.url));
 
 // Per player AND per level: failures, lockouts and the admin password are all state a
 // player changes or learns, so they must never cross players or levels.
@@ -62,6 +46,11 @@ const labs = perSession((): LabState => ({
 /** The lab state for this request's session at the served level. */
 export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
+}
+
+/** The "Restart lab" hook: forget this player's state at this level (counters, locks, admin password). */
+export function resetLab(req: { sessionId: string; level: Level }): void {
+  labs.reset(req);
 }
 
 /** Test seam: the lab state of session `sessionId` at `level`. */

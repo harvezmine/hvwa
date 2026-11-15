@@ -248,6 +248,17 @@ export function describeExploitMatrix<I>(m: ExploitMatrix<I>): void {
   });
 }
 
+/**
+ * Run a warm-up scenario: fire each warm-up step (answers ignored), then the final one, and return the
+ * final answer: the shape of "N failed attempts, then the real secret" matrix inputs.
+ */
+export async function runWarmupThenFinal<S>(
+  s: { readonly warmup: readonly S[]; readonly final: S }, fire: (step: S) => PromiseLike<request.Response>,
+): Promise<request.Response> {
+  for (const w of s.warmup) await fire(w);
+  return fire(s.final);
+}
+
 /** What describeLabView() needs to know about a lab. */
 export interface LabViewSpec {
   readonly challenge: Pick<Challenge, 'id' | 'levels'>;

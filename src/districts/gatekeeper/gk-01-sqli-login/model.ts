@@ -3,6 +3,7 @@
 import { randomBytes } from 'node:crypto';
 import { challengeDb, type ChallengeDb } from '../../../core/challenge-db.js';
 import { perLevel } from '../../../core/lab.js';
+import { PLAYER } from '../_shared/lab.js';
 import type { Level } from '../../../core/levels.js';
 
 export interface UserRow { username: string; role: string }
@@ -11,9 +12,6 @@ export interface UserRow { username: string; role: string }
 export interface LoginLevel {
   findUser(db: ChallengeDb, username: string, password: string): UserRow | undefined;
 }
-
-/** The player's own (unprivileged) account, shown on the lab page. */
-export const PLAYER = Object.freeze({ username: 'pilgrim', password: 'pilgrim' });
 
 const SCHEMA = `CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL, role TEXT NOT NULL)`;

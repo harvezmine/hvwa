@@ -1,6 +1,6 @@
 // src/districts/gatekeeper/gk-02-brute-force/gk-02.spec.ts
 import { describe, it, expect } from 'vitest';
-import { freshSession, describeExploitMatrix, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
+import { freshSession, describeExploitMatrix, describeLabView, runWarmupThenFinal, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { GK02 } from './challenge.js'; // registers GK-02 before createApp() inside freshSession
 import { adminPassword, labState, wordlist } from './model.js';
@@ -19,10 +19,8 @@ async function post(agent: Agent, level: Level, creds: Creds, sid: string) {
   const password = creds.password === REAL ? adminPassword(sid, level) : creds.password;
   return agent.post(`${LAB}?level=${level}`).type('form').send({ username: creds.username, password });
 }
-async function run(agent: Agent, level: Level, s: Scenario, sid: string) {
-  for (const c of s.warmup) await post(agent, level, c, sid);
-  return post(agent, level, s.final, sid);
-}
+const run = (agent: Agent, level: Level, s: Scenario, sid: string) =>
+  runWarmupThenFinal({ warmup: s.warmup, final: s.final }, (c) => post(agent, level, c, sid));
 const FINAL: Creds = { username: ADMIN, password: REAL };
 
 describeExploitMatrix<Scenario>({
@@ -167,7 +165,7 @@ describe('GK-02 lockouts', () => {
     expect((await post(agent, 'divine', FINAL, sid)).text).toContain('Welcome, citadel_admin'); // expired lock: real password works
   });
 
-  it('templar and inquisitor locks expire', async () => {
+  it('templar and inquisitor locks last 15 minutes, then expire', async () => {
     for (const level of ['templar', 'inquisitor'] as const) {
       const { agent, sid } = await freshSession();
       const state = labState(sid, level);
@@ -175,7 +173,9 @@ describe('GK-02 lockouts', () => {
       state.now = () => t;
       for (const c of wrongs(ADMIN, 5)) await post(agent, level, c, sid);
       expect((await post(agent, level, FINAL, sid)).text, level).toContain('Account locked');
-      t += 10 * 60_000;
+      t += 14 * 60_000;
+      expect((await post(agent, level, FINAL, sid)).text, `${level} still locked after 14 min`).toContain('Account locked');
+      t += 2 * 60_000; // 16 minutes in
       expect((await post(agent, level, FINAL, sid)).text, level).toMatch(FLAG_RE);
     }
   });
@@ -196,41 +196,81 @@ describe('GK-02 per-player state', () => {
     expect((await post(agent, 'inquisitor', FINAL, sid)).text).toMatch(FLAG_RE);
   });
 
-  it('a password found at one level does not log in at another unless it happens to be the same pick', async () => {
+  it('a password found at one level does not log in at another (sessions are drawn until the two picks differ)', async () => {
+    for (let i = 0; i < 60; i++) {
+      const { agent, sid } = await freshSession();
+      const found = adminPassword(sid, 'acolyte');
+      if (found === adminPassword(sid, 'inquisitor')) continue; // same random pick: try another session
+      const text = (await agent.post(`${LAB}?level=inquisitor`).type('form').send({ username: ADMIN, password: found })).text;
+      expect(text).not.toMatch(FLAG_RE);
+      return;
+    }
+    throw new Error('60 sessions in a row picked the same password at two levels: the pick is not random');
+  });
+
+  it('Restart lab forgets the player counters and picks a new password at that level only', async () => {
     const { agent, sid } = await freshSession();
-    const text = (await agent.post(`${LAB}?level=inquisitor`).type('form')
-      .send({ username: ADMIN, password: adminPassword(sid, 'acolyte') })).text;
-    if (adminPassword(sid, 'acolyte') !== adminPassword(sid, 'inquisitor')) expect(text).not.toMatch(FLAG_RE);
-  });
-});
-
-describe('GK-02 lab view', () => {
-  it('tells the player their account, links the wordlist, posts back to the lab', async () => {
-    const { agent } = await freshSession();
-    const res = await agent.get(`${LAB}?level=acolyte`);
-    expect(res.status).toBe(200);
-    expect(res.text).toMatch(/pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/);
-    expect(res.text).toContain(`href="${LAB}/wordlist.txt"`); // absolute: a relative link would leave the lab
-    expect(res.text).toContain('citadel_admin');
-    expect(res.text).not.toMatch(/type="password"/);
-    expect(/<form[^>]*>/.exec(res.text)?.[0]).not.toContain('action');
+    for (const c of wrongs(ADMIN, 5)) await post(agent, 'templar', c, sid);
+    expect((await post(agent, 'templar', FINAL, sid)).text).toContain('Account locked');
+    const other = adminPassword(sid, 'inquisitor');
+    const res = await agent.post(`${LAB}/_reset?level=templar`);
+    expect(res.status).toBe(303);
+    expect(res.headers.location).toBe(`${LAB}?level=templar`);
+    expect((await post(agent, 'templar', FINAL, sid)).text).toMatch(FLAG_RE);
+    expect(adminPassword(sid, 'inquisitor')).toBe(other);
   });
 
-  it('keeps the submitted username escaped, and non-string fields are a failed login, not a 500', async () => {
-    const { agent } = await freshSession();
-    const res = await agent.post(`${LAB}?level=templar`).type('form').send({ username: '"><script>alert(1)</script>', password: 'x' });
-    expect(res.text).toContain('value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
-    expect(res.text).not.toContain('<script>alert(1)');
-    for (const level of LEVELS) {
-      const json = await agent.post(`${LAB}?level=${level}`).send({ username: { toString: 1 }, password: ['a'] });
-      expect(json.status, level).toBe(200);
-      expect(json.text, level).not.toMatch(FLAG_RE);
+  it('waiting is not the way through: after the first lock the clock must run 15 minutes per 5 guesses', async () => {
+    for (const level of ['templar', 'inquisitor'] as const) {
+      const { agent, sid } = await freshSession();
+      const state = labState(sid, level);
+      let t = 7_000_000;
+      const start = t;
+      state.now = () => t;
+      let guesses = 0;
+      while (guesses < 30) { // thirty guesses, waiting out every lock a patient attacker meets
+        const text = (await post(agent, level, wrong(ADMIN, guesses), sid)).text;
+        if (text.includes('Account locked')) t += 60_000; else guesses += 1;
+      }
+      expect(t - start, level).toBeGreaterThanOrEqual(5 * 15 * 60_000);
     }
   });
 
-  it('marks success and failure messages for styling', async () => {
+  it('divine still refuses once its first lock has run, and backs off further each time', async () => {
     const { agent, sid } = await freshSession();
-    expect((await post(agent, 'templar', PILGRIM, sid)).text).toMatch(/class="lab-message lab-success"[^>]*>Welcome, pilgrim/);
-    expect((await post(agent, 'templar', wrong(ADMIN, 1), sid)).text).toMatch(/class="lab-message lab-error"/);
+    const state = labState(sid, 'divine');
+    let t = 3_000_000;
+    state.now = () => t;
+    for (const c of wrongs(ADMIN, 5)) await post(agent, 'divine', c, sid);
+    const locks: number[] = [];
+    for (let round = 0; round < 6; round++) {
+      const until = state.counters.get(ADMIN)!.lockedUntil;
+      locks.push(until - t);
+      t = until - 1;
+      expect((await post(agent, 'divine', FINAL, sid)).text, 'one ms before the lock ends').not.toMatch(FLAG_RE);
+      t = until + 1;
+      await post(agent, 'divine', wrong(ADMIN, round), sid); // the one free try after a lock fails again
+    }
+    expect(locks[1]).toBeGreaterThan(locks[0]);
+    expect(locks[2]).toBeGreaterThan(locks[1]);
+  });
+});
+
+describeLabView({
+  challenge: GK02,
+  path: LAB,
+  account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
+  echoField: 'username',
+  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, null, 'x'], {}],
+  ok: (agent, level, sid) => post(agent, level, PILGRIM, sid),
+  bad: (agent, level, sid) => post(agent, level, wrong(ADMIN, 1), sid),
+});
+
+describe('GK-02 lab view specifics', () => {
+  it('links the wordlist by its absolute path and names the target', async () => {
+    const { agent } = await freshSession();
+    const res = await agent.get(`${LAB}?level=acolyte`);
+    expect(res.text).toContain(`href="${LAB}/wordlist.txt"`);
+    expect(res.text).toContain('citadel_admin');
   });
 });

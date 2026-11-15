@@ -2,7 +2,7 @@ import type { LabState, LoginOutcome } from '../model.js';
 import { accounts } from '../model.js';
 
 const MAX_FAILURES = 5;
-const LOCK_MS = 30_000;
+const LOCK_MS = 15 * 60_000; // long enough that waiting is not the practical way through the list
 
 // TEMPLAR — naive defense: after 5 failures a username is locked, and the failure
 // message is uniform. The flaw: ANY successful login (your own account will do)
