@@ -55,6 +55,8 @@ export interface LabBar {
   /** POST target of the "Restart lab" button; undefined when the challenge has no reset hook. */
   readonly resetAction?: string;
   readonly resetLabel: string;
+  /** One-shot notice text after a refused (cooling-down) restart; only for challenges with a reset hook. */
+  readonly restartNotice?: string;
   /** One link per implemented level, rank order; Divine is labelled as the secure reference. */
   readonly levels: readonly { id: Level; href: string; label: string; current: boolean }[];
 }
@@ -70,6 +72,7 @@ function labBar(locals: Response['locals']): LabBar | undefined {
     pageTitle: `${c.id} — ${title}`, backHref: `/c/${c.id}`,
     resetAction: c.reset ? `${challengePath(c)}/_reset?level=${level}` : undefined,
     resetLabel: t('lab.restart', lang),
+    restartNotice: c.reset && locals.restartNotice === 'cooldown' ? t('lab.restart_cooldown', lang) : undefined,
     levels: LEVELS.filter((l) => c.levels.includes(l)).map((l) => ({
       id: l,
       href: `${challengePath(c)}?level=${l}`,

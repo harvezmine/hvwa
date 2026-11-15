@@ -155,12 +155,20 @@ fully attacker-chosen SQL must also cap result size.
   normal play) mutates. One instance per (session, level), so it already
   isolates levels: do not wrap it in `perLevel`. Memory is bounded: least
   recently used instances beyond `maxEntries` (default 5000) are evicted, and
-  instances idle longer than `idleTtlMs` (default 2 h) are dropped. A dropped
+  instances idle longer than `idleTtlMs` (default 26 h) are dropped. A dropped
   lab is rebuilt fresh on the next request, so labs must tolerate a reset.
   An optional `dispose(value)` runs when an instance is evicted or expires (to
   release a resource; its errors are swallowed). The bound is per `perSession`
   holder, so the worst case is `maxEntries` x the number of stateful labs: fine
   for a loopback single-player lab.
+  **Eviction and TTL expiry are a reset** (counters, locks and secrets are rebuilt), so a lab with limiters must
+  survive neither: (a) `idleTtlMs` must exceed the longest lock or lockout the lab uses (the default 26 h is
+  longer than the 24 h cap of the Divine escalating locks; never lower it for such a lab); (b) creating
+  instances is rate limited so an eviction flood is impractical: each holder allows `maxNewPerMinute` (default
+  120) new instances a minute (`NewSessionLimitError`, HTTP 429, nothing evicted), and the app issues at most 60 new
+  `hvwa_sid` a minute (`createApp({ maxNewSessionsPerMinute, sessionClock })`, 429 "Too many new sessions").
+  With 5000 entries a flood needs about 42 minutes at the default rate. Specs that create many sessions on one
+  app should use fresh apps, or raise the limit explicitly.
 
 **Restart lab (rare).** A lab whose state can get *stuck* (a hijacked or poisoned session, stored-XSS cleanup, a
 wedged workflow) may pass `reset: (req) => holder.reset(req)` to `defineChallenge`. The engine then mounts

@@ -1,6 +1,6 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, vi } from 'vitest';
-import { perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { NewSessionLimitError, perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 
 describe('perLevel(factory)', () => {
@@ -146,20 +146,55 @@ describe('perSession(factory, opts?)', () => {
     expect(() => p.reset({ sessionId: '', level: 'acolyte' })).toThrow(/sessionId/);
   });
 
-  it('defaults: 5000 entries, 2 h idle TTL', () => {
+  it('defaults: 5000 entries, 26 h idle TTL (longer than the longest lock any lab uses: expiry is a reset)', () => {
     let t = 0;
-    const p = perSession((_l, sid) => sid, { now: () => t });
+    const p = perSession((_l, sid) => sid, { now: () => t, maxNewPerMinute: Infinity });
     for (let i = 0; i < 5001; i++) p.for(req(`sid-${i}`));
     expect(p.size).toBe(5000);
     const first = p.for(req('sid-5000'));
-    t = 2 * 60 * 60 * 1000;
+    t = 26 * 60 * 60 * 1000;
     expect(p.for(req('sid-5000'))).toBe(first);
-    t += 2 * 60 * 60 * 1000 + 1;
+    t += 26 * 60 * 60 * 1000 + 1;
     p.for(req('late'));
     expect(p.size).toBe(1);
   });
 
+  it('limits NEW instances per rolling minute (default 120): the next one throws a 429 error, existing ones are untouched', () => {
+    let t = 0;
+    const p = perSession((_l, sid) => ({ sid }), { now: () => t, maxEntries: 5 });
+    const kept = p.for(req('victim'));
+    for (let i = 1; i < 120; i++) p.for(req(`s-${i}`));
+    expect(p.size).toBe(5);
+    let err: unknown;
+    try { p.for(req('s-overflow')); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(NewSessionLimitError);
+    expect((err as NewSessionLimitError).status).toBe(429);
+    expect(p.size).toBe(5);
+    t = 59_999;
+    expect(() => p.for(req('still-too-soon'))).toThrow(NewSessionLimitError);
+    t = 60_001; // the window rolls
+    expect(() => p.for(req('after-window'))).not.toThrow();
+    expect(kept).toBeDefined();
+  });
+
+  it('a flood of new sessions cannot evict a player\'s instance while the limit holds (eviction would be a reset)', () => {
+    let t = 0;
+    const p = perSession((_l, sid) => ({ sid, locked: false }), { now: () => t, maxEntries: 10, maxNewPerMinute: 8 });
+    const victim = p.for(req('victim'));
+    victim.locked = true;
+    let refused = 0;
+    for (let i = 0; i < 5000; i++) {
+      try { p.for(req(`flood-${i}`)); } catch (e) { if (e instanceof NewSessionLimitError) refused += 1; else throw e; }
+    }
+    expect(refused).toBe(5000 - 7); // 1 used by the victim, 7 more allowed this minute
+    expect(p.for(req('victim'))).toBe(victim);
+    expect(victim.locked).toBe(true);
+  });
+
   it('rejects bad options and bad requests', () => {
+    for (const maxNewPerMinute of [0, -1, 1.5, Number.NaN]) {
+      expect(() => perSession(() => ({}), { maxNewPerMinute }), String(maxNewPerMinute)).toThrow(/maxNewPerMinute/);
+    }
     for (const maxEntries of [0, -1, 1.5, Number.NaN]) {
       expect(() => perSession(() => ({}), { maxEntries }), String(maxEntries)).toThrow(/maxEntries/);
     }

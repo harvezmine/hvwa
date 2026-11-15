@@ -29,6 +29,10 @@ const htmxDistDir = join(
 export interface AppOptions {
   /** Clock (ms) for the Restart-lab cooldown; tests inject one. Default Date.now. */
   resetClock?: () => number;
+  /** Most new `hvwa_sid` sessions issued per rolling minute (default 60); beyond it: 429. */
+  maxNewSessionsPerMinute?: number;
+  /** Clock (ms) for the session-issuance limit; tests inject one. Default Date.now. */
+  sessionClock?: () => number;
   /** SQLite path. Defaults to an in-memory database (tests). */
   dbPath?: string;
   /**
@@ -82,7 +86,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
-  app.use(sessionMiddleware());
+  app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock }));
   app.use(levelMiddleware());
   app.use(langMiddleware());
   app.get('/static/vendor/htmx.min.js', (_req, res, next) => {

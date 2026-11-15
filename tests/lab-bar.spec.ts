@@ -49,6 +49,17 @@ describe('lab bar: Restart lab', () => {
     expect(bar((await get(`${LAB}?lang=en`)).html)).not.toContain('_reset');
   });
 
+  it('shows a notice for ?restart=cooldown (closed set, per language) and ignores anything else', async () => {
+    const en = bar((await get('/d/lab-bar-test/restartable?restart=cooldown&lang=en')).html);
+    expect(en).toContain('data-testid="lab-restart-notice"');
+    expect(en).toMatch(/Restart is cooling down/);
+    expect(bar((await get('/d/lab-bar-test/restartable?restart=cooldown&lang=id')).html)).toMatch(/Mulai ulang sedang jeda/);
+    for (const v of ['bogus', '<script>', 'COOLDOWN', '']) {
+      expect(bar((await get(`/d/lab-bar-test/restartable?restart=${encodeURIComponent(v)}`)).html), v).not.toContain('lab-restart-notice');
+    }
+    expect(bar((await get(`${LAB}?restart=cooldown`)).html)).not.toContain('lab-restart-notice'); // no reset hook: no notice
+  });
+
   it('uses the canonical path even for an upper-case request URL', async () => {
     const html = bar((await get('/D/LAB-BAR-TEST/RESTARTABLE?level=acolyte')).html);
     expect(html).toContain('action="/d/lab-bar-test/restartable/_reset?level=acolyte"');

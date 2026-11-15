@@ -311,6 +311,9 @@ describe('GK-17 bracket robustness (request order does not matter)', () => {
       expect(labState(sid, level).ownTokens, level).not.toContain(labState(sid, level).adminToken);
       for (let i = 0; i < 30; i++) await login(c);
       expect(labState(sid, level).ownTokens.length, level).toBeLessThanOrEqual(20);
+      expect(labState(sid, level).ownTokens[0], `${level}: the boot guest token stays first`).toBe(guest);
+      const page = await visit(c);
+      expect(page.text, level).toContain(`<code>${guest}</code>`);
     }
   });
 });
