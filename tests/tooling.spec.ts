@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,7 +19,9 @@ describe('architecture', () => {
     expect(existsSync(join(root, 'src', 'core', 'views', 'layout.ejs'))).toBe(true);
     expect(existsSync(join(root, 'src', 'portal', 'views', 'layout.ejs'))).toBe(false);
     const portal = await import('../src/portal/index.js');
-    expect(portal.portalViewsDir).toBe(join(root, 'src', 'portal', 'views'));
+    // Compare relatively: an absolute compare breaks when the cwd's drive
+    // letter case ('c:' vs 'C:') differs between modules on Windows.
+    expect(relative(root, portal.portalViewsDir)).toBe(join('src', 'portal', 'views'));
   });
 });
 
