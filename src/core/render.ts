@@ -4,6 +4,7 @@ import { renderFile, type Options } from 'ejs';
 import { fileURLToPath } from 'node:url';
 import { dirname, isAbsolute, join } from 'node:path';
 import { t, DEFAULT_LANG, type Lang } from './i18n.js';
+import type { Level } from './levels.js';
 import { diffLines } from './diff.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -76,7 +77,9 @@ export async function sendPage(res: Response, viewFile: string, data: Record<str
  * used by every challenge's "View Source → compare Acolyte vs Divine" panel.
  * One-sided rows get an empty, unnumbered cell on the missing side.
  */
-export function diffView(vulnSrc: string, secureSrc: string, lang: Lang = DEFAULT_LANG): string {
+export function diffView(
+  vulnSrc: string, secureSrc: string, lang: Lang = DEFAULT_LANG, vulnLevel: Level = 'acolyte',
+): string {
   let ln = 0;
   let rn = 0;
   const cell = (side: 'vuln' | 'secure', text: string | undefined, num: number) =>
@@ -92,7 +95,7 @@ export function diffView(vulnSrc: string, secureSrc: string, lang: Lang = DEFAUL
   }).join('');
   return (
     '<table class="diff-view"><thead><tr>' +
-    `<th colspan="2">${escapeHtml(t('diff.vulnerable', lang))}</th>` +
+    `<th colspan="2">${escapeHtml(`${t('diff.vulnerable', lang)} (${t(`level.${vulnLevel}`, lang)})`)}</th>` +
     `<th colspan="2">${escapeHtml(t('diff.secure', lang))}</th>` +
     `</tr></thead><tbody>${body}</tbody></table>`
   );

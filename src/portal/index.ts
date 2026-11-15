@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { allChallenges, getChallenge, type Challenge } from '../core/registry.js';
 import { scoreFor, progress, bestSolve } from '../core/scoreboard.js';
 import { unlockedTiers } from '../core/hints.js';
-import { isLevel, levelRank, FLAG_LEVELS, LEVELS } from '../core/levels.js';
+import { isLevel, levelRank, FLAG_LEVELS, LEVELS, type Level } from '../core/levels.js';
 import { levelSource } from '../core/source.js';
 import { challengePath } from '../core/mount.js';
 import { sendPage, diffView } from '../core/render.js';
@@ -16,12 +16,12 @@ export const portalViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'vie
 const view = (name: string) => join(portalViewsDir, `${name}.ejs`);
 
 /** Lowest implemented exploitable level's source vs Divine's; undefined if either is unavailable. */
-function diffPair(c: Challenge): { vuln: string; secure: string } | undefined {
+function diffPair(c: Challenge): { vuln: string; secure: string; level: Level } | undefined {
   const low = LEVELS.find((l) => l !== 'divine' && c.levels.includes(l));
   if (!low || !c.levels.includes('divine')) return undefined;
   const vuln = levelSource(c, low);
   const secure = levelSource(c, 'divine');
-  return vuln === undefined || secure === undefined ? undefined : { vuln, secure };
+  return vuln === undefined || secure === undefined ? undefined : { vuln, secure, level: low };
 }
 
 // Reads only the registry; never imports a challenge directly.
@@ -49,8 +49,10 @@ export function portalRouter(db: DatabaseSync): Router {
     const best = bestSolve(db, req.sessionId, c.id);
     const bestRank = best ? levelRank(best.level as (typeof LEVELS)[number]) : -1;
     // A level counts as solved when its rank <= the best solved level's rank.
-    const levels = LEVELS.filter((l) => c.levels.includes(l) && FLAG_LEVELS.includes(l)).map((l) => ({
-      id: l, solved: levelRank(l) <= bestRank, href: `${challengePath(c)}?level=${l}`,
+    // One tab per implemented level. Divine is the unscored secure reference: no solved state.
+    const levels = LEVELS.filter((l) => c.levels.includes(l)).map((l) => ({
+      id: l, scored: FLAG_LEVELS.includes(l), solved: FLAG_LEVELS.includes(l) && levelRank(l) <= bestRank,
+      href: `${challengePath(c)}?level=${l}`,
     }));
     const unlocked = new Set(unlockedTiers(db, req.sessionId, c.id));
     const hints = [...c.hints].sort((a, b) => a.id - b.id)
@@ -68,7 +70,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const src = c && isLevel(level) ? levelSource(c, level) : undefined;
     if (!c || !isLevel(level) || src === undefined) { next(); return; }
     await sendPage(res, view('source'), {
-      title: `${c.id} — ${res.locals.t(`level.${level}`)}`, c, level, src, diff: undefined,
+      title: `${c.id} â€” ${res.locals.t(`level.${level}`)}`, c, level, src, diff: undefined,
     });
   });
 
@@ -77,8 +79,8 @@ export function portalRouter(db: DatabaseSync): Router {
     const pair = c ? diffPair(c) : undefined;
     if (!c || !pair) { next(); return; }
     await sendPage(res, view('source'), {
-      title: `${c.id} — diff`, c, level: undefined, src: undefined,
-      diff: diffView(pair.vuln, pair.secure, req.lang),
+      title: `${c.id} â€” ${res.locals.t('challenge.diff_title')}`, c, level: undefined, src: undefined,
+      diff: diffView(pair.vuln, pair.secure, req.lang, pair.level),
     });
   });
 

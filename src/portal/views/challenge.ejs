@@ -9,8 +9,12 @@
   <ul class="level-tabs">
   <% levels.forEach(function (l) { %>
     <li>
+    <% if (l.scored) { %>
       <a class="level-tab" data-testid="level-tab-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"><%= t('level.' + l.id) %></a>
       <span class="badge <%= l.solved ? 'badge-ok' : 'muted' %>"><%= l.solved ? t('challenge.solved') : t('challenge.unsolved') %></span>
+    <% } else { %>
+      <a class="level-tab" data-testid="level-tab-<%= l.id %>" href="<%= l.href %>"><%= t('challenge.divine_tab') %></a>
+    <% } %>
     </li>
   <% }); %>
   </ul>
@@ -27,7 +31,7 @@
     <% if (h.unlocked) { %>
       <p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p>
     <% } else { %>
-      <form hx-post="/api/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML">
+      <form method="post" action="/api/hint" hx-post="/api/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML">
         <input type="hidden" name="challengeId" value="<%= c.id %>">
         <input type="hidden" name="tier" value="<%= h.id %>">
         <button type="submit"><%= t('challenge.hint_unlock') %> <%= h.id %> (<%= t('challenge.hint_cost') %>: <%= h.cost %>)</button>
@@ -40,7 +44,7 @@
 
 <section class="card panel">
   <h2><%= t('challenge.submit_heading') %></h2>
-  <form hx-post="/api/submit" hx-target="#submit-result" hx-swap="innerHTML">
+  <form method="post" action="/api/submit" hx-post="/api/submit" hx-target="#submit-result" hx-swap="innerHTML">
     <input type="hidden" name="challengeId" value="<%= c.id %>">
     <label><%= t('challenge.submit_label') %> <input type="text" name="submission" autocomplete="off" required></label>
     <button type="submit"><%= t('challenge.submit_button') %></button>

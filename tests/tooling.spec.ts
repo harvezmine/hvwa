@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +22,27 @@ describe('architecture', () => {
     // Compare relatively: an absolute compare breaks when the cwd's drive
     // letter case ('c:' vs 'C:') differs between modules on Windows.
     expect(relative(root, portal.portalViewsDir)).toBe(join('src', 'portal', 'views'));
+  });
+});
+
+describe('source hygiene', () => {
+  it('every file under src/ is valid UTF-8', () => {
+    const bad: string[] = [];
+    for (const rel of readdirSync(join(root, 'src'), { recursive: true }).map(String)) {
+      const p = join(root, 'src', rel);
+      if (!statSync(p).isFile()) continue;
+      try { new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(p)); } catch { bad.push(rel); }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('server.ts imports the district list before the app', () => {
+    const src = readFileSync(join(root, 'src', 'server.ts'), 'utf8');
+    const d = src.indexOf('./districts/index.js');
+    const a = src.indexOf('./app.js');
+    expect(d).toBeGreaterThan(-1);
+    expect(a).toBeGreaterThan(-1);
+    expect(d).toBeLessThan(a);
   });
 });
 

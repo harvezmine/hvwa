@@ -36,7 +36,27 @@ const CP2 = register(defineChallenge({
   maps: [], levels: ['acolyte', 'templar'], mount: () => {}, hints: [],
 }));
 
+// Undeclared inquisitor.ts + a sibling secret.ts must never be reachable.
+const CP3dir = dirWith({
+  acolyte: 'ACOLYTE_MARKER\n', templar: 'TEMPLAR_MARKER\n', inquisitor: 'INQ_UNDECLARED\n', divine: 'DIVINE_MARKER\n',
+});
+writeFileSync(join(CP3dir, 'secret.ts'), 'TOP_SECRET\n');
+const CP3 = register(defineChallenge({
+  id: 'CP-03', district: 'gatekeeper', slug: 'cp-markers', dir: CP3dir,
+  title: { id: '<b>x</b>', en: '<b>x</b>' }, summary: { id: '<i>s</i>', en: '<i>s</i>' },
+  maps: [], levels: ['acolyte', 'templar', 'divine'], mount: () => {}, hints: [],
+}));
+// lowest exploitable level is templar
+register(defineChallenge({
+  id: 'CP-04', district: 'gatekeeper', slug: 'cp-templar-low',
+  dir: dirWith({ templar: 'T_LOW\n', divine: 'D_SEC\n' }),
+  title: { id: 't', en: 't' }, summary: { id: 's', en: 's' },
+  maps: [], levels: ['templar', 'divine'], mount: () => {}, hints: [],
+}));
+
 const fresh = () => freshSession();
+const col = (html: string, side: 'vuln' | 'secure') =>
+  [...html.matchAll(new RegExp(`<td class="diff-${side}">([\\s\\S]*?)</td>`, 'g'))].map((m) => m[1]).join('');
 
 describe('levelSource', () => {
   it('reads an implemented level file', () => {
@@ -51,6 +71,83 @@ describe('levelSource', () => {
   });
 });
 
+describe('undeclared files are unreachable', () => {
+  it('levelSource ignores an undeclared level file and traversal', () => {
+    expect(levelSource(CP3, 'inquisitor')).toBeUndefined();
+    expect(levelSource(CP3, '../secret' as never)).toBeUndefined();
+  });
+  it('/source/inquisitor is 404 when undeclared', async () => {
+    const { agent } = await fresh();
+    expect((await agent.get('/c/CP-03/source/inquisitor')).status).toBe(404);
+  });
+  it('level sources are cached after the first read (static files)', () => {
+    const dir = dirWith({ acolyte: 'FIRST' });
+    const c = defineChallenge({
+      id: 'CP-77', district: 'x', slug: 'x', dir, title: { id: 't', en: 't' }, summary: { id: 's', en: 's' },
+      maps: [], levels: ['acolyte'], mount: () => {}, hints: [],
+    });
+    expect(levelSource(c, 'acolyte')).toBe('FIRST');
+    rmSync(join(dir, 'levels', 'acolyte.ts'));
+    expect(levelSource(c, 'acolyte')).toBe('FIRST');
+  });
+});
+
+describe('page content', () => {
+  it('escapes challenge title and summary', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-03?lang=en')).text;
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(html).toContain('&lt;i&gt;s&lt;/i&gt;');
+    expect(html).not.toContain('<b>x</b>');
+    expect(html).not.toContain('<i>s</i>');
+  });
+  it('has the form fields, the swap target element, and every source + diff link', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-01')).text;
+    expect(html).toContain('name="submission"');
+    expect(html).toContain('name="tier" value="1"');
+    expect(html).toContain('hx-target="#submit-result"');
+    expect(html).toContain('id="submit-result"');
+    expect(html).toContain('hx-target="#hint-1"');
+    expect(html).toContain('id="hint-1"');
+    expect(html).toContain('href="/c/CP-01/source/acolyte"');
+    expect(html).toContain('href="/c/CP-01/source/divine"');
+    expect(html).toContain('href="/c/CP-01/diff"');
+    // CP-01 declares templar but ships no file: no dead link
+    expect(html).not.toContain('/c/CP-01/source/templar');
+  });
+  it('no-JS fallback: forms post to the API (the flag never lands in the URL)', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-01')).text;
+    const forms = [...html.matchAll(/<form[^>]*>/g)].map((m) => m[0]);
+    for (const url of ['/api/submit', '/api/hint']) {
+      const f = forms.find((x) => x.includes(`hx-post="${url}"`));
+      expect(f, url).toContain('method="post"');
+      expect(f, url).toContain(`action="${url}"`);
+    }
+  });
+  it('shows unlocked hint text in id', async () => {
+    const { agent } = await fresh();
+    await agent.post('/api/hint').send({ challengeId: 'CP-01', tier: 1 });
+    expect((await agent.get('/c/CP-01?lang=id')).text).toContain('petunjuk-id &lt;b&gt;');
+  });
+  it('solved state is per session on the same app', async () => {
+    const a = await fresh();
+    const b = await freshSession(a.app);
+    await a.agent.post('/api/submit').send({ challengeId: 'CP-01', submission: issueFlag('CP-01', a.sid, 'acolyte') });
+    expect((await a.agent.get('/c/CP-01')).text).toMatch(/level-tab-acolyte"[^>]*data-solved="true"/);
+    expect((await b.agent.get('/c/CP-01')).text).toMatch(/level-tab-acolyte"[^>]*data-solved="false"/);
+  });
+  it('page titles are valid UTF-8 (no replacement characters)', async () => {
+    const { agent } = await fresh();
+    for (const p of ['/c/CP-01', '/c/CP-01/source/acolyte', '/c/CP-01/diff']) {
+      const title = /<title>([\s\S]*?)<\/title>/.exec((await agent.get(`${p}?lang=en`)).text)![1];
+      expect(title, p).not.toContain('�');
+      if (p !== '/c/CP-01') expect(title, p).toContain('CP-01');
+    }
+  });
+});
+
 describe('GET /c/:id', () => {
   it('renders title, summary in current lang, tags, and exactly the implemented levels', async () => {
     const { agent } = await fresh();
@@ -60,7 +157,12 @@ describe('GET /c/:id', () => {
     expect(en).toContain('CWE-89');
     expect(en).toContain('A05:2025');
     const tabs = [...en.matchAll(/data-testid="level-tab-(\w+)"/g)].map((m) => m[1]);
-    expect(tabs).toEqual(['acolyte', 'templar']); // divine is not a tab
+    expect(tabs).toEqual(['acolyte', 'templar', 'divine']); // one tab per implemented level
+    expect(en).toContain('href="/d/gatekeeper/cp-fixture?level=divine"');
+    expect(en).toMatch(/data-testid="level-tab-divine"[^>]*>[^<]*secure reference/i);
+    // divine is never scored: no solved flag or badge on its tab
+    expect(en).not.toMatch(/data-testid="level-tab-divine"[^>]*data-solved/);
+    expect(/data-testid="level-tab-divine"[\s\S]*?<\/li>/.exec(en)![0]).not.toContain('class="badge');
     expect(en).toContain('href="/d/gatekeeper/cp-fixture?level=acolyte"');
     expect(en).toContain('href="/c/CP-01/diff"');
     expect((await agent.get('/c/CP-01?lang=id')).text).toContain('ringkasan-id');
@@ -177,7 +279,55 @@ describe('GET /c/:id/source/:level', () => {
   });
 });
 
+describe('htmx errors and language', () => {
+  it('HX requests get a 200 escaped error fragment instead of a 4xx', async () => {
+    const { agent } = await fresh();
+    for (const body of [{ challengeId: 'CP-01', tier: '2' }, { challengeId: 'CP-01', tier: 'x' }, { challengeId: 'NOPE', tier: '1' }]) {
+      const hx = await agent.post('/api/hint').set('HX-Request', 'true').type('form').send(body);
+      expect(hx.status, JSON.stringify(body)).toBe(200);
+      expect(hx.headers['content-type']).toMatch(/html/);
+      expect(hx.text).toContain('data-error');
+    }
+  });
+  it('error fragments echo no input; non-HX callers keep JSON 4xx', async () => {
+    const { agent } = await fresh();
+    const hx = await agent.post('/api/submit').set('HX-Request', 'true').type('form').send({ challengeId: 'N<b>', submission: 'x' });
+    expect(hx.status).toBe(200);
+    expect(hx.text).toContain('data-error');
+    expect(hx.text).not.toContain('N<b>');
+    const json = await agent.post('/api/hint').send({ challengeId: 'CP-01', tier: 2 });
+    expect(json.status).toBe(404);
+    expect(json.body).toEqual({ unlocked: false, error: 'unknown_tier' });
+    expect((await agent.post('/api/hint').send({ challengeId: 'CP-01', tier: 'x' })).status).toBe(400);
+    expect((await agent.post('/api/submit').send({ challengeId: 'NOPE', submission: 'x' })).status).toBe(404);
+  });
+  it('hint fragment honors ?lang and the remembered cookie', async () => {
+    const a = await fresh();
+    const en = await a.agent.post('/api/hint?lang=en').set('HX-Request', 'true').type('form').send({ challengeId: 'CP-01', tier: '1' });
+    expect(en.text).toContain('hint-en &lt;b&gt;');
+    const b = await fresh();
+    await b.agent.get('/c/CP-01?lang=id');
+    const id = await b.agent.post('/api/hint').set('HX-Request', 'true').type('form').send({ challengeId: 'CP-01', tier: '1' });
+    expect(id.text).toContain('petunjuk-id &lt;b&gt;');
+  });
+});
+
 describe('GET /c/:id/diff', () => {
+  it('left column is the lowest exploitable level, right is divine; middle levels absent', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-03/diff')).text;
+    expect(col(html, 'vuln')).toContain('ACOLYTE_MARKER');
+    expect(col(html, 'secure')).toContain('DIVINE_MARKER');
+    expect(html).not.toContain('TEMPLAR_MARKER');
+    expect(html).not.toContain('INQ_UNDECLARED');
+  });
+  it('labels the left column with the actual level (templar-lowest fixture)', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-04/diff?lang=en')).text;
+    expect(html).toContain('T_LOW');
+    expect(html).toMatch(/<th colspan="2">[^<]*Templar[^<]*<\/th>/);
+    expect(html).not.toMatch(/<th colspan="2">[^<]*Acolyte[^<]*<\/th>/);
+  });
   it('renders both columns for vulnerable vs divine', async () => {
     const { agent } = await fresh();
     const res = await agent.get('/c/CP-01/diff?lang=en');

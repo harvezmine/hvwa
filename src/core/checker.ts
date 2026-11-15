@@ -17,6 +17,12 @@ const SCORED_LEVELS_DESC = Object.freeze([...FLAG_LEVELS].reverse());
 // every other caller keeps the JSON contract.
 const isHtmx = (req: Request): boolean => req.get('HX-Request') === 'true';
 function fragment(res: Response, html: string): void { res.type('html').send(html); }
+// Choice: htmx does not swap 4xx responses by default, so an HX request that
+// fails gets 200 + an escaped error fragment (data-error); non-HX callers keep
+// the JSON 4xx contract. The fragment never echoes request input.
+function hxError(res: Response, key: string): void {
+  fragment(res, `<p class="result result-bad" data-error="${escapeHtml(key)}" role="alert">${escapeHtml(res.locals.t(`challenge.err_${key}`))}</p>`);
+}
 
 export function checkerRouter(db: DatabaseSync): Router {
   const r = Router();
@@ -26,6 +32,7 @@ export function checkerRouter(db: DatabaseSync): Router {
     const { challengeId, submission } = req.body ?? {};
     const ch = getChallenge(String(challengeId ?? ''));
     if (!ch) {
+      if (isHtmx(req)) { hxError(res, 'unknown_challenge'); return; }
       res.status(404).json({ solved: false, error: 'unknown_challenge' });
       return;
     }
@@ -61,16 +68,19 @@ export function checkerRouter(db: DatabaseSync): Router {
     const { challengeId, tier: rawTier } = req.body ?? {};
     const cid = String(challengeId ?? '');
     if (!getChallenge(cid)) {
+      if (isHtmx(req)) { hxError(res, 'unknown_challenge'); return; }
       res.status(404).json({ unlocked: false, error: 'unknown_challenge' });
       return;
     }
     const tier = parseTier(rawTier);
     if (tier === undefined) {
+      if (isHtmx(req)) { hxError(res, 'invalid_tier'); return; }
       res.status(400).json({ unlocked: false, error: 'invalid_tier' });
       return;
     }
     const result = unlockHint(db, sid, cid, tier);
     if (!result.ok) {
+      if (isHtmx(req)) { hxError(res, result.error); return; }
       res.status(404).json({ unlocked: false, error: result.error });
       return;
     }
