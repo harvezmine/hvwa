@@ -9,6 +9,7 @@ import type { Result } from '../../_shared/lab.js';
 // audit role changes and rate limit profile updates.
 const EMAIL = /^[^@\s]{1,64}@[^@\s]{1,100}$/;
 
+export const notice = '';
 export function applyUpdate(user: User, body: unknown): Result {
   if (!isPlainObject(body)) return { ok: true, text: 'Profile updated.' };
   if (typeof body.displayName === 'string') user.displayName = body.displayName.slice(0, 80);

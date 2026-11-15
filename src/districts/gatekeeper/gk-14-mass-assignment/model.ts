@@ -2,16 +2,17 @@
 // platform-safety helpers the levels share. Not served: View Source shows only levels/*.ts.
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
-import { PLAYER, type Result } from '../_shared/lab.js';
+import type { Result } from '../_shared/lab.js';
 
 /** The player's account record. Levels decide which request fields may reach it. */
 export interface User {
-  displayName: string;
-  bio: string;
-  email: string;
+  // unknown: a level that merges raw input (Acolyte, Templar) can put any scalar here; the page coerces for display.
+  displayName: unknown;
+  bio: unknown;
+  email: unknown;
   /** An email change waiting for verification (Divine only). */
   pendingEmail: string | null;
-  role: string;
+  role: unknown;
   [field: string]: unknown;
 }
 
@@ -29,6 +30,8 @@ export const labState = (sessionId: string, level: Level): LabState => labs.for(
 export interface ProfileLevel {
   /** Apply a profile update request body to the record and say what happened. */
   applyUpdate(user: User, body: unknown): Result;
+  /** A line shown on the front page (a staff contact, a note), or ''. */
+  readonly notice: string;
 }
 
 // ---- Platform safety, not the lesson: prototype pollution is a different lab and must never reach the process ----
@@ -56,5 +59,3 @@ export function setField(user: User, key: string, value: unknown): void {
   if (!Object.hasOwn(user, key) && Object.keys(user).length >= MAX_FIELDS_ON_USER) return;
   user[key] = typeof value === 'string' ? value.slice(0, MAX_TEXT) : value;
 }
-
-export const PLAYER_NAME = PLAYER.username;

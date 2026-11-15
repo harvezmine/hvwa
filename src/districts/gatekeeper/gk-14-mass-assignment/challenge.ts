@@ -3,10 +3,9 @@ import { join } from 'node:path';
 import type { Request, Response } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
 import { byLevel, field, labPath } from '../../../core/lab.js';
-import { flagFor } from '../../../core/mount.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import { PLAYER, type Result } from '../_shared/lab.js';
+import { PLAYER, adminNote, curlFor, pilgrimLogin, sendAdminPage, type Result } from '../_shared/lab.js';
 import { labFor, type ProfileLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -15,7 +14,6 @@ import * as divine from './levels/divine.js';
 
 const dir = challengeDir(import.meta.url);
 const profileView = join(dir, 'views', 'profile.ejs');
-const adminView = join(dir, 'views', 'admin.ejs');
 const impl = byLevel<ProfileLevel>({ acolyte, templar, inquisitor, divine });
 
 export const GK14 = register(defineChallenge({
@@ -25,11 +23,11 @@ export const GK14 = register(defineChallenge({
     id: 'Ubah profilmu sampai akunmu sendiri menjadi admin, lalu buka halaman admin.',
     en: 'Edit your profile until your own account becomes an admin, then open the admin page.',
   },
-  maps: ['A01:2025', 'CWE-915', 'CWE-269'],
+  maps: ['A01:2025', 'API3:2023', 'CWE-915', 'CWE-269'],
   levels: impl.levels,
   points: 100,
   hints: [
-    { id: 1, cost: 10, text: { id: 'Formulir hanya menampilkan beberapa kolom. Apakah server hanya membaca kolom itu, atau semua yang kamu kirim?', en: 'The form shows only a few fields. Does the server read only those, or everything you send?' } },
+    { id: 1, cost: 10, text: { id: 'Profilmu menampilkan satu atribut yang tidak bisa kamu ubah lewat formulir. Apakah server benar-benar menolak perubahannya, atau hanya formulirnya yang tidak menyediakannya?', en: 'Your profile shows an attribute the form does not let you edit. Does the server really refuse to change it, or does only the form not offer it?' } },
     { id: 2, cost: 20, text: { id: 'Kalau satu kunci diblokir, bagaimana bila data yang sama dikirim di dalam kunci lain? Dan bagaimana server menentukan peran sebenarnya?', en: 'If one key is blocked, what if the same data arrives inside another key? And how does the server decide the real role?' } },
     { id: 3, cost: 40, text: { id: 'Daftar kolom yang diizinkan sudah ketat. Atribut mana yang boleh kamu ubah, dan apa yang diturunkan dari atribut itu?', en: 'The allowed-field list is strict. Which attribute can you change, and what is derived from it?' } },
   ],
@@ -38,7 +36,8 @@ export const GK14 = register(defineChallenge({
       const state = labFor(req);
       const u = state.user;
       await sendPage(res, profileView, {
-        base: labPath(res), account: PLAYER, result, username, password,
+        base: labPath(res), account: PLAYER, result, username, password, notice: impl.for(req.level).notice,
+        curl: curlFor(req, res, { path: '/profile', headers: ['Content-Type: application/json'], data: '{"displayName":"Brother Lamp"}' }),
         profile: state.signedIn
           ? { displayName: String(u.displayName), bio: String(u.bio), email: String(u.email), pendingEmail: u.pendingEmail, role: String(u.role) }
           : null,
@@ -48,6 +47,7 @@ export const GK14 = register(defineChallenge({
     const update = async (req: Request, res: Response, body: unknown) => {
       const state = labFor(req);
       const result: Result = state.signedIn ? impl.for(req.level).applyUpdate(state.user, body) : { ok: false, text: 'Sign in first.' };
+      res.status(!state.signedIn ? 401 : result.ok ? 200 : 422);
       await page(req, res, result, '', '');
     };
 
@@ -60,16 +60,9 @@ export const GK14 = register(defineChallenge({
         await update(req, res, rest);
         return;
       }
-      const username = field(req, 'username');
-      const password = field(req, 'password');
-      let result: Result;
-      if (username === PLAYER.username && password === PLAYER.password) {
-        labFor(req).signedIn = true;
-        result = { ok: true, text: `Signed in as ${PLAYER.username}.` };
-      } else {
-        result = { ok: false, text: 'Invalid username or password.' };
-      }
-      await page(req, res, result, username, password);
+      const login = pilgrimLogin(req);
+      if (login.ok) labFor(req).signedIn = true;
+      await page(req, res, login.result, login.username, login.password);
     });
 
     const updateRoute = async (req: Request, res: Response) => { await update(req, res, req.body); };
@@ -79,8 +72,10 @@ export const GK14 = register(defineChallenge({
     router.get('/admin', async (req, res) => {
       const admin = labFor(req).user.role === 'admin';
       // Only an account that really became admin sees the flag, and Divine never issues one.
-      const note = !admin ? '' : req.level === 'divine' ? 'Welcome back.' : `Flag: ${flagFor(req, GK14)}`;
-      await sendPage(res, adminView, { base: labPath(res), admin, note });
+      await sendAdminPage(res, {
+        admin, granted: `Citadel admin console. ${adminNote(req, GK14, admin)}`.trim(),
+        denial: 'Admin only. Your account is not an admin.',
+      });
     });
   },
 }));

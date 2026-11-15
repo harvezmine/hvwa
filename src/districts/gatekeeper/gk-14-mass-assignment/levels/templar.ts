@@ -12,6 +12,7 @@ function deepMerge(user: User, body: unknown, depth: number): void {
   }
 }
 
+export const notice = '';
 export function applyUpdate(user: User, body: unknown): Result {
   const top = fieldsOf(body).filter(([key]) => key !== 'role'); // strip role (top level only)
   deepMerge(user, Object.fromEntries(top), 0);

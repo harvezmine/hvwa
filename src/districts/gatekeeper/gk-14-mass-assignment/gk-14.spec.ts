@@ -1,19 +1,17 @@
 // src/districts/gatekeeper/gk-14-mass-assignment/gk-14.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import {
-  freshSession, describeExploitMatrix, describeLabView, FLAG_RE, type Agent,
-} from '../../../../tests/helpers.js';
-import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeExploitMatrix, FLAG_RE } from '../../../../tests/helpers.js';
+import { LEVELS } from '../../../core/levels.js';
+import { describePilgrimLab, newCtx, pilgrimClient, type PilgrimCtx } from '../_shared/pilgrim-lab.testkit.js';
 import { GK14 } from './challenge.js'; // registers GK-14 before createApp() inside freshSession
 import { labState } from './model.js';
 
 const LAB = '/d/gatekeeper/mass-assignment';
-interface Ctx { agent: Agent; level: Level; sid: string }
+type Ctx = PilgrimCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const home = (c: Ctx) => c.agent.get(`${LAB}?level=${c.level}`);
-const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
+const { home, login } = pilgrimClient(LAB);
 const updateJson = (c: Ctx, body: unknown) => c.agent.post(`${LAB}/profile?level=${c.level}`).send(body as object);
 const updateForm = (c: Ctx, body: string) => c.agent.post(`${LAB}/profile?level=${c.level}`).type('form').send(body);
 const admin = (c: Ctx) => c.agent.get(`${LAB}/admin?level=${c.level}`);
@@ -32,9 +30,10 @@ const inquisitorExploit: Script = async (c) => {
 describeExploitMatrix<Script>({
   challenge: GK14,
   path: LAB,
-  send: (agent, level, script, _url, { sid }) => script({ agent, level, sid }),
+  send: (agent, level, script, _url, { sid, app }) => script({ agent, level, sid, app }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Admin only/,
+  resistedStatus: 403,
   legit: [
     { name: 'sign in', input: async (c) => login(c), expect: 'Signed in as pilgrim' },
     {
@@ -54,17 +53,12 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK14, path: LAB, account: /pilgrim<\/code> \/ <code>pilgrim/, echoField: 'username', extra: { password: 'x' },
-  oddBodies: [{ username: { a: 1 }, password: ['x'] }, { username: [], password: null }, []],
-  ok: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }),
-  bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'no' }),
+describePilgrimLab({
+  challenge: GK14, path: LAB,
+  curl: () => ({ path: '/profile', headers: ['Content-Type: application/json'], data: '{"displayName":"Brother Lamp"}' }),
 });
 
-async function ctxFor(level: Level): Promise<Ctx> {
-  const { agent, sid } = await freshSession();
-  return { agent, level, sid };
-}
+const ctxFor = newCtx;
 
 describe('GK-14 profile updates', () => {
   it('the profile page form (no action) updates the profile through the lab root', async () => {
@@ -123,8 +117,11 @@ describe('GK-14 profile updates', () => {
     for (const level of LEVELS) {
       const c = await ctxFor(level);
       const res = await updateJson(c, { role: 'admin', account: { role: 'admin' }, email: 'x@citadel.admin' });
+      expect(res.status, level).toBe(401);
       expect(res.text, level).toContain('Sign in first');
-      expect((await admin(c)).text, level).toContain('Admin only');
+      const adm = await admin(c);
+      expect(adm.status, level).toBe(403);
+      expect(adm.text, level).toContain('Admin only');
       expect(labState(c.sid, level).user.role, level).toBe('user');
     }
   });
@@ -175,5 +172,45 @@ describe('GK-14 profile updates', () => {
     await login(b);
     expect((await admin(b)).text).toContain('Admin only');
     expect(labState(a.sid, 'templar').user.role).toBe('user');
+  });
+
+  it('the record is bounded: many distinct keys stop at 60 fields, long values are cut', async () => {
+    for (const level of ['acolyte', 'templar'] as const) {
+      const c = await ctxFor(level);
+      await login(c);
+      for (let r = 0; r < 3; r++) {
+        const body = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`k${r}_${i}`, 'v']));
+        expect((await updateJson(c, body)).status, level).toBe(200);
+      }
+      expect(Object.keys(labState(c.sid, level).user).length, level).toBeLessThanOrEqual(60);
+      await updateJson(c, { bio: 'b'.repeat(2000), displayName: 'd'.repeat(2000) });
+      expect(String(labState(c.sid, level).user.bio).length, level).toBe(500);
+    }
+    for (const level of ['inquisitor', 'divine'] as const) {
+      const c = await ctxFor(level);
+      await login(c);
+      await updateJson(c, { bio: 'b'.repeat(2000), displayName: 'd'.repeat(2000) });
+      const user = labState(c.sid, level).user;
+      expect(String(user.bio).length, level).toBe(500);
+      expect(String(user.displayName).length, level).toBe(80);
+    }
+  });
+
+  it('an invalid email is refused (422) where emails are read, and nothing changes', async () => {
+    for (const level of ['inquisitor', 'divine'] as const) {
+      const c = await ctxFor(level);
+      await login(c);
+      const res = await updateJson(c, { email: 'not an email' });
+      expect(res.status, level).toBe(422);
+      expect(labState(c.sid, level).user.email, level).toBe('pilgrim@citadel.example');
+    }
+  });
+
+  it('inquisitor: the page names the staff domain (the breadcrumb); the other levels do not', async () => {
+    const c = await ctxFor('inquisitor');
+    expect((await home(c)).text).toContain('@citadel.admin');
+    for (const level of ['acolyte', 'templar', 'divine'] as const) {
+      expect((await home(await ctxFor(level))).text, level).not.toContain('@citadel.admin');
+    }
   });
 });
