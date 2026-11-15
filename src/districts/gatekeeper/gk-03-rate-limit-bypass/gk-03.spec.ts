@@ -185,7 +185,7 @@ describe('GK-03 lab view', () => {
     const res = await agent.get(`${LAB}?level=acolyte`);
     expect(res.status).toBe(200);
     expect(res.text).toMatch(/pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/);
-    expect(res.text).toContain('leaked.txt');
+    expect(res.text).toContain(`href="${LAB}/leaked.txt"`); // absolute: a relative link would leave the lab
     expect(res.text).toContain('citadel_admin');
     expect(res.text).not.toMatch(/type="password"/);
     expect(/<form[^>]*>/.exec(res.text)?.[0]).not.toContain('action');

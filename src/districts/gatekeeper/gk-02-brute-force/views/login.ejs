@@ -2,7 +2,7 @@
 <section class="lab">
   <h1>Citadel Gate — Sign in</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code></p>
-  <p class="lab-note">The gatekeepers published the password policy's <a href="wordlist.txt">list of common passwords</a> by mistake. Target: <code><%= target %></code>.</p>
+  <p class="lab-note">The gatekeepers published the password policy's <a href="<%= base %>/wordlist.txt">list of common passwords</a> by mistake. Target: <code><%= target %></code>.</p>
   <form method="post">
     <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
     <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>

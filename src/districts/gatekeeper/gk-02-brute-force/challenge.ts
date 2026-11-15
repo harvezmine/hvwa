@@ -42,14 +42,14 @@ export const GK02 = register(defineChallenge({
     { id: 3, cost: 40, text: { id: 'Templar: login sukses mana pun mereset hitungan. Inquisitor: sistem login dan sistem hitungan memperlakukan nama pengguna secara berbeda.', en: 'Templar: any successful login resets the count. Inquisitor: the login and the counter treat the username differently.' } },
   ],
   mount: (router) => {
-    router.get('/', (_req, res) => sendPage(res, view, { account: PLAYER, target: ADMIN_NAME, result: null, username: '', password: '' }));
+    router.get('/', (req, res) => sendPage(res, view, { base: req.baseUrl, account: PLAYER, target: ADMIN_NAME, result: null, username: '', password: '' }));
     router.get('/wordlist.txt', (_req, res) => { res.type('text/plain').send(`${wordlist().join('\n')}\n`); });
     router.post('/', async (req, res) => {
       const username = field(req, 'username');
       const password = field(req, 'password');
       const outcome = impl.for(req.level).login(labFor(req), username, password);
       const result: Result = outcome.ok ? welcome(req, outcome.account) : { ok: false, text: outcome.message };
-      await sendPage(res, view, { account: PLAYER, target: ADMIN_NAME, result, username, password });
+      await sendPage(res, view, { base: req.baseUrl, account: PLAYER, target: ADMIN_NAME, result, username, password });
     });
   },
 }));

@@ -47,9 +47,9 @@ export const GK03 = register(defineChallenge({
     { id: 3, cost: 40, text: { id: 'Kalau identitas klien sudah benar, hitung apa yang dihitung: percobaan, atau permintaan? Lihat apa saja yang diterima endpoint.', en: 'If the client identity is sound, look at what is counted: attempts, or requests? Check what shapes of body the endpoint accepts.' } },
   ],
   mount: (router) => {
-    const page = (res: Parameters<typeof sendPage>[0], result: Result | null, username: string, password: string) =>
-      sendPage(res, view, { account: PLAYER, target: ADMIN_NAME, result, username, password });
-    router.get('/', (_req, res) => page(res, null, '', ''));
+    const page = (req: Request, res: Parameters<typeof sendPage>[0], result: Result | null, username: string, password: string) =>
+      sendPage(res, view, { base: req.baseUrl, account: PLAYER, target: ADMIN_NAME, result, username, password });
+    router.get('/', (req, res) => page(req, res, null, '', ''));
     router.get('/leaked.txt', (_req, res) => { res.type('text/plain').send(`${leakedList().join('\n')}\n`); });
     router.post('/', async (req, res) => {
       const attempt: Attempt = {
@@ -60,7 +60,7 @@ export const GK03 = register(defineChallenge({
       };
       const outcome = impl.for(req.level).login(labFor(req), attempt);
       const result: Result = outcome.ok ? welcome(req, outcome.account) : { ok: false, text: outcome.message };
-      await page(res, result, field(req, 'username'), field(req, 'password'));
+      await page(req, res, result, field(req, 'username'), field(req, 'password'));
     });
   },
 }));
