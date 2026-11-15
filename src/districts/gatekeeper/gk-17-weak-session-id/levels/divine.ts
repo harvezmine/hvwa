@@ -7,7 +7,7 @@ import type { LabState } from '../model.js';
 // Out of scope here: a production system would also give sessions an expiry, rotate the id
 // at login (against fixation), mark the cookie Secure/HttpOnly/SameSite, and bind it
 // server-side to the client where that makes sense.
-export function mint(_state: LabState, _username: string): string {
+export function mint(_state: LabState, _username: string, _nowMs: number): string {
   return randomBytes(32).toString('hex');
 }
 

@@ -3,12 +3,14 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { ADMIN_NAME } from '../_shared/lab.js';
 
-export const ADMIN_NAME = 'citadel_admin';
 export const GUEST_NAME = 'guest';
 
-/** The player's own (unprivileged) account, shown on the lab page. */
-export const PLAYER = Object.freeze({ username: 'pilgrim', password: 'pilgrim' });
+/** The lab's session cookie. One name per level: levels share a path, and must not overwrite each other's session. */
+export function cookieName(level: Level): string {
+  return `citadel_sid_${level}`;
+}
 
 /** One entry of the "recent activity" panel. */
 export interface Activity { user: string; epoch: number }
@@ -33,8 +35,8 @@ export interface LabState {
 
 /** What every levels/<level>.ts exports (checked by byLevel<TokenLevel> in challenge.ts). */
 export interface TokenLevel {
-  /** Mint a session token for `username` (the generator is the whole lesson). */
-  mint(state: LabState, username: string): string;
+  /** Mint a session token for `username` at `nowMs` (the generator is the whole lesson). */
+  mint(state: LabState, username: string, nowMs: number): string;
   /** Whether the activity panel shows when each sign-in happened. */
   readonly showsLoginTime: boolean;
 }
@@ -43,11 +45,16 @@ const MAX_SESSIONS = 200;
 
 /** Mint and register a session for `username`; the admin's token is never evicted. Returns the token. */
 export function startSession(level: TokenLevel, state: LabState, username: string): string {
-  const token = level.mint(state, username);
+  const nowMs = state.now(); // read the clock once: the token and the activity entry must agree
+  const token = level.mint(state, username, nowMs);
   state.sessions.set(token, username);
-  state.activity.push({ user: username, epoch: Math.floor(state.now() / 1000) });
+  state.activity.push({ user: username, epoch: Math.floor(nowMs / 1000) });
   if (username === ADMIN_NAME) state.adminToken = token;
-  if (state.activity.length > 20) state.activity.shift();
+  // Keep the panel short, but never drop the admin's line: it is part of the lab (Templar reads it).
+  if (state.activity.length > 20) {
+    const i = state.activity.findIndex((a) => a.user !== ADMIN_NAME);
+    state.activity.splice(i === -1 ? 0 : i, 1);
+  }
   while (state.sessions.size > MAX_SESSIONS) {
     const oldest = [...state.sessions.keys()].find((k) => k !== state.adminToken);
     if (oldest === undefined) break;
@@ -76,6 +83,11 @@ const labs = perSession((): LabState => ({
 /** The lab state for this request's session at the served level. */
 export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
+}
+
+/** The "Restart lab" hook: a fresh lab (new admin session, new generators) at this level. */
+export function resetLab(req: { sessionId: string; level: Level }): void {
+  labs.reset(req);
 }
 
 /** Test seam: the lab state of session `sessionId` at `level` (`.adminToken` is the real admin session). */
