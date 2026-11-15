@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -108,6 +108,64 @@ describe('challengeDb rejects statements that escape the sandbox', () => {
     let raw: DatabaseSync | undefined;
     challengeDb(SCHEMA, (d) => { raw = d; d.exec('PRAGMA user_version = 7'); });
     expect(typeof raw?.exec).toBe('function');
+  });
+});
+
+describe('challengeDb: BOM (U+FEFF) is whitespace to SQLite and must not bypass the facade', () => {
+  const B = '﻿';
+  const bomVariants = (target: string): string[] => [
+    `${B}ATTACH ${target} AS p`,
+    `${B}${B}ATTACH ${target} AS p`,
+    `;${B}ATTACH ${target} AS p`,
+    `/* c */${B}ATTACH ${target} AS p`,
+    ` ${B} ATTACH ${target} AS p`,
+    `${B}attach ${target} AS p`,
+    `${B}EXPLAIN${B}ATTACH ${target} AS p`,
+    `${B}PRAGMA user_version`,
+  ];
+
+  it('rejects every BOM variant and creates no file', () => {
+    const dir = tempDir();
+    const target = join(dir, 'evil.db');
+    const db = challengeDb(SCHEMA);
+    for (const sql of bomVariants(lit(target))) {
+      expect(() => db.prepare(sql), JSON.stringify(sql)).toThrow(/not allowed in a challenge DB/);
+    }
+    expect(existsSync(target)).toBe(false);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('a BOM-prefixed SELECT still works', () => {
+    const db = challengeDb(SCHEMA);
+    expect(db.prepare(`${B}SELECT 1 AS one`).get()).toMatchObject({ one: 1 });
+    expect(db.prepare(`${B}${B} /* x */ ${B}SELECT 2 AS two`).get()).toMatchObject({ two: 2 });
+  });
+});
+
+describe('challengeDb allowlist (fail closed)', () => {
+  it.each([
+    'BEGIN', 'COMMIT', 'SAVEPOINT x', 'RELEASE x', 'ROLLBACK', 'REINDEX', 'ANALYZE', 'foo',
+    'foo bar', '', '   ', '-- only a comment', '/* only a comment */', ';;;', '1', '(SELECT 1)',
+  ])('rejects %j', (sql) => {
+    expect(() => challengeDb(SCHEMA).prepare(sql)).toThrow(/not allowed in a challenge DB/);
+  });
+
+  it('every allowlisted keyword works for a normal statement', () => {
+    const db = challengeDb(SCHEMA);
+    const stmts = [
+      'SELECT 1',
+      'VALUES (1), (2)',
+      'WITH x AS (SELECT 1 AS a) SELECT a FROM x',
+      "INSERT INTO notes (id, body) VALUES (1, 'a')",
+      "REPLACE INTO notes (id, body) VALUES (1, 'b')",
+      "UPDATE notes SET body = 'c'",
+      'DELETE FROM notes',
+      'CREATE TABLE t2 (a INTEGER)',
+      'ALTER TABLE t2 ADD COLUMN b TEXT',
+      'DROP TABLE t2',
+      'explain query plan select 1',
+    ];
+    for (const sql of stmts) expect(() => db.prepare(sql).all(), sql).not.toThrow();
   });
 });
 
