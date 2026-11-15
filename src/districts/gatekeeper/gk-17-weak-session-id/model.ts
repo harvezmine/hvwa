@@ -65,11 +65,12 @@ export function startSession(level: TokenLevel, state: LabState, username: strin
   return token;
 }
 
-/** Record a token issued to the visitor (listed on the page so the issue order is visible). Bounded; the first one is pinned. */
+/** Record a token issued to the visitor (listed on the page so the issue order is visible). Bounded; the first two are pinned. */
 export function giveToVisitor(state: LabState, token: string): void {
   state.ownTokens.push(token);
-  // The first token (the boot guest) is pinned: it is one end of the bracket and must never scroll away.
-  if (state.ownTokens.length > 20) state.ownTokens.splice(1, 1);
+  // The first two tokens (the boot guest, and the one issued right after the admin's) are pinned: they
+  // bracket the admin token and must never scroll away.
+  if (state.ownTokens.length > 20) state.ownTokens.splice(2, 1);
 }
 
 /** Who a presented token belongs to, or undefined. Own-property lookup only (the map is not an object). */

@@ -83,6 +83,9 @@ after changing anything Docker-related.
   Tailscale Serve/Funnel, VS Code port forwarding, `netsh interface portproxy`,
   WSL mirrored-networking tricks) can republish a loopback port to the world.
   Never point them at HVWA.
+- **Test servers (`npm test`).** The test wrapper (`tests/support/supertest.ts`) starts each app's server with
+  `listen(0)`, so during a test run it briefly listens on all interfaces on a random port (supertest does the same).
+  The Host allowlist still applies. Run tests on a trusted network or behind a host firewall.
 
 ## Rules
 

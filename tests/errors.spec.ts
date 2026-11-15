@@ -3,6 +3,7 @@ import express from 'express';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { errorHandler } from '../src/core/errors.js';
+import { NewSessionLimitError } from '../src/core/lab.js';
 import { register, defineChallenge } from '../src/core/registry.js';
 import { TEST_SECRET } from './helpers.js';
 
@@ -30,6 +31,20 @@ function expectNoLeak(text: string) {
 }
 
 describe('error handler', () => {
+  it('a per-lab new-session limit is a 429 that says why (plain text), JSON for /api', async () => {
+    const app = express();
+    app.get('/page/limited', () => { throw new NewSessionLimitError(); });
+    app.get('/api/limited', () => { throw new NewSessionLimitError(); });
+    app.use(errorHandler());
+    const page = await request(app).get('/page/limited');
+    expect(page.status).toBe(429);
+    expect(page.headers['content-type']).toContain('text/plain');
+    expect(page.text).toBe('Too many new lab sessions — wait a minute and keep your cookie jar.');
+    const api = await request(app).get('/api/limited');
+    expect(api.status).toBe(429);
+    expect(api.body).toEqual({ error: 'too_many_requests' });
+  });
+
   it('answers /api/* errors with a 500 JSON body and no stack', async () => {
     const res = await request(bare()).get('/api/boom');
     expect(res.status).toBe(500);
