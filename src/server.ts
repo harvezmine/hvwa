@@ -1,12 +1,21 @@
 import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { createApp } from './app.js';
-import { config } from './config.js';
+import { bindRefusal, config } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';
 
-// <project>/data whether running from src/ (tsx) or dist/ (node).
-const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
+// Deliberately vulnerable: refuse a non-loopback bind unless explicitly allowed.
+const refusal = bindRefusal(config);
+if (refusal) {
+  console.error(refusal);
+  process.exit(1);
+}
+
+// HVWA_DATA_DIR, else <project>/data whether running from src/ (tsx) or dist/ (node).
+const dataDir = config.HVWA_DATA_DIR
+  ? resolve(config.HVWA_DATA_DIR)
+  : join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 mkdirSync(dataDir, { recursive: true });
 
 const app = createApp({
