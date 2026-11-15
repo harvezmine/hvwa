@@ -11,7 +11,7 @@ function app() {
   const a = express();
   a.use(cookieParser()); // mirrors createApp()
   a.use(sessionMiddleware());
-  a.get('/me', (req, res) => { res.json({ sid: (req as any).sessionId }); });
+  a.get('/me', (req, res) => { res.json({ sid: req.sessionId }); });
   return a;
 }
 

@@ -16,7 +16,7 @@ export function checkerRouter(db: DatabaseSync): Router {
   const r = Router();
 
   r.post('/submit', async (req, res) => {
-    const sid = (req as any).sessionId as string;
+    const sid = req.sessionId;
     const { challengeId, submission } = req.body ?? {};
     const ch = getChallenge(String(challengeId ?? ''));
     if (!ch) {
@@ -41,7 +41,7 @@ export function checkerRouter(db: DatabaseSync): Router {
   });
 
   r.post('/hint', (req, res) => {
-    const sid = (req as any).sessionId as string;
+    const sid = req.sessionId;
     const { challengeId, tier } = req.body ?? {};
     const hint = unlockHint(db, sid, String(challengeId ?? ''), Number(tier));
     if (!hint) {

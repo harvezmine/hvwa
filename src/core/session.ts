@@ -17,7 +17,7 @@ export function sessionMiddleware(): RequestHandler {
       sid = randomUUID();
       res.cookie('hvwa_sid', sid, { httpOnly: true, sameSite: 'lax', path: '/' });
     }
-    (req as any).sessionId = sid;
+    req.sessionId = sid;
     next();
   };
 }

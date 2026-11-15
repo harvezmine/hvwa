@@ -13,10 +13,10 @@ export function levelMiddleware(): RequestHandler {
       if (req.cookies?.hvwa_level !== fromQuery) {
         res.cookie('hvwa_level', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
       }
-      (req as any).level = fromQuery;
+      req.level = fromQuery;
     } else {
       const fromCookie = req.cookies?.hvwa_level;
-      (req as any).level = isLevel(fromCookie) ? fromCookie : DEFAULT_LEVEL;
+      req.level = isLevel(fromCookie) ? fromCookie : DEFAULT_LEVEL;
     }
     next();
   };

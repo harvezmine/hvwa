@@ -27,7 +27,7 @@ export function portalRouter(db: DatabaseSync): Router {
   });
 
   r.get('/scoreboard', async (req, res) => {
-    const sid = (req as any).sessionId as string;
+    const sid = req.sessionId;
     res.send(await page(res, view('scoreboard'), {
       title: res.locals.t('scoreboard.title'),
       score: scoreFor(db, sid),

@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
 import { seed } from './db/seed.js';
 import { setFlagSecret } from './core/flags.js';
@@ -23,23 +24,30 @@ export interface AppOptions {
   /** SQLite path. Defaults to an in-memory database (tests). */
   dbPath?: string;
   /**
-   * HMAC secret for flags (process-wide). When omitted, the current secret is
-   * kept — by default a random value generated once per process in flags.ts.
+   * HMAC secret for flags. PROCESS-WIDE: the flag secret is a single module
+   * value in core/flags.ts shared by every app in this process, so passing it
+   * here changes it for all of them. When omitted, the current secret is kept
+   * (by default a random value generated once per process). server.ts always
+   * passes the env/persisted secret.
    */
   flagSecret?: string;
 }
 
-export function createApp(opts: AppOptions = {}): Express {
-  const app = express();
+/** The Express app plus its typed platform DB handle on `locals.db`. */
+export type HvwaApp = Express & { locals: { db: DatabaseSync } };
 
+export function createApp(opts: AppOptions = {}): HvwaApp {
   if (opts.flagSecret) setFlagSecret(opts.flagSecret);
 
   const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);
   seed(db);
+
   // The app's DB handle: closed by server.ts on shutdown, and by tests that
   // use a file DB (Windows cannot delete a file SQLite still holds open).
-  app.locals.db = db;
+  // Object.assign keeps the same locals object and yields the typed shape.
+  const base = express();
+  const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db }) });
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));

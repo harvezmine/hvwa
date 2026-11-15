@@ -12,7 +12,7 @@ function app() {
   a.use(levelMiddleware());
   a.use(langMiddleware());
   a.get('/probe', (req, res) => res.json({
-    level: (req as any).level, lang: res.locals.lang, nav: res.locals.t('nav.districts'),
+    level: req.level, lang: req.lang, nav: res.locals.t('nav.districts'),
   }));
   return a;
 }

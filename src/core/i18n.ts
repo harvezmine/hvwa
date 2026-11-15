@@ -62,7 +62,7 @@ export function langMiddleware(): RequestHandler {
     } else {
       lang = resolveLang(req.cookies?.hvwa_lang);
     }
-    (req as any).lang = lang;
+    req.lang = lang;
     res.locals.lang = lang;
     res.locals.t = (key: string) => t(key, lang);
     next();
