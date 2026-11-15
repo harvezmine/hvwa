@@ -25,6 +25,9 @@ services:
     environment:
       # Optional. Blank = use the random secret persisted in the data volume.
       FLAG_SECRET: ${FLAG_SECRET:-}
+      # Optional extra Host names (DNS-rebinding guard). The proxy enforces its
+      # own list in docker/proxy/nginx.conf, so a name must be added there too.
+      HVWA_ALLOWED_HOSTS: ${HVWA_ALLOWED_HOSTS:-}
     volumes:
       - data:/data
     read_only: true

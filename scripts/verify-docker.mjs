@@ -5,6 +5,7 @@
 // the app, data surviving a restart. Ends with `docker compose down` (the data
 // volume is kept). Exit code 0 = every check passed.
 import { spawnSync } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
 import { connect, createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,10 +19,13 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const COMPOSE = ['compose', '-f', join(root, 'docker-compose.yml'), '-p', 'hvwa'];
 const say = (msg) => console.log(`verify:docker ${msg}`);
 
-// The persisted-secret path (/data/flag-secret) is part of what is checked, so
-// a FLAG_SECRET from the developer's .env or shell must not apply to this run
-// (shell env beats .env in compose interpolation; blank means "unset").
-const env = { ...process.env, FLAG_SECRET: '' };
+// The persisted-secret path (/data/flag-secret) and the loopback-only Host
+// allowlist are part of what is checked, so FLAG_SECRET / HVWA_ALLOWED_HOSTS
+// from the developer's .env or shell must not apply to this run (shell env
+// beats .env in compose interpolation; blank means "unset").
+const env = { ...process.env, FLAG_SECRET: '', HVWA_ALLOWED_HOSTS: '' };
+// The proxy's own 421 body carries this marker; the app's never does.
+const PROXY_421 = 'HVWA proxy';
 
 /** Run a command in the project root; never throws on a non-zero exit. */
 function run(cmd, args, { inherit = false, timeoutMs = 120_000 } = {}) {
@@ -54,6 +58,28 @@ async function expect200(path) {
   const r = await get(path);
   if (r.status !== 200) throw new Error(`GET ${path} -> ${r.status}`);
   return r.body;
+}
+
+/** GET through the published port with an explicit Host header (fetch cannot set Host). */
+function getWithHost(path, host, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port: PORT, path, headers: { ...headers, host }, timeout: 10_000 }, (res) => {
+      let body = '';
+      res.setEncoding('utf8').on('data', (d) => { body += d; }).on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('timeout', () => req.destroy(new Error(`GET ${path} (Host ${host}) timed out`)));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** Status of GET http://127.0.0.1:1337/healthz with Host `host`, sent from INSIDE the app container (bypasses the proxy). */
+function appStatusFor(host) {
+  const r = exec('app', ['node', '-e',
+    `require('node:http').get({host:'127.0.0.1',port:1337,path:'/healthz',headers:{host:${JSON.stringify(host)}}},` +
+    '(res)=>{console.log(res.statusCode);process.exit(0)}).on(\'error\',(e)=>{console.log(e.code);process.exit(3)})']);
+  if (r.code !== 0) throw new Error(`in-container request with Host ${host} did not run (${show(r)})`);
+  return Number(r.out);
 }
 
 /**
@@ -133,6 +159,28 @@ const checks = [
     // Runtime assets: the --omit=dev image must still carry htmx.org (a prod dependency).
     for (const asset of ['/static/app.css', '/static/vendor/htmx.min.js']) await expect200(asset);
     return `${ids.length} challenge page(s): ${ids.join(', ')}; static assets served`;
+  }],
+  ['Host allowlist (DNS rebinding): loopback names pass, others get 421 at the proxy AND the app', async () => {
+    for (const host of ['localhost:1337', '127.0.0.1:1337', 'LOCALHOST:1337', '[::1]:1337']) {
+      const r = await getWithHost('/healthz', host);
+      if (r.status !== 200) throw new Error(`Host ${host} through the proxy -> ${r.status}, expected 200`);
+    }
+    const xfh = await getWithHost('/healthz', 'localhost:1337', { 'x-forwarded-host': 'evil.example' });
+    if (xfh.status !== 200) throw new Error(`X-Forwarded-Host changed the decision (-> ${xfh.status})`);
+    for (const host of ['evil.example', 'evil.example:1337', '127.0.0.1.evil.example:1337', 'localhost.evil.example']) {
+      for (const path of ['/healthz', '/']) {
+        const r = await getWithHost(path, host);
+        if (r.status !== 421) throw new Error(`Host ${host} GET ${path} through the proxy -> ${r.status}, expected 421`);
+        // The proxy's own body proves the request was answered there and never reached the app.
+        if (!r.body.includes(PROXY_421)) throw new Error(`Host ${host}: 421 did not come from the proxy (body: ${r.body.slice(0, 120)})`);
+      }
+    }
+    // Defense in depth: straight to the app inside the lab network, no proxy involved.
+    const appEvil = appStatusFor('evil.example');
+    if (appEvil !== 421) throw new Error(`the app itself answered Host evil.example with ${appEvil}, expected 421`);
+    const appOk = appStatusFor('localhost:1337');
+    if (appOk !== 200) throw new Error(`the app itself answered Host localhost:1337 with ${appOk}, expected 200`);
+    return 'localhost/127.0.0.1/[::1] -> 200; evil.example & co -> 421 from the proxy; app alone: evil.example -> 421';
   }],
   ['published port is loopback-only; the app publishes nothing', () => {
     const r = compose(['port', 'proxy', '8080']);

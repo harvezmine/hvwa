@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
 import { setFlagSecret } from './core/flags.js';
+import { hostGuard } from './core/host-guard.js';
 import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
@@ -34,6 +35,11 @@ export interface AppOptions {
    * passes the env/persisted secret.
    */
   flagSecret?: string;
+  /**
+   * Extra Host names to answer to, besides localhost / 127.0.0.1 / [::1]
+   * (DNS-rebinding guard). server.ts passes HVWA_ALLOWED_HOSTS.
+   */
+  allowedHosts?: readonly string[];
 }
 
 /** The Express app plus its typed platform DB handle on `locals.db`. */
@@ -51,6 +57,8 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   const base = express();
   const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db }) });
 
+  // FIRST: requests for a foreign Host (DNS rebinding) never reach anything else.
+  app.use(hostGuard(opts.allowedHosts));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());

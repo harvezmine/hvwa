@@ -6,6 +6,11 @@ import { MIN_FLAG_SECRET_LENGTH } from './core/flags.js';
 const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
 const unsetIfBlank = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(blankToUndefined, schema);
 
+// HVWA_ALLOWED_HOSTS entries: a DNS name / IPv4 (labels of letters, digits and
+// inner hyphens) or a bracketed IPv6 literal. No scheme, port, path or wildcard.
+const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
+const ALLOWED_HOST_RE = new RegExp(`^(?:${LABEL}(?:\\.${LABEL})*|\\[[0-9a-f:.]+\\])$`);
+
 const schema = z.object({
   HOST: unsetIfBlank(z.string().trim().min(1).default('127.0.0.1')),
   PORT: unsetIfBlank(z.coerce.number().int().min(1).max(65535).default(1337)),
@@ -16,6 +21,20 @@ const schema = z.object({
   HVWA_ALLOW_REMOTE: unsetIfBlank(z.enum(['0', '1']).default('0')).transform((v) => v === '1'),
   // Where the server keeps hvwa.db and flag-secret (default: <project>/data).
   HVWA_DATA_DIR: unsetIfBlank(z.string().trim().min(1).optional()),
+  // Extra Host names the server answers to, besides localhost, 127.0.0.1 and
+  // [::1] (DNS-rebinding guard, core/host-guard.ts). Comma-separated.
+  HVWA_ALLOWED_HOSTS: unsetIfBlank(z.string().default('')).transform((raw, ctx) => {
+    const hosts = raw.split(',').map((h) => h.trim().toLowerCase()).filter((h) => h !== '');
+    for (const h of hosts) {
+      if (!ALLOWED_HOST_RE.test(h)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `"${h}" is not a bare hostname or IP (no scheme, port, path or wildcard)`,
+        });
+      }
+    }
+    return hosts;
+  }),
 });
 
 export type Config = z.infer<typeof schema>;
