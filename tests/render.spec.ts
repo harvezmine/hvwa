@@ -66,3 +66,53 @@ describe('page()', () => {
     expect(id.text).toContain('<p id="hello">Distrik');
   });
 });
+
+describe('page() resists EJS option injection through data', () => {
+  const MARKER = '__hvwaEjsInjected';
+  const payload = `function(){};globalThis.${MARKER}=1;`;
+  const g = globalThis as Record<string, unknown>;
+
+  function appWith(handler: (req: express.Request, res: express.Response) => Promise<string>) {
+    const app = express();
+    app.use(express.urlencoded({ extended: true })); // same parser as createApp
+    app.use(cookieParser());
+    app.use(langMiddleware());
+    app.all('/', async (req, res) => { res.send(await handler(req, res)); });
+    return app;
+  }
+
+  function expectNormal(html: string) {
+    expect(g[MARKER]).toBeUndefined();
+    expect(html).toMatch(/^<!doctype html>/i);
+    expect(html).toContain('<p id="hello">Distrik &lt;b&gt;x&lt;/b&gt;</p>');
+    expect(html).not.toContain('<%');
+  }
+
+  it('ignores settings["view options"] (client + escapeFunction) in data', async () => {
+    delete g[MARKER];
+    const app = appWith((_req, res) => page(res, fixture, {
+      name: '<b>x</b>',
+      settings: { 'view options': { client: true, escapeFunction: payload } },
+    }));
+    expectNormal((await request(app).get('/')).text);
+  });
+
+  it('ignores top-level option keys (client, escapeFunction, delimiter, cache) in data', async () => {
+    delete g[MARKER];
+    const app = appWith((_req, res) => page(res, fixture, {
+      name: '<b>x</b>', client: true, escapeFunction: payload, delimiter: '?', cache: true,
+    }));
+    expectNormal((await request(app).get('/')).text);
+  });
+
+  it('is safe when a handler spreads an extended-urlencoded body into data', async () => {
+    delete g[MARKER];
+    const app = appWith((req, res) => page(res, fixture, { ...req.body }));
+    const res = await request(app).post('/').type('form').send(
+      'name=%3Cb%3Ex%3C%2Fb%3E' +
+      '&settings[view options][client]=1' +
+      `&settings[view options][escapeFunction]=${encodeURIComponent(payload)}`,
+    );
+    expectNormal(res.text);
+  });
+});

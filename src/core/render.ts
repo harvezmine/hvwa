@@ -1,6 +1,6 @@
 // src/core/render.ts
 import type { Response } from 'express';
-import { renderFile } from 'ejs';
+import { renderFile, type Options } from 'ejs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { t, DEFAULT_LANG, type Lang } from './i18n.js';
@@ -20,13 +20,22 @@ export function escapeHtml(s: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+// SECURITY: always pass this third argument to renderFile. With only
+// (file, data), ejs reads options out of the data object itself
+// (data.settings['view options'], delimiter, cache, ...), so request-derived
+// data could set client/escapeFunction and run code in the host process.
+// A fresh object per call keeps ejs from mutating shared state.
+function serverEjsOptions(): Options {
+  return { async: false, strict: false, rmWhitespace: false };
+}
+
 // Render an EJS view (absolute path) and wrap it in the shared layout.
 // Context = res.locals (lang, t from langMiddleware) overlaid with `data`.
 // Exported for districts: page(res, join(myViewsDir, 'x.ejs'), { ... }).
 export async function page(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<string> {
   const ctx: Record<string, unknown> = { ...res.locals, ...data };
-  const body = await renderFile(viewFile, ctx);
-  return renderFile(layoutFile, { ...ctx, body });
+  const body = await renderFile(viewFile, ctx, serverEjsOptions());
+  return renderFile(layoutFile, { ...ctx, body }, serverEjsOptions());
 }
 
 type Op = { kind: 'same' | 'del' | 'add'; text: string };
