@@ -56,6 +56,30 @@ const captures = (html, re) => [...new Set([...html.matchAll(re)].map((m) => une
 // A level file is a TypeScript module: View Source must show at least one export.
 const EXPORT_RE = /\bexport\s+(async\s+)?(function|const|let|class|interface|type|default)\b/;
 
+/** The challenge page's level tabs, found by data-testid="level-tab-<level>" in any attribute order. */
+function levelTabs(page) {
+  const tabs = [];
+  for (const [tag] of page.matchAll(/<a\b[^>]*>/g)) {
+    const level = /\bdata-testid="level-tab-([a-z]+)"/.exec(tag)?.[1];
+    if (!level) continue;
+    const href = /\bhref="([^"]*)"/.exec(tag)?.[1];
+    if (!href) throw new Error(`level tab ${level} has no href`);
+    tabs.push({ level, href: unescapeHtml(href) });
+  }
+  return tabs;
+}
+
+/** Wait for a line of the server's output matching `re`; returns the match. */
+async function waitForOutput(read, re, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const m = re.exec(read());
+    if (m) return m;
+    if (Date.now() > deadline) throw new Error(`server never printed a line matching ${re}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 /**
  * Discover every challenge from the running server — the portal index links
  * /c/<id>; each challenge page links its lab at every implemented level — and
@@ -70,12 +94,13 @@ async function verifyChallenges(base, indexHtml) {
     const page = await expectOk(base, `/c/${id}`, (b) => {
       if (!b.includes(id)) throw new Error(`/c/${id} does not mention the challenge`);
     });
-    const labs = captures(page, /<a class="level-tab"[^>]*href="([^"]+)"/g);
-    if (labs.length === 0) throw new Error(`/c/${id} links no lab level`);
+    const tabs = levelTabs(page);
+    if (tabs.length === 0) throw new Error(`/c/${id} links no lab level`);
     const levels = [];
-    for (const lab of labs) {
-      const level = new URL(lab, base).searchParams.get('level');
-      if (!level || !lab.startsWith('/d/')) throw new Error(`/c/${id}: unexpected lab link ${lab}`);
+    for (const { level, href: lab } of tabs) {
+      if (!lab.startsWith('/d/') || new URL(lab, base).searchParams.get('level') !== level) {
+        throw new Error(`/c/${id}: level tab ${level} links ${lab}`);
+      }
       levels.push(level);
       await expectOk(base, lab, (b) => {
         if (!b.includes('data-testid="lab-bar"')) throw new Error(`${lab} has no lab bar`);
@@ -137,6 +162,13 @@ async function main() {
 
     const ids = await verifyChallenges(base, index);
     say(`checked ${ids.length} challenge(s) discovered over HTTP: ${ids.join(', ')}`);
+
+    // Every registered challenge must be reachable from the portal.
+    const [, count] = await waitForOutput(() => output, /^HVWA: (\d+) challenge\(s\) registered\r?$/m, 5000);
+    if (Number(count) !== ids.length) {
+      throw new Error(`the server registered ${count} challenge(s) but ${ids.length} were discovered over HTTP`);
+    }
+    say(`server registered ${count} challenge(s): all discovered`);
   } catch (err) {
     console.error(output);
     throw err;

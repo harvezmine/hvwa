@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createServer, type Server } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../src/app.js';
-import { listen, closeGracefully, listenUrl } from '../src/lifecycle.js';
+import { listen, closeGracefully, listenUrl, startupBanner } from '../src/lifecycle.js';
 
 function occupyPort(): Promise<{ blocker: Server; port: number }> {
   return new Promise((resolve) => {
@@ -76,5 +76,23 @@ describe('listenUrl()', () => {
     ['[::1]', 1337, 'http://[::1]:1337'],
   ])('%s:%i → %s', (host, port, url) => {
     expect(listenUrl(host, port)).toBe(url);
+  });
+});
+
+describe('startupBanner()', () => {
+  it('states the URL with the safety warning, then the registered challenge count (read by verify:dist)', () => {
+    expect(startupBanner('http://127.0.0.1:1337', 18)).toEqual([
+      'HVWA on http://127.0.0.1:1337 — DO NOT expose to untrusted networks',
+      'HVWA: 18 challenge(s) registered',
+    ]);
+    expect(startupBanner('http://[::1]:80', 0)[1]).toBe('HVWA: 0 challenge(s) registered');
+  });
+});
+
+describe('server.ts', () => {
+  it('prints the startup banner with the registered challenge count', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/startupBanner\(listenUrl\(config\.HOST, config\.PORT\), allChallenges\(\)\.length\)/);
   });
 });

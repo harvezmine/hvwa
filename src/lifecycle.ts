@@ -9,6 +9,18 @@ export function listenUrl(host: string, port: number): string {
   return `http://${h}:${port}`;
 }
 
+/**
+ * Lines printed once listening: the URL with the safety warning, then the
+ * number of registered challenges (verify:dist compares it with what the
+ * portal links).
+ */
+export function startupBanner(url: string, challengeCount: number): string[] {
+  return [
+    `HVWA on ${url} — DO NOT expose to untrusted networks`,
+    `HVWA: ${challengeCount} challenge(s) registered`,
+  ];
+}
+
 /** Listen on host:port; resolves once listening, rejects on bind errors (e.g. EADDRINUSE). */
 export function listen(app: HvwaApp, port: number, host: string): Promise<Server> {
   return new Promise((resolve, reject) => {

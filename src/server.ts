@@ -7,7 +7,7 @@ import { assertChallengeFiles } from './core/source.js';
 import { createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';
-import { listen, closeGracefully, listenUrl } from './lifecycle.js';
+import { listen, closeGracefully, listenUrl, startupBanner } from './lifecycle.js';
 import type { Server } from 'node:http';
 
 // Validate the environment: one readable line per problem, then exit 1.
@@ -49,7 +49,7 @@ try {
   app.locals.db.close();
   process.exit(1);
 }
-console.log(`HVWA on ${listenUrl(config.HOST, config.PORT)} — DO NOT expose to untrusted networks`);
+for (const line of startupBanner(listenUrl(config.HOST, config.PORT), allChallenges().length)) console.log(line);
 
 // Graceful stop: wait for server.close() to finish, then close the DB, then exit.
 let stopping = false;
