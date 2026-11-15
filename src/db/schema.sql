@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT DEFAULT 'user', email TEXT, secret_note TEXT);
 CREATE TABLE IF NOT EXISTS solves (
   session_id TEXT, challenge_id TEXT, level TEXT, solved_at INTEGER,
+  points INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (session_id, challenge_id));
 CREATE TABLE IF NOT EXISTS hint_unlocks (
   session_id TEXT, challenge_id TEXT, tier INTEGER,

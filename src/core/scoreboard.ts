@@ -1,14 +1,24 @@
 // src/core/scoreboard.ts
 import type { DatabaseSync } from 'node:sqlite';
+import { hintCost } from './hints.js';
+
+// One row per (session, challenge), holding the best level solved so far.
+// A later solve only replaces the row if it is worth more points.
 export function recordSolve(db: DatabaseSync, sid: string, cid: string, level: string, pts: number): void {
-  db.prepare(`INSERT OR IGNORE INTO solves (session_id,challenge_id,level,solved_at)
-    VALUES (?,?,?,?)`).run(sid, cid, level, Date.now());
-  // store points via a view-less sum table kept simple: recompute on read
+  db.prepare(`INSERT INTO solves (session_id,challenge_id,level,points,solved_at)
+    VALUES (?,?,?,?,?)
+    ON CONFLICT(session_id,challenge_id) DO UPDATE SET
+      level=excluded.level, points=excluded.points, solved_at=excluded.solved_at
+    WHERE excluded.points > solves.points`).run(sid, cid, level, pts, Date.now());
 }
+
+// Sum of best-level points minus unlocked hint costs, floored at 0.
 export function scoreFor(db: DatabaseSync, sid: string): number {
-  const rows = db.prepare('SELECT challenge_id FROM solves WHERE session_id=?').all(sid);
-  return rows.length * 100; // base; Task 7 scales by level
+  const r = db.prepare('SELECT COALESCE(SUM(points),0) AS total FROM solves WHERE session_id=?')
+    .get(sid) as { total: number };
+  return Math.max(0, Number(r.total) - hintCost(db, sid));
 }
+
 export function progress(db: DatabaseSync, sid: string): { solved: number } {
   const r = db.prepare('SELECT COUNT(*) c FROM solves WHERE session_id=?').get(sid) as { c: number };
   return { solved: r.c };
