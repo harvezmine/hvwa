@@ -32,10 +32,12 @@ export function b64urlEncode(data: string | Uint8Array): string {
   return Buffer.from(data).toString('base64url');
 }
 
-/** Strict base64url decode: URL alphabet only, no padding, no whitespace, no impossible length. */
+/** Strict base64url decode: URL alphabet only, no padding, no whitespace, no impossible length, canonical form only. */
 export function b64urlDecode(text: string): Buffer {
   if (typeof text !== 'string' || !B64URL.test(text) || text.length % 4 === 1) throw new JwtFormatError('malformed base64url');
-  return Buffer.from(text, 'base64url');
+  const bytes = Buffer.from(text, 'base64url');
+  if (bytes.toString('base64url') !== text) throw new JwtFormatError('non-canonical base64url'); // ignored trailing bits
+  return bytes;
 }
 
 /** Parse JSON text that must be a single plain object (not an array, number, null ...). */
@@ -67,7 +69,7 @@ export function parseToken(token: string): ParsedToken {
   const parts = token.split('.');
   if (parts.length !== 3) throw new JwtFormatError('a token has three parts');
   const [h, p, s] = parts;
-  if (!B64URL.test(s) || s.length % 4 === 1) throw new JwtFormatError('malformed signature');
+  b64urlDecode(s); // a signature segment must be canonical base64url too ('' is fine: an unsigned token)
   return {
     header: strictJson(b64urlDecode(h).toString('utf8')),
     payload: strictJson(b64urlDecode(p).toString('utf8')),
@@ -112,8 +114,12 @@ export function rsaSignature(alg: RsaAlg, privateKey: string | KeyObject, signin
 /** Verify an RSASSA-PKCS1-v1_5 signature. A bad, mangled or empty signature is `false`, never a throw. */
 export function rsaVerify(alg: RsaAlg, publicKey: string | KeyObject, signingInput: string, signature: string): boolean {
   if (!isRsaAlg(alg)) throw new JwtFormatError('unsupported RSA algorithm');
-  if (typeof signature !== 'string' || signature === '' || !B64URL.test(signature) || signature.length % 4 === 1) return false;
-  return createVerify(RSA_HASH[alg]).update(signingInput).verify(typeof publicKey === 'string' ? createPublicKey(publicKey) : publicKey, Buffer.from(signature, 'base64url'));
+  if (typeof signature !== 'string' || signature === '') return false;
+  let sigBytes: Buffer;
+  try { sigBytes = b64urlDecode(signature); } catch { return false; }
+  const key = typeof publicKey === 'string' ? createPublicKey(publicKey) : publicKey;
+  if (key.asymmetricKeyType !== 'rsa') return false; // an EC/Ed25519 key is never an RSA verifier
+  return createVerify(RSA_HASH[alg]).update(signingInput).verify(key, sigBytes);
 }
 
 /** A complete RS* token: header `{ alg, typ: 'JWT', ...extraHeader }`. */

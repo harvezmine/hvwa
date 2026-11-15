@@ -1,7 +1,7 @@
-import { createHmac, createPublicKey, createSign } from 'node:crypto';
+import { createHmac, createPublicKey, createSign, generateKeyPairSync } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import {
-  JwtFormatError, b64urlDecode, b64urlEncode, buildToken, generateRsaKeyPair, hmacSignature, parseToken,
+  JwtFormatError, isHmacAlg, isRsaAlg, b64urlDecode, b64urlEncode, buildToken, generateRsaKeyPair, hmacSignature, parseToken,
   rsaSignature, rsaVerify, safeEqual, signHmac, signRsa, strictJson,
 } from './jwt.js';
 
@@ -23,6 +23,33 @@ describe('base64url', () => {
     for (const bad of ['YQ==', 'a+b/', 'Y Q', 'Y\nQ', 'A', 'YQ.', 'é']) {
       expect(() => b64urlDecode(bad), bad).toThrow(JwtFormatError);
     }
+  });
+});
+
+describe('base64url canonical form', () => {
+  it('rejects non-canonical encodings (non-zero ignored trailing bits)', () => {
+    expect(b64urlDecode('YQ').toString()).toBe('a');
+    expect(() => b64urlDecode('YR')).toThrow(JwtFormatError);
+    expect(() => b64urlDecode('YWI')).not.toThrow();
+    expect(() => b64urlDecode('YWJ')).toThrow(JwtFormatError);
+  });
+  it('a token whose signature segment is non-canonical is malformed', () => {
+    const t = signHmac('HS256', 'k', { a: 1 });
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const last = t[t.length - 1];
+    const twin = alphabet[alphabet.indexOf(last) ^ 1]; // same 6 bits except an ignored one (43-char signature)
+    expect(() => parseToken(t.slice(0, -1) + twin)).toThrow(JwtFormatError);
+  });
+});
+
+describe('algorithm guards', () => {
+  it('know only their own names, never inherited properties', () => {
+    for (const bad of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'hs256', 'none', 1, null, undefined, {}]) {
+      expect(isHmacAlg(bad), String(bad)).toBe(false);
+      expect(isRsaAlg(bad), String(bad)).toBe(false);
+    }
+    expect(isHmacAlg('HS384')).toBe(true);
+    expect(isRsaAlg('RS512')).toBe(true);
   });
 });
 
@@ -90,6 +117,22 @@ describe('RSA', () => {
     expect(rsaVerify('RS256', pair.publicPem, 'a.b', '')).toBe(false);
     expect(rsaVerify('RS256', pair.publicPem, 'a.b', '!!!')).toBe(false);
     expect(rsaVerify('RS256', pair.publicPem, 'a.b', sig.slice(0, -4))).toBe(false);
+  });
+  it('only RSA keys can verify: an EC or Ed25519 key is false, never a throw', () => {
+    const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const ed = generateKeyPairSync('ed25519');
+    const ecSig = createSign('sha256').update('a.b').sign(ec.privateKey).toString('base64url');
+    expect(rsaVerify('RS256', ec.publicKey, 'a.b', ecSig)).toBe(false);
+    expect(rsaVerify('RS256', ed.publicKey, 'a.b', ecSig)).toBe(false);
+    expect(rsaVerify('RS256', ec.publicKey.export({ type: 'spki', format: 'pem' }) as string, 'a.b', ecSig)).toBe(false);
+  });
+  it('a non-canonical (twin) signature encoding is refused even though it decodes to the same bytes', () => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const sig = rsaSignature('RS256', pair.privatePem, 'a.b');
+    expect(rsaVerify('RS256', pair.publicPem, 'a.b', sig)).toBe(true);
+    const twin = sig.slice(0, -1) + alphabet[alphabet.indexOf(sig[sig.length - 1]) ^ 1];
+    expect(Buffer.from(twin, 'base64url').equals(Buffer.from(sig, 'base64url'))).toBe(true);
+    expect(rsaVerify('RS256', pair.publicPem, 'a.b', twin)).toBe(false);
   });
   it('signRsa builds a verifiable token and the key is at least 2048 bits', () => {
     const t = signRsa('RS256', pair.privatePem, { sub: 'x' });
