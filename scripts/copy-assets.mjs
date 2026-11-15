@@ -2,11 +2,24 @@
 // tsc only emits .js, but the server reads .sql schemas, .ejs views and
 // src/public/** at runtime. Paths are preserved, so new district views
 // (src/districts/**/views/*.ejs) are picked up with no changes here.
-import { cpSync, statSync } from 'node:fs';
+import { cpSync, readdirSync, statSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ASSET_EXTS = new Set(['.sql', '.ejs']);
+
+function isAssetFile(src, file) {
+  return relative(src, file).startsWith(`public${sep}`) || ASSET_EXTS.has(extname(file).toLowerCase());
+}
+
+// A directory is copied only if some file beneath it is an asset, so dist/
+// gets no empty folders for code-only (or empty) source directories.
+function containsAsset(src, dir) {
+  return readdirSync(dir, { recursive: true }).some((rel) => {
+    const p = join(dir, String(rel));
+    return statSync(p).isFile() && isAssetFile(src, p);
+  });
+}
 
 /** Copy every src/**\/*.sql, src/**\/*.ejs and src/public/** into distDir. */
 export function copyAssets(srcDir, distDir) {
@@ -15,11 +28,10 @@ export function copyAssets(srcDir, distDir) {
   cpSync(src, resolve(distDir), {
     recursive: true,
     filter: (from) => {
-      const rel = relative(src, from);
-      if (rel === '' || statSync(from).isDirectory()) return true;
-      const inPublic = rel.startsWith(`public${sep}`);
-      const keep = inPublic || ASSET_EXTS.has(extname(from).toLowerCase());
-      if (keep) copied.push(rel);
+      if (from === src) return true;
+      if (statSync(from).isDirectory()) return containsAsset(src, from);
+      const keep = isAssetFile(src, from);
+      if (keep) copied.push(relative(src, from));
       return keep;
     },
   });
