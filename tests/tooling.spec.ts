@@ -55,7 +55,9 @@ describe('source hygiene', () => {
     const src = readFileSync(join(root, 'src', 'server.ts'), 'utf8');
     const v = src.indexOf('assertChallengeFiles(c)');
     expect(v).toBeGreaterThan(-1);
-    expect(v).toBeLessThan(src.indexOf('createApp({'));
+    const call = src.indexOf('= createApp(');
+    expect(call).toBeGreaterThan(-1);
+    expect(v).toBeLessThan(call);
   });
 
   it('server.ts imports the district list before the app', () => {

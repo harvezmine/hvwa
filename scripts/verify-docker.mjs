@@ -113,6 +113,38 @@ async function withEchoUpstream(fn) {
   }
 }
 
+/** Parse a raw HTTP/1.x response: status, whether it sets a cookie, body. */
+const parseRaw = (text) => {
+  const split = text.indexOf('\r\n\r\n');
+  const head = split === -1 ? text : text.slice(0, split);
+  return {
+    status: Number(/^HTTP\/1\.[01] (\d{3})/.exec(text)?.[1]),
+    setCookie: /^set-cookie:/im.test(head),
+    body: split === -1 ? '' : text.slice(split + 4),
+  };
+};
+
+/** Send raw request bytes to the published port (duplicate Host, absolute-form...). Keeps the socket open until the server closes it. */
+function rawThroughProxy(head) {
+  return new Promise((resolve, reject) => {
+    let text = '';
+    const s = connect(PORT, '127.0.0.1', () => s.write(`${head}\r\nConnection: close\r\n\r\n`));
+    s.setTimeout(10_000, () => s.destroy(new Error(`raw request timed out: ${head.split('\r\n')[0]}`)));
+    s.setEncoding('utf8').on('data', (d) => { text += d; });
+    s.on('error', reject).on('close', () => resolve(parseRaw(text)));
+  });
+}
+
+/** The same, sent from INSIDE the app container straight to the app (no proxy). */
+function rawToApp(head) {
+  const script = 'const s=require("node:net").connect(1337,"127.0.0.1",()=>s.write(' +
+    `${JSON.stringify(`${head}\r\nConnection: close\r\n\r\n`)}));let t="";s.setTimeout(5000,()=>{s.destroy();process.exit(3)});` +
+    's.setEncoding("utf8").on("data",(d)=>{t+=d}).on("close",()=>{process.stdout.write(t);process.exit(0)}).on("error",()=>process.exit(3))';
+  const r = run('docker', [...COMPOSE, 'exec', '-T', 'app', 'node', '-e', script]);
+  if (r.code !== 0) throw new Error(`in-container raw request failed (${show(r)})`);
+  return parseRaw(r.out);
+}
+
 /** Status of GET http://127.0.0.1:1337/healthz with Host `host`, sent from INSIDE the app container (bypasses the proxy). */
 function appStatusFor(host) {
   const r = exec('app', ['node', '-e',
@@ -267,6 +299,33 @@ const checks = [
     const appOk = appStatusFor('localhost:1337');
     if (appOk !== 200) throw new Error(`the app itself answered Host localhost:1337 with ${appOk}, expected 200`);
     return 'localhost/127.0.0.1/[::1] -> 200; evil.example & co -> 421 from the proxy; app alone: evil.example -> 421';
+  }],
+  ['ambiguous Host: duplicates -> 400, absolute-form targets must name an allowed host (proxy AND app)', async () => {
+    const problems = [];
+    const expectRaw = (where, r, status, extra = () => undefined) => {
+      if (r.status !== status) problems.push(`${where} -> ${r.status}, expected ${status}`);
+      else if (r.setCookie) problems.push(`${where} -> ${status} but set a cookie (reached the session middleware)`);
+      else { const e = extra(r); if (e) problems.push(`${where}: ${e}`); }
+    };
+    for (const [a, b] of [['localhost:1337', 'evil.example'], ['evil.example', 'localhost:1337']]) {
+      const head = `GET /healthz HTTP/1.1\r\nHost: ${a}\r\nHost: ${b}`;
+      expectRaw(`proxy: Host ${a} + Host ${b}`, await rawThroughProxy(head), 400);
+      expectRaw(`app: Host ${a} + Host ${b}`, rawToApp(head), 400,
+        (r) => (r.body.includes('evil.example') ? 'the 400 echoes the Host' : undefined));
+    }
+    // The authority in an absolute-form target overrides Host: it must be allowed too.
+    const evilTarget = 'GET http://evil.example/healthz HTTP/1.1\r\nHost: localhost:1337';
+    expectRaw('proxy: GET http://evil.example/ + Host localhost', await rawThroughProxy(evilTarget), 421,
+      (r) => (r.body.includes(PROXY_421) ? undefined : 'not answered by the proxy'));
+    expectRaw('app: GET http://evil.example/ + Host localhost', rawToApp(evilTarget), 421);
+    // An allowed target with a foreign Host: the proxy picks the server from the target,
+    // forwards the client's Host, and the app fails closed.
+    expectRaw('proxy: GET http://localhost:1337/ + Host evil.example',
+      await rawThroughProxy('GET http://localhost:1337/healthz HTTP/1.1\r\nHost: evil.example'), 421,
+      (r) => (r.body.includes(PROXY_421) ? 'expected the app to answer' : undefined));
+    if (problems.length) throw new Error(problems.join('; '));
+    return 'duplicate Host -> 400 (proxy and app, both orders); absolute-form evil target -> 421 (proxy and app); ' +
+      'allowed target + evil Host -> 421 from the app; no cookies on any of them';
   }],
   ['published port is loopback-only; the app publishes nothing', () => {
     const r = compose(['port', 'proxy', '8080']);
