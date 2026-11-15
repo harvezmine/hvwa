@@ -1,6 +1,5 @@
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
-import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -21,14 +20,17 @@ const htmxDistDir = join(dirname(createRequire(import.meta.url).resolve('htmx.or
 export interface AppOptions {
   /** SQLite path. Defaults to an in-memory database (tests). */
   dbPath?: string;
-  /** HMAC secret for flags. Defaults to a random per-process secret. */
+  /**
+   * HMAC secret for flags (process-wide). When omitted, the current secret is
+   * kept — by default a random value generated once per process in flags.ts.
+   */
   flagSecret?: string;
 }
 
 export function createApp(opts: AppOptions = {}): Express {
   const app = express();
 
-  setFlagSecret(opts.flagSecret ?? randomBytes(32).toString('hex'));
+  if (opts.flagSecret) setFlagSecret(opts.flagSecret);
 
   const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);

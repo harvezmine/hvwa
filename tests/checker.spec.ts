@@ -82,6 +82,17 @@ describe('submit', () => {
     expect(tried).toEqual(['inquisitor', 'templar', 'acolyte']);
   });
 
+  it('keeps one flag secret across createApp() calls that pass no flagSecret', async () => {
+    const first = request.agent(createApp());
+    const r = await first.get('/healthz');
+    const sid = /hvwa_sid=([^;]+)/.exec(r.headers['set-cookie']?.[0] ?? '')![1];
+    const flag = issueFlag('ZZ-01', sid, 'acolyte'); // issued while using the first app
+    const second = createApp(); // must not rotate the process-wide secret
+    const res = await request(second).post('/api/submit')
+      .set('Cookie', `hvwa_sid=${sid}`).send({ challengeId: 'ZZ-01', submission: flag });
+    expect(res.body).toMatchObject({ solved: true, level: 'acolyte' });
+  });
+
   it('404s an unknown challenge', async () => {
     const { agent } = await fresh();
     const res = await agent.post('/api/submit').send({ challengeId: 'NOPE-1', submission: 'x' });
