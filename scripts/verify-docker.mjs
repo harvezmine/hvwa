@@ -60,17 +60,56 @@ async function expect200(path) {
   return r.body;
 }
 
-/** GET through the published port with an explicit Host header (fetch cannot set Host). */
-function getWithHost(path, host, headers = {}) {
+/** A request through the published port with an explicit Host header (fetch cannot set Host). */
+function send(method, path, host, headers = {}, body = undefined) {
   return new Promise((resolve, reject) => {
-    const req = httpRequest({ host: '127.0.0.1', port: PORT, path, headers: { ...headers, host }, timeout: 10_000 }, (res) => {
-      let body = '';
-      res.setEncoding('utf8').on('data', (d) => { body += d; }).on('end', () => resolve({ status: res.statusCode, body }));
+    const req = httpRequest({ host: '127.0.0.1', port: PORT, method, path, headers: { ...headers, host }, timeout: 30_000 }, (res) => {
+      let text = '';
+      res.setEncoding('utf8').on('data', (d) => { text += d; }).on('end', () => resolve({ status: res.statusCode, body: text }));
     });
-    req.on('timeout', () => req.destroy(new Error(`GET ${path} (Host ${host}) timed out`)));
+    req.on('timeout', () => req.destroy(new Error(`${method} ${path} (Host ${host}) timed out`)));
     req.on('error', reject);
-    req.end();
+    req.end(body);
   });
+}
+const getWithHost = (path, host, headers = {}) => send('GET', path, host, headers);
+
+// An upstream that answers every request with what it received. verify:docker
+// swaps it in for the app (same service config and network alias) to see
+// exactly what the proxy forwards.
+const ECHO_NAME = 'hvwa-verify-echo';
+const ECHO_JS = 'require("node:http").createServer((q,s)=>{let n=0;q.on("data",(d)=>{n+=d.length});' +
+  'q.on("end",()=>{s.setHeader("content-type","application/json");s.end(JSON.stringify(' +
+  '{hvwaEcho:true,method:q.method,url:q.url,headers:q.headers,bytes:n}))})}).listen(1337,"0.0.0.0")';
+
+async function poll(what, fn, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    try { if (await fn()) return; } catch (err) { last = err; }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`${what} within ${timeoutMs} ms${last ? ` (last error: ${last.message})` : ''}`);
+}
+const isEcho = async () => JSON.parse((await getWithHost('/__echo', 'localhost:1337')).body).hvwaEcho === true;
+const isApp = async () => JSON.parse((await getWithHost('/healthz', 'localhost:1337')).body).status === 'ok';
+
+/** Run `fn` while the echo server stands in for the app; the real app is restored afterwards. */
+async function withEchoUpstream(fn) {
+  const stop = compose(['stop', 'app']);
+  if (stop.code !== 0) throw new Error(`docker compose stop app: ${show(stop)}`);
+  try {
+    run('docker', ['rm', '-f', ECHO_NAME]);
+    const r = compose(['run', '-d', '--no-deps', '--use-aliases', '--name', ECHO_NAME, 'app', 'node', '-e', ECHO_JS]);
+    if (r.code !== 0) throw new Error(`starting the echo upstream: ${show(r)}`);
+    await poll('the proxy did not reach the echo upstream', isEcho, 45_000); // nginx re-resolves `app` every 10 s
+    return await fn();
+  } finally {
+    run('docker', ['rm', '-f', ECHO_NAME]);
+    compose(['start', 'app']);
+    await waitHealthy('app', 60_000);
+    await poll('the proxy did not reach the restored app', isApp, 45_000);
+  }
 }
 
 /** Status of GET http://127.0.0.1:1337/healthz with Host `host`, sent from INSIDE the app container (bypasses the proxy). */
@@ -327,6 +366,36 @@ const checks = [
     if (external.code !== 3) throw new Error(`DNS probe did not run (${show(external)})`);
     return `app -> ${internal.out}; example.com -> ${external.out}`;
   }],
+  ['proxy is transparent: client headers, Host with port and a 20 MiB body reach the upstream unchanged', () =>
+    withEchoUpstream(async () => {
+      const problems = [];
+      // Client-written forwarding headers are lab input (e.g. GK-03 trusts X-Real-IP): never rewritten.
+      const sent = {
+        'x-real-ip': '203.0.113.7',
+        'x-forwarded-for': '198.51.100.1, 198.51.100.2',
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'evil.example',
+      };
+      const a = JSON.parse((await getWithHost('/__echo?q=1', 'localhost:1337', sent)).body);
+      if (a.headers.host !== 'localhost:1337') problems.push(`Host arrived as ${JSON.stringify(a.headers.host)}, sent "localhost:1337"`);
+      for (const [k, v] of Object.entries(sent)) {
+        if (a.headers[k] !== v) problems.push(`${k} arrived as ${JSON.stringify(a.headers[k])}, sent ${JSON.stringify(v)}`);
+      }
+      if (a.url !== '/__echo?q=1') problems.push(`URL arrived as ${a.url}`);
+      // Nothing is added when the client sends none of them.
+      const b = JSON.parse((await getWithHost('/__echo', '127.0.0.1:1337')).body);
+      if (b.headers.host !== '127.0.0.1:1337') problems.push(`Host arrived as ${JSON.stringify(b.headers.host)}, sent "127.0.0.1:1337"`);
+      for (const k of Object.keys(sent)) {
+        if (k in b.headers) problems.push(`the proxy added ${k}: ${JSON.stringify(b.headers[k])}`);
+      }
+      // Upload labs: a body bigger than the proxy's 16 MiB tmpfs must stream through.
+      const size = 20 * 2 ** 20;
+      const up = await send('POST', '/__echo', 'localhost:1337', { 'content-type': 'application/octet-stream' }, Buffer.alloc(size, 0x61));
+      if (up.status !== 200) problems.push(`20 MiB POST -> ${up.status}`);
+      else if (JSON.parse(up.body).bytes !== size) problems.push(`20 MiB POST arrived as ${JSON.parse(up.body).bytes} bytes`);
+      if (problems.length) throw new Error(problems.join('; '));
+      return 'X-Real-IP, X-Forwarded-For/-Proto/-Host and Host:port unchanged, none added; 20 MiB POST streamed';
+    })],
   ['data persists across `docker compose restart app`', async () => {
     dataFilesExist();
     const before = readSecret();

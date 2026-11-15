@@ -27,9 +27,12 @@ host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root
 - **proxy** is a thin nginx (`nginxinc/nginx-unprivileged`). Docker cannot
   publish a port from an internal-only network, so the proxy sits on both
   `lab` and `edge` and forwards every request to `app:1337`. It is transparent
-  on purpose: it adds no security headers and filters no payloads, because the
-  labs must stay exploitable. The one exception is the Host allowlist (see
-  below). Its upstream is fixed, so it is not an open proxy.
+  on purpose, because the labs must stay exploitable. It adds no security
+  headers and filters no payloads. It forwards `Host` exactly as sent, port
+  included. It never sets or rewrites `X-Real-IP` or `X-Forwarded-*`: those are
+  client input that labs read. Request bodies are streamed. The one exception
+  is the Host allowlist (see below). Its upstream is fixed, so it is not an
+  open proxy.
 - The only published port is `127.0.0.1:1337`, on loopback only.
 
 ## What the container boundary protects
