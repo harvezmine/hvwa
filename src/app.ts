@@ -15,7 +15,9 @@ import { portalRouter } from './portal/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Vendored htmx (pinned dependency), served locally — no network at runtime.
-const htmxDistDir = join(dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist');
+// Only this one file is exposed, not the rest of the package's dist/.
+const htmxMinJs = join(
+  dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist', 'htmx.min.js');
 
 export interface AppOptions {
   /** SQLite path. Defaults to an in-memory database (tests). */
@@ -42,7 +44,9 @@ export function createApp(opts: AppOptions = {}): Express {
   app.use(sessionMiddleware());
   app.use(levelMiddleware());
   app.use(langMiddleware());
-  app.use('/static/vendor', express.static(htmxDistDir, { index: false }));
+  app.get('/static/vendor/htmx.min.js', (_req, res, next) => {
+    res.sendFile(htmxMinJs, (err) => { if (err) next(err); });
+  });
   app.use('/static', express.static(join(here, 'public'), { index: false }));
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });

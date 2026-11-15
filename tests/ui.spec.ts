@@ -32,4 +32,12 @@ describe('offline UI shell', () => {
     expect(res.headers['content-type']).toMatch(/javascript/);
     expect(res.text).toContain('2.0.4');
   });
+
+  it('serves only htmx.min.js from the vendor path, not the rest of htmx dist/', async () => {
+    const app = createApp();
+    for (const p of ['htmx.js', 'htmx.esm.js', 'htmx.min.js.gz', 'htmx.esm.d.ts', 'ext/', '']) {
+      const res = await request(app).get(`/static/vendor/${p}`);
+      expect(res.status, `/static/vendor/${p}`).toBe(404);
+    }
+  });
 });
