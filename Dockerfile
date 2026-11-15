@@ -1,6 +1,9 @@
 # HVWA app image. Deliberately vulnerable: run it ONLY via docker-compose.yml,
 # which keeps it on an internal network (no egress) behind a loopback-only proxy.
-# Pinned exact tag (Node >= 22.16 for node:sqlite); bump deliberately.
+# Pinned exact tag (Node >= 22.16 for node:sqlite); bump deliberately. For
+# byte-for-byte reproducible builds, also pin the digest, e.g.
+#   node:22.23.5-alpine3.24@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+# (at the cost of bumping it by hand for every base-image security fix).
 ARG NODE_IMAGE=node:22.23.5-alpine3.24
 
 # --- build: full deps + TypeScript, emits dist/ (incl. views, SQL, level sources)
@@ -9,7 +12,9 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.json ./
-COPY scripts ./scripts
+# Only what `npm run build` runs (prebuild/postbuild), so editing other scripts
+# (verify-*.mjs) does not invalidate the compile layer.
+COPY scripts/clean-dist.mjs scripts/copy-assets.mjs scripts/main-module.mjs ./scripts/
 COPY src ./src
 RUN npm run build
 
@@ -18,7 +23,14 @@ FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+# Production deps without install scripts; then remove the package managers
+# (npm, npx, yarn, corepack): the running lab needs only `node`, and an
+# exploited lab should not find them.
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+ && rm -rf /root/.npm /tmp/* \
+    /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
 COPY --from=build /src/dist ./dist
 # The named volume is seeded from this dir on first use, so it starts out
 # owned by the unprivileged user. Everything else stays root-owned.

@@ -18,26 +18,33 @@ host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root
 ```
 
 - **app** runs the lab server. It is attached only to `lab`, a Docker network
-  created with `internal: true`, which has no gateway and therefore no route to
-  the outside.
+  with `internal: true` (no default route out) and
+  `com.docker.network.bridge.gateway_mode_ipv4: isolated`. `internal` alone is
+  not enough: Docker still gives the host an address (`.1`) on an internal
+  bridge, and the app could open connections to the host's own services
+  (SSH, databases, the Docker API, dev servers). With `isolated`, the host has
+  no address on `lab` at all. This needs Docker Engine 28 or newer.
 - **proxy** is a thin nginx (`nginxinc/nginx-unprivileged`). Docker cannot
   publish a port from an internal-only network, so the proxy sits on both
   `lab` and `edge` and forwards every request to `app:1337`. It is transparent
-  on purpose: it adds no security headers and filters no payloads, because the
-  labs must stay exploitable. The one exception is the Host allowlist (see
-  below). Its upstream is fixed, so it is not an open proxy.
+  on purpose, because the labs must stay exploitable. It adds no security
+  headers and filters no payloads. It forwards `Host` exactly as sent, port
+  included. It never sets or rewrites `X-Real-IP` or `X-Forwarded-*`: those are
+  client input that labs read. Request bodies are streamed. The one exception
+  is the Host allowlist (see below). Its upstream is fixed, so it is not an
+  open proxy.
 - The only published port is `127.0.0.1:1337`, on loopback only.
 
 ## What the container boundary protects
 
 | Property | How | What it stops |
 |---|---|---|
-| **No egress from the app** | `app` is only on the internal `lab` network: no default route, and Docker's embedded DNS answers internal names only (external names get SERVFAIL) | SSRF and RCE payloads cannot reach the internet, your LAN, the Docker host (`host.docker.internal`) or cloud metadata endpoints. Data cannot be exfiltrated over HTTP or DNS, and nothing can be downloaded into the lab |
+| **No egress from the app** | `app` is only on the internal `lab` network with an isolated gateway: no default route, no host address on the subnet, and Docker's embedded DNS answers internal names only (external names get SERVFAIL) | SSRF and RCE payloads cannot reach the internet, your LAN, the Docker host (neither `host.docker.internal` nor any host bridge address) or cloud metadata endpoints. Data cannot be exfiltrated over HTTP or DNS, and nothing can be downloaded into the lab |
 | **Loopback-only publish** | `127.0.0.1:1337:8080`; the app publishes nothing | Other machines on your Wi-Fi or LAN cannot connect |
-| **Host allowlist (DNS rebinding)** | Only `Host` = `localhost`, `127.0.0.1` or `[::1]` (any port) is served. Anything else, or no `Host`, gets `421 Misdirected Request`. This is enforced twice: by the proxy (a `default_server` that never forwards) and by the app itself (`src/core/host-guard.ts`, the first middleware, so `npm start` is covered too) | A malicious website you visit cannot use DNS rebinding (pointing its own hostname at `127.0.0.1`) to drive the labs through your browser |
+| **Host allowlist (DNS rebinding)** | Only `Host` = `localhost`, `127.0.0.1` or `[::1]` (any port) is served. Anything else, no `Host`, or an absolute-form target naming another host gets `421 Misdirected Request`. Duplicate `Host` headers get `400`. This is enforced twice: by the proxy (a `default_server` that never forwards) and by the app itself (`src/core/host-guard.ts`, the first middleware, so `npm start` is covered too) | A malicious website you visit cannot use DNS rebinding (pointing its own hostname at `127.0.0.1`) to drive the labs through your browser |
 | **Non-root** | app runs as `node` (uid 1000), proxy as `nginx` (uid 101) | A code-execution lab gives an unprivileged user, not root |
 | **No privileges** | `cap_drop: [ALL]`, `no-new-privileges:true`, never `privileged`, no Docker socket mounted | Blocks privilege escalation through capabilities, setuid binaries and the Docker API |
-| **Read-only root filesystem** | `read_only: true`. Writable paths are only `/tmp` (tmpfs, `noexec`, 64 MiB) and `/data` (the named volume). The app code is root-owned | An exploit cannot modify the app's code or plant binaries that persist. A restart gives you clean code |
+| **Read-only root filesystem** | `read_only: true`. Writable paths are only `/tmp` (tmpfs, `noexec,nosuid,nodev`, 64 MiB) and `/data` (the named volume). The app code is root-owned, and the image has no package managers (npm, npx, yarn, corepack) | An exploit cannot modify the app's code. Anything it plants lives either in `/tmp`, which is wiped on every restart, or in `/data`, which persists until `docker compose down -v` |
 | **Resource limits** | `pids_limit`, `mem_limit`, `cpus` on both services | Fork bombs and runaway payloads cannot starve your machine |
 | **Init process** | `init: true` | Child processes from exploited labs are reaped, so no zombies accumulate |
 
@@ -100,10 +107,20 @@ after changing anything Docker-related.
 
 HVWA only reads the raw `Host` header. `X-Forwarded-Host` and Express's
 `req.hostname` never affect the decision, so labs remain free to use them as
-attack vectors (host-header poisoning). An absolute-form request line
-(`GET http://name/ HTTP/1.1`) takes precedence over `Host` at the proxy, as
-RFC 9112 requires. Browsers never send one to a server they are not using as a
-proxy, so it is not a rebinding path.
+attack vectors (host-header poisoning). Ambiguous requests fail closed at
+**both** layers:
+
+- **More than one `Host` header:** `400 Bad Request`. The app counts the raw
+  header lines, since Node itself keeps only the first. nginx rejects them as
+  well. The 400 echoes neither value.
+- **An absolute-form request line** (`GET http://name/ HTTP/1.1`): its
+  authority overrides `Host` (RFC 9112), so it must name an allowed host too.
+  Otherwise the response is `421`. The proxy selects its server from that
+  authority. It then forwards the client's `Host` unchanged, so an allowed
+  authority with a foreign `Host` is still answered `421` by the app. Browsers
+  never send absolute-form to a server they are not using as a proxy anyway.
+- **Rejected requests** stop before every other middleware. They get no
+  session cookie and reach no route.
 
 To reach HVWA under another name, for example `hvwa.lab` in your hosts file
 or the address of a host-only VM network, set a comma-separated list of bare
