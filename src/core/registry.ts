@@ -1,7 +1,8 @@
 // src/core/registry.ts
 import { verifyFlag } from './flags.js';
+import type { Level } from './levels.js';
 
-export type Level = 'acolyte' | 'templar' | 'inquisitor' | 'divine';
+export type { Level } from './levels.js';
 
 export interface HintTier { id: 1 | 2 | 3; text: { id: string; en: string }; cost: number; }
 

@@ -1,28 +1,8 @@
-// src/core/difficulty.ts
+// src/core/difficulty.ts — request-level difficulty selection.
 import type { RequestHandler } from 'express';
-import type { Level } from './registry.js';
+import { isLevel, type Level } from './levels.js';
 
-export const LEVELS: Level[] = ['acolyte', 'templar', 'inquisitor', 'divine'];
-
-// Divine is the ASVS-aligned reference "view the fix" target, scored 0.
-export const LEVEL_MULTIPLIER: Record<Level, number> = {
-  acolyte: 1,
-  templar: 1.5,
-  inquisitor: 2,
-  divine: 0,
-};
-
-export function isLevel(x: unknown): x is Level {
-  return typeof x === 'string' && (LEVELS as string[]).includes(x);
-}
-
-export function resolveLevel(raw: unknown, fallback: Level = 'acolyte'): Level {
-  return isLevel(raw) ? raw : fallback;
-}
-
-export function pointsForLevel(base: number, level: Level): number {
-  return Math.round(base * LEVEL_MULTIPLIER[level]);
-}
+const DEFAULT_LEVEL: Level = 'acolyte';
 
 // req.level = valid ?level= → valid hvwa_level cookie → 'acolyte'.
 // A valid ?level= is persisted in the hvwa_level cookie (only when it changes).
@@ -35,7 +15,8 @@ export function levelMiddleware(): RequestHandler {
       }
       (req as any).level = fromQuery;
     } else {
-      (req as any).level = resolveLevel(req.cookies?.hvwa_level);
+      const fromCookie = req.cookies?.hvwa_level;
+      (req as any).level = isLevel(fromCookie) ? fromCookie : DEFAULT_LEVEL;
     }
     next();
   };

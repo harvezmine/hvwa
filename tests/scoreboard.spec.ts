@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openDb, migrate } from '../src/db/index.js';
 import { recordSolve, scoreFor, progress } from '../src/core/scoreboard.js';
-import { pointsForLevel } from '../src/core/difficulty.js';
+import { pointsForLevel } from '../src/core/levels.js';
 import { register, defineChallenge } from '../src/core/registry.js';
 import { unlockHint } from '../src/core/hints.js';
 

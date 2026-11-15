@@ -1,8 +1,8 @@
 // src/core/i18n.ts
 import type { RequestHandler } from 'express';
 
-export type Lang = 'id' | 'en';
-export const LANGS: Lang[] = ['id', 'en'];
+export const LANGS = Object.freeze(['id', 'en'] as const);
+export type Lang = (typeof LANGS)[number];
 export const DEFAULT_LANG: Lang = 'id';
 
 type Entry = { id: string; en: string };
@@ -33,7 +33,7 @@ const DICT: Record<string, Entry> = {
 };
 
 export function isLang(x: unknown): x is Lang {
-  return x === 'id' || x === 'en';
+  return typeof x === 'string' && (LANGS as readonly string[]).includes(x);
 }
 
 export function resolveLang(raw: unknown, fallback: Lang = DEFAULT_LANG): Lang {

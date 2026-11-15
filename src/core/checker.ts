@@ -3,11 +3,11 @@ import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { getChallenge } from './registry.js';
 import { recordSolve, bestSolve } from './scoreboard.js';
-import { LEVELS, pointsForLevel } from './difficulty.js';
+import { FLAG_LEVELS, pointsForLevel } from './levels.js';
 import { unlockHint } from './hints.js';
 
 // Highest rank first; Divine is the secure reference and is never scored.
-const SCORED_LEVELS_DESC = [...LEVELS].reverse().filter((l) => l !== 'divine');
+const SCORED_LEVELS_DESC = Object.freeze([...FLAG_LEVELS].reverse());
 
 // Mounts the solve-check + hint endpoints. The client sends only
 // { challengeId, submission }; the server decides which level (if any) the
