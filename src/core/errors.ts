@@ -1,5 +1,6 @@
 // src/core/errors.ts — 404 and error responses that never leak internals.
 import { STATUS_CODES } from 'node:http';
+import { escapeHtml } from './render.js';
 import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express';
 
 function isApi(req: Request): boolean {
@@ -18,9 +19,17 @@ function htmlPage(status: number): string {
     `<body><h1>${status} — ${label}</h1></body></html>`;
 }
 
+// htmx callers (HX-Request) get a minimal fragment they can swap into their
+// target: just the status label, escaped, no layout and no details.
+function htmxFragment(status: number): string {
+  const label = STATUS_CODES[status] ?? 'Error';
+  return `<p data-error="${status}" role="alert">${status} — ${escapeHtml(label)}</p>`;
+}
+
 function send(req: Request, res: Response, status: number, apiError: string): void {
   res.status(status);
   if (isApi(req)) res.json({ error: apiError });
+  else if (req.get('HX-Request') === 'true') res.type('html').send(htmxFragment(status));
   else res.type('html').send(htmlPage(status));
 }
 

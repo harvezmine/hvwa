@@ -54,6 +54,13 @@ register(defineChallenge({
   maps: [], levels: ['templar', 'divine'], mount: () => {}, hints: [],
 }));
 
+register(defineChallenge({
+  id: 'CP-05', district: 'gatekeeper', slug: 'cp-throws', dir: dirWith({ acolyte: 'x' }),
+  title: { id: 't', en: 't' }, summary: { id: 's', en: 's' },
+  maps: [], levels: ['acolyte'], mount: () => {}, hints: [],
+  check: () => { throw new Error('kaboom-internal'); },
+}));
+
 const fresh = () => freshSession();
 const col = (html: string, side: 'vuln' | 'secure') =>
   [...html.matchAll(new RegExp(`<td class="diff-${side}">([\\s\\S]*?)</td>`, 'g'))].map((m) => m[1]).join('');
@@ -68,6 +75,19 @@ describe('levelSource', () => {
   });
   it('rejects non-level input', () => {
     expect(levelSource(CP1, '../acolyte' as never)).toBeUndefined();
+  });
+});
+
+describe('source cache', () => {
+  it('caches misses too (files are static per process)', () => {
+    const dir = dirWith({});
+    const c = defineChallenge({
+      id: 'CP-78', district: 'x', slug: 'y', dir, title: { id: 't', en: 't' }, summary: { id: 's', en: 's' },
+      maps: [], levels: ['acolyte'], mount: () => {}, hints: [],
+    });
+    expect(levelSource(c, 'acolyte')).toBeUndefined();
+    writeFileSync(join(dir, 'levels', 'acolyte.ts'), 'LATE');
+    expect(levelSource(c, 'acolyte')).toBeUndefined();
   });
 });
 
@@ -115,16 +135,6 @@ describe('page content', () => {
     expect(html).toContain('href="/c/CP-01/diff"');
     // CP-01 declares templar but ships no file: no dead link
     expect(html).not.toContain('/c/CP-01/source/templar');
-  });
-  it('no-JS fallback: forms post to the API (the flag never lands in the URL)', async () => {
-    const { agent } = await fresh();
-    const html = (await agent.get('/c/CP-01')).text;
-    const forms = [...html.matchAll(/<form[^>]*>/g)].map((m) => m[0]);
-    for (const url of ['/api/submit', '/api/hint']) {
-      const f = forms.find((x) => x.includes(`hx-post="${url}"`));
-      expect(f, url).toContain('method="post"');
-      expect(f, url).toContain(`action="${url}"`);
-    }
   });
   it('shows unlocked hint text in id', async () => {
     const { agent } = await fresh();
@@ -207,50 +217,185 @@ describe('GET /c/:id', () => {
   });
 });
 
-describe('htmx fragments from the page endpoints', () => {
-  it('hint unlock with HX-Request returns an escaped HTML fragment; JSON contract unchanged', async () => {
+const hx = { 'HX-Request': 'true' };
+
+describe('portal POST /c/:id/hint and /submit (htmx fragments)', () => {
+  it('hint unlock with HX-Request returns an escaped HTML fragment', async () => {
     const { agent } = await fresh();
-    const res = await agent.post('/api/hint').set('HX-Request', 'true').type('form')
-      .send({ challengeId: 'CP-01', tier: '1' });
+    const res = await agent.post('/c/CP-01/hint').set(hx).type('form').send({ tier: '1' });
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/html/);
     expect(res.text).toContain('petunjuk-id &lt;b&gt;');
     expect(res.text).not.toContain('<b>');
-    const json = await agent.post('/api/hint').send({ challengeId: 'CP-01', tier: 1 });
-    expect(json.headers['content-type']).toMatch(/json/);
-    expect(json.body).toMatchObject({ unlocked: true, tier: 1, cost: 30 });
   });
 
   it('hint unlock changes the score', async () => {
     const { agent, sid, app } = await fresh();
-    const solve = await agent.post('/api/submit')
-      .send({ challengeId: 'CP-01', submission: issueFlag('CP-01', sid, 'acolyte') });
-    expect(solve.body.solved).toBe(true);
+    await agent.post('/api/submit').send({ challengeId: 'CP-01', submission: issueFlag('CP-01', sid, 'acolyte') });
     expect(scoreFor(app.locals.db, sid)).toBe(100);
-    await agent.post('/api/hint').set('HX-Request', 'true').type('form').send({ challengeId: 'CP-01', tier: '1' });
+    await agent.post('/c/CP-01/hint').set(hx).type('form').send({ tier: '1' });
     expect(scoreFor(app.locals.db, sid)).toBe(70);
   });
 
-  it('submit with HX-Request: correct flag credits the solve; wrong submission is escaped', async () => {
+  it('correct flag credits the solve; wrong submission is escaped and not echoed', async () => {
     const { agent, sid, app } = await fresh();
-    const bad = await agent.post('/api/submit').set('HX-Request', 'true').type('form')
-      .send({ challengeId: 'CP-01', submission: '<img src=x onerror=alert(1)>' });
+    const bad = await agent.post('/c/CP-01/submit').set(hx).type('form').send({ submission: '<img src=x onerror=alert(1)>' });
+    expect(bad.status).toBe(200);
     expect(bad.headers['content-type']).toMatch(/html/);
+    expect(bad.text).toContain('data-solved="false"');
     expect(bad.text).not.toContain('<img');
+    expect(bad.text).not.toContain('onerror');
     expect(scoreFor(app.locals.db, sid)).toBe(0);
-    const ok = await agent.post('/api/submit').set('HX-Request', 'true').type('form')
-      .send({ challengeId: 'CP-01', submission: issueFlag('CP-01', sid, 'acolyte') });
-    expect(ok.headers['content-type']).toMatch(/html/);
+    const ok = await agent.post('/c/CP-01/submit').set(hx).type('form').send({ submission: issueFlag('CP-01', sid, 'acolyte') });
     expect(ok.text).toContain('data-solved="true"');
     expect(scoreFor(app.locals.db, sid)).toBe(100);
   });
 
-  it('the page wires its forms to the API via htmx', async () => {
+  it('messages distinguish new best (+gained), already solved, and best-remains', async () => {
+    const { agent, sid } = await fresh();
+    const post = async (lvl: 'acolyte' | 'templar') =>
+      (await agent.post('/c/CP-01/submit?lang=en').set(hx).type('form').send({ submission: issueFlag('CP-01', sid, lvl) })).text;
+    const first = await post('templar');
+    expect(first).toContain('data-result="new_best"');
+    expect(first).toContain('+150');
+    const again = await post('templar');
+    expect(again).toContain('data-result="already"');
+    expect(again).not.toContain('+150');
+    const lower = await post('acolyte');
+    expect(lower).toContain('data-result="lower"');
+    expect(lower).toMatch(/best[^<]*Templar/i);
+    expect(lower).not.toMatch(/\+\d/);
+  });
+
+  it('gained is the difference from the previous best', async () => {
+    const { agent, sid } = await fresh();
+    await agent.post('/c/CP-01/submit').set(hx).type('form').send({ submission: issueFlag('CP-01', sid, 'acolyte') });
+    const up = await agent.post('/c/CP-01/submit?lang=en').set(hx).type('form').send({ submission: issueFlag('CP-01', sid, 'templar') });
+    expect(up.text).toContain('data-result="new_best"');
+    expect(up.text).toContain('+50');
+    expect(up.text).not.toContain('+150');
+  });
+
+  it('error fragments (invalid and unknown tier) are 200 HTML with no input echoed', async () => {
+    const { agent } = await fresh();
+    for (const tier of ['2', 'x<b>']) {
+      const r = await agent.post('/c/CP-01/hint').set(hx).type('form').send({ tier });
+      expect(r.status, tier).toBe(200);
+      expect(r.text).toContain('data-error');
+      expect(r.text).not.toContain('x<b>');
+    }
+  });
+
+  it('hint fragment honors ?lang and the remembered cookie', async () => {
+    const a = await fresh();
+    const en = await a.agent.post('/c/CP-01/hint?lang=en').set(hx).type('form').send({ tier: '1' });
+    expect(en.text).toContain('hint-en &lt;b&gt;');
+    const b = await fresh();
+    await b.agent.get('/c/CP-01?lang=id');
+    const id = await b.agent.post('/c/CP-01/hint').set(hx).type('form').send({ tier: '1' });
+    expect(id.text).toContain('petunjuk-id &lt;b&gt;');
+  });
+
+  it('unknown challenge ids 404', async () => {
+    const { agent } = await fresh();
+    expect((await agent.post('/c/ZZ-99/submit').type('form').send({ submission: 'x' })).status).toBe(404);
+    expect((await agent.post('/c/..%2Fx/hint').type('form').send({ tier: '1' })).status).toBe(404);
+  });
+});
+
+describe('portal POST without htmx (303 + one-shot result)', () => {
+  it('submit redirects back with a closed-set result key; the page renders it', async () => {
+    const { agent, sid } = await fresh();
+    const res = await agent.post('/c/CP-01/submit?lang=en').type('form').send({ submission: issueFlag('CP-01', sid, 'templar') });
+    expect(res.status).toBe(303);
+    expect(res.headers.location).toBe('/c/CP-01?r=new_best&lvl=templar&g=150');
+    const page = (await agent.get(res.headers.location)).text;
+    expect(page).toContain('data-result="new_best"');
+    expect(page).toContain('+150');
+  });
+
+  it('wrong submission redirects without echoing it', async () => {
+    const { agent } = await fresh();
+    const res = await agent.post('/c/CP-01/submit').type('form').send({ submission: 'SECRETGUESS<x>' });
+    expect(res.status).toBe(303);
+    expect(res.headers.location).toBe('/c/CP-01?r=wrong');
+    expect(res.headers.location).not.toContain('SECRETGUESS');
+    expect((await agent.get(res.headers.location)).text).toContain('data-solved="false"');
+  });
+
+  it('hint redirects to the page, which shows the unlocked hint; bad tier shows an error key', async () => {
+    const { agent } = await fresh();
+    const ok = await agent.post('/c/CP-01/hint').type('form').send({ tier: '1' });
+    expect(ok.status).toBe(303);
+    expect(ok.headers.location).toBe('/c/CP-01');
+    expect((await agent.get('/c/CP-01?lang=en')).text).toContain('hint-en &lt;b&gt;');
+    const bad = await agent.post('/c/CP-01/hint').type('form').send({ tier: '3' });
+    expect(bad.headers.location).toBe('/c/CP-01?r=err_unknown_tier');
+    expect((await agent.get(bad.headers.location)).text).toContain('data-error');
+  });
+
+  it('ignores unknown result keys and bad lvl/g values (nothing is echoed)', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-01?r=%3Cscript%3E&lvl=%3Cb%3E&g=%3Ci%3E')).text;
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('data-result');
+    const html2 = (await agent.get('/c/CP-01?r=new_best&lvl=%3Cb%3E&g=%3Ci%3E')).text;
+    expect(html2).not.toContain('<b>');
+    expect(html2).not.toContain('<i>');
+    expect(html2).not.toContain('&lt;b&gt;');
+    expect(html2).not.toContain('&lt;i&gt;');
+  });
+});
+
+describe('/api stays JSON-only', () => {
+  it('ignores HX-Request on /api/submit and /api/hint', async () => {
+    const { agent, sid } = await fresh();
+    const s = await agent.post('/api/submit').set(hx).send({ challengeId: 'CP-01', submission: issueFlag('CP-01', sid, 'acolyte') });
+    expect(s.headers['content-type']).toMatch(/json/);
+    expect(s.body).toMatchObject({ solved: true, level: 'acolyte', points: 100 });
+    const h = await agent.post('/api/hint').set(hx).send({ challengeId: 'CP-01', tier: 2 });
+    expect(h.status).toBe(404);
+    expect(h.body).toEqual({ unlocked: false, error: 'unknown_tier' });
+  });
+  it('the page wires its forms to the portal routes (htmx + no-JS)', async () => {
     const { agent } = await fresh();
     const html = (await agent.get('/c/CP-01')).text;
-    expect(html).toContain('hx-post="/api/submit"');
-    expect(html).toContain('hx-post="/api/hint"');
-    expect(html).toContain('name="challengeId" value="CP-01"');
+    expect(html).toContain('hx-post="/c/CP-01/submit"');
+    expect(html).toContain('hx-post="/c/CP-01/hint"');
+    expect(html).not.toContain('/api/');
+    const forms = [...html.matchAll(/<form[^>]*>/g)].map((m) => m[0]);
+    for (const url of ['/c/CP-01/submit', '/c/CP-01/hint']) {
+      const f = forms.find((x) => x.includes(`hx-post="${url}"`));
+      expect(f, url).toContain('method="post"');
+      expect(f, url).toContain(`action="${url}"`);
+    }
+    expect(html).toMatch(/hx-confirm="[^"]+"/);
+  });
+});
+
+describe('htmx error visibility', () => {
+  it('a throwing check() gives HX callers a stack-free HTML fragment and others the normal page', async () => {
+    const { agent } = await fresh();
+    const h = await agent.post('/c/CP-05/submit').set(hx).type('form').send({ submission: 'x' });
+    expect(h.status).toBe(500);
+    expect(h.headers['content-type']).toMatch(/html/);
+    expect(h.text).toContain('data-error');
+    expect(h.text).not.toContain('<html');
+    expect(h.text).not.toContain('kaboom-internal');
+    expect(h.text).not.toMatch(/\.ts:\d+/);
+    const n = await agent.post('/c/CP-05/submit').type('form').send({ submission: 'x' });
+    expect(n.status).toBe(500);
+    expect(n.text).toContain('<html');
+    expect(n.text).not.toContain('kaboom-internal');
+  });
+  it('the layout makes htmx swap error responses', async () => {
+    const { agent } = await fresh();
+    const html = (await agent.get('/c/CP-01')).text;
+    const m = /<meta name="htmx-config" content='([^']+)'>/.exec(html);
+    expect(m).not.toBeNull();
+    const cfg = JSON.parse(m![1]);
+    expect(cfg.responseHandling.some((r: { swap: boolean; code: string }) => r.swap && new RegExp(`^${r.code}$`).test('500'))).toBe(true);
+    expect(cfg.responseHandling.some((r: { swap: boolean; code: string }) => r.swap && new RegExp(`^${r.code}$`).test('413'))).toBe(true);
   });
 });
 
@@ -276,39 +421,6 @@ describe('GET /c/:id/source/:level', () => {
     for (const l of ['..%2Facolyte', '%2e%2e', 'acolyte.ts', 'constructor']) {
       expect((await agent.get(`/c/CP-01/source/${l}`)).status, l).toBe(404);
     }
-  });
-});
-
-describe('htmx errors and language', () => {
-  it('HX requests get a 200 escaped error fragment instead of a 4xx', async () => {
-    const { agent } = await fresh();
-    for (const body of [{ challengeId: 'CP-01', tier: '2' }, { challengeId: 'CP-01', tier: 'x' }, { challengeId: 'NOPE', tier: '1' }]) {
-      const hx = await agent.post('/api/hint').set('HX-Request', 'true').type('form').send(body);
-      expect(hx.status, JSON.stringify(body)).toBe(200);
-      expect(hx.headers['content-type']).toMatch(/html/);
-      expect(hx.text).toContain('data-error');
-    }
-  });
-  it('error fragments echo no input; non-HX callers keep JSON 4xx', async () => {
-    const { agent } = await fresh();
-    const hx = await agent.post('/api/submit').set('HX-Request', 'true').type('form').send({ challengeId: 'N<b>', submission: 'x' });
-    expect(hx.status).toBe(200);
-    expect(hx.text).toContain('data-error');
-    expect(hx.text).not.toContain('N<b>');
-    const json = await agent.post('/api/hint').send({ challengeId: 'CP-01', tier: 2 });
-    expect(json.status).toBe(404);
-    expect(json.body).toEqual({ unlocked: false, error: 'unknown_tier' });
-    expect((await agent.post('/api/hint').send({ challengeId: 'CP-01', tier: 'x' })).status).toBe(400);
-    expect((await agent.post('/api/submit').send({ challengeId: 'NOPE', submission: 'x' })).status).toBe(404);
-  });
-  it('hint fragment honors ?lang and the remembered cookie', async () => {
-    const a = await fresh();
-    const en = await a.agent.post('/api/hint?lang=en').set('HX-Request', 'true').type('form').send({ challengeId: 'CP-01', tier: '1' });
-    expect(en.text).toContain('hint-en &lt;b&gt;');
-    const b = await fresh();
-    await b.agent.get('/c/CP-01?lang=id');
-    const id = await b.agent.post('/api/hint').set('HX-Request', 'true').type('form').send({ challengeId: 'CP-01', tier: '1' });
-    expect(id.text).toContain('petunjuk-id &lt;b&gt;');
   });
 });
 

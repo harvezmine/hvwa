@@ -31,8 +31,7 @@
     <% if (h.unlocked) { %>
       <p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p>
     <% } else { %>
-      <form method="post" action="/api/hint" hx-post="/api/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML">
-        <input type="hidden" name="challengeId" value="<%= c.id %>">
+      <form method="post" action="/c/<%= c.id %>/hint" hx-post="/c/<%= c.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" hx-confirm="<%= t('challenge.hint_confirm') %>">
         <input type="hidden" name="tier" value="<%= h.id %>">
         <button type="submit"><%= t('challenge.hint_unlock') %> <%= h.id %> (<%= t('challenge.hint_cost') %>: <%= h.cost %>)</button>
       </form>
@@ -44,12 +43,11 @@
 
 <section class="card panel">
   <h2><%= t('challenge.submit_heading') %></h2>
-  <form method="post" action="/api/submit" hx-post="/api/submit" hx-target="#submit-result" hx-swap="innerHTML">
-    <input type="hidden" name="challengeId" value="<%= c.id %>">
+  <form method="post" action="/c/<%= c.id %>/submit" hx-post="/c/<%= c.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML">
     <label><%= t('challenge.submit_label') %> <input type="text" name="submission" autocomplete="off" required></label>
     <button type="submit"><%= t('challenge.submit_button') %></button>
   </form>
-  <div id="submit-result" aria-live="polite"></div>
+  <div id="submit-result" aria-live="polite"><% if (flash) { %><%- flashHtml(flash) %><% } %></div>
 </section>
 
 <section class="card panel">
