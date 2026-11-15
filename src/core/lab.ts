@@ -37,7 +37,7 @@ export interface PerSessionOptions<T = unknown> {
    */
   readonly idleTtlMs?: number;
   /**
-   * Most NEW instances created per rolling minute (default 120). Evicting an instance is a reset of that
+   * Most NEW instances created per rolling minute (default 120, see setPerSessionDefaults). Evicting an instance is a reset of that
    * player's lab (counters, locks, secrets), so creating instances must be too slow to flood the LRU out:
    * beyond the limit for() throws NewSessionLimitError (HTTP 429) and nothing is evicted. Infinity disables it.
    */
@@ -60,7 +60,24 @@ export interface PerSession<T> {
 
 const DEFAULT_MAX_ENTRIES = 5000;
 const DEFAULT_IDLE_TTL_MS = 26 * 60 * 60 * 1000;
-const DEFAULT_MAX_NEW_PER_MINUTE = 120;
+const perSessionDefaults = { maxNewPerMinute: 120 };
+
+/**
+ * Engine-wide defaults for perSession holders that do not set the option themselves. Read when a
+ * holder CHECKS (not when it is created), so module-level holders made at import time follow it.
+ * Tests lift the per-holder new-instance limit (tests/support/setup.ts); an explicit
+ * `maxNewPerMinute` on a holder always wins. Returns the previous values so a test can restore them.
+ */
+export function setPerSessionDefaults(d: { readonly maxNewPerMinute?: number }): { maxNewPerMinute: number } {
+  const prev = { ...perSessionDefaults };
+  if (d.maxNewPerMinute !== undefined) {
+    if (d.maxNewPerMinute !== Infinity && (!Number.isInteger(d.maxNewPerMinute) || d.maxNewPerMinute < 1)) {
+      throw new Error(`setPerSessionDefaults: maxNewPerMinute must be a positive integer or Infinity (got ${String(d.maxNewPerMinute)})`);
+    }
+    perSessionDefaults.maxNewPerMinute = d.maxNewPerMinute;
+  }
+  return prev;
+}
 
 /** Thrown by perSession().for() when new instances are being created too fast. The error handler answers 429. */
 export class NewSessionLimitError extends Error {
@@ -84,15 +101,16 @@ export class NewSessionLimitError extends Error {
 export function perSession<T>(
   factory: (level: Level, sessionId: string) => T, opts: PerSessionOptions<T> = {},
 ): PerSession<T> {
-  const { maxEntries = DEFAULT_MAX_ENTRIES, idleTtlMs = DEFAULT_IDLE_TTL_MS, now = Date.now, dispose, maxNewPerMinute = DEFAULT_MAX_NEW_PER_MINUTE } = opts;
+  const { maxEntries = DEFAULT_MAX_ENTRIES, idleTtlMs = DEFAULT_IDLE_TTL_MS, now = Date.now, dispose } = opts;
+  const maxNewOpt = opts.maxNewPerMinute;
   if (!Number.isInteger(maxEntries) || maxEntries < 1) {
     throw new Error(`perSession: maxEntries must be a positive integer (got ${String(maxEntries)})`);
   }
   if (typeof idleTtlMs !== 'number' || !(idleTtlMs > 0)) {
     throw new Error(`perSession: idleTtlMs must be a positive number (got ${String(idleTtlMs)})`);
   }
-  if (maxNewPerMinute !== Infinity && (!Number.isInteger(maxNewPerMinute) || maxNewPerMinute < 1)) {
-    throw new Error(`perSession: maxNewPerMinute must be a positive integer or Infinity (got ${String(maxNewPerMinute)})`);
+  if (maxNewOpt !== undefined && maxNewOpt !== Infinity && (!Number.isInteger(maxNewOpt) || maxNewOpt < 1)) {
+    throw new Error(`perSession: maxNewPerMinute must be a positive integer or Infinity (got ${String(maxNewOpt)})`);
   }
   const created: number[] = []; // creation times within the last minute
   // Map order = least recently used first (every use re-inserts at the end).
@@ -133,7 +151,7 @@ export function perSession<T>(
         return hit.value;
       }
       while (created.length > 0 && t - created[0] >= 60_000) created.shift();
-      if (created.length >= maxNewPerMinute) throw new NewSessionLimitError();
+      if (created.length >= (maxNewOpt ?? perSessionDefaults.maxNewPerMinute)) throw new NewSessionLimitError();
       const value = factory(level, sessionId);
       created.push(t);
       entries.set(key, { value, usedAt: t });

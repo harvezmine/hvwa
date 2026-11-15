@@ -11,5 +11,6 @@ export default defineConfig({
     // copies of the specs; never collect those from the main checkout.
     exclude: [...configDefaults.exclude, '.worktrees/**', '.claude/**'],
     environment: 'node',
+    setupFiles: ['tests/support/setup.ts'],
   },
 });

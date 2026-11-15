@@ -51,8 +51,30 @@ function inspect(kind, id) {
   return JSON.parse(r.out)[0];
 }
 
+// A tiny cookie jar, so the plain GETs behave like a browser: hvwa_sid (and any other Set-Cookie)
+// from the first response is sent on every later one. Without it every request mints a NEW session
+// and trips the app's new-session issuance limit (60/min) once enough challenges are registered.
+// (Requests with an explicit Host or raw sockets below are deliberately cookie-less probes.)
+const jar = new Map();
+const sidsSeen = new Set();
+const MAX_SIDS = 2; // one for the whole run; one spare
+function remember(setCookies) {
+  for (const line of setCookies) {
+    const [pair] = line.split(';');
+    const eq = pair.indexOf('=');
+    if (eq < 1) continue;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    jar.set(name, value);
+    if (name === 'hvwa_sid') sidsSeen.add(value);
+  }
+}
 async function get(path) {
-  const res = await fetch(BASE + path, { signal: AbortSignal.timeout(10_000), redirect: 'manual' });
+  const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+  const res = await fetch(BASE + path, {
+    signal: AbortSignal.timeout(10_000), redirect: 'manual', headers: cookie ? { cookie } : {},
+  });
+  remember(res.headers.getSetCookie());
   return { status: res.status, body: await res.text() };
 }
 async function expect200(path) {
@@ -302,9 +324,13 @@ const checks = [
       const page = await expect200(`/c/${id}`);
       if (!page.includes(id)) throw new Error(`/c/${id} does not mention ${id}`);
     }
+    // Guard: a client that keeps its cookie jar is handed ONE session.
+    if (sidsSeen.size > MAX_SIDS) {
+      throw new Error(`the app handed out ${sidsSeen.size} distinct hvwa_sid values (max ${MAX_SIDS}): the cookie jar is not being sent`);
+    }
     // Runtime assets: the --omit=dev image must still carry htmx.org (a prod dependency).
     for (const asset of ['/static/app.css', '/static/vendor/htmx.min.js']) await expect200(asset);
-    return `${ids.length} challenge page(s): ${ids.join(', ')}; static assets served`;
+    return `${ids.length} challenge page(s): ${ids.join(', ')}; static assets served; ${sidsSeen.size} hvwa_sid issued`;
   }],
   ['Host allowlist (DNS rebinding): loopback names pass, others get 421 at the proxy AND the app', async () => {
     for (const host of ['localhost:1337', '127.0.0.1:1337', 'LOCALHOST:1337', '[::1]:1337']) {

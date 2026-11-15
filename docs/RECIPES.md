@@ -167,8 +167,11 @@ fully attacker-chosen SQL must also cap result size.
   instances is rate limited so an eviction flood is impractical: each holder allows `maxNewPerMinute` (default
   120) new instances a minute (`NewSessionLimitError`, HTTP 429, nothing evicted), and the app issues at most 60 new
   `hvwa_sid` a minute (`createApp({ maxNewSessionsPerMinute, sessionClock })`, 429 "Too many new sessions").
-  With 5000 entries a flood needs about 42 minutes at the default rate. Specs that create many sessions on one
-  app should use fresh apps, or raise the limit explicitly.
+  With 5000 entries a flood needs about 42 minutes at the default rate. Holders live at module level, so every app in a spec file shares them and fresh apps do NOT reset the limit. Tests
+  therefore run with the per-holder default lifted to `Infinity` (`setPerSessionDefaults` in `src/core/lab.ts`, called
+  from `tests/support/setup.ts`); a holder with an explicit `maxNewPerMinute` keeps it, so a limit test must pass it
+  (or set the default itself). Any per-session store (an inbox, an attacker log, ...) must go through `perSession` so it
+  inherits these limits; never keep your own Map keyed by session id.
 
 **Restart lab (rare).** A lab whose state can get *stuck* (a hijacked or poisoned session, stored-XSS cleanup, a
 wedged workflow) may pass `reset: (req) => holder.reset(req)` to `defineChallenge`. The engine then mounts
@@ -282,7 +285,7 @@ Required cases (generated):
 
 - **(a)** `exploits` keys equal the challenge's non-Divine levels.
 - **(b)** each exploit at its level shows a flag that `/api/submit` credits at exactly that level.
-- **(c)** Divine answers every exploit with 200, the `resisted` text, no flag and no error text.
+- **(c)** Divine answers every exploit with `resistedStatus` (default 200), the `resisted` text, no flag and no error text.
 - **(d)** each `malformed` input shows error text at its listed levels and none at Divine.
 - **(e)** each `legit` input works at every level: 200, expected text, no flag.
 - **(f)** the `privileged` input (real credentials) works at Divine with no flag.
@@ -293,6 +296,13 @@ Required cases (generated):
   legitimately still work there; it must be explicit and explained in the spec.
   `resisted` may also be a map keyed by the exploit's level, when Divine answers
   different exploits differently (case (c) uses the entry for that exploit).
+
+`resistedStatus` (optional, default 200) is the status Divine answers exploits with in (c): a
+number, a non-empty list of accepted numbers, or a map keyed by the exploit's level (levels not
+in the map expect 200). Use it for API-style or access-control labs (JWT APIs, IDOR, broken
+access control) where a real 401/403/404 teaches more than a polite 200. Values must be integers
+100-599, or setup throws. It changes only the status: Divine must still never show a flag or
+error text, and the `resisted` text must still match. The other cases ((d)-(f)) keep asserting 200.
 
 "Error text" is `errorRe` (default `DB_ERROR_RE`; pair `/Parser error/` with a
 `tryDb` label). `malformed: []` and `privileged: null` are explicit opt-outs
@@ -315,7 +325,7 @@ One server per app: `import request from 'supertest'` in a spec is aliased (`vit
 (closed when the test ends) and reuse keep-alive sockets. Plain supertest starts a server and a connection per request,
 which leaves thousands of sockets in TIME_WAIT and exhausts ephemeral ports (`EADDRINUSE` in unrelated specs). Keep
 using `request` / `freshSession` / `bare` as usual; `serve(app)` (from `tests/helpers.ts`) returns the http.Server.
-Never deep-import or `require` the real supertest (`tests/tooling.spec.ts` fails if a spec does).
+Never deep-import or `require` the real supertest (`tests/tooling.spec.ts` fails if a spec does). Test servers listen on a random port on all interfaces for the length of a test (see `docs/SECURITY.md`): run tests on a trusted network.
 
 **Mutation self-check** before committing (revert by rewriting the file, not
 `git checkout` over uncommitted work):

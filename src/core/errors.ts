@@ -1,6 +1,7 @@
 // src/core/errors.ts — 404 and error responses that never leak internals.
 import { STATUS_CODES } from 'node:http';
 import { escapeHtml } from './render.js';
+import { NewSessionLimitError } from './lab.js';
 import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express';
 
 function isApi(req: Request): boolean {
@@ -48,6 +49,10 @@ export function errorHandler(): ErrorRequestHandler {
     const status = Number(err?.status ?? err?.statusCode);
     const clientError = Number.isInteger(status) && status >= 400 && status < 500;
     if (!clientError && process.env.NODE_ENV !== 'test') console.error(err);
+    if (err instanceof NewSessionLimitError && !isApi(req)) {
+      res.status(429).type('text/plain').send('Too many new lab sessions — wait a minute and keep your cookie jar.');
+      return;
+    }
     if (clientError) send(req, res, status, codeFor(status));
     else send(req, res, 500, 'internal_error');
   };
