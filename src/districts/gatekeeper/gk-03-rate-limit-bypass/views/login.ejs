@@ -2,7 +2,7 @@
 <section class="lab">
   <h1>Citadel Gate — Sign in</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code></p>
-  <p class="lab-note">Rate limit: 5 sign-in attempts per client per minute. This endpoint takes form posts and JSON, so use curl or a proxy to craft requests. Passwords from another breach are in <a href="<%= base %>/leaked.txt">this list</a>. Target: <code><%= target %></code>.</p>
+  <p class="lab-note">Rate limit: 5 sign-in attempts per client per 15 minutes. This endpoint takes form posts and JSON, so use curl or a proxy to craft requests. Passwords from another breach are in <a href="<%= base %>/leaked.txt">this list</a>. Target: <code><%= target %></code>.</p>
   <form method="post">
     <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
     <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>

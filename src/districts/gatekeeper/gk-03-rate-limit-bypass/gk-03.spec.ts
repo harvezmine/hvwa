@@ -1,9 +1,9 @@
 // src/districts/gatekeeper/gk-03-rate-limit-bypass/gk-03.spec.ts
 import { describe, it, expect } from 'vitest';
-import { freshSession, describeExploitMatrix, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
+import { freshSession, describeExploitMatrix, describeLabView, runWarmupThenFinal, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { GK03 } from './challenge.js'; // registers GK-03 before createApp() inside freshSession
-import { adminPassword, labState, leakedList } from './model.js';
+import { adminPassword, labState, leakedList, record } from './model.js';
 
 const LAB = '/d/gatekeeper/rate-limit-bypass';
 const ADMIN = 'citadel_admin';
@@ -26,10 +26,8 @@ async function send(agent: Agent, level: Level, req: Req, sid: string) {
   if (req.batch) return r.send(req.batch.map(real));
   return r.type('form').send(real(req.creds ?? { username: '', password: '' }));
 }
-async function run(agent: Agent, level: Level, s: Scenario, sid: string) {
-  for (const w of s.warmup) await send(agent, level, w, sid);
-  return send(agent, level, s.final, sid);
-}
+const run = (agent: Agent, level: Level, s: Scenario, sid: string) =>
+  runWarmupThenFinal(s, (r) => send(agent, level, r, sid));
 /** Seven wrong admin guesses, each claiming a different client through `header`, then the real password from yet another. */
 const spoofed = (header: string): Scenario => ({
   warmup: Array.from({ length: 7 }, (_, i) => ({ headers: { [header]: `203.0.113.${i + 1}` }, creds: wrong(i) })),
@@ -89,7 +87,7 @@ describe('GK-03 leaked list', () => {
 });
 
 describe('GK-03 the limiter', () => {
-  it('limits a client to 5 attempts per minute at acolyte, templar and inquisitor (even the right password)', async () => {
+  it('limits a client to 5 attempts per 15 minutes at acolyte, templar and inquisitor (even the right password)', async () => {
     for (const level of ['acolyte', 'templar', 'inquisitor'] as const) {
       const { agent, sid } = await freshSession();
       for (let i = 0; i < 5; i++) await send(agent, level, { creds: wrong(i) }, sid);
@@ -124,21 +122,60 @@ describe('GK-03 the limiter', () => {
     expect(oversized).toContain('Invalid username or password.');
   });
 
-  it('the window expires (injectable clock)', async () => {
-    for (const level of ['acolyte', 'templar', 'inquisitor', 'divine'] as const) {
+  it('the 15-minute window expires at acolyte, templar and inquisitor (injectable clock, no sleeping)', async () => {
+    for (const level of ['acolyte', 'templar', 'inquisitor'] as const) {
       const { agent, sid } = await freshSession();
       const state = labState(sid, level);
       let t = 9_000_000;
       state.now = () => t;
       for (let i = 0; i < 6; i++) await send(agent, level, { creds: wrong(i) }, sid);
       expect((await send(agent, level, { creds: FINAL_CREDS }, sid)).text, level).toContain('Too many attempts');
-      t += 61_000;
-      const after = (await send(agent, level, { creds: FINAL_CREDS }, sid)).text;
-      expect(after, level).toContain('Welcome, citadel_admin');
+      t += 14 * 60_000;
+      expect((await send(agent, level, { creds: FINAL_CREDS }, sid)).text, `${level} after 14 min`).toContain('Too many attempts');
+      t += 2 * 60_000;
+      expect((await send(agent, level, { creds: FINAL_CREDS }, sid)).text, `${level} after 16 min`).toContain('Welcome, citadel_admin');
     }
   });
 
-  it('divine: the account limit holds whatever headers claim; the socket has its own larger budget', async () => {
+  it('waiting is not the way through: 20 guesses at the lowest level take hours of clock time, not minutes', async () => {
+    const { agent, sid } = await freshSession();
+    const state = labState(sid, 'inquisitor');
+    let t = 1_000_000;
+    const start = t;
+    state.now = () => t;
+    let guesses = 0;
+    while (guesses < 20) {
+      const text = (await send(agent, 'inquisitor', { creds: wrong(guesses) }, sid)).text;
+      if (text.includes('Too many attempts')) t += 60_000; else guesses += 1;
+    }
+    expect(t - start).toBeGreaterThanOrEqual(3 * 15 * 60_000);
+  });
+
+  it('divine still refuses after the window, and every further failure doubles the lock', async () => {
+    const { agent, sid } = await freshSession();
+    const state = labState(sid, 'divine');
+    const t0 = 9_000_000;
+    let t = t0;
+    state.now = () => t;
+    for (let i = 0; i < 7; i++) await send(agent, 'divine', { creds: wrong(i) }, sid); // 5 failures lock it; 2 more are refused
+    expect((await send(agent, 'divine', { creds: FINAL_CREDS }, sid)).text).toContain('Too many attempts');
+    t += 16 * 60_000; // the lower levels' window is over ...
+    const afterWindow = (await send(agent, 'divine', { creds: FINAL_CREDS }, sid)).text;
+    expect(afterWindow).toContain('Too many attempts'); // ... Divine's account lock is not
+    expect(afterWindow).not.toMatch(FLAG_RE);
+    const firstLock = state.counters.get(ADMIN)!.lockedUntil - t0;
+    t = state.counters.get(ADMIN)!.lockedUntil + 1; // the first lock has run: one free try, which fails and doubles the lock
+    const t1 = t;
+    await send(agent, 'divine', { creds: wrong(99) }, sid);
+    const secondLock = state.counters.get(ADMIN)!.lockedUntil - t1;
+    expect(secondLock).toBe(firstLock * 2);
+    t += firstLock + 1000; // longer than the first lock, shorter than the second
+    expect((await send(agent, 'divine', { creds: FINAL_CREDS }, sid)).text, 'still inside the doubled lock').toContain('Too many attempts');
+    t = t1 + secondLock + 1;
+    expect((await send(agent, 'divine', { creds: FINAL_CREDS }, sid)).text).toContain('Welcome, citadel_admin');
+  });
+
+  it('divine: the account limit holds whatever headers claim', async () => {
     const { agent, sid } = await freshSession();
     for (let i = 0; i < 5; i++) {
       await send(agent, 'divine', { headers: { 'X-Forwarded-For': `1.1.1.${i}`, 'X-Real-IP': `2.2.2.${i}` }, creds: wrong(i) }, sid);
@@ -146,14 +183,28 @@ describe('GK-03 the limiter', () => {
     const mixed = (await send(agent, 'divine', { headers: { 'X-Forwarded-For': '9.9.9.9' }, creds: { username: 'CITADEL_ADMIN ', password: REAL } }, sid)).text;
     expect(mixed).toContain('Too many attempts');
     expect(mixed).not.toMatch(FLAG_RE);
-    // Another account is not locked by the admin's failures.
+    // Another account is not locked by the admin failures.
     expect((await send(agent, 'divine', { creds: PILGRIM }, sid)).text).toContain('Welcome, pilgrim');
   });
 
-  it('divine: a single client cannot spray many accounts either (per-socket budget)', async () => {
+  it('divine: one socket cannot spray many accounts, however X-Forwarded-For and X-Real-IP change on every request', async () => {
     const { agent, sid } = await freshSession();
-    for (let i = 0; i < 20; i++) await send(agent, 'divine', { creds: wrong(i, `ghost${i}`) }, sid);
-    expect((await send(agent, 'divine', { creds: PILGRIM }, sid)).text).toContain('Too many attempts');
+    for (let i = 0; i < 20; i++) {
+      await send(agent, 'divine', { headers: { 'X-Forwarded-For': `10.0.0.${i}`, 'X-Real-IP': `10.1.0.${i}` }, creds: wrong(i, `ghost${i}`) }, sid);
+    }
+    const res = await send(agent, 'divine', { headers: { 'X-Forwarded-For': '10.9.9.9', 'X-Real-IP': '10.9.9.8' }, creds: PILGRIM }, sid);
+    expect(res.text).toContain('Too many attempts');
+  });
+
+  it('client-written header values are bounded: a huge one still counts (hashed), and bucket memory is capped', async () => {
+    const { agent, sid } = await freshSession();
+    const huge = 'x'.repeat(8000);
+    for (let i = 0; i < 5; i++) await send(agent, 'acolyte', { headers: { 'X-Forwarded-For': huge }, creds: wrong(i) }, sid);
+    expect((await send(agent, 'acolyte', { headers: { 'X-Forwarded-For': huge }, creds: FINAL_CREDS }, sid)).text).toContain('Too many attempts');
+    const state = labState(sid, 'acolyte');
+    for (const key of state.buckets.keys()) expect(key.length).toBeLessThanOrEqual(66);
+    for (let i = 0; i < 2100; i++) record(state, `spoof-${i}`);
+    expect(state.buckets.size).toBeLessThanOrEqual(2000);
   });
 
   it('divine rejects batches outright and a batch attempt still costs nothing it can exploit', async () => {
@@ -179,35 +230,35 @@ describe('GK-03 per-player state', () => {
   });
 });
 
-describe('GK-03 lab view', () => {
-  it('tells the player their account, links the leaked list, posts back to the lab', async () => {
+describe('GK-03 restart', () => {
+  it('Restart lab gives the level a fresh limiter and a new admin password; other levels are untouched', async () => {
+    const { agent, sid } = await freshSession();
+    for (let i = 0; i < 6; i++) await send(agent, 'templar', { creds: wrong(i) }, sid);
+    for (let i = 0; i < 6; i++) await send(agent, 'acolyte', { creds: wrong(i) }, sid);
+    expect((await send(agent, 'templar', { creds: FINAL_CREDS }, sid)).text).toContain('Too many attempts');
+    const res = await agent.post(`${LAB}/_reset?level=templar`);
+    expect(res.status).toBe(303);
+    expect(res.headers.location).toBe(`${LAB}?level=templar`);
+    expect((await send(agent, 'templar', { creds: FINAL_CREDS }, sid)).text).toMatch(FLAG_RE);
+    expect((await send(agent, 'acolyte', { creds: FINAL_CREDS }, sid)).text).toContain('Too many attempts');
+  });
+});
+
+describeLabView({
+  challenge: GK03,
+  path: LAB,
+  account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
+  echoField: 'username',
+  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, null, 'x', [], { username: 5 }], []],
+  ok: (agent, level, sid) => send(agent, level, { creds: PILGRIM }, sid),
+  bad: (agent, level, sid) => send(agent, level, { creds: wrong(1) }, sid),
+});
+
+describe('GK-03 lab view specifics', () => {
+  it('links the leaked list by its absolute path and names the target', async () => {
     const { agent } = await freshSession();
     const res = await agent.get(`${LAB}?level=acolyte`);
-    expect(res.status).toBe(200);
-    expect(res.text).toMatch(/pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/);
-    expect(res.text).toContain(`href="${LAB}/leaked.txt"`); // absolute: a relative link would leave the lab
+    expect(res.text).toContain(`href="${LAB}/leaked.txt"`);
     expect(res.text).toContain('citadel_admin');
-    expect(res.text).not.toMatch(/type="password"/);
-    expect(/<form[^>]*>/.exec(res.text)?.[0]).not.toContain('action');
-  });
-
-  it('keeps the submitted username escaped; odd bodies are a failed login, never a 500', async () => {
-    const { agent } = await freshSession();
-    const res = await agent.post(`${LAB}?level=templar`).type('form').send({ username: '"><script>alert(1)</script>', password: 'x' });
-    expect(res.text).toContain('value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
-    expect(res.text).not.toContain('<script>alert(1)');
-    for (const level of LEVELS) {
-      for (const body of [{ username: { toString: 1 }, password: ['a'] }, [1, null, 'x', [], { username: 5 }], []]) {
-        const r = await agent.post(`${LAB}?level=${level}`).send(body);
-        expect(r.status, `${level} ${JSON.stringify(body)}`).toBe(200);
-        expect(r.text, level).not.toMatch(FLAG_RE);
-      }
-    }
-  });
-
-  it('marks success and failure messages for styling', async () => {
-    const { agent, sid } = await freshSession();
-    expect((await send(agent, 'templar', { creds: PILGRIM }, sid)).text).toMatch(/class="lab-message lab-success"[^>]*>Welcome, pilgrim/);
-    expect((await send(agent, 'templar', { creds: wrong(1) }, sid)).text).toMatch(/class="lab-message lab-error"/);
   });
 });

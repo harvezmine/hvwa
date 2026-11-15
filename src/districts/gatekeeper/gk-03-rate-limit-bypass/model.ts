@@ -1,11 +1,11 @@
 // model.ts — GK-03's lab state and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
-import { randomInt } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { perSession } from '../../../core/lab.js';
+import { createHash, randomInt } from 'node:crypto';
+import { fixtureLines, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { accountsFor, type Account, type Counter } from '../_shared/lab.js';
 
-export interface Account { username: string; password: string; role: 'admin' | 'user' }
+export type { Account, Counter };
 export interface Creds { username: string; password: string }
 
 /** Attempts counted in the current fixed window for one limiter key. */
@@ -17,6 +17,8 @@ export interface LabState {
   readonly adminPassword: string;
   /** Limiter buckets, keyed however the level keys them. */
   readonly buckets: Map<string, Bucket>;
+  /** Per-account failure counters with escalating lockouts (levels that lock accounts). */
+  readonly counters: Map<string, Counter>;
   /** The clock (ms); a test seam so the window can expire without waiting. */
   now: () => number;
 }
@@ -43,19 +45,15 @@ export interface LimitLevel {
   login(state: LabState, attempt: Attempt): Outcome;
 }
 
-/** The limiter: at most MAX attempts per key per fixed window. */
-export const LIMIT = Object.freeze({ max: 5, windowMs: 60_000 });
-
-/** The player's own (unprivileged) account, shown on the lab page. */
-export const PLAYER = Object.freeze({ username: 'pilgrim', password: 'pilgrim' });
-export const ADMIN_NAME = 'citadel_admin';
+/**
+ * The limiter: at most `max` attempts per key per fixed window. The window is long (15 minutes) on
+ * purpose: with the 40-entry list, a short window would let a patient attacker simply wait it out.
+ */
+export const LIMIT = Object.freeze({ max: 5, windowMs: 15 * 60_000 });
 
 /** Both accounts of this lab. */
 export function accounts(state: LabState): readonly Account[] {
-  return [
-    { username: ADMIN_NAME, password: state.adminPassword, role: 'admin' },
-    { username: PLAYER.username, password: PLAYER.password, role: 'user' },
-  ];
+  return accountsFor(state.adminPassword);
 }
 
 /** A credentials pair from any untrusted value: missing or non-string fields are ''. */
@@ -66,13 +64,19 @@ export function readCreds(value: unknown): Creds {
 }
 
 const MAX_BUCKETS = 2000;
+const MAX_KEY = 64;
+/** Bucket keys come from the client (headers): long ones are hashed so memory per key is bounded. */
+function bounded(key: string): string {
+  return key.length <= MAX_KEY ? key : `h:${createHash('sha256').update(key).digest('hex')}`;
+}
 /** True while `key` has used up its attempts in the current window. */
-export function isLimited(state: LabState, key: string, max: number = LIMIT.max): boolean {
-  const b = state.buckets.get(key);
+export function isLimited(state: LabState, rawKey: string, max: number = LIMIT.max): boolean {
+  const b = state.buckets.get(bounded(rawKey));
   return b !== undefined && state.now() - b.windowStart < LIMIT.windowMs && b.count >= max;
 }
 /** Count one attempt against `key` (starts a new window if the last one ended). Bounded memory. */
-export function record(state: LabState, key: string): void {
+export function record(state: LabState, rawKey: string): void {
+  const key = bounded(rawKey);
   const now = state.now();
   const b = state.buckets.get(key);
   if (b && now - b.windowStart < LIMIT.windowMs) { b.count += 1; return; }
@@ -84,14 +88,8 @@ export function record(state: LabState, key: string): void {
   }
 }
 
-// The leaked list the lab serves at ./leaked.txt (and the admin password is drawn from).
-const LEAKED_URL = new URL('./fixtures/leaked.txt', import.meta.url);
-let leaked: readonly string[] | undefined;
-/** The served leaked-password list, one entry per line. */
-export function leakedList(): readonly string[] {
-  leaked ??= Object.freeze(readFileSync(LEAKED_URL, 'utf8').split(/\r?\n/).filter((w) => w !== ''));
-  return leaked;
-}
+/** The leaked list the lab serves at ./leaked.txt (and the admin password is drawn from). */
+export const leakedList = fixtureLines(new URL('./fixtures/leaked.txt', import.meta.url));
 
 // Per player AND per level: the limiter buckets and the admin password are state a player
 // changes or learns. (Every player connects from the same loopback address, so a shared
@@ -99,12 +97,18 @@ export function leakedList(): readonly string[] {
 const labs = perSession((): LabState => ({
   adminPassword: leakedList()[randomInt(leakedList().length)],
   buckets: new Map(),
+  counters: new Map(),
   now: Date.now,
 }));
 
 /** The lab state for this request's session at the served level. */
 export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
+}
+
+/** The "Restart lab" hook: forget this player's limiter state at this level (and pick a new admin password). */
+export function resetLab(req: { sessionId: string; level: Level }): void {
+  labs.reset(req);
 }
 
 /** Test seam: the lab state of session `sessionId` at `level`. */
