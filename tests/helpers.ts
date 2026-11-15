@@ -76,6 +76,9 @@ export type Expectation = string | RegExp;
 /** A level that can be exploited (and so issues a flag). */
 export type ExploitLevel = Exclude<Level, 'divine'>;
 
+/** One HTTP status, or a non-empty list of accepted statuses. */
+export type StatusSpec = number | readonly number[];
+
 /**
  * The exploit matrix every challenge spec declares (see docs/RECIPES.md).
  * `I` is whatever one submission is for this lab (e.g. { username, password }).
@@ -102,6 +105,14 @@ export interface ExploitMatrix<I> {
    * answer differs per exploit (every exploitable level needs an entry then).
    */
   readonly resisted: Expectation | { readonly [L in ExploitLevel]?: Expectation };
+  /**
+   * The HTTP status Divine answers every exploit with in (c): default 200. Set 401/403/404 for
+   * API-style or access-control labs where a real denial teaches more. One status, a list of
+   * accepted statuses, or a map keyed by the EXPLOIT's level (levels missing from the map expect 200).
+   * Integers 100-599, non-empty lists only; anything else throws at setup. Divine never shows a
+   * flag or error text whatever the status.
+   */
+  readonly resistedStatus?: StatusSpec | { readonly [L in ExploitLevel]?: StatusSpec };
   /** Ordinary use: works at every level, never shows a flag. At least one. */
   readonly legit: readonly { readonly name: string; readonly input: I; readonly expect: Expectation }[];
   /** Inputs that break the query: a DB error at each listed level, none at Divine. [] if not applicable. */
@@ -130,7 +141,7 @@ function expectText(text: string, e: Expectation, label: string): void {
  * itself can be tested). Throws if the matrix cannot be run meaningfully.
  *  (a) exploits cover exactly the non-Divine levels
  *  (b) each exploit at its level shows a flag that /api/submit credits at exactly that level
- *  (c) Divine answers every exploit with 200, the `resisted` text (for that exploit's level),
+ *  (c) Divine answers every exploit with `resistedStatus` (default 200), the `resisted` text (for that exploit's level),
  *      no flag, no DB-error text
  *  (d) each malformed input shows DB-error text at its levels, and none (200, no flag) at Divine
  *  (e) each legit input works at every level: 200, expected text, no flag
@@ -166,6 +177,27 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
     return e;
   };
   if (isMap) for (const l of exploitable) resistedFor(l);
+  const checkStatus = (s: StatusSpec, where: string): readonly number[] => {
+    const list = typeof s === 'number' ? [s] : s;
+    if (!Array.isArray(list) || list.length === 0) throw new Error(`${at}: resistedStatus${where} must be a status or a non-empty list`);
+    for (const n of list) {
+      if (!Number.isInteger(n) || n < 100 || n > 599) throw new Error(`${at}: resistedStatus${where} has an invalid HTTP status ${String(n)}`);
+    }
+    return list;
+  };
+  const rs = m.resistedStatus;
+  const statusIsMap = typeof rs === 'object' && !Array.isArray(rs);
+  const statusMap = statusIsMap ? rs as { readonly [L in ExploitLevel]?: StatusSpec } : {};
+  if (statusIsMap) {
+    for (const [k, v] of Object.entries(statusMap)) {
+      if (!exploitable.includes(k as ExploitLevel)) throw new Error(`${at}: resistedStatus has a key "${k}" that is not an exploitable level`);
+      if (v !== undefined) checkStatus(v, `.${k}`);
+    }
+  } else if (rs !== undefined) checkStatus(rs as StatusSpec, '');
+  const resistedStatusFor = (level: ExploitLevel): readonly number[] => {
+    const s = statusIsMap ? statusMap[level] : rs as StatusSpec | undefined;
+    return s === undefined ? [200] : checkStatus(s, '');
+  };
   const implemented = LEVELS.filter((l) => c.levels.includes(l));
   const send = async (level: Level, input: I) => {
     const { agent, sid, app } = await freshSession();
@@ -192,7 +224,8 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
     });
     add(`divine resists the ${level} exploit`, async () => {
       const { res, text } = await send('divine', input);
-      expect(res.status).toBe(200);
+      const want = resistedStatusFor(level);
+      expect(want, `divine answered ${res.status} to the ${level} exploit, expected ${want.join(' or ')}`).toContain(res.status);
       expect(text, 'divine showed a flag').not.toMatch(FLAG_RE);
       expect(text, 'divine showed error text').not.toMatch(errorRe);
       expectText(text, resistedFor(level), 'divine did not answer with the resisted text');
