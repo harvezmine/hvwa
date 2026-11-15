@@ -48,13 +48,16 @@ export function t(key: string, lang: Lang = DEFAULT_LANG): string {
 }
 
 // lang = valid ?lang= → valid hvwa_lang cookie → DEFAULT_LANG. A valid ?lang=
-// is persisted in the hvwa_lang cookie. Exposes req.lang + res.locals.{lang,t}.
+// is persisted in the hvwa_lang cookie (only when it changes).
+// Exposes req.lang + res.locals.{lang,t}.
 export function langMiddleware(): RequestHandler {
   return (req, res, next) => {
     const fromQuery = req.query?.lang;
     let lang: Lang;
     if (isLang(fromQuery)) {
-      res.cookie('hvwa_lang', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
+      if (req.cookies?.hvwa_lang !== fromQuery) {
+        res.cookie('hvwa_lang', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
+      }
       lang = fromQuery;
     } else {
       lang = resolveLang(req.cookies?.hvwa_lang);

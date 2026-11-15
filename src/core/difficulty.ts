@@ -25,12 +25,14 @@ export function pointsForLevel(base: number, level: Level): number {
 }
 
 // req.level = valid ?level= → valid hvwa_level cookie → 'acolyte'.
-// A valid ?level= is persisted in the hvwa_level cookie.
+// A valid ?level= is persisted in the hvwa_level cookie (only when it changes).
 export function levelMiddleware(): RequestHandler {
   return (req, res, next) => {
     const fromQuery = req.query?.level;
     if (isLevel(fromQuery)) {
-      res.cookie('hvwa_level', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
+      if (req.cookies?.hvwa_level !== fromQuery) {
+        res.cookie('hvwa_level', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
+      }
       (req as any).level = fromQuery;
     } else {
       (req as any).level = resolveLevel(req.cookies?.hvwa_level);

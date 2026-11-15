@@ -46,6 +46,18 @@ describe('level preference', () => {
     const res = await request(app()).get('/probe').set('Cookie', 'hvwa_level=root');
     expect(res.body.level).toBe('acolyte');
   });
+
+  it('does not re-set the cookie when ?level= equals the current cookie', async () => {
+    const res = await request(app()).get('/probe?level=templar').set('Cookie', 'hvwa_level=templar');
+    expect(res.body.level).toBe('templar');
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('sets the cookie when ?level= differs from the current cookie', async () => {
+    const res = await request(app()).get('/probe?level=inquisitor').set('Cookie', 'hvwa_level=templar');
+    expect(res.body.level).toBe('inquisitor');
+    expect(cookieFor(res, 'hvwa_level')).toMatch(/^hvwa_level=inquisitor;/);
+  });
 });
 
 describe('lang preference', () => {
@@ -68,5 +80,17 @@ describe('lang preference', () => {
     const res = await request(app()).get('/probe?lang=fr').set('Cookie', 'hvwa_lang=en');
     expect(res.body.lang).toBe('en');
     expect(cookieFor(res, 'hvwa_lang')).toBeUndefined();
+  });
+
+  it('does not re-set the cookie when ?lang= equals the current cookie', async () => {
+    const res = await request(app()).get('/probe?lang=en').set('Cookie', 'hvwa_lang=en');
+    expect(res.body.lang).toBe('en');
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('sets the cookie when ?lang= differs from the current cookie', async () => {
+    const res = await request(app()).get('/probe?lang=id').set('Cookie', 'hvwa_lang=en');
+    expect(res.body.lang).toBe('id');
+    expect(cookieFor(res, 'hvwa_lang')).toMatch(/^hvwa_lang=id;/);
   });
 });
