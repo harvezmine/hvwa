@@ -110,7 +110,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const sources = LEVELS.filter((l) => c.levels.includes(l) && levelSource(c, l) !== undefined);
     await sendPage(res, view('challenge'), {
       title: c.title[req.lang], c, levels, hints, sources, hasDiff: diffPair(c) !== undefined,
-      labPath: challengePath(c), flash: flashFrom(req.query, best),
+      openLabHref: challengePath(c), flash: flashFrom(req.query, best),
       flashHtml: (f: Flash) => flashHtml(f, res.locals.t),
     });
   });

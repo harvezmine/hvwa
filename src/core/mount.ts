@@ -24,8 +24,18 @@ export function mountChallenges(app: Express): void {
       req.level = clampLevel(req.level, c.levels);
       res.locals.level = req.level;
       res.locals.challenge = c;
+      // Canonical lab path: req.baseUrl echoes the request's spelling (/D/GATEKEEPER/...), which would
+      // give wrong links and cookie paths (browsers match cookie paths case-sensitively).
+      res.locals.labPath = challengePath(c);
       next();
     });
+    const reset = c.reset;
+    if (reset) {
+      router.post('/_reset', (req, res) => {
+        reset(req);
+        res.redirect(303, `${challengePath(c)}?level=${req.level}`);
+      });
+    }
     c.mount(router);
     app.use(challengePath(c), router);
   }

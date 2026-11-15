@@ -24,6 +24,13 @@ register(defineChallenge({
   },
 }));
 
+register(defineChallenge({
+  id: 'LB-02', district: 'lab-bar-test', slug: 'restartable', dir: process.cwd(),
+  title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte', 'divine'], hints: [],
+  mount: (router) => { router.get('/', (_req, res) => sendPage(res, hello, { name: 'x' })); },
+  reset: () => {},
+}));
+
 const get = async (path: string) => {
   const res = await request(createApp()).get(path);
   return { status: res.status, html: res.text };
@@ -32,6 +39,21 @@ const bar = (html: string) => /<nav class="lab-bar"[\s\S]*?<\/nav>/.exec(html)?.
 const switcher = (html: string) =>
   [...bar(html).matchAll(/<a href="([^"]+)" data-level="(\w+)"([^>]*)>([^<]*)<\/a>/g)]
     .map((m) => ({ href: m[1], level: m[2], current: m[3].includes('aria-current="page"'), label: m[4] }));
+
+describe('lab bar: Restart lab', () => {
+  it('is a POST form to <lab>/_reset?level=<served level>, labelled in the current language, only when the challenge has a reset hook', async () => {
+    const en = bar((await get('/d/lab-bar-test/restartable?level=divine&lang=en')).html);
+    expect(en).toMatch(/<form method="post" action="\/d\/lab-bar-test\/restartable\/_reset\?level=divine"[^>]*>/);
+    expect(en).toContain('Restart lab');
+    expect(bar((await get('/d/lab-bar-test/restartable?lang=id')).html)).toContain('Mulai ulang lab');
+    expect(bar((await get(`${LAB}?lang=en`)).html)).not.toContain('_reset');
+  });
+
+  it('uses the canonical path even for an upper-case request URL', async () => {
+    const html = bar((await get('/D/LAB-BAR-TEST/RESTARTABLE?level=acolyte')).html);
+    expect(html).toContain('action="/d/lab-bar-test/restartable/_reset?level=acolyte"');
+  });
+});
 
 describe('lab bar (layout, challenge routes only)', () => {
   it('shows id, title, summary (current lang, escaped), level badge and back link', async () => {

@@ -42,6 +42,8 @@ export interface PerSessionOptions<T = unknown> {
 export interface PerSession<T> {
   /** The value for req.sessionId at req.level, created by the factory on first use. */
   for(req: Pick<Request, 'sessionId' | 'level'>): T;
+  /** Drop this (session, level)'s instance (calling dispose); the next for() builds a fresh one. */
+  reset(req: Pick<Request, 'sessionId' | 'level'>): void;
   /** Instances currently held. */
   readonly size: number;
 }
@@ -84,7 +86,17 @@ export function perSession<T>(
       drop(key, e.value);
     }
   };
+  const check = ({ sessionId, level }: Pick<Request, 'sessionId' | 'level'>) => {
+    if (!isLevel(level)) throw new Error(`perSession: "${String(level)}" is not a level`);
+    if (typeof sessionId !== 'string' || sessionId === '') throw new Error('perSession: missing sessionId');
+  };
   return Object.freeze({
+    reset(req: Pick<Request, 'sessionId' | 'level'>): void {
+      check(req);
+      const key = `${req.level}|${req.sessionId}`;
+      const hit = entries.get(key);
+      if (hit) drop(key, hit.value);
+    },
     for(req: Pick<Request, 'sessionId' | 'level'>): T {
       const { sessionId, level } = req;
       if (!isLevel(level)) throw new Error(`perSession: "${String(level)}" is not a level`);
@@ -200,4 +212,21 @@ export function field(req: { readonly body?: unknown }, name: string): string {
   if (body === null || typeof body !== 'object' || !Object.hasOwn(body, name)) return '';
   const value: unknown = (body as Record<string, unknown>)[name];
   return typeof value === 'string' ? value : '';
+}
+
+/** The canonical path of the lab being served (/d/<district>/<slug>), set by the engine. Use it for every
+ *  lab link and lab cookie path: req.baseUrl echoes the request's spelling (upper-case, trailing slash). */
+export function labPath(res: { readonly locals: Record<string, unknown> }): string {
+  const p = res.locals.labPath;
+  if (typeof p !== 'string') throw new Error('labPath: not a challenge route');
+  return p;
+}
+
+/**
+ * A request header as a string: the value if it arrived once (or as one string), else undefined.
+ * Header values are client-written: never trust them as identity (see GK-03).
+ */
+export function header(req: { readonly headers: Record<string, string | string[] | undefined> }, name: string): string | undefined {
+  const v = req.headers[name.toLowerCase()];
+  return typeof v === 'string' ? v : undefined;
 }

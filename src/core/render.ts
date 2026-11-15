@@ -40,7 +40,7 @@ function serverEjsOptions(): Options {
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-  'challenge', 'level', 'labBar',
+  'challenge', 'level', 'labBar', 'labPath',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */
@@ -52,6 +52,9 @@ export interface LabBar {
   readonly levelLabel: string;
   readonly pageTitle: string; // default <title>: "<id> — <title>"
   readonly backHref: string;  // the challenge page, /c/<id>
+  /** POST target of the "Restart lab" button; undefined when the challenge has no reset hook. */
+  readonly resetAction?: string;
+  readonly resetLabel: string;
   /** One link per implemented level, rank order; Divine is labelled as the secure reference. */
   readonly levels: readonly { id: Level; href: string; label: string; current: boolean }[];
 }
@@ -65,6 +68,8 @@ function labBar(locals: Response['locals']): LabBar | undefined {
   return {
     id: c.id, title, summary: c.summary[lang], level, levelLabel: t(`level.${level}`, lang),
     pageTitle: `${c.id} — ${title}`, backHref: `/c/${c.id}`,
+    resetAction: c.reset ? `${challengePath(c)}/_reset?level=${level}` : undefined,
+    resetLabel: t('lab.restart', lang),
     levels: LEVELS.filter((l) => c.levels.includes(l)).map((l) => ({
       id: l,
       href: `${challengePath(c)}?level=${l}`,

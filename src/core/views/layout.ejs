@@ -35,6 +35,9 @@
         <li><a href="<%= l.href %>" data-level="<%= l.id %>"<% if (l.current) { %> aria-current="page" class="current"<% } %>><%= l.label %></a></li>
 <% }); -%>
       </ul>
+<% if (labBar.resetAction) { -%>
+      <form method="post" action="<%= labBar.resetAction %>" class="lab-restart"><button type="submit" data-testid="lab-restart"><%= labBar.resetLabel %></button></form>
+<% } -%>
     </nav>
 <% } -%>
     <%- body %>

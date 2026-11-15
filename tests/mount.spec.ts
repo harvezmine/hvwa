@@ -14,7 +14,7 @@ const MT01 = register(defineChallenge({
   levels: ['acolyte', 'inquisitor', 'divine'], hints: [],
   mount: (router) => {
     router.get('/', (req, res) => {
-      res.json({ level: req.level, localsLevel: res.locals.level, challenge: res.locals.challenge?.id });
+      res.json({ level: req.level, localsLevel: res.locals.level, challenge: res.locals.challenge?.id, labPath: res.locals.labPath });
     });
     router.get('/flag', (req, res) => { res.json({ flag: flagFor(req, MT01) }); });
     router.get('/boom', () => { throw new Error(SECRET_DETAIL); });
@@ -31,7 +31,7 @@ describe('mountChallenges', () => {
 
   it('clamps the requested level to the challenge: templar → acolyte', async () => {
     const res = await request(createApp()).get('/d/mount-test/clamp-lab').set('Cookie', 'hvwa_level=templar');
-    expect(res.body).toEqual({ level: 'acolyte', localsLevel: 'acolyte', challenge: 'MT-01' });
+    expect(res.body).toEqual({ level: 'acolyte', localsLevel: 'acolyte', challenge: 'MT-01', labPath: '/d/mount-test/clamp-lab' });
   });
 
   it('keeps implemented levels as requested', async () => {
@@ -70,6 +70,34 @@ describe('mountChallenges', () => {
     expect(res.status).toBe(500);
     expect(res.text).not.toContain(SECRET_DETAIL);
     expect(res.text).not.toMatch(/\n\s+at /);
+  });
+
+  it('res.locals.labPath is the canonical lab path, whatever the spelling of the request URL', async () => {
+    const app = createApp();
+    for (const url of ['/d/mount-test/clamp-lab', '/D/MOUNT-TEST/CLAMP-LAB', '/d/Mount-Test/clamp-lab/']) {
+      const res = await request(app).get(url);
+      expect(res.status, url).toBe(200);
+      expect(res.body.labPath, url).toBe('/d/mount-test/clamp-lab');
+    }
+  });
+
+  it('mounts POST <lab>/_reset only for a challenge with a reset hook: it calls it with the session and level, then 303s back', async () => {
+    const calls: { sessionId: string; level: string }[] = [];
+    register(defineChallenge({
+      id: 'MT-03', district: 'mount-test', dir: process.cwd(), slug: 'resettable', title: { id: 't', en: 't' },
+      summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte', 'divine'], hints: [],
+      mount: (router) => { router.get('/', (_req, res) => { res.send('ok'); }); },
+      reset: (req) => { calls.push({ sessionId: req.sessionId, level: req.level }); },
+    }));
+    const s2 = await freshSession(createApp({ flagSecret: TEST_SECRET }));
+    const res = await s2.agent.post('/d/mount-test/resettable/_reset?level=divine');
+    expect(res.status).toBe(303);
+    expect(res.headers.location).toBe('/d/mount-test/resettable?level=divine');
+    expect(calls).toEqual([{ sessionId: s2.sid, level: 'divine' }]);
+    // GET is not a reset, and a challenge without a hook has no such route.
+    expect((await s2.agent.get('/d/mount-test/resettable/_reset')).status).toBe(404);
+    expect((await s2.agent.post('/d/mount-test/clamp-lab/_reset')).status).toBe(404);
+    expect(calls).toHaveLength(1);
   });
 
   it('mounts what is registered when createApp() runs', async () => {

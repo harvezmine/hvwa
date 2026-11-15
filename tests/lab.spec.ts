@@ -130,6 +130,22 @@ describe('perSession(factory, opts?)', () => {
     expect(p.size).toBe(1);
   });
 
+  it('reset(req) drops that (session, level) only, disposes it, and the next for() builds a fresh one', () => {
+    const disposed: string[] = [];
+    const p = perSession((l, sid) => ({ l, sid, n: Math.random() }), { dispose: (v) => { disposed.push(`${v.l}|${v.sid}`); } });
+    const a1 = p.for(req(S1, 'acolyte'));
+    const t1 = p.for(req(S1, 'templar'));
+    const b1 = p.for(req(S2, 'acolyte'));
+    p.reset(req(S1, 'acolyte'));
+    expect(disposed).toEqual([`acolyte|${S1}`]);
+    expect(p.size).toBe(2);
+    expect(p.for(req(S1, 'acolyte'))).not.toBe(a1);
+    expect(p.for(req(S1, 'templar'))).toBe(t1);
+    expect(p.for(req(S2, 'acolyte'))).toBe(b1);
+    p.reset(req('44444444-4444-4444-8444-444444444444')); // nothing held: a no-op
+    expect(() => p.reset({ sessionId: '', level: 'acolyte' })).toThrow(/sessionId/);
+  });
+
   it('defaults: 5000 entries, 2 h idle TTL', () => {
     let t = 0;
     const p = perSession((_l, sid) => sid, { now: () => t });

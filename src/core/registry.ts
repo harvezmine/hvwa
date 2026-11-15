@@ -1,5 +1,5 @@
 // src/core/registry.ts — the declarative challenge registry.
-import type { Router } from 'express';
+import type { Request, Router } from 'express';
 import { isAbsolute } from 'node:path';
 import { verifyFlag } from './flags.js';
 import { isLevel, type Level } from './levels.js';
@@ -55,6 +55,13 @@ export interface Challenge {
    * is already clamped to `levels`, and res.locals.{level,challenge} are set.
    */
   readonly mount: (router: Router) => void;
+  /**
+   * Optional "Restart lab" hook for labs that keep state (counters, lockouts, sessions, codes).
+   * When defined, the engine mounts POST <lab>/_reset, which calls it with the player's session id
+   * and the served level, then redirects (303) back to the lab, and the lab bar shows a
+   * "Restart lab" button. Typically `reset: (req) => labs.reset(req)` on the lab's perSession holder.
+   */
+  readonly reset?: (req: Pick<Request, 'sessionId' | 'level'>) => void;
 }
 
 /**
@@ -105,6 +112,7 @@ function validate(c: Challenge): void {
   }
   if (typeof c.check !== 'function') throw new Error(`${at}: check must be a function`);
   if (typeof c.mount !== 'function') throw new Error(`${at}: mount must be a function`);
+  if (c.reset !== undefined && typeof c.reset !== 'function') throw new Error(`${at}: reset must be a function`);
 }
 
 /** Validate challenge metadata and fill defaults. Throws on any invalid field. */

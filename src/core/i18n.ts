@@ -53,6 +53,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'lab.bar_label': { id: 'Panduan lab', en: 'Lab guide' },
   'lab.current_level': { id: 'Level saat ini', en: 'Current level' },
   'lab.switch_level': { id: 'Ganti level', en: 'Switch level' },
+  'lab.restart': { id: 'Mulai ulang lab', en: 'Restart lab' },
   'diff.vulnerable': { id: 'Rentan', en: 'Vulnerable' },
   'diff.secure': { id: 'Aman (Divine)', en: 'Secure (Divine)' },
   'safety.warning': {
