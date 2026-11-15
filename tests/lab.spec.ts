@@ -123,6 +123,33 @@ describe('tryDb(req, fn)', () => {
     expect(tryDb({ level: 'acolyte' }, () => { throw 'raw'; })).toEqual({ ok: false, message: 'Database error: raw' });
   });
 
+  it('takes an optional label for non-DB labs (parsers); Divine stays generic', () => {
+    const bad = () => { throw new Error('unexpected end of document'); };
+    expect(tryDb({ level: 'templar' }, bad, 'Parser error'))
+      .toEqual({ ok: false, message: 'Parser error: unexpected end of document' });
+    expect(tryDb({ level: 'divine' }, bad, 'Parser error')).toEqual({ ok: false, message: DIVINE_DB_ERROR });
+  });
+
+  it('refuses an async fn at every level: a thenable is a programming error, not a DB error', () => {
+    for (const level of ['acolyte', 'divine'] as const) {
+      expect(() => tryDb({ level }, async () => 1), level).toThrow(/tryDb.*synchronous/);
+      expect(() => tryDb({ level }, () => ({ then: () => {} })), level).toThrow(/tryDb.*synchronous/);
+    }
+  });
+
+  it('a rejecting async fn throws the guard error and leaves no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      expect(() => tryDb({ level: 'acolyte' }, async () => { throw new Error('late'); })).toThrow(/synchronous/);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('narrows on ok (type level)', () => {
     const r = tryDb({ level: 'acolyte' }, () => 'v');
     if (r.ok) expectTypeOf(r.value).toEqualTypeOf<string>();

@@ -75,20 +75,35 @@ export type DbResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly message: string };
 
+function isThenable(x: unknown): x is PromiseLike<unknown> {
+  return (typeof x === 'object' || typeof x === 'function') && x !== null
+    && typeof (x as { then?: unknown }).then === 'function';
+}
+
 /**
- * Run a (synchronous) challenge-DB call. On success `{ ok: true, value }`. On
- * a throw, `{ ok: false, message }`: below Divine the message is
- * `Database error: <err.message>` (error-based learning, CWE-209 on purpose);
- * at Divine it is the generic DIVINE_DB_ERROR. Put ONLY the DB call inside —
- * never flagFor() or rendering, whose errors must reach the error handler.
+ * Run a synchronous challenge-DB (or parser) call. On success `{ ok: true,
+ * value }`. On a throw, `{ ok: false, message }`: below Divine the message is
+ * `<label>: <err.message>` (error-based learning, CWE-209 on purpose; label
+ * defaults to 'Database error', e.g. 'Parser error' for XML/YAML labs); at
+ * Divine it is the generic DIVINE_DB_ERROR. Put ONLY that call inside, never
+ * flagFor() or rendering, whose errors must reach the error handler.
+ *
+ * `fn` must be synchronous (node:sqlite is). A thenable result throws: an
+ * async rejection would otherwise escape the catch and bypass the Divine rule.
  */
-export function tryDb<T>(req: Pick<Request, 'level'>, fn: () => T): DbResult<T> {
+export function tryDb<T>(req: Pick<Request, 'level'>, fn: () => T, label = 'Database error'): DbResult<T> {
+  let value: T;
   try {
-    return { ok: true, value: fn() };
+    value = fn();
   } catch (err) {
     if (req.level === 'divine') return { ok: false, message: DIVINE_DB_ERROR };
-    return { ok: false, message: `Database error: ${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, message: `${label}: ${err instanceof Error ? err.message : String(err)}` };
   }
+  if (isThenable(value)) {
+    value.then(undefined, () => {}); // never leave its rejection unhandled
+    throw new Error('tryDb: fn returned a Promise; tryDb is synchronous (await outside it, or add tryDbAsync)');
+  }
+  return { ok: true, value };
 }
 
 /**
