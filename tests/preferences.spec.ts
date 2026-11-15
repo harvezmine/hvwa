@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { levelMiddleware } from '../src/core/difficulty.js';
 import { langMiddleware } from '../src/core/i18n.js';
+import { setCookieHeader } from './helpers.js';
 
 function app() {
   const a = express();
@@ -16,8 +17,7 @@ function app() {
   return a;
 }
 
-const cookieFor = (res: request.Response, name: string) =>
-  ((res.headers['set-cookie'] as unknown as string[] | undefined) ?? []).find((c) => c.startsWith(`${name}=`));
+const cookieFor = setCookieHeader;
 
 describe('level preference', () => {
   it('defaults to acolyte with no query and no cookie', async () => {
@@ -50,7 +50,7 @@ describe('level preference', () => {
   it('does not re-set the cookie when ?level= equals the current cookie', async () => {
     const res = await request(app()).get('/probe?level=templar').set('Cookie', 'hvwa_level=templar');
     expect(res.body.level).toBe('templar');
-    expect(res.headers['set-cookie']).toBeUndefined();
+    expect(res.headers['set-cookie']).toBeUndefined(); // no cookie of any kind
   });
 
   it('sets the cookie when ?level= differs from the current cookie', async () => {
@@ -85,7 +85,7 @@ describe('lang preference', () => {
   it('does not re-set the cookie when ?lang= equals the current cookie', async () => {
     const res = await request(app()).get('/probe?lang=en').set('Cookie', 'hvwa_lang=en');
     expect(res.body.lang).toBe('en');
-    expect(res.headers['set-cookie']).toBeUndefined();
+    expect(res.headers['set-cookie']).toBeUndefined(); // no cookie of any kind
   });
 
   it('sets the cookie when ?lang= differs from the current cookie', async () => {

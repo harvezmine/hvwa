@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { register, defineChallenge } from '../src/core/registry.js';
 import { issueFlag } from '../src/core/flags.js';
+import { freshSession } from './helpers.js';
 
 register(defineChallenge({
   id: 'PT-01', district: 'gatekeeper', slug: 'portal-fixture',
@@ -14,12 +15,7 @@ register(defineChallenge({
 const testId = (html: string, id: string) =>
   new RegExp(`data-testid="${id}"[^>]*>\\s*([^<]*?)\\s*<`).exec(html)?.[1];
 
-async function fresh() {
-  const agent = request.agent(createApp({ flagSecret: 'test-secret' }));
-  const res = await agent.get('/healthz');
-  const sid = /hvwa_sid=([^;]+)/.exec(res.headers['set-cookie']?.[0] ?? '')![1];
-  return { agent, sid };
-}
+const fresh = () => freshSession();
 
 describe('portal', () => {
   it('GET / lists the registered district and challenge', async () => {

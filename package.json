@@ -14,7 +14,8 @@
     "postbuild": "node scripts/copy-assets.mjs",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "cookie-parser": "1.4.7",

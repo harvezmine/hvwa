@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { register, defineChallenge, type Level } from '../src/core/registry.js';
 import { issueFlag, verifyFlag } from '../src/core/flags.js';
+import { freshSession } from './helpers.js';
 
 // All four levels, default check (level-bound flag verification).
 register(defineChallenge({
@@ -25,13 +26,7 @@ register(defineChallenge({
   check: (ctx) => { tried.push(ctx.level); return false; }, mount: () => {},
 }));
 
-async function fresh() {
-  const agent = request.agent(createApp({ flagSecret: 'test-secret' }));
-  // The FIRST response of a fresh agent establishes the session and carries the sid.
-  const res = await agent.get('/healthz');
-  const sid = /hvwa_sid=([^;]+)/.exec(res.headers['set-cookie']?.[0] ?? '')![1];
-  return { agent, sid };
-}
+const fresh = () => freshSession();
 
 describe('submit', () => {
   it('accepts the correct per-session acolyte flag and records acolyte points', async () => {
@@ -102,9 +97,7 @@ describe('submit', () => {
   });
 
   it('keeps one flag secret across createApp() calls that pass no flagSecret', async () => {
-    const first = request.agent(createApp());
-    const r = await first.get('/healthz');
-    const sid = /hvwa_sid=([^;]+)/.exec(r.headers['set-cookie']?.[0] ?? '')![1];
+    const { sid } = await freshSession(createApp());
     const flag = issueFlag('ZZ-01', sid, 'acolyte'); // issued while using the first app
     const second = createApp(); // must not rotate the process-wide secret
     const res = await request(second).post('/api/submit')

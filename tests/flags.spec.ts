@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { issueFlag, verifyFlag, setFlagSecret } from '../src/core/flags.js';
+import { TEST_SECRET } from './helpers.js';
 
 describe('flags', () => {
-  beforeAll(() => setFlagSecret('test-secret'));
+  beforeAll(() => setFlagSecret(TEST_SECRET));
 
   it('is deterministic per (challenge, session, level) and rejects cross-session flags', () => {
     const a = issueFlag('GK-01', 'sessA', 'acolyte');
@@ -31,8 +32,11 @@ describe('flags', () => {
 
   it('depends on the configured secret', () => {
     const a = issueFlag('GK-01', 'sessA', 'acolyte');
-    setFlagSecret('another-secret');
-    expect(issueFlag('GK-01', 'sessA', 'acolyte')).not.toBe(a);
-    setFlagSecret('test-secret');
+    setFlagSecret('another-secret-value');
+    try {
+      expect(issueFlag('GK-01', 'sessA', 'acolyte')).not.toBe(a);
+    } finally {
+      setFlagSecret(TEST_SECRET); // restore even if the assertion fails
+    }
   });
 });

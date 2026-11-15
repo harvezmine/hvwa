@@ -3,9 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-// @ts-expect-error — plain .mjs build script without type declarations
 import { copyAssets } from '../scripts/copy-assets.mjs';
-// @ts-expect-error — plain .mjs build script without type declarations
 import { cleanDist } from '../scripts/clean-dist.mjs';
 
 const roots: string[] = [];
