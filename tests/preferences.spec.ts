@@ -19,6 +19,20 @@ function app() {
 
 const cookieFor = setCookieHeader;
 
+describe('preference cookies share one persistent policy', () => {
+  it.each([
+    ['/probe?level=templar', 'hvwa_level'],
+    ['/probe?lang=en', 'hvwa_lang'],
+  ])('%s sets %s for one year, httpOnly, SameSite=Lax, path=/', async (url, name) => {
+    const line = cookieFor(await request(app()).get(url), name) ?? '';
+    expect(line).toMatch(/; Max-Age=31536000(;|$)/);
+    expect(line).toMatch(/; Expires=[^;]+ GMT/);
+    expect(line).toMatch(/; HttpOnly/i);
+    expect(line).toMatch(/; SameSite=Lax/i);
+    expect(line).toMatch(/; Path=\/(;|$)/);
+  });
+});
+
 describe('level preference', () => {
   it('defaults to acolyte with no query and no cookie', async () => {
     const res = await request(app()).get('/probe');

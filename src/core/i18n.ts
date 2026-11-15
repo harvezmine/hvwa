@@ -1,5 +1,6 @@
 // src/core/i18n.ts
 import type { RequestHandler } from 'express';
+import { preference } from './cookies.js';
 
 export const LANGS = Object.freeze(['id', 'en'] as const);
 export type Lang = (typeof LANGS)[number];
@@ -36,10 +37,6 @@ export function isLang(x: unknown): x is Lang {
   return typeof x === 'string' && (LANGS as readonly string[]).includes(x);
 }
 
-export function resolveLang(raw: unknown, fallback: Lang = DEFAULT_LANG): Lang {
-  return isLang(raw) ? raw : fallback;
-}
-
 // Translate a key; unknown keys echo themselves so missing strings are visible.
 export function t(key: string, lang: Lang = DEFAULT_LANG): string {
   const entry = DICT[key];
@@ -47,21 +44,11 @@ export function t(key: string, lang: Lang = DEFAULT_LANG): string {
   return entry[lang];
 }
 
-// lang = valid ?lang= → valid hvwa_lang cookie → DEFAULT_LANG. A valid ?lang=
-// is persisted in the hvwa_lang cookie (only when it changes).
+// lang = valid ?lang= → valid hvwa_lang cookie → DEFAULT_LANG.
 // Exposes req.lang + res.locals.{lang,t}.
 export function langMiddleware(): RequestHandler {
   return (req, res, next) => {
-    const fromQuery = req.query?.lang;
-    let lang: Lang;
-    if (isLang(fromQuery)) {
-      if (req.cookies?.hvwa_lang !== fromQuery) {
-        res.cookie('hvwa_lang', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
-      }
-      lang = fromQuery;
-    } else {
-      lang = resolveLang(req.cookies?.hvwa_lang);
-    }
+    const lang = preference(req, res, { query: 'lang', cookie: 'hvwa_lang', isValid: isLang, fallback: DEFAULT_LANG });
     req.lang = lang;
     res.locals.lang = lang;
     res.locals.t = (key: string) => t(key, lang);

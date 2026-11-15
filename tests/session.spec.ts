@@ -25,6 +25,15 @@ describe('session', () => {
     expect(setCookieValue(r1, 'hvwa_sid')).toBe(r1.body.sid);
   });
 
+  it('hvwa_sid is persistent for one year, httpOnly, SameSite=Lax, path=/', async () => {
+    const line = setCookieHeader(await request(app()).get('/me'), 'hvwa_sid') ?? '';
+    expect(line).toMatch(/; Max-Age=31536000(;|$)/);
+    expect(line).toMatch(/; Expires=[^;]+ GMT/);
+    expect(line).toMatch(/; HttpOnly/i);
+    expect(line).toMatch(/; SameSite=Lax/i);
+    expect(line).toMatch(/; Path=\/(;|$)/);
+  });
+
   it('sets the cookie only when the session is new', async () => {
     const agent = request.agent(app());
     await agent.get('/me');

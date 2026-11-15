@@ -1,6 +1,7 @@
 // src/core/session.ts
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from 'express';
+import { COOKIE_OPTIONS } from './cookies.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -15,7 +16,7 @@ export function sessionMiddleware(): RequestHandler {
       sid = incoming;
     } else {
       sid = randomUUID();
-      res.cookie('hvwa_sid', sid, { httpOnly: true, sameSite: 'lax', path: '/' });
+      res.cookie('hvwa_sid', sid, COOKIE_OPTIONS);
     }
     req.sessionId = sid;
     next();
