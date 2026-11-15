@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path';
 import { createApp } from './app.js';
 import { bindRefusal, config } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';
+import { listen, closeGracefully } from './lifecycle.js';
+import type { Server } from 'node:http';
 
 // Deliberately vulnerable: refuse a non-loopback bind unless explicitly allowed.
 const refusal = bindRefusal(config);
@@ -22,15 +24,28 @@ const app = createApp({
   dbPath: join(dataDir, 'hvwa.db'),
   flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
 });
-const server = app.listen(config.PORT, config.HOST, () => {
-  console.log(`HVWA on http://${config.HOST}:${config.PORT} — DO NOT expose to untrusted networks`);
-});
 
-// Graceful stop: stop accepting connections, then close the SQLite handle.
-function shutdown(): void {
-  server.close();
+let server: Server;
+try {
+  server = await listen(app, config.PORT, config.HOST);
+} catch (err) {
+  const reason = err instanceof Error ? err.message : String(err);
+  console.error(`HVWA could not listen on ${config.HOST}:${config.PORT}: ${reason}`);
   app.locals.db.close();
-  process.exit(0);
+  process.exit(1);
+}
+console.log(`HVWA on http://${config.HOST}:${config.PORT} — DO NOT expose to untrusted networks`);
+
+// Graceful stop: wait for server.close() to finish, then close the DB, then exit.
+let stopping = false;
+function shutdown(signal: NodeJS.Signals): void {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${signal}: shutting down`);
+  closeGracefully(server, app.locals.db).then(
+    () => process.exit(0),
+    (err: unknown) => { console.error('shutdown failed:', err); process.exit(1); },
+  );
 }
 process.once('SIGINT', shutdown);
 process.once('SIGTERM', shutdown);
