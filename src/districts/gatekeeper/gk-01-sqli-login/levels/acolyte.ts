@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import type { UserRow } from '../challenge.js';
+import type { UserRow } from '../model.js';
 
 // ACOLYTE — no defense: both fields are concatenated straight into the SQL string.
 export function findUser(db: ChallengeDb, username: string, password: string): UserRow | undefined {

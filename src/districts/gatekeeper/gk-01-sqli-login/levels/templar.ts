@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import type { UserRow } from '../challenge.js';
+import type { UserRow } from '../model.js';
 
 // TEMPLAR — naive filter: quotes are stripped from the username only.
 // The password is still concatenated into the query.

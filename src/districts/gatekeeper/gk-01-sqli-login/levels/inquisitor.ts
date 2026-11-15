@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import type { UserRow } from '../challenge.js';
+import type { UserRow } from '../model.js';
 
 // INQUISITOR — real defense, subtly wrong: fully parameterized, but the password
 // is compared with LIKE, so SQL wildcards in the input are not escaped.

@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import type { UserRow } from '../challenge.js';
+import type { UserRow } from '../model.js';
 
 // DIVINE — secure reference: parameterized query with exact comparison.
 // (A production system would also store a slow password hash and rate-limit attempts.)

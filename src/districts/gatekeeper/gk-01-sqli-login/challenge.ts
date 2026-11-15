@@ -1,48 +1,40 @@
-// challenge.ts
-import { randomBytes } from 'node:crypto';
+// challenge.ts — GK-01 metadata and routes. The vulnerable code is in levels/*.ts (served by View Source).
 import { join } from 'node:path';
+import type { Request } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
-import { challengeDb, type ChallengeDb } from '../../../core/challenge-db.js';
+import { byLevel, field, tryDb } from '../../../core/lab.js';
 import { flagFor } from '../../../core/mount.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import type { Level } from '../../../core/levels.js';
+import { PLAYER, usersDb, type LoginLevel, type UserRow } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
 import * as divine from './levels/divine.js';
 
-export interface UserRow { username: string; role: string }
-type FindUser = (db: ChallengeDb, username: string, password: string) => UserRow | undefined;
-
 const dir = challengeDir(import.meta.url);
 const view = join(dir, 'views', 'login.ejs');
+const impl = byLevel<LoginLevel>({ acolyte, templar, inquisitor, divine });
 
-// Private per-process challenge DB. The admin password is random so guessing it is never the solve.
-const db = challengeDb(
-  `CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL,
-     password TEXT NOT NULL, role TEXT NOT NULL)`,
-  (d) => {
-    const ins = d.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)');
-    ins.run('templar_admin', randomBytes(16).toString('hex'), 'admin');
-    ins.run('pilgrim', 'pilgrim', 'user');
-  },
-);
+/** The lab's message: ok selects the success/error style. */
+interface Result { ok: boolean; text: string }
 
-const FIND: Record<Level, FindUser> = {
-  acolyte: acolyte.findUser, templar: templar.findUser,
-  inquisitor: inquisitor.findUser, divine: divine.findUser,
-};
+function welcome(req: Request, user: UserRow): Result {
+  const hello = `Welcome, ${user.username} (role: ${user.role}).`;
+  if (user.role !== 'admin') return { ok: true, text: `${hello} Only the citadel admin holds the flag.` };
+  if (req.level === 'divine') return { ok: true, text: hello }; // Divine never issues a flag
+  return { ok: true, text: `${hello} Flag: ${flagFor(req, GK01)}` };
+}
 
 export const GK01 = register(defineChallenge({
   id: 'GK-01', district: 'gatekeeper', slug: 'sqli-login', dir,
   title: { id: 'Bypass Login SQLi', en: 'SQLi Login Bypass' },
   summary: {
-    id: 'Masuk sebagai templar_admin tanpa mengetahui kata sandinya.',
-    en: 'Log in as templar_admin without knowing the password.',
+    id: 'Masuk sebagai citadel_admin tanpa mengetahui kata sandinya.',
+    en: 'Log in as citadel_admin without knowing the password.',
   },
   maps: ['A05:2025', 'CWE-89'],
-  levels: ['acolyte', 'templar', 'inquisitor', 'divine'],
+  levels: impl.levels,
   points: 100,
   hints: [
     { id: 1, cost: 10, text: { id: 'Input kamu masuk ke query SQL. Lihat View Source.', en: 'Your input ends up in the SQL query. Check View Source.' } },
@@ -50,21 +42,20 @@ export const GK01 = register(defineChallenge({
     { id: 3, cost: 40, text: { id: 'Buat kondisi WHERE selalu benar, atau buang pengecekan password. Di Inquisitor, ingat arti wildcard pada LIKE.', en: 'Make the WHERE clause always true, or drop the password check. At Inquisitor, remember what LIKE wildcards mean.' } },
   ],
   mount: (router) => {
-    router.get('/', (_req, res) => sendPage(res, view, { message: null }));
+    router.get('/', (_req, res) => sendPage(res, view, { account: PLAYER, result: null, username: '', password: '' }));
     router.post('/', async (req, res) => {
-      const username = String(req.body?.username ?? '');
-      const password = String(req.body?.password ?? '');
-      let message: string;
-      try {
-        const user = FIND[req.level](db, username, password);
-        if (user?.role !== 'admin') message = 'Invalid credentials.';
-        else if (req.level === 'divine') message = 'Welcome, Templar.'; // Divine never issues a flag
-        else message = `Welcome, Templar. Flag: ${flagFor(req, GK01)}`;
-      } catch (err) {
-        // Below Divine, SQL errors are shown (error-based learning). Divine never leaks them.
-        message = req.level === 'divine' ? 'Invalid credentials.' : `Database error: ${(err as Error).message}`;
-      }
-      await sendPage(res, view, { message });
+      const username = field(req, 'username');
+      const password = field(req, 'password');
+      const db = usersDb(req.level);
+      const level = impl.for(req.level);
+      // Only the DB call goes inside tryDb; flagFor() stays outside it.
+      const found = tryDb(req, () => level.findUser(db, username, password));
+      const result: Result = !found.ok
+        ? { ok: false, text: found.message }
+        : found.value
+          ? welcome(req, found.value)
+          : { ok: false, text: 'Invalid credentials.' };
+      await sendPage(res, view, { account: PLAYER, result, username, password });
     });
   },
 }));
