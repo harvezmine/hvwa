@@ -1,12 +1,13 @@
 // src/core/source.ts — read a challenge's level source for View Source / Diff.
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isLevel, type Level } from './levels.js';
 import type { Challenge } from './registry.js';
 
-// Level files are static for the life of the process: cache hits per (dir, level)
-// so GET /c/:id does not re-read every file. Misses are not cached.
-const cache = new Map<string, string>();
+// Level files are static for the life of the process: cache per (dir, level),
+// misses included, so GET /c/:id does not re-read every file.
+const cache = new Map<string, string | undefined>();
 
 /**
  * Source text of `<c.dir>/levels/<level>.ts`, or undefined when the level is
@@ -17,13 +18,31 @@ const cache = new Map<string, string>();
 export function levelSource(c: Pick<Challenge, 'dir' | 'levels'>, level: Level): string | undefined {
   if (!isLevel(level) || !c.levels.includes(level)) return undefined;
   const key = `${c.dir}|${level}`;
-  const hit = cache.get(key);
-  if (hit !== undefined) return hit;
+  if (cache.has(key)) return cache.get(key);
+  let src: string | undefined;
   try {
-    const src = readFileSync(join(c.dir, 'levels', `${level}.ts`), 'utf8');
-    cache.set(key, src);
-    return src;
+    src = readFileSync(join(c.dir, 'levels', `${level}.ts`), 'utf8');
   } catch {
-    return undefined;
+    src = undefined;
+  }
+  cache.set(key, src);
+  return src;
+}
+
+/** The absolute directory of a challenge module: `dir: challengeDir(import.meta.url)`. */
+export function challengeDir(importMetaUrl: string): string {
+  return dirname(fileURLToPath(importMetaUrl));
+}
+
+/**
+ * Fail fast on a wrong `dir` or a forgotten level file: throws listing every
+ * missing `levels/<level>.ts` for the levels the challenge implements.
+ */
+export function assertChallengeFiles(c: Pick<Challenge, 'id' | 'dir' | 'levels'>): void {
+  const missing = c.levels
+    .map((l) => join('levels', `${l}.ts`))
+    .filter((rel) => !existsSync(join(c.dir, rel)));
+  if (missing.length > 0) {
+    throw new Error(`challenge ${c.id}: missing level file(s) in ${c.dir}: ${missing.join(', ')}`);
   }
 }

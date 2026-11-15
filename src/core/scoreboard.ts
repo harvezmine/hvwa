@@ -1,6 +1,7 @@
 // src/core/scoreboard.ts
 import type { DatabaseSync } from 'node:sqlite';
 import { hintCost } from './hints.js';
+import { isLevel, type Level } from './levels.js';
 
 // One row per (session, challenge), holding the best level solved so far.
 // A later solve only replaces the row if it is worth more points.
@@ -13,10 +14,10 @@ export function recordSolve(db: DatabaseSync, sid: string, cid: string, level: s
 }
 
 // The stored (best) solve for one challenge, if any.
-export function bestSolve(db: DatabaseSync, sid: string, cid: string): { level: string; points: number } | undefined {
+export function bestSolve(db: DatabaseSync, sid: string, cid: string): { level: Level; points: number } | undefined {
   const r = db.prepare('SELECT level, points FROM solves WHERE session_id=? AND challenge_id=?')
     .get(sid, cid) as { level: string; points: number } | undefined;
-  return r ? { level: r.level, points: Number(r.points) } : undefined;
+  return r && isLevel(r.level) ? { level: r.level, points: Number(r.points) } : undefined;
 }
 
 // Sum of best-level points minus unlocked hint costs, floored at 0.

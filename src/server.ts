@@ -2,6 +2,8 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import './districts/index.js'; // registers every challenge; must precede createApp()
+import { allChallenges } from './core/registry.js';
+import { assertChallengeFiles } from './core/source.js';
 import { createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';
@@ -29,6 +31,9 @@ const dataDir = config.HVWA_DATA_DIR
   ? resolve(config.HVWA_DATA_DIR)
   : join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
 mkdirSync(dataDir, { recursive: true });
+
+// A wrong challenge dir or a missing level file fails at startup, not on first View Source.
+for (const c of allChallenges()) assertChallengeFiles(c);
 
 const app = createApp({
   dbPath: join(dataDir, 'hvwa.db'),
