@@ -1,0 +1,9 @@
+/* src/public/app.css — portal static styles (Tailwind + htmx loaded via CDN). */
+:root { color-scheme: dark; }
+
+.diff-view { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
+.diff-view th, .diff-view td { border: 1px solid #334155; padding: 2px 6px; vertical-align: top; }
+.diff-view pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.diff-ln { color: #64748b; text-align: right; user-select: none; }
+.diff-changed .diff-vuln { background: #450a0a; }
+.diff-changed .diff-secure { background: #052e16; }
