@@ -27,6 +27,80 @@ export function perLevel<T>(factory: (level: Level) => T): PerLevel<T> {
   });
 }
 
+export interface PerSessionOptions {
+  /** Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000. */
+  readonly maxEntries?: number;
+  /** An instance unused for longer than this (ms) is dropped; the next request gets a fresh one. Default 2 h. */
+  readonly idleTtlMs?: number;
+  /** Clock in ms (injectable for tests). Default Date.now. */
+  readonly now?: () => number;
+}
+
+/** One lazily created value per (session, level) (see perSession). */
+export interface PerSession<T> {
+  /** The value for req.sessionId at req.level, created by the factory on first use. */
+  for(req: Pick<Request, 'sessionId' | 'level'>): T;
+  /** Instances currently held. */
+  readonly size: number;
+}
+
+const DEFAULT_MAX_ENTRIES = 5000;
+const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Per-player isolation for labs whose exploit MUTATES state (balances,
+ * roles, lockout counters, OTPs, stored payloads): `factory(level, sessionId)`
+ * runs the first time a session uses a level, so one player's exploit never
+ * changes another player's lab, and levels are isolated too (no perLevel on
+ * top). Memory is bounded: least-recently-used eviction beyond `maxEntries`,
+ * and instances idle longer than `idleTtlMs` are dropped. A dropped instance
+ * is rebuilt fresh, so labs must tolerate a reset.
+ *
+ *   const shop = perSession(() => challengeDb(SCHEMA, seed));
+ *   shop.for(req).prepare(...)
+ */
+export function perSession<T>(
+  factory: (level: Level, sessionId: string) => T, opts: PerSessionOptions = {},
+): PerSession<T> {
+  const { maxEntries = DEFAULT_MAX_ENTRIES, idleTtlMs = DEFAULT_IDLE_TTL_MS, now = Date.now } = opts;
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new Error(`perSession: maxEntries must be a positive integer (got ${String(maxEntries)})`);
+  }
+  if (typeof idleTtlMs !== 'number' || !(idleTtlMs > 0)) {
+    throw new Error(`perSession: idleTtlMs must be a positive number (got ${String(idleTtlMs)})`);
+  }
+  // Map order = least recently used first (every use re-inserts at the end).
+  const entries = new Map<string, { value: T; usedAt: number }>();
+  const sweep = (t: number) => {
+    for (const [key, e] of entries) {
+      if (t - e.usedAt <= idleTtlMs) break;
+      entries.delete(key);
+    }
+  };
+  return Object.freeze({
+    for(req: Pick<Request, 'sessionId' | 'level'>): T {
+      const { sessionId, level } = req;
+      if (!isLevel(level)) throw new Error(`perSession: "${String(level)}" is not a level`);
+      if (typeof sessionId !== 'string' || sessionId === '') throw new Error('perSession: missing sessionId');
+      const t = now();
+      sweep(t);
+      const key = `${level}|${sessionId}`;
+      const hit = entries.get(key);
+      if (hit) {
+        entries.delete(key);
+        hit.usedAt = t;
+        entries.set(key, hit);
+        return hit.value;
+      }
+      const value = factory(level, sessionId);
+      entries.set(key, { value, usedAt: t });
+      if (entries.size > maxEntries) entries.delete(entries.keys().next().value as string);
+      return value;
+    },
+    get size(): number { return entries.size; },
+  });
+}
+
 /** A challenge's level modules, keyed by level (see byLevel). */
 export interface ByLevel<M> {
   /** The implemented levels, in rank order: pass to defineChallenge({ levels }). */

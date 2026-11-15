@@ -1,6 +1,6 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, vi } from 'vitest';
-import { perLevel, byLevel, tryDb, field, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { perLevel, perSession, byLevel, tryDb, field, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 
 describe('perLevel(factory)', () => {
@@ -41,6 +41,99 @@ describe('perLevel(factory)', () => {
       expect(() => p.for(bad as Level), bad).toThrow(/not a level/);
     }
     expect(factory).not.toHaveBeenCalled();
+  });
+});
+
+describe('perSession(factory, opts?)', () => {
+  const S1 = '11111111-1111-4111-8111-111111111111';
+  const S2 = '22222222-2222-4222-8222-222222222222';
+  const S3 = '33333333-3333-4333-8333-333333333333';
+  const req = (sessionId: string, level: Level = 'acolyte') => ({ sessionId, level });
+
+  it('creates lazily with factory(level, sessionId) and caches per (session, level)', () => {
+    const factory = vi.fn((level: Level, sid: string) => ({ level, sid }));
+    const p = perSession(factory);
+    expect(factory).not.toHaveBeenCalled();
+    const a = p.for(req(S1, 'templar'));
+    expect(a).toEqual({ level: 'templar', sid: S1 });
+    expect(factory).toHaveBeenLastCalledWith('templar', S1);
+    expect(p.for(req(S1, 'templar'))).toBe(a);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(p.size).toBe(1);
+  });
+
+  it('isolates sessions: one player never sees another player\'s instance', () => {
+    const p = perSession(() => ({ balance: 100 }));
+    p.for(req(S1)).balance = 0; // S1's exploit drains their own lab
+    expect(p.for(req(S2)).balance).toBe(100);
+    expect(p.for(req(S1)).balance).toBe(0);
+  });
+
+  it('isolates levels within one session (no perLevel needed on top)', () => {
+    const p = perSession(() => ({ role: 'user' }));
+    p.for(req(S1, 'acolyte')).role = 'admin';
+    for (const level of ['templar', 'inquisitor', 'divine'] as const) {
+      expect(p.for(req(S1, level)).role, level).toBe('user');
+    }
+    expect(p.size).toBe(4);
+  });
+
+  it('evicts the least recently used instance beyond maxEntries', () => {
+    const factory = vi.fn((_l: Level, sid: string) => ({ sid }));
+    const p = perSession(factory, { maxEntries: 2 });
+    const a = p.for(req(S1));
+    const b = p.for(req(S2));
+    expect(p.for(req(S1))).toBe(a); // touch S1: S2 is now least recently used
+    p.for(req(S3));
+    expect(p.size).toBe(2);
+    expect(p.for(req(S1))).toBe(a); // kept
+    expect(factory).toHaveBeenCalledTimes(3);
+    const b2 = p.for(req(S2)); // was evicted: a fresh instance
+    expect(b2).not.toBe(b);
+    expect(factory).toHaveBeenCalledTimes(4);
+    expect(p.size).toBe(2);
+  });
+
+  it('drops an instance idle for longer than idleTtlMs (injectable clock); use refreshes it', () => {
+    let t = 0;
+    const factory = vi.fn(() => ({}));
+    const p = perSession(factory, { idleTtlMs: 1000, now: () => t });
+    const a = p.for(req(S1));
+    p.for(req(S2));
+    t = 1000;
+    expect(p.for(req(S1))).toBe(a); // exactly the TTL idle: still alive, and refreshed
+    t = 1900;
+    expect(p.for(req(S1))).toBe(a); // 900 ms since last use
+    expect(p.size).toBe(1);         // S2 (idle 1900 ms) was swept
+    t = 2901;
+    expect(p.for(req(S1))).not.toBe(a); // idle 1001 ms: expired, fresh instance
+    expect(factory).toHaveBeenCalledTimes(3);
+  });
+
+  it('defaults: 5000 entries, 2 h idle TTL', () => {
+    let t = 0;
+    const p = perSession((_l, sid) => sid, { now: () => t });
+    for (let i = 0; i < 5001; i++) p.for(req(`sid-${i}`));
+    expect(p.size).toBe(5000);
+    const first = p.for(req('sid-5000'));
+    t = 2 * 60 * 60 * 1000;
+    expect(p.for(req('sid-5000'))).toBe(first);
+    t += 2 * 60 * 60 * 1000 + 1;
+    p.for(req('late'));
+    expect(p.size).toBe(1);
+  });
+
+  it('rejects bad options and bad requests', () => {
+    for (const maxEntries of [0, -1, 1.5, Number.NaN]) {
+      expect(() => perSession(() => ({}), { maxEntries }), String(maxEntries)).toThrow(/maxEntries/);
+    }
+    for (const idleTtlMs of [0, -5, Number.NaN]) {
+      expect(() => perSession(() => ({}), { idleTtlMs }), String(idleTtlMs)).toThrow(/idleTtlMs/);
+    }
+    const p = perSession(() => ({}));
+    expect(() => p.for({ sessionId: S1, level: 'god' as Level })).toThrow(/not a level/);
+    expect(() => p.for({ sessionId: '', level: 'acolyte' })).toThrow(/sessionId/);
+    expect(() => p.for({ sessionId: undefined as unknown as string, level: 'acolyte' })).toThrow(/sessionId/);
   });
 });
 
