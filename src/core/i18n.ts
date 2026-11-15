@@ -8,8 +8,9 @@ export const DEFAULT_LANG: Lang = 'id';
 
 type Entry = { id: string; en: string };
 
-// Flat bilingual dictionary. Add keys as the portal/districts need them.
-const DICT: Record<string, Entry> = {
+// PLATFORM strings only (nav, portal, scoreboard, diff headers, warnings).
+// Challenge text stays in each challenge's metadata ({ id, en } fields).
+const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'app.title': { id: 'HVWA — Kota Suci yang Rentan', en: 'HVWA — Holy Vulnerable Web App' },
   'app.tagline': { id: 'Aplikasi web yang sengaja rentan.', en: 'A deliberately vulnerable web app.' },
   'nav.home': { id: 'Beranda', en: 'Home' },
@@ -31,17 +32,16 @@ const DICT: Record<string, Entry> = {
     id: 'PERINGATAN: Aplikasi ini sengaja rentan. Jangan pernah mengeksposnya ke jaringan tepercaya.',
     en: 'WARNING: This app is deliberately vulnerable. Never expose it to an untrusted network.',
   },
-};
+});
 
 export function isLang(x: unknown): x is Lang {
   return typeof x === 'string' && (LANGS as readonly string[]).includes(x);
 }
 
 // Translate a key; unknown keys echo themselves so missing strings are visible.
+// Object.hasOwn so inherited names ('toString', '__proto__', ...) are unknown.
 export function t(key: string, lang: Lang = DEFAULT_LANG): string {
-  const entry = DICT[key];
-  if (!entry) return key;
-  return entry[lang];
+  return Object.hasOwn(DICT, key) ? DICT[key][lang] : key;
 }
 
 // lang = valid ?lang= → valid hvwa_lang cookie → DEFAULT_LANG.

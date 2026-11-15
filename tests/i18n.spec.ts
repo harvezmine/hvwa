@@ -8,4 +8,10 @@ describe('i18n', () => {
     expect(t('nav.districts', 'en')).toBe('Districts');
     expect(t('this.key.does.not.exist', 'en')).toBe('this.key.does.not.exist');
   });
+
+  it.each(['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf'])(
+    'treats inherited Object property %j as an unknown key', (key) => {
+      expect(t(key, 'en')).toBe(key);
+      expect(t(key, 'id')).toBe(key);
+    });
 });
