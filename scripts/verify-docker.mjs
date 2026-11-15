@@ -92,11 +92,55 @@ const probe = (url) => ['node', '-e',
   `fetch(${JSON.stringify(url)},{signal:AbortSignal.timeout(5000)}).then(()=>process.exit(0),` +
   '(e)=>{console.log(String(e.cause?.code??e.cause?.message??e.name));process.exit(3)})'];
 
+// Only these outcomes mean "no path": nothing answered at all. A refusal or a
+// reset means a host stack DID answer, so the target is reachable. Anything
+// unrecognised fails closed.
+const BLOCKED = new Set(['ETIMEDOUT', 'TIMEOUT', 'TimeoutError', 'AbortError', 'ENETUNREACH', 'EHOSTUNREACH',
+  'EAI_AGAIN', 'ENOTFOUND', 'EAI_FAIL', 'EAI_NONAME']);
+const REACHED = new Set(['CONNECTED', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', 'UND_ERR_CLOSED']);
+function blockedOrThrow(target, outcome) {
+  if (BLOCKED.has(outcome)) return outcome;
+  if (REACHED.has(outcome)) throw new Error(`the app reached ${target} (${outcome}: something answered)`);
+  throw new Error(`unexpected outcome for ${target}: ${outcome || '(none)'} — treated as reachable`);
+}
+
 function expectBlocked(url) {
   const r = exec('app', probe(url));
   if (r.code === 0) throw new Error(`the app reached ${url} — egress is NOT blocked`);
   if (r.code !== 3) throw new Error(`egress probe for ${url} did not run (${show(r)})`);
-  return r.out || 'network error';
+  return blockedOrThrow(url, r.out);
+}
+
+/**
+ * TCP-connect from INSIDE the app container to every host:port in `targets`
+ * (3 s each, in parallel). Returns { "host:port": outcome } where outcome is
+ * CONNECTED, TIMEOUT or the socket error code.
+ */
+function tcpProbe(targets) {
+  const script = `const net=require('node:net');const t=${JSON.stringify(targets)};` +
+    'Promise.all(t.map(([h,p])=>new Promise((r)=>{const s=net.connect({host:h,port:p});s.setTimeout(3000);' +
+    's.once(\'connect\',()=>{s.destroy();r(\'CONNECTED\')});s.once(\'timeout\',()=>{s.destroy();r(\'TIMEOUT\')});' +
+    's.once(\'error\',(e)=>r(e.code||e.message))}))).then((o)=>{console.log(JSON.stringify(Object.fromEntries(' +
+    't.map(([h,p],i)=>[h+\':\'+p,o[i]]))));process.exit(0)})';
+  const r = exec('app', ['node', '-e', script]);
+  if (r.code !== 0) throw new Error(`TCP probe did not run (${show(r)})`);
+  return JSON.parse(r.out);
+}
+
+/** a.b.c.d/n -> the first host address of the subnet (where a bridge gateway would sit). */
+function firstHost(cidr) {
+  const [ip, bits] = cidr.split('/');
+  const n = ip.split('.').reduce((acc, o) => (acc * 256) + Number(o), 0);
+  const mask = Number(bits) === 0 ? 0 : (2 ** 32) - (2 ** (32 - Number(bits)));
+  const v = ((n & mask) >>> 0) + 1;
+  return [24, 16, 8, 0].map((s) => (v >>> s) & 255).join('.');
+}
+
+/** The app's only network (the internal `lab`), inspected. */
+function labNetwork() {
+  const nets = Object.keys(inspect('container', containerId('app')).NetworkSettings.Networks ?? {});
+  if (nets.length !== 1) throw new Error(`app should be on exactly one network, is on: ${nets.join(', ') || 'none'}`);
+  return inspect('network', nets[0]);
 }
 
 async function waitHealthy(service, timeoutMs) {
@@ -216,13 +260,53 @@ const checks = [
   }],
   ['hardening flags on every container', () =>
     ['app', 'proxy'].map((s) => `${s}: ${checkHostConfig(s)}`).join(' | ')],
-  ['app is attached only to internal networks', () => {
-    const nets = Object.keys(inspect('container', containerId('app')).NetworkSettings.Networks ?? {});
-    if (nets.length === 0) throw new Error('app has no network');
-    for (const n of nets) {
-      if (inspect('network', n).Internal !== true) throw new Error(`app is on non-internal network ${n}`);
+  ['app is only on the internal lab network, whose gateway is isolated', () => {
+    const lab = labNetwork();
+    if (lab.Internal !== true) throw new Error(`app is on non-internal network ${lab.Name}`);
+    // Without this, an internal bridge still gives the HOST an address (.1) on
+    // the lab subnet, and the app can connect to the host's own services.
+    const opts = lab.Options ?? {};
+    if (opts['com.docker.network.bridge.gateway_mode_ipv4'] !== 'isolated') {
+      throw new Error(`${lab.Name}: com.docker.network.bridge.gateway_mode_ipv4 is ` +
+        `${JSON.stringify(opts['com.docker.network.bridge.gateway_mode_ipv4'] ?? null)}, expected "isolated"`);
     }
-    return nets.join(', ');
+    if (lab.EnableIPv6 && opts['com.docker.network.bridge.gateway_mode_ipv6'] !== 'isolated') {
+      throw new Error(`${lab.Name}: IPv6 is enabled but gateway_mode_ipv6 is not "isolated"`);
+    }
+    return `${lab.Name}: internal, gateway_mode_ipv4=isolated`;
+  }],
+  ['NO route to the Docker host (lab subnet .1 / IPAM gateway, host address on edge; many ports)', () => {
+    const lab = labNetwork();
+    // Where the host would sit on lab: the subnet's first address and the IPAM
+    // gateway. With an isolated gateway Docker hands .1 to a container instead;
+    // an address held by one of our containers is not the host, so it is skipped.
+    const held = new Map(Object.values(lab.Containers ?? {}).map((c) => [c.IPv4Address?.split('/')[0], c.Name]));
+    const candidates = new Set();
+    for (const c of lab.IPAM?.Config ?? []) {
+      if (c.Subnet && !c.Subnet.includes(':')) candidates.add(firstHost(c.Subnet));
+      if (c.Gateway && !c.Gateway.includes(':')) candidates.add(c.Gateway);
+    }
+    if (candidates.size === 0) throw new Error(`${lab.Name} has no IPv4 subnet to probe`);
+    const skipped = [...candidates].filter((ip) => held.has(ip)).map((ip) => `${ip} is ${held.get(ip)}`);
+    const ips = [...candidates].filter((ip) => !held.has(ip));
+    // The host's own address on the other HVWA bridge (edge) must be unreachable too.
+    const proxyNets = Object.keys(inspect('container', containerId('proxy')).NetworkSettings.Networks ?? {});
+    for (const name of proxyNets.filter((n) => n !== lab.Name)) {
+      for (const c of inspect('network', name).IPAM?.Config ?? []) {
+        if (c.Gateway && !c.Gateway.includes(':')) ips.push(c.Gateway);
+        else if (c.Subnet && !c.Subnet.includes(':')) ips.push(firstHost(c.Subnet));
+      }
+    }
+    if (ips.length === 0) throw new Error('nothing to probe');
+    const ports = [9, 22, 53, 80, 443, 1337, 2375, 3000, 5432, 8080];
+    const outcomes = tcpProbe(ips.flatMap((ip) => ports.map((p) => [ip, p])));
+    const reached = [];
+    for (const [target, outcome] of Object.entries(outcomes)) {
+      try { blockedOrThrow(target, outcome); } catch { reached.push(`${target} ${outcome}`); }
+    }
+    if (reached.length) throw new Error(`the app reaches the host: ${reached.join(', ')}`);
+    const kinds = [...new Set(Object.values(outcomes))].join('/');
+    return `${ips.join(', ')} x ${ports.length} ports: all ${kinds}${skipped.length ? ` (skipped: ${skipped.join('; ')})` : ''}`;
   }],
   ['NO egress from the app (example.com, 1.1.1.1, the Docker host)', () => {
     // Positive control: the very same probe can reach the app itself.

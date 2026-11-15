@@ -3,9 +3,9 @@
 #   host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root)
 #                           networks: edge + lab            networks: lab ONLY
 #
-# `lab` is internal: the app has no route to the internet, the Docker host or
-# your LAN. Docker cannot publish ports from an internal-only network, hence
-# the thin proxy, published on loopback only.
+# `lab` is internal with an isolated gateway: the app has no route to the
+# internet, your LAN or the Docker host. Docker cannot publish ports from an
+# internal-only network, hence the thin proxy, published on loopback only.
 #
 #   docker compose up -d          -> http://127.0.0.1:1337
 #   docker compose down           (keeps the data volume; add -v to reset it)
@@ -79,6 +79,11 @@ networks:
   edge: {}
   lab:
     internal: true
+    driver_opts:
+      # `internal` alone removes the default route but still gives the HOST an
+      # address (.1) on this bridge, so the app could connect to the host's
+      # own services. `isolated` (Docker Engine 28+) puts no host address on it.
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
 
 volumes:
   data: {}

@@ -18,8 +18,12 @@ host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root
 ```
 
 - **app** runs the lab server. It is attached only to `lab`, a Docker network
-  created with `internal: true`, which has no gateway and therefore no route to
-  the outside.
+  with `internal: true` (no default route out) and
+  `com.docker.network.bridge.gateway_mode_ipv4: isolated`. `internal` alone is
+  not enough: Docker still gives the host an address (`.1`) on an internal
+  bridge, and the app could open connections to the host's own services
+  (SSH, databases, the Docker API, dev servers). With `isolated`, the host has
+  no address on `lab` at all. This needs Docker Engine 28 or newer.
 - **proxy** is a thin nginx (`nginxinc/nginx-unprivileged`). Docker cannot
   publish a port from an internal-only network, so the proxy sits on both
   `lab` and `edge` and forwards every request to `app:1337`. It is transparent
@@ -32,7 +36,7 @@ host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root
 
 | Property | How | What it stops |
 |---|---|---|
-| **No egress from the app** | `app` is only on the internal `lab` network: no default route, and Docker's embedded DNS answers internal names only (external names get SERVFAIL) | SSRF and RCE payloads cannot reach the internet, your LAN, the Docker host (`host.docker.internal`) or cloud metadata endpoints. Data cannot be exfiltrated over HTTP or DNS, and nothing can be downloaded into the lab |
+| **No egress from the app** | `app` is only on the internal `lab` network with an isolated gateway: no default route, no host address on the subnet, and Docker's embedded DNS answers internal names only (external names get SERVFAIL) | SSRF and RCE payloads cannot reach the internet, your LAN, the Docker host (neither `host.docker.internal` nor any host bridge address) or cloud metadata endpoints. Data cannot be exfiltrated over HTTP or DNS, and nothing can be downloaded into the lab |
 | **Loopback-only publish** | `127.0.0.1:1337:8080`; the app publishes nothing | Other machines on your Wi-Fi or LAN cannot connect |
 | **Host allowlist (DNS rebinding)** | Only `Host` = `localhost`, `127.0.0.1` or `[::1]` (any port) is served. Anything else, or no `Host`, gets `421 Misdirected Request`. This is enforced twice: by the proxy (a `default_server` that never forwards) and by the app itself (`src/core/host-guard.ts`, the first middleware, so `npm start` is covered too) | A malicious website you visit cannot use DNS rebinding (pointing its own hostname at `127.0.0.1`) to drive the labs through your browser |
 | **Non-root** | app runs as `node` (uid 1000), proxy as `nginx` (uid 101) | A code-execution lab gives an unprivileged user, not root |
