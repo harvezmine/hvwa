@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { getChallenge } from './registry.js';
-import { recordSolve } from './scoreboard.js';
+import { recordSolve, bestSolve } from './scoreboard.js';
 import { LEVELS, pointsForLevel } from './difficulty.js';
 import { unlockHint } from './hints.js';
 
@@ -30,7 +30,10 @@ export function checkerRouter(db: DatabaseSync): Router {
       if (await ch.check({ sessionId: sid, level, submission: answer, db })) {
         const points = pointsForLevel(ch.points, level);
         recordSolve(db, sid, ch.id, level, points);
-        res.json({ solved: true, level, points });
+        // level/points = what this submission proved; best = the stored row
+        // (unchanged when a lower level is re-solved after a higher one).
+        const best = bestSolve(db, sid, ch.id) ?? { level, points };
+        res.json({ solved: true, level, points, best });
         return;
       }
     }

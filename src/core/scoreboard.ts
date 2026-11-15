@@ -12,6 +12,13 @@ export function recordSolve(db: DatabaseSync, sid: string, cid: string, level: s
     WHERE excluded.points > solves.points`).run(sid, cid, level, pts, Date.now());
 }
 
+// The stored (best) solve for one challenge, if any.
+export function bestSolve(db: DatabaseSync, sid: string, cid: string): { level: string; points: number } | undefined {
+  const r = db.prepare('SELECT level, points FROM solves WHERE session_id=? AND challenge_id=?')
+    .get(sid, cid) as { level: string; points: number } | undefined;
+  return r ? { level: r.level, points: Number(r.points) } : undefined;
+}
+
 // Sum of best-level points minus unlocked hint costs, floored at 0.
 export function scoreFor(db: DatabaseSync, sid: string): number {
   const r = db.prepare('SELECT COALESCE(SUM(points),0) AS total FROM solves WHERE session_id=?')

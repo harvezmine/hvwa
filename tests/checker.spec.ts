@@ -38,17 +38,34 @@ describe('submit', () => {
     const { agent, sid } = await fresh();
     const res = await agent.post('/api/submit')
       .send({ challengeId: 'ZZ-01', submission: issueFlag('ZZ-01', sid, 'acolyte') });
-    expect(res.body).toEqual({ solved: true, level: 'acolyte', points: 100 });
+    expect(res.body).toEqual({
+      solved: true, level: 'acolyte', points: 100, best: { level: 'acolyte', points: 100 },
+    });
   });
 
   it('credits templar and inquisitor flags at their own level', async () => {
     const { agent, sid } = await fresh();
     const t = await agent.post('/api/submit')
       .send({ challengeId: 'ZZ-01', submission: issueFlag('ZZ-01', sid, 'templar') });
-    expect(t.body).toEqual({ solved: true, level: 'templar', points: 150 });
+    expect(t.body).toEqual({
+      solved: true, level: 'templar', points: 150, best: { level: 'templar', points: 150 },
+    });
     const i = await agent.post('/api/submit')
       .send({ challengeId: 'ZZ-01', submission: issueFlag('ZZ-01', sid, 'inquisitor') });
-    expect(i.body).toEqual({ solved: true, level: 'inquisitor', points: 200 });
+    expect(i.body).toEqual({
+      solved: true, level: 'inquisitor', points: 200, best: { level: 'inquisitor', points: 200 },
+    });
+  });
+
+  it('a lower re-solve reports the submitted level but keeps the stored best', async () => {
+    const { agent, sid } = await fresh();
+    await agent.post('/api/submit')
+      .send({ challengeId: 'ZZ-01', submission: issueFlag('ZZ-01', sid, 'inquisitor') });
+    const res = await agent.post('/api/submit')
+      .send({ challengeId: 'ZZ-01', submission: issueFlag('ZZ-01', sid, 'acolyte') });
+    expect(res.body).toEqual({
+      solved: true, level: 'acolyte', points: 100, best: { level: 'inquisitor', points: 200 },
+    });
   });
 
   it('ignores a client-supplied level: an acolyte flag is never credited as inquisitor', async () => {
@@ -56,7 +73,9 @@ describe('submit', () => {
     const res = await agent.post('/api/submit').send({
       challengeId: 'ZZ-01', level: 'inquisitor', submission: issueFlag('ZZ-01', sid, 'acolyte'),
     });
-    expect(res.body).toEqual({ solved: true, level: 'acolyte', points: 100 });
+    expect(res.body).toEqual({
+      solved: true, level: 'acolyte', points: 100, best: { level: 'acolyte', points: 100 },
+    });
   });
 
   it('does not credit a flag for a level the challenge does not implement', async () => {
