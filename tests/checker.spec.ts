@@ -13,7 +13,7 @@ register(defineChallenge({
 
 describe('submit', () => {
   it('accepts the correct per-session flag', async () => {
-    const agent = request.agent(createApp());
+    const agent = request.agent(createApp({ flagSecret: 'test-secret' }));
     // The FIRST response of a fresh agent establishes the session and carries the sid.
     const sid = /hvwa_sid=([^;]+)/.exec((await agent.get('/healthz')).headers['set-cookie']?.[0] ?? '')?.[1];
     const flag = issueFlag('ZZ-01', sid!);

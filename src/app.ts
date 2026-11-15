@@ -1,9 +1,11 @@
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { openDb, migrate } from './db/index.js';
 import { seed } from './db/seed.js';
+import { setFlagSecret } from './core/flags.js';
 import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
@@ -12,15 +14,21 @@ import { portalRouter } from './portal/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-export function createApp(): Express {
+export interface AppOptions {
+  /** SQLite path. Defaults to an in-memory database (tests). */
+  dbPath?: string;
+  /** HMAC secret for flags. Defaults to a random per-process secret. */
+  flagSecret?: string;
+}
+
+export function createApp(opts: AppOptions = {}): Express {
   const app = express();
 
-  // Per-app in-memory database (deterministic seed). Exposed on app.locals
-  // so routers that need it can reach it.
-  const db = openDb(':memory:');
+  setFlagSecret(opts.flagSecret ?? randomBytes(32).toString('hex'));
+
+  const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);
   seed(db);
-  app.locals.db = db;
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
