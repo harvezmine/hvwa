@@ -66,3 +66,60 @@ describe('error handler', () => {
     expectNoLeak(res.text);
   });
 });
+
+describe('404 handling', () => {
+  it.each(['get', 'post'] as const)('unknown /api/* (%s) is a JSON 404 not_found', async (method) => {
+    const res = await request(createApp())[method]('/api/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.body).toEqual({ error: 'not_found' });
+  });
+
+  it.each(['/nope', '/d/unknown/thing', '/static/missing.css'])('unknown page %s is a minimal HTML 404', async (url) => {
+    const res = await request(createApp()).get(url);
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toMatch(/text\/html/);
+    expect(res.text).toContain('Not Found');
+    expect(res.text).not.toContain('Cannot GET'); // not Express's default page
+  });
+});
+
+describe('error labels come from http.STATUS_CODES', () => {
+  function withStatus(status: number) {
+    const app = express();
+    app.get('/api/x', () => { throw Object.assign(new Error(SECRET_DETAIL), { status }); });
+    app.get('/page/x', () => { throw Object.assign(new Error(SECRET_DETAIL), { status }); });
+    app.use(errorHandler());
+    return app;
+  }
+
+  it.each([
+    [400, 'bad_request', 'Bad Request'],
+    [403, 'forbidden', 'Forbidden'],
+    [404, 'not_found', 'Not Found'],
+    [413, 'payload_too_large', 'Payload Too Large'],
+    [415, 'unsupported_media_type', 'Unsupported Media Type'],
+  ])('%i → { error: %j } / HTML %j', async (status, code, label) => {
+    const api = await request(withStatus(status)).get('/api/x');
+    expect(api.status).toBe(status);
+    expect(api.body).toEqual({ error: code });
+    const page = await request(withStatus(status)).get('/page/x');
+    expect(page.status).toBe(status);
+    expect(page.text).toContain(label);
+    expectNoLeak(api.text + page.text);
+  });
+
+  it('server errors stay a generic 500 internal_error', async () => {
+    const res = await request(withStatus(503)).get('/api/x');
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'internal_error' });
+  });
+
+  it('an oversized JSON body is a 413 payload_too_large', async () => {
+    const res = await request(createApp()).post('/api/submit')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ challengeId: 'X', submission: 'a'.repeat(200 * 1024) }));
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'payload_too_large' });
+  });
+});
