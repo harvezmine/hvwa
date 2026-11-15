@@ -1,0 +1,14 @@
+<%# GK-02 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Gate — Sign in</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code></p>
+  <p class="lab-note">The gatekeepers published the password policy's <a href="wordlist.txt">list of common passwords</a> by mistake. Target: <code><%= target %></code>.</p>
+  <form method="post">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
+    <button type="submit">Sign in</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+</section>
