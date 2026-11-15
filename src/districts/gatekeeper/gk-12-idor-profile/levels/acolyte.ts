@@ -4,6 +4,8 @@ import type { Access, RecordsLevel } from '../model.js';
 // either door: whoever is signed in can read any record they can name.
 export const idStyle: RecordsLevel['idStyle'] = 'numeric';
 export const directoryShowsIds = true;
+export const apiNote = '';
+export const apiHeaders: RecordsLevel['apiHeaders'] = [];
 export const uniformNotFound = false;
 export function canRead(_a: Access): boolean {
   return true;

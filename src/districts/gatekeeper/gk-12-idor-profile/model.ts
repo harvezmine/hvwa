@@ -4,6 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
+import * as acolyte from './levels/acolyte.js';
+import * as templar from './levels/templar.js';
+import * as inquisitor from './levels/inquisitor.js';
+import * as divine from './levels/divine.js';
 
 export interface Profile { readonly id: string; readonly username: string; readonly note: string }
 
@@ -26,6 +30,10 @@ export interface RecordsLevel {
   readonly directoryShowsIds: boolean;
   /** Whether a refusal is the same answer as a missing record. */
   readonly uniformNotFound: boolean;
+  /** An API note shown on the page (what the "mobile app" sends), or ''. */
+  readonly apiNote: string;
+  /** Headers the API example request carries ("Name: value"). */
+  readonly apiHeaders: readonly string[];
   /** May this request read the record? */
   canRead(a: Access): boolean;
 }
@@ -33,32 +41,32 @@ export interface RecordsLevel {
 export const ADMIN_NOTE = 'Treasury vault ledger: the seal numbers are kept in the third drawer.';
 export const PLAYER_NOTE = 'Remember to keep the lantern oil dry.';
 
-/** Both records at `level`, built once per level (at most 4 entries); the level module picks the id style. */
+/** Both records of one player's lab. */
 export interface Records { readonly admin: Profile; readonly pilgrim: Profile }
-const made = new Map<Level, Records>();
-export function recordsFor(level: Level, style: RecordsLevel['idStyle']): Records {
-  let r = made.get(level);
-  if (r === undefined) {
-    const uuid = style === 'uuid';
-    r = {
-      admin: { id: uuid ? randomUUID() : '1', username: ADMIN_NAME, note: ADMIN_NOTE },
-      pilgrim: { id: uuid ? randomUUID() : '2', username: PLAYER.username, note: PLAYER_NOTE },
-    };
-    made.set(level, r);
-  }
-  return r;
-}
-/** Test seam: the ids at a level (the style is read from the level module the lab serves). */
-export const idsFor = (level: Level): { admin: string; pilgrim: string } => {
-  const r = made.get(level);
-  if (r === undefined) throw new Error(`idsFor: ${level} not started yet`);
-  return { admin: r.admin.id, pilgrim: r.pilgrim.id };
+
+/** One player's lab at one level: whether they signed in as pilgrim, and the records (ids drawn per player). */
+export interface LabState { signedIn: boolean; readonly records: Records }
+
+const ID_STYLE: Readonly<Record<Level, RecordsLevel['idStyle']>> = {
+  acolyte: acolyte.idStyle, templar: templar.idStyle, inquisitor: inquisitor.idStyle, divine: divine.idStyle,
 };
 
-/** One player's lab at one level: whether they signed in as pilgrim. */
-export interface LabState { signedIn: boolean }
-const labs = perSession((): LabState => ({ signedIn: false }));
+const labs = perSession((level): LabState => {
+  const uuid = ID_STYLE[level] === 'uuid';
+  return {
+    signedIn: false,
+    records: {
+      admin: { id: uuid ? randomUUID() : '1', username: ADMIN_NAME, note: ADMIN_NOTE },
+      pilgrim: { id: uuid ? randomUUID() : '2', username: PLAYER.username, note: PLAYER_NOTE },
+    },
+  };
+});
 export const labFor = (req: { sessionId: string; level: Level }): LabState => labs.for(req);
+/** Test seam: the ids of session `sessionId` at `level`. */
+export const idsFor = (sessionId: string, level: Level): { admin: string; pilgrim: string } => {
+  const r = labs.for({ sessionId, level }).records;
+  return { admin: r.admin.id, pilgrim: r.pilgrim.id };
+};
 
 /** Lookup of a record by the id string from the URL (compared, never used as an object key). */
 export function findProfile(r: Records, id: string): Profile | undefined {

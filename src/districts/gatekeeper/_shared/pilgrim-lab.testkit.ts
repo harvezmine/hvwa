@@ -74,7 +74,7 @@ export function describeCurlExample(o: PilgrimLabSpec): void {
         const headers = (e.headers ?? []).map((h) => ` -H "${escapeXML(h)}"`).join('');
         const cookies = (e.cookies ?? []).map((c) => `; ${escapeXML(c)}`).join('');
         const data = e.data ? ` -d '${escapeXML(e.data)}'` : '';
-        const want = `curl "http://127.0.0.1${o.path}${e.path}?level=${level}"${headers} -b "hvwa_sid=&lt;copy from devtools&gt;${cookies}"${data}`;
+        const want = `curl "http://127.0.0.1${o.path}${escapeXML(e.path)}?level=${level}"${headers} -b "hvwa_sid=&lt;copy from devtools&gt;${cookies}"${data}`;
         expect(res.text.replace(/curl "http:\/\/[^/"\s]+/, 'curl "http://127.0.0.1'), level).toContain(want);
         expect(res.text, level).toMatch(/hvwa_sid<\/code> cookie from the devtools storage/);
         expect(res.text, level).not.toContain(sid);

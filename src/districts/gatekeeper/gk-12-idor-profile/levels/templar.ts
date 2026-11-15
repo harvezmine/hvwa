@@ -4,6 +4,8 @@ import type { Access, RecordsLevel } from '../model.js';
 // but the JSON API (written later, "for the mobile app") never got the check.
 export const idStyle: RecordsLevel['idStyle'] = 'numeric';
 export const directoryShowsIds = true;
+export const apiNote = '';
+export const apiHeaders: RecordsLevel['apiHeaders'] = [];
 export const uniformNotFound = false;
 export function canRead(a: Access): boolean {
   if (a.channel === 'page') return a.viewerId === a.ownerId;

@@ -2,14 +2,11 @@
 <section class="lab">
   <h1>Citadel Records</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the private note of <code><%= target %></code>. Records are served as a page at <code><%= base %>/profile/&lt;id&gt;</code> and as JSON at <code><%= base %>/api/profiles/&lt;id&gt;</code> (add <code>?level=<%= level %></code>).</p>
-  <form method="post">
-    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
-    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
-    <button type="submit">Sign in</button>
-  </form>
-<% if (result) { -%>
-  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+<% if (apiNote) { -%>
+  <p class="lab-note"><%= apiNote %></p>
 <% } -%>
+  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
 <% if (ownId) { -%>
   <p class="lab-note">Your own profile: <code><%= ownId %></code> (<a href="<%= base %>/profile/<%= ownId %>?level=<%= level %>">open</a>)</p>
 <% } -%>
