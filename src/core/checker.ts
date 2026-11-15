@@ -3,33 +3,38 @@ import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { getChallenge } from './registry.js';
 import { recordSolve } from './scoreboard.js';
-import { resolveLevel, pointsForLevel } from './difficulty.js';
+import { LEVELS, pointsForLevel } from './difficulty.js';
 import { unlockHint } from './hints.js';
 
-// Mounts the solve-check + hint endpoints. The challenge's own check()
-// decides whether a submission is a solve; on success we record it.
+// Highest rank first; Divine is the secure reference and is never scored.
+const SCORED_LEVELS_DESC = [...LEVELS].reverse().filter((l) => l !== 'divine');
+
+// Mounts the solve-check + hint endpoints. The client sends only
+// { challengeId, submission }; the server decides which level (if any) the
+// submission proves, so points cannot be inflated by a client-chosen level.
 export function checkerRouter(db: DatabaseSync): Router {
   const r = Router();
 
   r.post('/submit', async (req, res) => {
     const sid = (req as any).sessionId as string;
-    const { challengeId, level: rawLevel, submission } = req.body ?? {};
+    const { challengeId, submission } = req.body ?? {};
     const ch = getChallenge(String(challengeId ?? ''));
     if (!ch) {
       res.status(404).json({ solved: false, error: 'unknown challenge' });
       return;
     }
-    const level = resolveLevel(rawLevel);
-    const solved = await ch.check({
-      sessionId: sid,
-      level,
-      submission: String(submission ?? ''),
-      db,
-    });
-    if (solved) {
-      recordSolve(db, sid, ch.id, level, pointsForLevel(ch.points, level));
+    const answer = typeof submission === 'string' ? submission : '';
+    for (const level of SCORED_LEVELS_DESC) {
+      if (!ch.levels.includes(level)) continue;
+      // A throwing check() propagates to the app error handler (500, no stack).
+      if (await ch.check({ sessionId: sid, level, submission: answer, db })) {
+        const points = pointsForLevel(ch.points, level);
+        recordSolve(db, sid, ch.id, level, points);
+        res.json({ solved: true, level, points });
+        return;
+      }
     }
-    res.json({ solved: Boolean(solved) });
+    res.json({ solved: false });
   });
 
   r.post('/hint', (req, res) => {

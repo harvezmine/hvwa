@@ -1,4 +1,6 @@
 // src/core/registry.ts
+import { verifyFlag } from './flags.js';
+
 export type Level = 'acolyte' | 'templar' | 'inquisitor' | 'divine';
 
 export interface HintTier { id: 1 | 2 | 3; text: { id: string; en: string }; cost: number; }
@@ -25,10 +27,18 @@ export interface CheckContext {
   db: import('node:sqlite').DatabaseSync;
 }
 
-export function defineChallenge(input: Omit<Challenge, 'points'> & { points?: number }): Challenge {
+// `points` defaults to 100; `check` defaults to verifying the level-bound flag.
+export function defineChallenge(
+  input: Omit<Challenge, 'points' | 'check'> & { points?: number; check?: Challenge['check'] },
+): Challenge {
   if (!/^[A-Z]{2}-\d{2}$/.test(input.id)) throw new Error(`bad challenge id ${input.id}`);
   if (input.levels.length === 0) throw new Error(`${input.id} has no levels`);
-  return { points: 100, ...input };
+  const { points = 100, check, ...rest } = input;
+  return {
+    ...rest,
+    points,
+    check: check ?? ((ctx) => verifyFlag(input.id, ctx.sessionId, ctx.level, ctx.submission)),
+  };
 }
 
 const _all = new Map<string, Challenge>();
