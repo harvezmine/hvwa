@@ -17,8 +17,11 @@ import { portalRouter } from './portal/index.js';
 const here = dirname(fileURLToPath(import.meta.url));
 // Vendored htmx (pinned dependency), served locally — no network at runtime.
 // Only this one file is exposed, not the rest of the package's dist/.
-const htmxMinJs = join(
-  dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist', 'htmx.min.js');
+// sendFile gets it as a root + name: with a bare absolute path, send's
+// dotfiles check covers every segment, so a checkout under any dot-directory
+// (.worktrees/, ~/.local/...) would answer 404.
+const htmxDistDir = join(
+  dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist');
 
 export interface AppOptions {
   /** SQLite path. Defaults to an in-memory database (tests). */
@@ -55,7 +58,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use(levelMiddleware());
   app.use(langMiddleware());
   app.get('/static/vendor/htmx.min.js', (_req, res, next) => {
-    res.sendFile(htmxMinJs, (err) => { if (err) next(err); });
+    res.sendFile('htmx.min.js', { root: htmxDistDir }, (err) => { if (err) next(err); });
   });
   app.use('/static', express.static(join(here, 'public'), { index: false }));
 
