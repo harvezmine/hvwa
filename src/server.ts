@@ -11,7 +11,7 @@ mkdirSync(dataDir, { recursive: true });
 
 const app = createApp({
   dbPath: join(dataDir, 'hvwa.db'),
-  flagSecret: resolveFlagSecret(dataDir),
+  flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
 });
 app.listen(config.PORT, config.HOST, () => {
   console.log(`HVWA on http://${config.HOST}:${config.PORT} — DO NOT expose to untrusted networks`);
