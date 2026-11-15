@@ -17,7 +17,11 @@ export function challengePath(c: Pick<Challenge, 'district' | 'slug'>): string {
  * after the API routes and before the 404/error handlers, so errors thrown in
  * challenge routes get the stack-free error handler.
  */
-export function mountChallenges(app: Express): void {
+export const DEFAULT_RESET_COOLDOWN_MS = 10_000;
+const MAX_COOLDOWN_ENTRIES = 5000;
+
+export function mountChallenges(app: Express, opts: { now?: () => number } = {}): void {
+  const now = opts.now ?? Date.now;
   for (const c of allChallenges()) {
     const router = Router();
     router.use((req, res, next) => {
@@ -31,7 +35,20 @@ export function mountChallenges(app: Express): void {
     });
     const reset = c.reset;
     if (reset) {
+      // Safety net: a reset may never become a free retry loop, whatever the lab's hook clears.
+      const cooldownMs = c.resetCooldownMs ?? DEFAULT_RESET_COOLDOWN_MS;
+      const last = new Map<string, number>(); // `${level}|${sid}` -> time of the last reset (insertion order = age)
       router.post('/_reset', (req, res) => {
+        const key = `${req.level}|${req.sessionId}`;
+        const t = now();
+        const prev = last.get(key);
+        if (prev !== undefined && t - prev < cooldownMs) {
+          res.status(429).type('text/plain').send(`Restart is cooling down. Try again in ${Math.ceil((cooldownMs - (t - prev)) / 1000)} s.`);
+          return;
+        }
+        last.delete(key);
+        last.set(key, t);
+        if (last.size > MAX_COOLDOWN_ENTRIES) last.delete(last.keys().next().value as string);
         reset(req);
         res.redirect(303, `${challengePath(c)}?level=${req.level}`);
       });

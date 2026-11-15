@@ -60,8 +60,12 @@ export interface Challenge {
    * When defined, the engine mounts POST <lab>/_reset, which calls it with the player's session id
    * and the served level, then redirects (303) back to the lab, and the lab bar shows a
    * "Restart lab" button. Typically `reset: (req) => labs.reset(req)` on the lab's perSession holder.
+   * The route enforces a per-(session, level) cooldown (`resetCooldownMs`, default 10 s; 429 while cooling).
+   * NEVER offer a reset on a lab with a limiter, lockout or attempt budget: Restart would refill it.
    */
   readonly reset?: (req: Pick<Request, 'sessionId' | 'level'>) => void;
+  /** Minimum ms between two resets of the same (session, level). Integer >= 0; default 10 000. */
+  readonly resetCooldownMs?: number;
 }
 
 /**
@@ -113,6 +117,9 @@ function validate(c: Challenge): void {
   if (typeof c.check !== 'function') throw new Error(`${at}: check must be a function`);
   if (typeof c.mount !== 'function') throw new Error(`${at}: mount must be a function`);
   if (c.reset !== undefined && typeof c.reset !== 'function') throw new Error(`${at}: reset must be a function`);
+  if (c.resetCooldownMs !== undefined && (!Number.isInteger(c.resetCooldownMs) || c.resetCooldownMs < 0)) {
+    throw new Error(`${at}: resetCooldownMs must be an integer >= 0 (got ${String(c.resetCooldownMs)})`);
+  }
 }
 
 /** Validate challenge metadata and fill defaults. Throws on any invalid field. */

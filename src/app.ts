@@ -25,6 +25,8 @@ const htmxDistDir = join(
   dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist');
 
 export interface AppOptions {
+  /** Clock (ms) for the Restart-lab cooldown; tests inject one. Default Date.now. */
+  resetClock?: () => number;
   /** SQLite path. Defaults to an in-memory database (tests). */
   dbPath?: string;
   /**
@@ -72,7 +74,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
   app.use('/api', checkerRouter(db));
-  mountChallenges(app); // every registered challenge at /d/<district>/<slug>
+  mountChallenges(app, { now: opts.resetClock }); // every registered challenge at /d/<district>/<slug>
   app.use('/', portalRouter(db));
 
   app.use(notFoundHandler());

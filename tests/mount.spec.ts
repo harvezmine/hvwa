@@ -100,6 +100,52 @@ describe('mountChallenges', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('/_reset has a per-(session, level) cooldown (injectable clock): 429 while cooling, the hook is not called', async () => {
+    const calls: string[] = [];
+    register(defineChallenge({
+      id: 'MT-04', district: 'mount-test', dir: process.cwd(), slug: 'cooldown', title: { id: 't', en: 't' },
+      summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte', 'divine'], hints: [], resetCooldownMs: 5000,
+      mount: (router) => { router.get('/', (_req, res) => { res.send('ok'); }); },
+      reset: (req) => { calls.push(`${req.level}|${req.sessionId}`); },
+    }));
+    register(defineChallenge({
+      id: 'MT-05', district: 'mount-test', dir: process.cwd(), slug: 'default-cooldown', title: { id: 't', en: 't' },
+      summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte'], hints: [],
+      mount: (router) => { router.get('/', (_req, res) => { res.send('ok'); }); },
+      reset: () => { calls.push('default'); },
+    }));
+    let t = 1_000_000;
+    const s = await freshSession(createApp({ flagSecret: TEST_SECRET, resetClock: () => t }));
+    const reset = (lab: string, level: string) => s.agent.post(`/d/mount-test/${lab}/_reset?level=${level}`);
+    expect((await reset('cooldown', 'acolyte')).status).toBe(303);
+    t += 4999;
+    const cooling = await reset('cooldown', 'acolyte');
+    expect(cooling.status).toBe(429);
+    expect(cooling.text).toMatch(/cooling down/);
+    expect((await reset('cooldown', 'divine')).status).toBe(303); // another level: its own cooldown
+    expect(calls).toHaveLength(2);
+    t += 2;
+    expect((await reset('cooldown', 'acolyte')).status).toBe(303);
+    // The default cooldown is 10 s.
+    expect((await reset('default-cooldown', 'acolyte')).status).toBe(303);
+    t += 9999;
+    expect((await reset('default-cooldown', 'acolyte')).status).toBe(429);
+    t += 2;
+    expect((await reset('default-cooldown', 'acolyte')).status).toBe(303);
+    // Another player is not cooled by this one.
+    const other = await freshSession(createApp({ flagSecret: TEST_SECRET, resetClock: () => t }));
+    expect((await other.agent.post('/d/mount-test/default-cooldown/_reset')).status).toBe(303);
+  });
+
+  it('rejects a bad resetCooldownMs', () => {
+    for (const resetCooldownMs of [-1, 1.5, Number.NaN]) {
+      expect(() => defineChallenge({
+        id: 'MT-06', district: 'mount-test', dir: process.cwd(), slug: 'bad-cd', title: { id: 't', en: 't' },
+        summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte'], hints: [], mount: () => {}, reset: () => {}, resetCooldownMs,
+      }), String(resetCooldownMs)).toThrow(/resetCooldownMs/);
+    }
+  });
+
   it('mounts what is registered when createApp() runs', async () => {
     const before = createApp();
     register(defineChallenge({
