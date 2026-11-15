@@ -6,7 +6,7 @@ import { createServer } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const say = (msg) => console.log(`verify:dist ${msg}`);
@@ -43,6 +43,64 @@ async function expectOk(base, path, check) {
   if (res.status !== 200) throw new Error(`GET ${path} → ${res.status}`);
   check(body);
   say(`GET ${path} → 200 (${body.length} bytes)`);
+  return body;
+}
+
+/** Undo EJS's HTML escaping (attribute values and <pre> text). */
+const unescapeHtml = (s) => s
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#34;|&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+
+/** Unique first capture groups of a global regex over html, unescaped. */
+const captures = (html, re) => [...new Set([...html.matchAll(re)].map((m) => unescapeHtml(m[1])))];
+
+// A level file is a TypeScript module: View Source must show at least one export.
+const EXPORT_RE = /\bexport\s+(async\s+)?(function|const|let|class|interface|type|default)\b/;
+
+/**
+ * Discover every challenge from the running server — the portal index links
+ * /c/<id>; each challenge page links its lab at every implemented level — and
+ * probe the challenge page, every lab level (lab bar present, level served),
+ * every level's View Source (real source, which proves levels/*.ts reached
+ * dist/) and the diff. Nothing from dist/ is imported into this process.
+ */
+async function verifyChallenges(base, indexHtml) {
+  const ids = captures(indexHtml, /href="\/c\/([A-Z]{2}-\d{2})"/g);
+  if (ids.length === 0) throw new Error('no challenges discovered: the portal index links no /c/<id> page');
+  for (const id of ids) {
+    const page = await expectOk(base, `/c/${id}`, (b) => {
+      if (!b.includes(id)) throw new Error(`/c/${id} does not mention the challenge`);
+    });
+    const labs = captures(page, /<a class="level-tab"[^>]*href="([^"]+)"/g);
+    if (labs.length === 0) throw new Error(`/c/${id} links no lab level`);
+    const levels = [];
+    for (const lab of labs) {
+      const level = new URL(lab, base).searchParams.get('level');
+      if (!level || !lab.startsWith('/d/')) throw new Error(`/c/${id}: unexpected lab link ${lab}`);
+      levels.push(level);
+      await expectOk(base, lab, (b) => {
+        if (!b.includes('data-testid="lab-bar"')) throw new Error(`${lab} has no lab bar`);
+        if (!new RegExp(`data-testid="lab-level"[^>]*data-level="${level}"`).test(b)) {
+          throw new Error(`${lab} does not serve level ${level}`);
+        }
+        if (!b.includes(`href="/c/${id}"`)) throw new Error(`${lab} has no link back to /c/${id}`);
+      });
+    }
+    for (const level of levels) {
+      const path = `/c/${id}/source/${level}`;
+      await expectOk(base, path, (b) => {
+        const code = /<pre class="source-view"><code>([\s\S]*?)<\/code><\/pre>/.exec(b)?.[1];
+        if (code === undefined) throw new Error(`${path} has no source block`);
+        if (!EXPORT_RE.test(unescapeHtml(code))) throw new Error(`${path} does not show the level's source (no export)`);
+      });
+    }
+    if (levels.includes('divine') && levels.some((l) => l !== 'divine')) {
+      await expectOk(base, `/c/${id}/diff`, (b) => {
+        if (!b.includes('class="diff-view"')) throw new Error(`/c/${id}/diff has no diff table`);
+      });
+    }
+    say(`${id}: page, ${levels.length} lab level(s) [${levels.join(', ')}], their sources and the diff`);
+  }
+  return ids;
 }
 
 async function main() {
@@ -71,28 +129,14 @@ async function main() {
     await expectOk(base, '/healthz', (b) => {
       if (JSON.parse(b).status !== 'ok') throw new Error(`/healthz body ${b}`);
     });
-    await expectOk(base, '/', (b) => {
+    const index = await expectOk(base, '/', (b) => {
       if (!/^<!doctype html>/i.test(b) || !b.includes('/static/app.css')) throw new Error('/ is not the portal page');
     });
     await expectOk(base, '/static/app.css', () => {});
     await expectOk(base, '/static/vendor/htmx.min.js', () => {});
 
-    // Every registered challenge: its player page and its first level's View Source
-    // (proves levels/*.ts were copied into dist/). The registry is read from the
-    // built app itself, so each new challenge is covered automatically.
-    await import(pathToFileURL(join(root, 'dist', 'districts', 'index.js')).href);
-    const { allChallenges } = await import(pathToFileURL(join(root, 'dist', 'core', 'registry.js')).href);
-    const challenges = allChallenges();
-    if (challenges.length === 0) throw new Error('no challenges registered in the built app');
-    for (const c of challenges) {
-      await expectOk(base, `/c/${c.id}`, (b) => {
-        if (!b.includes(c.id)) throw new Error(`/c/${c.id} does not mention the challenge`);
-      });
-      await expectOk(base, `/c/${c.id}/source/${c.levels[0]}`, (b) => {
-        if (b.length < 200) throw new Error(`/c/${c.id}/source/${c.levels[0]} looks empty`);
-      });
-    }
-    say(`checked ${challenges.length} registered challenge(s): ${challenges.map((c) => c.id).join(', ')}`);
+    const ids = await verifyChallenges(base, index);
+    say(`checked ${ids.length} challenge(s) discovered over HTTP: ${ids.join(', ')}`);
   } catch (err) {
     console.error(output);
     throw err;
