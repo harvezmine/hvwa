@@ -28,7 +28,7 @@ export const GK07 = register(defineChallenge({
       blurb: 'Tokens are HS256. Published by the archive:',
       links: [{ path: '/wordlist.txt', text: 'password wordlist' }, { path: '/release-notes.txt', text: 'release notes' }],
       sample: (req) => labFor(req).sample,
-      issue: (req) => issueToken(req.level, labFor(req), { sub: 'pilgrim', role: 'user' }),
+      issue: (req) => issueToken(req, { sub: 'pilgrim', role: 'user' }),
       verify: (req, token) => impl.for(req.level).verify(labFor(req), token),
     });
 

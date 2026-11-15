@@ -31,7 +31,7 @@ export const GK04 = register(defineChallenge({
     mountJwtPortal(router, {
       challenge: () => GK04,
       blurb: 'Tokens are HS256: signed with a secret only the archive knows.',
-      issue: (req) => issueToken(labFor(req), { sub: 'pilgrim', role: 'user' }),
+      issue: (req) => issueToken(req, { sub: 'pilgrim', role: 'user' }),
       verify: (req, token) => impl.for(req.level).verify(labFor(req), token),
     });
   },

@@ -5,7 +5,7 @@ import {
   freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieHeader, setCookieValue, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
-import { describeJwtLabBasics } from '../_shared/jwt-lab-basics.spec.js';
+import { describeJwtLabBasics } from '../_shared/jwt-lab.testkit.js';
 import { buildToken, hmacSignature, parseToken, signHmac } from '../_shared/jwt.js';
 import { GK07 } from './challenge.js'; // registers GK-07 before createApp() inside freshSession
 import { cookieName, labState, mintToken, wordlist as lines } from './model.js';

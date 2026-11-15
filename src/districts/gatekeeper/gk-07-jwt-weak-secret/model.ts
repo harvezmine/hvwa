@@ -69,8 +69,9 @@ export function labFor(req: { sessionId: string; level: Level }): LabState {
 }
 
 /** Sign claims the way the genuine server does: HS256 with the current secret (and kid, where the level has one). */
-export function issueToken(level: Level, state: LabState, claims: Claims): string {
-  return sign(state.secret, claims, impl.for(level).kid, state.now());
+export function issueToken(req: { sessionId: string; level: Level }, claims: Claims): string {
+  const state = labFor(req);
+  return sign(state.secret, claims, impl.for(req.level).kid, state.now());
 }
 
 /** Test seam: the lab state (secrets included) of session `sessionId` at `level`. */
@@ -80,5 +81,5 @@ export function labState(sessionId: string, level: Level): LabState {
 
 /** Test seam: a genuine token (signed by the real current key) for any claims. */
 export function mintToken(sessionId: string, level: Level, claims: Claims): string {
-  return issueToken(level, labState(sessionId, level), claims);
+  return issueToken({ sessionId, level }, claims);
 }

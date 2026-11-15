@@ -32,7 +32,7 @@ export const GK05 = register(defineChallenge({
       challenge: () => GK05,
       blurb: 'Tokens are RS256, verified with the citadel public key, which is published as:',
       links: [{ path: '/public.pem', text: 'public.pem' }],
-      issue: (req) => issueToken(labFor(req), { sub: 'pilgrim', role: 'user' }),
+      issue: (req) => issueToken(req, { sub: 'pilgrim', role: 'user' }),
       verify: (req, token) => impl.for(req.level).verify(labFor(req), token),
     });
 

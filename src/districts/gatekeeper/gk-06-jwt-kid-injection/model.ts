@@ -32,7 +32,7 @@ export interface LabState {
   now: () => number;
 }
 
-/** What every levels/<level>.ts exports (checked by byLevel<JwtLevel> in challenge.ts). */
+/** What every levels/<level>.ts exports (checked by byLevel<JwtLevel> below). */
 export interface JwtLevel {
   /** The `kid` the genuine server puts into the tokens it issues at this level. */
   readonly kid: string;

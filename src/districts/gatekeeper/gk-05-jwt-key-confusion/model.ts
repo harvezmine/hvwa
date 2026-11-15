@@ -33,7 +33,8 @@ export function labFor(req: { sessionId: string; level: Level }): LabState {
 }
 
 /** Sign claims the way the genuine server does: RS256 with the private key. */
-export function issueToken(state: LabState, claims: Claims): string {
+export function issueToken(req: { sessionId: string; level: Level }, claims: Claims): string {
+  const state = labFor(req);
   return signRsa('RS256', state.privatePem, { ...claims, iat: Math.floor(state.now() / 1000) });
 }
 
@@ -44,5 +45,5 @@ export function labState(sessionId: string, level: Level): LabState {
 
 /** Test seam: a genuine token (signed by the real server key) for any claims. */
 export function mintToken(sessionId: string, level: Level, claims: Claims): string {
-  return issueToken(labState(sessionId, level), claims);
+  return issueToken({ sessionId, level }, claims);
 }

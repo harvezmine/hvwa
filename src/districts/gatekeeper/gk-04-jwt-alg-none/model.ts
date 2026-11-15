@@ -32,7 +32,8 @@ export function labFor(req: { sessionId: string; level: Level }): LabState {
 }
 
 /** Sign claims the way the genuine server does (used for the sign-in and as a test seam). */
-export function issueToken(state: LabState, claims: Claims): string {
+export function issueToken(req: { sessionId: string; level: Level }, claims: Claims): string {
+  const state = labFor(req);
   return signHmac('HS256', state.secret, { ...claims, iat: Math.floor(state.now() / 1000) });
 }
 
@@ -43,5 +44,5 @@ export function labState(sessionId: string, level: Level): LabState {
 
 /** Test seam: a genuine token (signed by the real server key) for any claims. */
 export function mintToken(sessionId: string, level: Level, claims: Claims): string {
-  return issueToken(labState(sessionId, level), claims);
+  return issueToken({ sessionId, level }, claims);
 }

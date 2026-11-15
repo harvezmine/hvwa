@@ -1,6 +1,6 @@
-// _shared/jwt-lab-basics.spec.ts — the tests every JWT lab (GK-04 … GK-07) shares, as a helper for their specs.
-// (It is a .spec.ts file so the build leaves test code out of dist/; it carries one test of its own so vitest
-// accepts it as a suite.)
+// _shared/jwt-lab.testkit.ts — the tests every JWT lab (GK-04 … GK-07) shares, as a helper for their specs.
+// A test kit: `*.testkit.ts` is never collected as a spec (vitest includes only *.spec.ts) and is excluded
+// from the build (tsconfig.json), so test code never reaches dist/; the test tsconfig still type-checks it.
 import { describe, it, expect } from 'vitest';
 import { freshSession, bare, FLAG_RE } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
@@ -107,7 +107,3 @@ export function describeJwtLabBasics(b: JwtLabBasics): void {
     });
   });
 }
-
-describe('describeJwtLabBasics', () => {
-  it('is a function', () => { expect(typeof describeJwtLabBasics).toBe('function'); });
-});

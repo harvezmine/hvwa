@@ -37,6 +37,19 @@ src/districts/index.ts              imports each district index
   in `divine.ts`'s comment, where Diff readers will see it.
 - Shared plumbing goes in `_shared/`; the flaw itself (limiter, lockout, token generator) never does:
   it stays in the level files so View Source and the Diff show it.
+- **District shells, per lab shape.** Labs of one shape (login, JWT, ...) share a shell in
+  `_shared/<shape>-lab.ts`: the routes, cookie, vault and other plumbing, driven by callbacks
+  (`issue`, `verify`, `blurb`, `links`). Shared views live in `_shared/views/`. A shell never holds policy:
+  every verification rule, filter or limiter stays in the lab's own `levels/*.ts`, and lab-specific routes
+  (a published key, a wordlist) stay in its `challenge.ts`. Worked example: `gatekeeper/_shared/jwt-lab.ts`
+  (`mountJwtPortal`) used by GK-04 to GK-07. Keep the lab seams uniform across the shape
+  (e.g. `issueToken(req, claims)`, `mintToken(sessionId, level, claims)`).
+- **Test kits.** Tests every lab of a shape repeats live once in `_shared/<shape>-lab.testkit.ts` (suffix
+  `.testkit.ts`, never `.spec.ts`: a spec would be collected on its own and registered once per importer).
+  Vitest collects only `*.spec.ts`; `tsconfig.json` excludes `src/**/*.testkit.ts`, so test code never reaches
+  `dist/`, while `tsconfig.test.json` still type-checks it (`tests/tooling.spec.ts` asserts all three). A lab's
+  spec calls the kit's `describe...` function. Worked example: `gatekeeper/_shared/jwt-lab.testkit.ts`
+  (`describeJwtLabBasics`).
 - `fixtures/`: any path segment named `fixtures` is exempt from the repo
   hygiene scan (UTF-8, no control characters). Non-`.ts` files there are copied
   into `dist/` by `copy-assets`.
@@ -112,6 +125,9 @@ export const GK01 = register(defineChallenge({
   },
 }));
 ```
+
+For a shape with a shell, a lab's `challenge.ts` shrinks to metadata, the shell call
+(`mountJwtPortal(router, { challenge, blurb, issue, verify, ... })`) and its own routes; see section 1.
 
 ## 4. Platform rules
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
@@ -74,6 +75,16 @@ describe('tooling', () => {
   it('the build tsconfig excludes spec files (district specs live under src/)', () => {
     expect(json('tsconfig.json').exclude).toContain('src/**/*.spec.ts');
   });
+
+  it('test kits (*.testkit.ts) are type-checked by the test tsconfig, never built into dist/, never collected as specs', () => {
+    expect(json('tsconfig.json').exclude).toContain('src/**/*.testkit.ts');
+    expect(json('tsconfig.test.json').exclude ?? []).not.toContain('src/**/*.testkit.ts');
+    const list = (project: string) => execFileSync(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '-p', project, '--listFilesOnly'], { cwd: root, encoding: 'utf8' })
+      .split('\n').map((l) => l.trim().split('\\').join('/'));
+    expect(list('tsconfig.json').filter((f) => /\.testkit\.ts$|\.spec\.ts$/.test(f) && !f.includes('node_modules'))).toEqual([]);
+    expect(list('tsconfig.test.json').some((f) => f.endsWith('/src/districts/gatekeeper/_shared/jwt-lab.testkit.ts'))).toBe(true);
+    expect(readFileSync(join(root, 'vitest.config.ts'), 'utf8')).toContain("include: ['**/*.spec.ts']");
+  }, 60_000);
 
   it('the test tsconfig type-checks src (including specs) and tests', () => {
     const t = json('tsconfig.test.json');
