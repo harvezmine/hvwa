@@ -11,6 +11,27 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const say = (msg) => console.log(`verify:dist ${msg}`);
 
+// A tiny cookie jar, so this script behaves like a browser: the first response's hvwa_sid (and any
+// other Set-Cookie) is sent on every later request. Without it every request mints a NEW session and
+// trips the server's new-session issuance limit (60/min) once enough challenges are registered.
+// Platform cookies are Path=/; sending every cookie everywhere is enough for these probes.
+const jar = new Map();
+const sidsSeen = new Set();
+const MAX_SIDS = 2; // one for the whole run; one spare
+async function jfetch(url, init = {}) {
+  const res = await fetch(url, { ...init, headers: { ...init.headers, ...(jar.size ? { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') } : {}) } });
+  for (const line of res.headers.getSetCookie()) {
+    const [pair] = line.split(';');
+    const eq = pair.indexOf('=');
+    if (eq < 1) continue;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    jar.set(name, value);
+    if (name === 'hvwa_sid') sidsSeen.add(value);
+  }
+  return res;
+}
+
 function freePort() {
   return new Promise((resolve, reject) => {
     const s = createServer();
@@ -29,7 +50,7 @@ async function waitUntilUp(url, exited, timeoutMs) {
   while (Date.now() < deadline) {
     if (earlyExit) throw new Error(`server exited early (code ${earlyExit.code}, signal ${earlyExit.signal})`);
     try {
-      const res = await fetch(url);
+      const res = await jfetch(url);
       if (res.ok) return;
     } catch { /* not listening yet */ }
     await new Promise((r) => setTimeout(r, 200));
@@ -38,7 +59,7 @@ async function waitUntilUp(url, exited, timeoutMs) {
 }
 
 async function expectOk(base, path, check) {
-  const res = await fetch(base + path);
+  const res = await jfetch(base + path);
   const body = await res.text();
   if (res.status !== 200) throw new Error(`GET ${path} → ${res.status}`);
   check(body);
@@ -169,6 +190,13 @@ async function main() {
       throw new Error(`the server registered ${count} challenge(s) but ${ids.length} were discovered over HTTP`);
     }
     say(`server registered ${count} challenge(s): all discovered`);
+
+    // Guard: a client that keeps its cookie jar is handed ONE session. More means the jar broke and
+    // the run is leaning on (and soon tripping) the session issuance limit.
+    if (sidsSeen.size > MAX_SIDS) {
+      throw new Error(`the server handed out ${sidsSeen.size} distinct hvwa_sid values (max ${MAX_SIDS}): the cookie jar is not being sent`);
+    }
+    say(`session kept: ${sidsSeen.size} distinct hvwa_sid issued over the whole run`);
   } catch (err) {
     console.error(output);
     throw err;
