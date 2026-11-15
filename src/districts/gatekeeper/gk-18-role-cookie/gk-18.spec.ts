@@ -1,20 +1,19 @@
 // src/districts/gatekeeper/gk-18-role-cookie/gk-18.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import type { Express } from 'express';
 import {
-  freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieHeader, setCookieValue, type Agent,
+  bare, describeExploitMatrix, FLAG_RE, setCookieHeader, setCookieValue,
 } from '../../../../tests/helpers.js';
-import { LEVELS, type Level } from '../../../core/levels.js';
+import { LEVELS } from '../../../core/levels.js';
+import { describePilgrimLab, newCtx, pilgrimClient, type PilgrimCtx } from '../_shared/pilgrim-lab.testkit.js';
 import { GK18 } from './challenge.js'; // registers GK-18 before createApp() inside freshSession
 import { cookieName, labState } from './model.js';
 
 const LAB = '/d/gatekeeper/role-cookie';
-interface Ctx { agent: Agent; level: Level; sid: string; app: Express }
+type Ctx = PilgrimCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const home = (c: Ctx) => c.agent.get(`${LAB}?level=${c.level}`);
-const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
+const { home, login } = pilgrimClient(LAB);
 /** The admin page with ONLY this lab cookie (no jar): exactly what editing the cookie in devtools or `curl -b` does. */
 const adminWith = (c: Ctx, value: string) => bare(c.app, c.sid, `${cookieName(c.level)}=${value}`).get(`${LAB}/admin?level=${c.level}`);
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -38,12 +37,9 @@ describeExploitMatrix<Script>({
   send: (agent, level, script, _url, { sid, app }) => script({ agent, level, sid, app }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Admin only/,
+  resistedStatus: 403,
   legit: [
     { name: 'sign in', input: async (c) => login(c), expect: 'Signed in as pilgrim' },
-    {
-      name: 'pilgrim opens the admin page with their own cookie', expect: 'Admin only',
-      input: async (c) => { await login(c); return c.agent.get(`${LAB}/admin?level=${c.level}`); },
-    },
     {
       name: 'the front page knows the signed-in user', expect: 'role: user',
       input: async (c) => { await login(c); return home(c); },
@@ -62,19 +58,25 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK18, path: LAB, account: /pilgrim<\/code> \/ <code>pilgrim/, echoField: 'username', extra: { password: 'x' },
-  oddBodies: [{ username: { a: 1 }, password: ['x'] }, { username: [], password: null }, []],
-  ok: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }),
-  bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'no' }),
+describePilgrimLab({
+  challenge: GK18, path: LAB,
+  curl: (level) => ({ path: '/admin', cookies: [`${cookieName(level)}=<cookie value>`] }),
 });
 
-async function ctxFor(level: Level): Promise<Ctx> {
-  const { agent, sid, app } = await freshSession();
-  return { agent, level, sid, app };
-}
+const ctxFor = newCtx;
 
 describe('GK-18 cookies', () => {
+  it('pilgrim opens the admin page with their own cookie: 403 "Admin only" at every level, no flag', async () => {
+    for (const level of LEVELS) {
+      const c = await ctxFor(level);
+      await login(c);
+      const res = await c.agent.get(`${LAB}/admin?level=${level}`);
+      expect(res.status, level).toBe(403);
+      expect(res.text, level).toContain('Admin only');
+      expect(res.text, level).not.toMatch(FLAG_RE);
+    }
+  });
+
   it('each level sets its own cookie, Path = the lab, never an hvwa_ name; only Divine\'s is HttpOnly', async () => {
     for (const level of LEVELS) {
       const c = await ctxFor(level);
@@ -148,7 +150,7 @@ describe('GK-18 cookies', () => {
       await home(c);
       for (const v of weird) {
         const res = await adminWith(c, v);
-        expect(res.status, `${level} ${v.slice(0, 12)}`).toBe(200);
+        expect(res.status, `${level} ${v.slice(0, 12)}`).toBe(403);
         expect(res.text, `${level} ${v.slice(0, 12)}`).not.toMatch(FLAG_RE);
       }
     }
@@ -171,6 +173,7 @@ describe('GK-18 cookies', () => {
       const front = await bare(c.app, c.sid).get(`${LAB}?level=${level}`);
       const adm = await bare(c.app, c.sid).get(`${LAB}/admin?level=${level}`);
       expect(front.status).toBe(200);
+      expect(adm.status, level).toBe(403);
       expect(adm.text, level).toContain('Admin only');
       expect(adm.text, level).not.toMatch(FLAG_RE);
       expect(front.headers['set-cookie']?.toString() ?? '', level).not.toContain('citadel_role_');
