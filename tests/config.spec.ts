@@ -15,7 +15,7 @@ describe('parseConfig', () => {
     const c = parseConfig({});
     expect(c).toEqual({
       HOST: '127.0.0.1', PORT: 1337, AI_BACKEND: 'sim',
-      FLAG_SECRET: undefined, HVWA_ALLOW_REMOTE: false, HVWA_DATA_DIR: undefined,
+      FLAG_SECRET: undefined, HVWA_ALLOW_REMOTE: false, HVWA_DATA_DIR: undefined, HVWA_ALLOWED_HOSTS: [],
     });
     expect(parseConfig({ SESSION_SECRET: 'x' })).not.toHaveProperty('SESSION_SECRET');
   });
@@ -55,6 +55,21 @@ describe('parseConfig', () => {
     expect(parseConfig({ HVWA_DATA_DIR: '' }).HVWA_DATA_DIR).toBeUndefined();
     expect(parseConfig({ HVWA_DATA_DIR: '/var/lib/hvwa' }).HVWA_DATA_DIR).toBe('/var/lib/hvwa');
   });
+
+  it('HVWA_ALLOWED_HOSTS: blank means none; a comma list is trimmed, lowercased, de-blanked', () => {
+    expect(parseConfig({}).HVWA_ALLOWED_HOSTS).toEqual([]);
+    expect(parseConfig({ HVWA_ALLOWED_HOSTS: '  ' }).HVWA_ALLOWED_HOSTS).toEqual([]);
+    expect(parseConfig({ HVWA_ALLOWED_HOSTS: ' hvwa.lab, Other-Box.Example ,,192.168.56.10,[fd00::5]' }).HVWA_ALLOWED_HOSTS)
+      .toEqual(['hvwa.lab', 'other-box.example', '192.168.56.10', '[fd00::5]']);
+  });
+
+  it.each(['hvwa.lab:8080', 'http://hvwa.lab', '*.example', 'hvwa.lab/x', 'a b', '-bad.example', 'fd00::5'])(
+    'HVWA_ALLOWED_HOSTS rejects %j (bare hostnames/IPs only)', (HVWA_ALLOWED_HOSTS) => {
+      expect(() => parseConfig({ HVWA_ALLOWED_HOSTS })).toThrow();
+      const r = loadConfig({ HVWA_ALLOWED_HOSTS });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.errors).toEqual([expect.stringMatching(/^HVWA_ALLOWED_HOSTS: \S/)]);
+    });
 
   it('an empty FLAG_SECRET falls back to the persisted secret', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-config-'));

@@ -1,0 +1,50 @@
+// src/core/host-guard.ts — DNS-rebinding guard. A malicious website can point
+// its own hostname at 127.0.0.1 and then drive HVWA from the victim's browser
+// with same-origin access. The browser still sends the attacker's hostname in
+// Host, so HVWA answers only to the loopback names (any port) plus
+// HVWA_ALLOWED_HOSTS, and gives everything else 421 before any route runs.
+import type { RequestHandler } from 'express';
+
+/** Hostnames always allowed, on any port: what a local browser sends. */
+export const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** Plain-text body of the 421 (never echoes the rejected Host). */
+export const MISDIRECTED_BODY = '421 Misdirected Request: HVWA only answers to localhost, 127.0.0.1 and [::1] ' +
+  '(plus HVWA_ALLOWED_HOSTS). This blocks DNS-rebinding attacks; see docs/SECURITY.md.\n';
+
+// host = "[" IPv6 "]" or a name without delimiters; then an optional :port.
+const HOST_HEADER_RE = /^(\[[0-9a-z:.]+\]|[^\s:/?#@[\]\\]+)(?::(\d{1,5}))?$/i;
+
+/**
+ * The hostname in a Host header value: lowercased, port dropped, one trailing
+ * root dot removed ('localhost.' -> 'localhost', as nginx's $host does). IPv6
+ * literals keep their brackets ('[::1]:1337' -> '[::1]'). Returns undefined
+ * if the header is missing or malformed.
+ */
+export function hostnameOf(header: string | undefined): string | undefined {
+  if (header === undefined) return undefined;
+  const m = HOST_HEADER_RE.exec(header.trim());
+  if (!m) return undefined;
+  if (m[2] !== undefined && Number(m[2]) > 65535) return undefined;
+  const name = m[1].toLowerCase().replace(/\.$/, '');
+  return name === '' ? undefined : name;
+}
+
+/**
+ * Middleware: pass requests whose Host hostname is a loopback name or one of
+ * `extraHostnames` (exact, case-insensitive). Everything else, including a
+ * missing Host, gets 421. Only the raw Host header counts, never
+ * req.hostname or X-Forwarded-Host: with `trust proxy` those come from the
+ * client, and labs may use them as attack vectors (host-header poisoning).
+ */
+export function hostGuard(extraHostnames: readonly string[] = []): RequestHandler {
+  const allowed = new Set([...LOOPBACK_HOSTNAMES, ...extraHostnames.map((h) => h.toLowerCase())]);
+  return (req, res, next) => {
+    const name = hostnameOf(req.headers.host);
+    if (name !== undefined && allowed.has(name)) {
+      next();
+      return;
+    }
+    res.status(421).type('text/plain').send(MISDIRECTED_BODY);
+  };
+}

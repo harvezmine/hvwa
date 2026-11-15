@@ -38,7 +38,11 @@ for (const c of allChallenges()) assertChallengeFiles(c);
 const app = createApp({
   dbPath: join(dataDir, 'hvwa.db'),
   flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
+  allowedHosts: config.HVWA_ALLOWED_HOSTS,
 });
+if (config.HVWA_ALLOWED_HOSTS.length > 0) {
+  console.warn(`HVWA: also answering to Host ${config.HVWA_ALLOWED_HOSTS.join(', ')} (HVWA_ALLOWED_HOSTS)`);
+}
 
 let server: Server;
 try {

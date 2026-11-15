@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
 import { setFlagSecret } from './core/flags.js';
+import { hostGuard } from './core/host-guard.js';
 import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
@@ -17,8 +18,11 @@ import { portalRouter } from './portal/index.js';
 const here = dirname(fileURLToPath(import.meta.url));
 // Vendored htmx (pinned dependency), served locally — no network at runtime.
 // Only this one file is exposed, not the rest of the package's dist/.
-const htmxMinJs = join(
-  dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist', 'htmx.min.js');
+// sendFile gets it as a root + name: with a bare absolute path, send's
+// dotfiles check covers every segment, so a checkout under any dot-directory
+// (.worktrees/, ~/.local/...) would answer 404.
+const htmxDistDir = join(
+  dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist');
 
 export interface AppOptions {
   /** SQLite path. Defaults to an in-memory database (tests). */
@@ -31,6 +35,11 @@ export interface AppOptions {
    * passes the env/persisted secret.
    */
   flagSecret?: string;
+  /**
+   * Extra Host names to answer to, besides localhost / 127.0.0.1 / [::1]
+   * (DNS-rebinding guard). server.ts passes HVWA_ALLOWED_HOSTS.
+   */
+  allowedHosts?: readonly string[];
 }
 
 /** The Express app plus its typed platform DB handle on `locals.db`. */
@@ -48,6 +57,8 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   const base = express();
   const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db }) });
 
+  // FIRST: requests for a foreign Host (DNS rebinding) never reach anything else.
+  app.use(hostGuard(opts.allowedHosts));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
@@ -55,7 +66,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use(levelMiddleware());
   app.use(langMiddleware());
   app.get('/static/vendor/htmx.min.js', (_req, res, next) => {
-    res.sendFile(htmxMinJs, (err) => { if (err) next(err); });
+    res.sendFile('htmx.min.js', { root: htmxDistDir }, (err) => { if (err) next(err); });
   });
   app.use('/static', express.static(join(here, 'public'), { index: false }));
 
