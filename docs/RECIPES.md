@@ -310,6 +310,13 @@ path). Do not write assertions inside an `if` that can pass vacuously: draw new 
 holds, then assert unconditionally. Exploit scripts must detect success by "not the denial text", not only by a
 flag, because Divine never shows one.
 
+One server per app: `import request from 'supertest'` in a spec is aliased (`vitest.config.ts`) to
+`tests/support/supertest.ts`, so `request(app)` / `request.agent(app)` with an Express app listen ONCE per app
+(closed when the test ends) and reuse keep-alive sockets. Plain supertest starts a server and a connection per request,
+which leaves thousands of sockets in TIME_WAIT and exhausts ephemeral ports (`EADDRINUSE` in unrelated specs). Keep
+using `request` / `freshSession` / `bare` as usual; `serve(app)` (from `tests/helpers.ts`) returns the http.Server.
+Never deep-import or `require` the real supertest (`tests/tooling.spec.ts` fails if a spec does).
+
 **Mutation self-check** before committing (revert by rewriting the file, not
 `git checkout` over uncommitted work):
 
