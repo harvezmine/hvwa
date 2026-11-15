@@ -11,6 +11,7 @@ import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
 import { checkerRouter } from './core/checker.js';
 import { errorHandler } from './core/errors.js';
+import { mountChallenges } from './core/mount.js';
 import { portalRouter } from './portal/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
   app.use('/api', checkerRouter(db));
+  mountChallenges(app); // every registered challenge at /d/<district>/<slug>
   app.use('/', portalRouter(db));
 
   app.use(errorHandler()); // must stay last
