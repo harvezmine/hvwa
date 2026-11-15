@@ -3,6 +3,7 @@ import './gk-01-sqli-login/challenge.js';
 import './gk-02-brute-force/challenge.js';
 import './gk-03-rate-limit-bypass/challenge.js';
 import './gk-04-jwt-alg-none/challenge.js';
+import './gk-05-jwt-key-confusion/challenge.js';
 import './gk-15-otp-brute-force/challenge.js';
 import './gk-17-weak-session-id/challenge.js';
 // GK-02 … GK-18 added here as they are implemented
