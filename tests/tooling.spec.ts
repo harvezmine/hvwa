@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { hygieneProblems } from './helpers.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const json = (file: string) => JSON.parse(readFileSync(join(root, file), 'utf8'));
@@ -26,27 +28,34 @@ describe('architecture', () => {
 });
 
 describe('source hygiene', () => {
-  it('every file under src/ is valid UTF-8', () => {
-    const bad: string[] = [];
-    for (const rel of readdirSync(join(root, 'src'), { recursive: true }).map(String)) {
-      const p = join(root, 'src', rel);
-      if (!statSync(p).isFile()) continue;
-      try { new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(p)); } catch { bad.push(rel); }
-    }
-    expect(bad).toEqual([]);
+  it('text sources under src/, tests/ and scripts/ are valid UTF-8 with no control characters', () => {
+    const { badUtf8, control } = hygieneProblems(root, ['src', 'tests', 'scripts']);
+    expect(badUtf8).toEqual([]);
+    expect(control).toEqual([]);
   });
 
-  it('no control characters (other than tab, LF, CR) in src/, tests/ or scripts/', () => {
-    const CONTROL = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
-    const bad: string[] = [];
-    for (const dir of ['src', 'tests', 'scripts']) {
-      for (const rel of readdirSync(join(root, dir), { recursive: true }).map(String)) {
-        const p = join(root, dir, rel);
-        if (!statSync(p).isFile() || /\.(png|jpe?g|gif|ico|zip|woff2?)$/i.test(rel)) continue;
-        if (CONTROL.test(readFileSync(p, 'latin1'))) bad.push(`${dir}/${rel}`);
-      }
-    }
-    expect(bad).toEqual([]);
+  it('the hygiene scan skips non-text extensions and fixtures/ but still flags text sources', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'hvwa-hyg-'));
+    try {
+      mkdirSync(join(tmp, 'src', 'lab', 'fixtures'), { recursive: true });
+      writeFileSync(join(tmp, 'src', 'lab', 'blob.bin'), Buffer.from([0, 1, 2, 0xff]));
+      writeFileSync(join(tmp, 'src', 'lab', 'fixtures', 'x.txt'), Buffer.from([0, 0xfe]));
+      writeFileSync(join(tmp, 'src', 'lab', 'fixtures', 'y.ts'), Buffer.from([0, 0xfe]));
+      expect(hygieneProblems(tmp, ['src'])).toEqual({ badUtf8: [], control: [] });
+      writeFileSync(join(tmp, 'src', 'lab', 'bad.ts'), Buffer.from([0x61, 0, 0x62]));
+      writeFileSync(join(tmp, 'src', 'lab', 'bad2.ejs'), Buffer.from([0x61, 0x97]));
+      const r = hygieneProblems(tmp, ['src']);
+      expect(r.control.map((x) => x.split(sep).join('/'))).toEqual(['src/lab/bad.ts']);
+      expect(r.badUtf8.map((x) => x.split(sep).join('/'))).toEqual(['src/lab/bad2.ejs']);
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
+  });
+
+
+  it('server.ts verifies challenge files before creating the app', () => {
+    const src = readFileSync(join(root, 'src', 'server.ts'), 'utf8');
+    const v = src.indexOf('assertChallengeFiles(c)');
+    expect(v).toBeGreaterThan(-1);
+    expect(v).toBeLessThan(src.indexOf('createApp({'));
   });
 
   it('server.ts imports the district list before the app', () => {

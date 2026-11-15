@@ -1,4 +1,6 @@
 // tests/helpers.ts — shared test utilities.
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import request from 'supertest';
 import type { Express } from 'express';
 import { createApp } from '../src/app.js';
@@ -34,4 +36,30 @@ export async function freshSession(app: Express = createApp({ flagSecret: TEST_S
   const sid = setCookieValue(res, 'hvwa_sid');
   if (!sid) throw new Error('first response did not set hvwa_sid');
   return { app, agent, sid };
+}
+
+/** Text-source extensions the hygiene checks apply to. */
+const TEXT_EXT = /\.(ts|mts|mjs|js|ejs|css|sql|json|md)$/i;
+
+/**
+ * Repo-hygiene scan: relative paths (under `dirs` of `root`) of text-source
+ * files that are not valid UTF-8, or that contain control characters other
+ * than tab/LF/CR. Convention: labs put deliberately binary or malformed files
+ * under `<challenge>/fixtures/`; any path segment named `fixtures` is exempt,
+ * as are all non-text extensions.
+ */
+export function hygieneProblems(root: string, dirs: string[]): { badUtf8: string[]; control: string[] } {
+  const badUtf8: string[] = [];
+  const control: string[] = [];
+  for (const dir of dirs) {
+    for (const rel of readdirSync(join(root, dir), { recursive: true }).map(String)) {
+      if (!TEXT_EXT.test(rel) || rel.split(/[\\/]/).includes('fixtures')) continue;
+      const p = join(root, dir, rel);
+      if (!statSync(p).isFile()) continue;
+      const bytes = readFileSync(p);
+      try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { badUtf8.push(`${dir}/${rel}`); }
+      if (/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(bytes.toString('latin1'))) control.push(`${dir}/${rel}`);
+    }
+  }
+  return { badUtf8, control };
 }
