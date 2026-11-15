@@ -1,0 +1,10 @@
+<%# GK-18 admin page. Lab content is English by design. Escaped output only. Never put an EJS tag inside an EJS comment. %>
+<section class="lab">
+  <h1>Admin area</h1>
+<% if (admin) { -%>
+  <p class="lab-message lab-success" role="status" data-testid="lab-message">Citadel admin console. <%= note %></p>
+<% } else { -%>
+  <p class="lab-message lab-error" role="status" data-testid="lab-message">Admin only. Your cookie does not say you are the citadel admin.</p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to the sign-in page</a></p>
+</section>
