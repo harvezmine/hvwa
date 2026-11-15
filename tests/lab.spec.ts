@@ -1,7 +1,11 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
-import { describe, it, expect, expectTypeOf, vi } from 'vitest';
-import { NewSessionLimitError, perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { describe, it, expect, expectTypeOf, onTestFinished, vi } from 'vitest';
+import { setPerSessionDefaults, NewSessionLimitError, perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
+
+// Created at import time, like every lab's holder: before any test (and so possibly before setup effects)
+// runs. It must still follow the test default, which perSession reads when it checks, not when it is made.
+const importTimeHolder = perSession((_l, sid) => ({ sid }), { now: () => 0 });
 
 describe('perLevel(factory)', () => {
   it('creates nothing until a level is asked for, then one instance per level', () => {
@@ -161,6 +165,8 @@ describe('perSession(factory, opts?)', () => {
 
   it('limits NEW instances per rolling minute (default 120): the next one throws a 429 error, existing ones are untouched', () => {
     let t = 0;
+    setPerSessionDefaults({ maxNewPerMinute: 120 }); // the setup file lifts it for tests; this is the engine default
+    onTestFinished(() => { setPerSessionDefaults({ maxNewPerMinute: Infinity }); });
     const p = perSession((_l, sid) => ({ sid }), { now: () => t, maxEntries: 5 });
     const kept = p.for(req('victim'));
     for (let i = 1; i < 120; i++) p.for(req(`s-${i}`));
@@ -175,6 +181,31 @@ describe('perSession(factory, opts?)', () => {
     t = 60_001; // the window rolls
     expect(() => p.for(req('after-window'))).not.toThrow();
     expect(kept).toBeDefined();
+  });
+
+  it('setPerSessionDefaults governs holders that set no limit (even ones made earlier); an explicit limit wins', () => {
+    const prev = setPerSessionDefaults({ maxNewPerMinute: 3 });
+    onTestFinished(() => { setPerSessionDefaults(prev); });
+    const early = perSession((_l, sid) => ({ sid }), { now: () => 0 });
+    const explicit = perSession((_l, sid) => ({ sid }), { now: () => 0, maxNewPerMinute: 5 });
+    for (let i = 0; i < 3; i++) early.for(req(`e${i}`));
+    expect(() => early.for(req('e3'))).toThrow(NewSessionLimitError);
+    setPerSessionDefaults({ maxNewPerMinute: Infinity });
+    expect(() => early.for(req('e3'))).not.toThrow();
+    for (let i = 0; i < 5; i++) explicit.for(req(`x${i}`));
+    expect(() => explicit.for(req('x5'))).toThrow(NewSessionLimitError);
+    expect(() => setPerSessionDefaults({ maxNewPerMinute: 0 })).toThrow(/positive integer/);
+  });
+
+  it('a holder created at import time follows the lifted test default', () => {
+    for (let i = 0; i < 500; i++) importTimeHolder.for({ sessionId: `import-${i}`, level: 'acolyte' });
+    expect(importTimeHolder.size).toBe(500);
+  });
+
+  it('the test setup lifts the default limit: hundreds of new instances in a minute are fine', () => {
+    const p = perSession((_l, sid) => ({ sid }), { now: () => 0 });
+    for (let i = 0; i < 500; i++) p.for(req(`s${i}`));
+    expect(p.size).toBe(500);
   });
 
   it('a flood of new sessions cannot evict a player\'s instance while the limit holds (eviction would be a reset)', () => {
