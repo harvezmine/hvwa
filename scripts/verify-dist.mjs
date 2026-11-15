@@ -6,7 +6,7 @@ import { createServer } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const say = (msg) => console.log(`verify:dist ${msg}`);
@@ -76,6 +76,23 @@ async function main() {
     });
     await expectOk(base, '/static/app.css', () => {});
     await expectOk(base, '/static/vendor/htmx.min.js', () => {});
+
+    // Every registered challenge: its player page and its first level's View Source
+    // (proves levels/*.ts were copied into dist/). The registry is read from the
+    // built app itself, so each new challenge is covered automatically.
+    await import(pathToFileURL(join(root, 'dist', 'districts', 'index.js')).href);
+    const { allChallenges } = await import(pathToFileURL(join(root, 'dist', 'core', 'registry.js')).href);
+    const challenges = allChallenges();
+    if (challenges.length === 0) throw new Error('no challenges registered in the built app');
+    for (const c of challenges) {
+      await expectOk(base, `/c/${c.id}`, (b) => {
+        if (!b.includes(c.id)) throw new Error(`/c/${c.id} does not mention the challenge`);
+      });
+      await expectOk(base, `/c/${c.id}/source/${c.levels[0]}`, (b) => {
+        if (b.length < 200) throw new Error(`/c/${c.id}/source/${c.levels[0]} looks empty`);
+      });
+    }
+    say(`checked ${challenges.length} registered challenge(s): ${challenges.map((c) => c.id).join(', ')}`);
   } catch (err) {
     console.error(output);
     throw err;
