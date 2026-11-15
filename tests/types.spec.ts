@@ -5,6 +5,7 @@ import type { Request, Response } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/app.js';
 import { openDb } from '../src/db/index.js';
+import { challengeDb, type ChallengeDb } from '../src/core/challenge-db.js';
 import type { Level } from '../src/core/levels.js';
 import type { Lang } from '../src/core/i18n.js';
 import type { Challenge, CheckContext } from '../src/core/registry.js';
@@ -31,6 +32,11 @@ describe('typed express', () => {
     // @ts-expect-error — the path is mandatory (no implicit 'hvwa.db' in the cwd)
     expectTypeOf(openDb).toBeCallableWith();
     expectTypeOf(openDb).toBeCallableWith(':memory:');
+  });
+
+  it('challengeDb() returns a prepare()-only facade', () => {
+    expectTypeOf<keyof ChallengeDb>().toEqualTypeOf<'prepare'>();
+    expectTypeOf(challengeDb).returns.toEqualTypeOf<ChallengeDb>();
   });
 
   it('CheckContext does not expose the platform DB', () => {
