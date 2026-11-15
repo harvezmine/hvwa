@@ -1,0 +1,31 @@
+<%# GK-15 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Gate — Two-step sign in</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: <code><%= target %></code>, whose password was phished: <code><%= targetPassword %></code>. Only the 4-digit code is missing.</p>
+<% if (pending) { -%>
+  <p class="lab-note">Step 2 of 2: enter the code sent to <code><%= pending %></code>.</p>
+<% if (inbox) { -%>
+  <p class="lab-note" data-testid="inbox">Simulated SMS to <%= pending %>: Your code is <%= inbox %></p>
+<% } -%>
+  <form method="post">
+    <input type="hidden" name="step" value="verify">
+    <label>Code <input name="code" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="<%= code %>"></label>
+    <button type="submit">Verify</button>
+  </form>
+  <form method="post">
+    <input type="hidden" name="step" value="resend">
+    <button type="submit">Resend code</button>
+  </form>
+<% } else { -%>
+  <p class="lab-note">Step 1 of 2: your username and password.</p>
+  <form method="post">
+    <input type="hidden" name="step" value="login">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
+    <button type="submit">Continue</button>
+  </form>
+<% } -%>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+</section>
