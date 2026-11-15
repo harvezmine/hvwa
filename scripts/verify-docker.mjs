@@ -359,6 +359,16 @@ const checks = [
     }
     return `touch /x: ${x.err || `exit ${x.code}`}`;
   }],
+  ['the app image carries node only: no npm, npx, yarn or corepack', () => {
+    const r = exec('app', ['sh', '-c',
+      'for t in npm npx yarn yarnpkg corepack; do command -v "$t" >/dev/null 2>&1 && echo "$t"; done; ' +
+      'ls -d /usr/local/lib/node_modules/* /opt/yarn-* 2>/dev/null; node --version']);
+    const lines = r.out.split(/\r?\n/).filter(Boolean);
+    const node = lines.pop();
+    if (r.code !== 0 || !/^v\d+\./.test(node ?? '')) throw new Error(`probe failed (${show(r)})`);
+    if (lines.length) throw new Error(`still present: ${lines.join(', ')}`);
+    return `node ${node} only`;
+  }],
   ['hardening flags on every container', () =>
     ['app', 'proxy'].map((s) => `${s}: ${checkHostConfig(s)}`).join(' | ')],
   ['mounts: app = data volume + noexec /tmp (+ init), proxy = read-only nginx.conf + noexec tmpfs; no Docker socket', () => {
