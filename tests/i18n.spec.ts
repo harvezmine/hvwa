@@ -9,6 +9,11 @@ describe('i18n', () => {
     expect(t('this.key.does.not.exist', 'en')).toBe('this.key.does.not.exist');
   });
 
+  it('both safety banners warn against UNtrusted networks', () => {
+    expect(t('safety.warning', 'en')).toMatch(/never expose it to an untrusted network/i);
+    expect(t('safety.warning', 'id')).toMatch(/jangan pernah mengeksposnya ke jaringan yang tidak tepercaya/i);
+  });
+
   it.each(['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf'])(
     'treats inherited Object property %j as an unknown key', (key) => {
       expect(t(key, 'en')).toBe(key);

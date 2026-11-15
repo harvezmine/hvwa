@@ -29,7 +29,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'diff.vulnerable': { id: 'Rentan (Acolyte)', en: 'Vulnerable (Acolyte)' },
   'diff.secure': { id: 'Aman (Divine)', en: 'Secure (Divine)' },
   'safety.warning': {
-    id: 'PERINGATAN: Aplikasi ini sengaja rentan. Jangan pernah mengeksposnya ke jaringan tepercaya.',
+    id: 'PERINGATAN: Aplikasi ini sengaja rentan. Jangan pernah mengeksposnya ke jaringan yang tidak tepercaya.',
     en: 'WARNING: This app is deliberately vulnerable. Never expose it to an untrusted network.',
   },
 });
