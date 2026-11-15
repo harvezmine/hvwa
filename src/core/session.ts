@@ -2,21 +2,21 @@
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from 'express';
 
-// Minimal raw-cookie fallback so the middleware works whether or not
-// cookie-parser has already populated req.cookies (e.g. in isolated unit tests).
-function readSidFromHeader(req: { headers: { cookie?: string } }): string | undefined {
-  const raw = req.headers?.cookie ?? '';
-  const m = /(?:^|;\s*)hvwa_sid=([^;]+)/.exec(raw);
-  return m ? decodeURIComponent(m[1]) : undefined;
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Requires cookie-parser to run first (createApp mounts it before this).
+// An incoming hvwa_sid is accepted only if it is a UUID; anything else is
+// replaced. The cookie is written only when a new session is issued.
 export function sessionMiddleware(): RequestHandler {
   return (req, res, next) => {
-    let sid = (req.cookies?.hvwa_sid as string | undefined) ?? readSidFromHeader(req);
-    if (!sid) sid = randomUUID();
-    // Refresh the cookie on every response so the stable sid is always
-    // observable via set-cookie (required for cross-request flag issuance).
-    res.cookie('hvwa_sid', sid, { httpOnly: true, sameSite: 'lax', path: '/' });
+    const incoming = req.cookies?.hvwa_sid;
+    let sid: string;
+    if (typeof incoming === 'string' && UUID_RE.test(incoming)) {
+      sid = incoming;
+    } else {
+      sid = randomUUID();
+      res.cookie('hvwa_sid', sid, { httpOnly: true, sameSite: 'lax', path: '/' });
+    }
     (req as any).sessionId = sid;
     next();
   };
