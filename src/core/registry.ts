@@ -3,6 +3,7 @@ import type { Request, Router } from 'express';
 import { isAbsolute } from 'node:path';
 import { verifyFlag } from './flags.js';
 import { isLevel, type Level } from './levels.js';
+import { assertVictimConfig, type VictimConfig } from './sim.js';
 
 export type { Level } from './levels.js';
 
@@ -66,6 +67,12 @@ export interface Challenge {
   readonly reset?: (req: Pick<Request, 'sessionId' | 'level'>) => void;
   /** Minimum ms between two resets of the same (session, level). Integer >= 0; default 10 000. */
   readonly resetCooldownMs?: number;
+  /**
+   * Optional simulated victim for labs where someone else must click (core/sim.ts, docs/RECIPES.md "Victim-driven
+   * labs"). The engine mounts `POST <lab>/victim/<name>` for each action (runs it, 303 back to the lab) BEFORE the
+   * lab's own routes, and shows the player's inbox and attacker log under every lab page.
+   */
+  readonly victim?: VictimConfig;
 }
 
 /**
@@ -120,6 +127,7 @@ function validate(c: Challenge): void {
   if (c.resetCooldownMs !== undefined && (!Number.isInteger(c.resetCooldownMs) || c.resetCooldownMs < 0)) {
     throw new Error(`${at}: resetCooldownMs must be an integer >= 0 (got ${String(c.resetCooldownMs)})`);
   }
+  if (c.victim !== undefined) assertVictimConfig(c.victim, at);
 }
 
 /** Validate challenge metadata and fill defaults. Throws on any invalid field. */

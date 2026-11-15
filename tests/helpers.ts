@@ -338,7 +338,9 @@ export function describeLabView(v: LabViewSpec): void {
         expect(res.status, level).toBe(200);
         expect(res.text, level).toMatch(v.account);
         expect(res.text, level).not.toMatch(/type="password"/);
-        const forms = [...res.text.matchAll(/<form[^>]*>/g)].map((m) => m[0]).filter((f) => !f.includes('lab-restart'));
+        // Platform forms post elsewhere on purpose: the lab bar's Restart and the simulated victim's actions.
+        const forms = [...res.text.matchAll(/<form[^>]*>/g)].map((m) => m[0])
+          .filter((f) => !f.includes('lab-restart') && !f.includes('class="sim-action"'));
         expect(forms.length, level).toBeGreaterThan(0);
         for (const f of forms) expect(f, level).not.toMatch(/\saction=/);
       }

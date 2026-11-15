@@ -3,6 +3,7 @@
 import type { Level } from '../core/levels.js';
 import type { Lang } from '../core/i18n.js';
 import type { Challenge } from '../core/registry.js';
+import type { SimPanel } from '../core/sim.js';
 
 declare global {
   namespace Express {
@@ -25,6 +26,8 @@ declare global {
       level?: Level;
       /** The challenge being served; set only on challenge routes. */
       challenge?: Challenge;
+      /** The simulated-victim panel, built at render time; set only on routes of a challenge with a victim. */
+      simPanel?: () => SimPanel;
     }
   }
 }

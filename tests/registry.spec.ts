@@ -96,6 +96,32 @@ describe('defineChallenge', () => {
   });
 });
 
+describe('defineChallenge: victim (core/sim.ts)', () => {
+  const action = { name: 'send-link', label: { id: 'Kirim', en: 'Send' }, input: 'url' as const, run: () => {} };
+  const sim = () => { throw new Error('not called at definition'); };
+
+  it('accepts a victim with a sim accessor and kebab-case actions', () => {
+    expect(() => defineChallenge(input({ victim: { sim, actions: [action, { ...action, name: 'check-mail', input: undefined }] } }))).not.toThrow();
+  });
+
+  it.each([
+    ['not an object', 'x', /victim must be an object/],
+    ['no sim accessor', { actions: [action] }, /victim\.sim must be a function/],
+    ['no actions', { sim, actions: [] }, /at least one action/],
+    ['actions not a list', { sim, actions: action }, /at least one action/],
+    ['a non-kebab name', { sim, actions: [{ ...action, name: 'Send Link' }] }, /action name/],
+    ['a name with a slash', { sim, actions: [{ ...action, name: 'a/b' }] }, /action name/],
+    ['duplicate names', { sim, actions: [action, action] }, /duplicate victim action/],
+    ['a label that is not bilingual text', { sim, actions: [{ ...action, label: 'Send' }] }, /label/],
+    ['a label missing a language', { sim, actions: [{ ...action, label: { en: 'Send' } }] }, /label/],
+    ['an unknown input', { sim, actions: [{ ...action, input: 'file' }] }, /input/],
+    ['no run function', { sim, actions: [{ ...action, run: 'go' }] }, /run must be a function/],
+    ['a null action', { sim, actions: [null] }, /action/],
+  ])('rejects a victim with %s', (_name, victim, re) => {
+    expect(() => defineChallenge(input({ victim: victim as never }))).toThrow(re);
+  });
+});
+
 describe('register', () => {
   it('registers, returns the challenge, and makes it findable', () => {
     const c = register(defineChallenge(input()));

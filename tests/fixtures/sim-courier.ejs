@@ -1,0 +1,12 @@
+<%# SV-01 fixture lab (tests/sim-lab.spec.ts), a victim-driven lab in miniature. Lab content is English. Every value goes through the escaped output tag. %>
+<section class="lab">
+  <h1>Citadel Courier — Vault</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. The admin is signed in to the courier at http://citadel.test/ and opens the links you send. Enter the admin's vault key to open the vault.</p>
+  <form method="post">
+    <label>Vault key <input name="key" type="text" autocomplete="off" spellcheck="false" value="<%= key %>"></label>
+    <button type="submit">Open vault</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status"><%= result.text %></p>
+<% } -%>
+</section>

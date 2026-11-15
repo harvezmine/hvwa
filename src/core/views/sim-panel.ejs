@@ -1,0 +1,69 @@
+<%# The simulated-victim panel (core/sim.ts), shown by the layout under a victim-driven lab. Platform strings come from t; mail, URLs and headers are lab or attacker content: every value goes through the escaped output tag, and only citadel links (mapped into the lab) become hrefs. %>
+    <section class="sim-panel" data-testid="sim-panel" aria-labelledby="sim-panel-heading">
+      <h2 id="sim-panel-heading"><%= t('sim.heading') %></h2>
+      <p class="sim-hosts"><%= simPanel.hosts %></p>
+<% simPanel.actions.forEach(function (a) { -%>
+      <form method="post" action="<%= a.action %>" class="sim-action" data-testid="sim-action-<%= a.name %>">
+<% if (a.input) { -%>
+        <label><%= t('sim.link') %> <input name="url" type="text" autocomplete="off" spellcheck="false" value="<%= simPanel.lastLink %>"></label>
+<% } -%>
+        <button type="submit"><%= a.label %></button>
+      </form>
+<% }); -%>
+<% if (simPanel.report) { -%>
+      <div class="sim-report" data-testid="sim-report" role="status">
+        <h3><%= t('sim.report') %></h3>
+<% if (simPanel.report.note) { -%>
+        <p class="sim-note"><%= simPanel.report.note %></p>
+<% } -%>
+<% if (simPanel.report.visits.length === 0) { -%>
+        <p class="sim-meta"><%= t('sim.opened_nothing') %></p>
+<% } else { -%>
+        <ul class="sim-visits">
+<% simPanel.report.visits.forEach(function (line) { -%>
+          <li><%= line %></li>
+<% }); -%>
+        </ul>
+<% } -%>
+      </div>
+<% } -%>
+      <h3><%= simPanel.mailboxHeading %></h3>
+<% if (simPanel.mails.length === 0) { -%>
+      <p class="sim-meta" data-testid="sim-mailbox-empty"><%= t('sim.mailbox_empty') %></p>
+<% } else { -%>
+      <ol class="sim-mail" data-testid="sim-mailbox">
+<% simPanel.mails.forEach(function (m) { -%>
+        <li>
+          <p class="sim-meta"><%= t('sim.mail_from') %> <code><%= m.from %></code> · <time datetime="<%= m.at %>"><%= m.at %></time></p>
+          <p class="sim-subject"><%= m.subject %></p>
+          <pre class="sim-body"><%= m.body %></pre>
+<% if (m.links.length > 0) { -%>
+          <ul class="sim-links">
+<% m.links.forEach(function (l) { -%>
+            <li><code><%= l.text %></code><% if (l.href) { %> <a href="<%= l.href %>"><%= t('sim.open_in_lab') %></a><% } %></li>
+<% }); -%>
+          </ul>
+<% } -%>
+        </li>
+<% }); -%>
+      </ol>
+<% } -%>
+      <h3><%= t('sim.log') %></h3>
+<% if (simPanel.hits.length === 0) { -%>
+      <p class="sim-meta" data-testid="sim-log-empty"><%= t('sim.log_empty') %></p>
+<% } else { -%>
+      <ol class="sim-log" data-testid="sim-log">
+<% simPanel.hits.forEach(function (h) { -%>
+        <li data-seq="<%= h.seq %>">
+          <span class="sim-meta">#<%= h.seq %> · <time datetime="<%= h.at %>"><%= h.at %></time></span><br><code><%= h.method %> <%= h.url %></code>
+<% if (h.referer) { -%>
+          <br>Referer: <code><%= h.referer %></code>
+<% } -%>
+<% if (h.body) { -%>
+          <br><%= t('sim.body') %>: <code><%= h.body %></code>
+<% } -%>
+        </li>
+<% }); -%>
+      </ol>
+<% } -%>
+    </section>

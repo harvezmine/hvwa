@@ -113,3 +113,21 @@ a:hover { text-decoration: underline; }
 .lab-message { font-family: var(--mono); font-size: 0.875rem; overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.75rem; margin: 1rem 0 0; }
 .lab-success { border-color: #166534; background: var(--add-bg); color: #bbf7d0; }
 .lab-error { border-color: #991b1b; background: var(--del-bg); color: var(--danger-text); }
+
+/* simulated victim (core/views/sim-panel.ejs): the player's inbox and attacker log under a victim-driven lab */
+.sim-panel { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0.5rem; background: var(--surface); padding: 1rem 1.25rem; margin: 1.5rem 0 0; max-width: 40rem; font-size: 0.875rem; }
+.sim-panel h2 { font-size: 1.125rem; margin: 0 0 0.5rem; }
+.sim-panel h3 { font-size: 1rem; margin: 1rem 0 0.5rem; }
+.sim-panel code, .sim-body { font-family: var(--mono); overflow-wrap: anywhere; }
+.sim-hosts, .sim-meta { color: var(--muted); }
+.sim-hosts { margin: 0 0 0.75rem; }
+.sim-action { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem; margin: 0 0 0.5rem; }
+.sim-action label { display: grid; gap: 0.25rem; flex: 1 1 20rem; color: var(--muted); }
+.sim-action input { font: inherit; font-family: var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.4rem 0.5rem; }
+.sim-action button { font: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: 0.25rem; padding: 0.4rem 1rem; font-weight: 600; cursor: pointer; }
+.sim-mail, .sim-log, .sim-visits, .sim-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.sim-mail > li, .sim-log > li { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.75rem; }
+.sim-subject { font-weight: 600; margin: 0.25rem 0; }
+.sim-body { white-space: pre-wrap; margin: 0.25rem 0; }
+.sim-panel p { margin: 0.25rem 0; }
+.sim-panel a { color: var(--accent); }

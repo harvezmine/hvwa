@@ -35,12 +35,12 @@ function serverEjsOptions(): Options {
 /**
  * Data keys a view may not set: ejs's own template-function locals
  * (escapeFn, include, rethrow, __append, __output, locals) and the context
- * the engine provides (body and labBar for the layout; t and lang from
- * res.locals; challenge and level from res.locals on challenge routes).
+ * the engine provides (body, labBar and simPanel for the layout; t and lang
+ * from res.locals; challenge, level and labPath on challenge routes).
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-  'challenge', 'level', 'labBar', 'labPath',
+  'challenge', 'level', 'labBar', 'labPath', 'simPanel',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */
@@ -97,14 +97,16 @@ function assertNoReservedKeys(data: Record<string, unknown>): void {
  * Render an EJS view (absolute .ejs path) inside the shared layout and return
  * the HTML. Context = res.locals (lang, t, and on challenge routes level and
  * challenge) overlaid with `data`; reserved keys are rejected. On challenge
- * routes the layout also shows the lab bar.
+ * routes the layout also shows the lab bar, and for a challenge with a
+ * simulated victim (core/sim.ts) the inbox / attacker-log panel below the view.
  */
 export async function page(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<string> {
   assertViewFile(viewFile);
   assertNoReservedKeys(data);
   const ctx: Record<string, unknown> = { ...res.locals, ...data };
   const body = await renderFile(viewFile, ctx, serverEjsOptions());
-  return renderFile(layoutFile, { ...ctx, body, labBar: labBar(res.locals) }, serverEjsOptions());
+  const simPanel = typeof res.locals.simPanel === 'function' ? res.locals.simPanel() : undefined;
+  return renderFile(layoutFile, { ...ctx, body, labBar: labBar(res.locals), simPanel }, serverEjsOptions());
 }
 
 /**

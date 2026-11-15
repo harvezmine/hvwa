@@ -3,6 +3,7 @@ import { Router, type Express, type Request } from 'express';
 import { allChallenges, type Challenge } from './registry.js';
 import { clampLevel } from './levels.js';
 import { issueFlag } from './flags.js';
+import { mountVictim } from './sim.js';
 
 /** URL prefix a challenge is served under: /d/<district>/<slug>. */
 export function challengePath(c: Pick<Challenge, 'district' | 'slug'>): string {
@@ -59,6 +60,8 @@ export function mountChallenges(app: Express, opts: { now?: () => number } = {})
         res.redirect(303, `${challengePath(c)}?level=${req.level}`);
       });
     }
+    // A simulated victim (core/sim.ts): its panel and POST <lab>/victim/<name> routes, before the lab's routes.
+    if (c.victim) mountVictim(router, c.victim);
     c.mount(router);
     app.use(challengePath(c), router);
   }

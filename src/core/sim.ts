@@ -9,8 +9,11 @@
 //
 // All state is per player AND level: every store below must be created inside a perSession() factory (they
 // check), as part of the lab's own per-session state, so it is bounded and inherits the new-instance limits.
-import { insidePerSessionFactory } from './lab.js';
+import type { Request, Response, Router } from 'express';
+import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
+import { field, insidePerSessionFactory, labPath } from './lab.js';
 import type { Level } from './levels.js';
+import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 
 /** The lab itself, as the victim's browser sees it: http://citadel.test/<path> is the lab route <labPath>/<path>. */
 export const CITADEL_HOST = 'citadel.test';
@@ -820,12 +823,12 @@ class World implements SimWorld {
     if (this.recent.length > SIM_LIMITS.visits) this.recent.shift();
   }
 
-  /** A victim action starts: a fresh report, and the link the player sent (to pre-fill the field). */
-  beginAction(link: string): void {
+  /** A victim action starts: a fresh report, and the link the player sent if the action takes one (to pre-fill the field). */
+  beginAction(link?: string): void {
     this.recent = [];
     this.noteText = '';
     this.acted = true;
-    this.lastLink = clip(link, SIM_LIMITS.urlLength);
+    if (link !== undefined) this.lastLink = clip(link, SIM_LIMITS.urlLength);
   }
 }
 
@@ -843,4 +846,171 @@ class World implements SimWorld {
  */
 export function simWorld(opts: SimWorldOptions = {}): SimWorld {
   return new World(opts);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Victim actions and the panel
+
+/**
+ * One button under the lab. `POST <lab>/victim/<name>?level=<level>` runs `run` synchronously (the scripted
+ * victim), then answers 303 back to the lab page, so it works without JavaScript.
+ */
+export interface VictimAction {
+  /** kebab-case a-z0-9: the route is POST <lab>/victim/<name>. */
+  readonly name: string;
+  /** The button text. VICTIM_LABELS has the two usual ones. */
+  readonly label: Text;
+  /** 'url': the form has a link field; run gets it as `input.url` ('' when missing or not a string). */
+  readonly input?: 'url';
+  /**
+   * The scripted victim, e.g. "the admin opens the newest mail and clicks its first link". Synchronous; works on
+   * the lab's own per-session state for this request (req.sessionId, req.level). May return a short note for the
+   * panel (lab content, English), e.g. 'The admin has no new mail.'.
+   */
+  readonly run: (req: Request, input: { readonly url: string }) => string | void;
+}
+
+/** A challenge's simulated victim: `defineChallenge({ victim })`. The engine mounts the actions and the panel. */
+export interface VictimConfig {
+  /** This request's world: the simWorld() kept in the lab's perSession state. */
+  readonly sim: (req: Pick<Request, 'sessionId' | 'level'>) => SimWorld;
+  readonly actions: readonly VictimAction[];
+}
+
+const textOf = (key: string): Text => Object.freeze({ id: t(key, 'id'), en: t(key, 'en') });
+
+/** Platform labels (ID/EN) for the two usual actions. */
+export const VICTIM_LABELS = Object.freeze({
+  /** "Ask the admin to check mail" */
+  checkMail: textOf('sim.action.check_mail'),
+  /** "Send link to the admin" (use with input: 'url') */
+  sendLink: textOf('sim.action.send_link'),
+});
+
+const ACTION_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** Validate `defineChallenge({ victim })` (the registry calls it). Throws a message naming the problem. */
+export function assertVictimConfig(v: unknown, at: string): asserts v is VictimConfig {
+  if (v === null || typeof v !== 'object') throw new Error(`${at}: victim must be an object`);
+  const { sim, actions } = v as { sim?: unknown; actions?: unknown };
+  if (typeof sim !== 'function') throw new Error(`${at}: victim.sim must be a function`);
+  if (!Array.isArray(actions) || actions.length === 0) throw new Error(`${at}: victim needs at least one action`);
+  const names = new Set<string>();
+  for (const a of actions as unknown[]) {
+    if (a === null || typeof a !== 'object') throw new Error(`${at}: a victim action must be an object`);
+    const { name, label, input, run } = a as Record<string, unknown>;
+    if (typeof name !== 'string' || !ACTION_NAME_RE.test(name)) {
+      throw new Error(`${at}: victim action name "${clip(String(name), 40)}" must be kebab-case a-z0-9`);
+    }
+    if (names.has(name)) throw new Error(`${at}: duplicate victim action "${name}"`);
+    names.add(name);
+    const l = label as { id?: unknown; en?: unknown } | null;
+    if (l === null || typeof l !== 'object' || typeof l.id !== 'string' || typeof l.en !== 'string') {
+      throw new Error(`${at}: victim action "${name}" needs a label { id, en }`);
+    }
+    if (input !== undefined && input !== 'url') throw new Error(`${at}: victim action "${name}": input must be 'url' or absent`);
+    if (typeof run !== 'function') throw new Error(`${at}: victim action "${name}": run must be a function`);
+  }
+}
+
+/**
+ * The panel's view model, in the request's language. Nothing is escaped here: the partial
+ * (core/views/sim-panel.ejs) outputs every value with the escaped tag. It never shows the victim's own requests
+ * (their URLs can carry the very secret the lab is about) nor any mailbox but the player's.
+ */
+export interface SimPanel {
+  readonly hosts: string;
+  readonly actions: readonly { readonly name: string; readonly action: string; readonly label: string; readonly input: boolean }[];
+  /** The link the player last sent (pre-fills the link field). */
+  readonly lastLink: string;
+  /** After a victim action: its note and one summary line per visit (outcome and request count, never URLs). */
+  readonly report?: { readonly note: string; readonly visits: readonly string[] };
+  readonly mailboxHeading: string;
+  readonly mails: readonly {
+    readonly from: string; readonly subject: string; readonly at: string; readonly body: string;
+    /** href only for citadel links (into the real lab, see labHref); everything else is text. */
+    readonly links: readonly { readonly text: string; readonly href?: string }[];
+  }[];
+  /** The attacker log, newest first. */
+  readonly hits: readonly {
+    readonly seq: number; readonly at: string; readonly method: string; readonly url: string;
+    readonly referer?: string; readonly body?: string;
+  }[];
+}
+
+function fmt(template: string, vars: Readonly<Record<string, string | number>>): string {
+  return template.replace(/\{(\w+)\}/g, (m, k: string) => (Object.hasOwn(vars, k) ? String(vars[k]) : m));
+}
+
+function iso(ms: number): string {
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+function worldOf(v: VictimConfig, req: Pick<Request, 'sessionId' | 'level'>): World {
+  const w = v.sim(req);
+  if (!(w instanceof World)) throw new Error('victim.sim must return the lab\'s simWorld()');
+  return w;
+}
+
+/** "Visit 2: 3 request(s); reached your server (attacker.test)." Requests actually sent; no URL. */
+function visitLine(visit: SimVisit, i: number, lang: Lang): string {
+  const tr = (key: string, vars: Readonly<Record<string, string | number>> = {}): string => fmt(t(key, lang), vars);
+  let outcome: string;
+  if (visit.outcome === 'page') outcome = tr('sim.outcome.page', { status: visit.page?.status ?? '' });
+  else if (visit.outcome === 'unreachable') outcome = tr('sim.outcome.unreachable', { reason: tr(`sim.reason.${visit.hops.at(-1)?.reason ?? 'invalid'}`) });
+  else if (visit.outcome === 'too-many-redirects') outcome = tr('sim.outcome.too-many-redirects', { n: SIM_LIMITS.maxRedirects });
+  else outcome = tr(`sim.outcome.${visit.outcome}`);
+  return tr('sim.visit', { n: i + 1, requests: visit.hops.filter((h) => h.site !== 'other').length, outcome });
+}
+
+function panelModel(v: VictimConfig, req: Request, res: Response): SimPanel {
+  const world = worldOf(v, req);
+  const lang: Lang = isLang(res.locals.lang) ? res.locals.lang : DEFAULT_LANG;
+  const base = labPath(res);
+  const level = req.level;
+  return {
+    hosts: fmt(t('sim.hosts', lang), { citadel: CITADEL_ORIGIN, attacker: ATTACKER_ORIGIN, lab: base }),
+    actions: v.actions.map((a) => ({ name: a.name, action: `${base}/victim/${a.name}?level=${level}`, label: a.label[lang], input: a.input === 'url' })),
+    lastLink: world.lastLink,
+    ...(world.acted ? { report: { note: world.noteText, visits: world.visits.map((x, i) => visitLine(x, i, lang)) } } : {}),
+    mailboxHeading: fmt(t('sim.mailbox', lang), { address: PLAYER_MAILBOX }),
+    mails: world.inbox.list(PLAYER_MAILBOX).map((m) => ({
+      from: m.from, subject: m.subject, at: iso(m.at), body: m.body,
+      links: m.links.map((text) => {
+        const href = labHref(classifySimUrl(text), base, level);
+        return href === undefined ? { text } : { text, href };
+      }),
+    })),
+    hits: [...world.attackerLog.entries()].reverse().map((h) => ({
+      seq: h.seq, at: iso(h.at), method: h.method, url: h.url,
+      ...(h.referer === undefined ? {} : { referer: h.referer }), ...(h.body === undefined ? {} : { body: h.body }),
+    })),
+  };
+}
+
+/**
+ * Mount a challenge's victim (the engine calls this for `defineChallenge({ victim })`, before the lab's own
+ * routes): the panel under every lab page rendered with sendPage, and `POST <lab>/victim/<name>` per action.
+ */
+export function mountVictim(router: Router, v: VictimConfig): void {
+  router.use((req, res, next) => {
+    res.locals.simPanel = () => panelModel(v, req, res); // built at render time, after the route changed state
+    next();
+  });
+  for (const a of v.actions) {
+    router.post(`/victim/${a.name}`, (req, res) => {
+      const world = worldOf(v, req);
+      const url = a.input === 'url' ? field(req, 'url') : '';
+      world.beginAction(a.input === 'url' ? url : undefined);
+      const note: unknown = a.run(req, Object.freeze({ url }));
+      if (isThenable(note)) {
+        note.then(undefined, () => {}); // never leave its rejection unhandled
+        throw new Error(`victim action "${a.name}" must be synchronous (it returned a Promise)`);
+      }
+      world.noteText = typeof note === 'string' ? clip(note, SIM_LIMITS.noteLength) : '';
+      res.redirect(303, `${labPath(res)}?level=${req.level}`);
+    });
+  }
 }
