@@ -50,6 +50,16 @@ src/districts/index.ts              imports each district index
   `dist/`, while `tsconfig.test.json` still type-checks it (`tests/tooling.spec.ts` asserts all three). A lab's
   spec calls the kit's `describe...` function. Worked example: `gatekeeper/_shared/jwt-lab.testkit.ts`
   (`describeJwtLabBasics`).
+- **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
+  all in `gatekeeper/_shared/`: `pilgrimLogin(req)` + the `views/pilgrim-form.ejs` partial (the sign-in form and its
+  message); `curlFor(req, res, { path, headers?, cookies?, data? })` + `views/curl-note.ejs` (a curl line that can
+  work: the full quoted URL, the headers it needs, `-b "hvwa_sid=<copy from devtools>"`; never print the sid: a lab
+  belongs to the browser session, so curl without that cookie plays in another session whose flags `/api/submit` from
+  the browser would reject); `adminNote(req, challenge, admin)` and `sendAdminPage(res, { admin, granted, denial })`
+  (the admin page: the flag line below Divine, never at Divine, 403 for everyone else; a lab-specific access check
+  still lives in `levels/*.ts`); and the test kit `pilgrim-lab.testkit.ts` (`describePilgrimLab`, `newCtx`,
+  `pilgrimClient`, `describeCurlExample`). Views include the partials with
+  `<%- include('../../_shared/views/curl-note', { curl: curl }) %>`.
 - `fixtures/`: any path segment named `fixtures` is exempt from the repo
   hygiene scan (UTF-8, no control characters). Non-`.ts` files there are copied
   into `dist/` by `copy-assets`.

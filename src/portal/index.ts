@@ -88,7 +88,8 @@ export function portalRouter(db: DatabaseSync): Router {
     }
     const districts = [...byDistrict.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([id, challenges]) => ({ id, challenges }));
+      // By challenge id (numeric-aware), so registration order never shows.
+      .map(([id, challenges]) => ({ id, challenges: [...challenges].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })) }));
     await sendPage(res, view('index'), { title: res.locals.t('app.title'), districts });
   });
 

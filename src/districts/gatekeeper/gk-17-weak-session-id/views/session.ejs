@@ -5,14 +5,7 @@
   <%- include('../../_shared/views/curl-note', { curl: curl }) %>
   <p class="lab-note">Your session: <code><%= token %></code></p>
   <p class="lab-note">Sessions issued to you, oldest first: <% ownTokens.forEach(function (t, i) { %><%= i > 0 ? ', ' : '' %><code><%= t %></code><% }); %></p>
-  <form method="post">
-    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
-    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
-    <button type="submit">Sign in</button>
-  </form>
-<% if (result) { -%>
-  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
-<% } -%>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
   <h2>Recent activity</h2>
   <ul data-testid="activity">
 <% for (const e of activity) { -%>
