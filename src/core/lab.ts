@@ -79,6 +79,17 @@ export function setPerSessionDefaults(d: { readonly maxNewPerMinute?: number }):
   return prev;
 }
 
+// How many perSession factories are running right now (factories are synchronous; nesting is allowed).
+let factoryDepth = 0;
+
+/**
+ * Whether code is running inside a perSession() factory. Per-player stores (core/sim.ts: inbox, attacker log,
+ * the victim's browser) check it, so they can only be made as part of one player's lab state, never at module level.
+ */
+export function insidePerSessionFactory(): boolean {
+  return factoryDepth > 0;
+}
+
 /** Thrown by perSession().for() when new instances are being created too fast. The error handler answers 429. */
 export class NewSessionLimitError extends Error {
   readonly status = 429;
@@ -152,7 +163,9 @@ export function perSession<T>(
       }
       while (created.length > 0 && t - created[0] >= 60_000) created.shift();
       if (created.length >= (maxNewOpt ?? perSessionDefaults.maxNewPerMinute)) throw new NewSessionLimitError();
-      const value = factory(level, sessionId);
+      let value: T;
+      factoryDepth++;
+      try { value = factory(level, sessionId); } finally { factoryDepth--; }
       created.push(t);
       entries.set(key, { value, usedAt: t });
       if (entries.size > maxEntries) {
