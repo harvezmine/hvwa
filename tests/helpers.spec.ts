@@ -271,6 +271,21 @@ const MATRIX4: ExploitMatrix<string> = {
 };
 describeExploitMatrix(MATRIX4);
 
+describe('matrix send()', () => {
+  it('receives the session id of the fresh session as a 5th argument (for per-session test seams)', async () => {
+    const seen: string[] = [];
+    const m: ExploitMatrix<string> = {
+      ...MATRIX,
+      send: (agent, _level, q, url, ctx) => { seen.push(ctx.sid); return agent.post(url).type('form').send({ q }); },
+    };
+    await caseNamed(m, 'acolyte: legit "greeting" works without a flag');
+    await caseNamed(m, 'templar: legit "greeting" works without a flag');
+    expect(seen).toHaveLength(2);
+    for (const sid of seen) expect(sid).toMatch(/^[0-9a-f-]{36}$/);
+    expect(seen[0]).not.toBe(seen[1]); // a fresh session per case
+  });
+});
+
 describe('(g) step-up across all higher levels', () => {
   it('goes red when a level two above is vulnerable to the lower exploit again (the next level is still fine)', async () => {
     const name = 'inquisitor resists the acolyte exploit (step-up)';

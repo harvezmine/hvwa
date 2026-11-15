@@ -63,8 +63,14 @@ export interface ExploitMatrix<I> {
   readonly challenge: Pick<Challenge, 'id' | 'levels'>;
   /** The lab's base path, e.g. '/d/gatekeeper/sqli-login'. */
   readonly path: string;
-  /** Submit `input` to the lab at `level`. `url` is `${path}?level=${level}`. */
-  readonly send: (agent: Agent, level: Level, input: I, url: string) => PromiseLike<request.Response>;
+  /**
+   * Submit `input` to the lab at `level`. `url` is `${path}?level=${level}`; `ctx.sid` is the
+   * session id of this case's fresh session (for per-session test seams such as a secret).
+   * May send several requests (a scenario) and return the last response.
+   */
+  readonly send: (
+    agent: Agent, level: Level, input: I, url: string, ctx: { readonly sid: string },
+  ) => PromiseLike<request.Response>;
   /** One working exploit per exploitable level: keys must equal the challenge's non-Divine levels. */
   readonly exploits: { readonly [L in ExploitLevel]?: I };
   /**
@@ -139,8 +145,8 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
   if (isMap) for (const l of exploitable) resistedFor(l);
   const implemented = LEVELS.filter((l) => c.levels.includes(l));
   const send = async (level: Level, input: I) => {
-    const { agent } = await freshSession();
-    const res = await m.send(agent, level, input, `${m.path}?level=${level}`);
+    const { agent, sid } = await freshSession();
+    const res = await m.send(agent, level, input, `${m.path}?level=${level}`, { sid });
     return { agent, res, text: res.text ?? '' };
   };
   const cases: MatrixCase[] = [];

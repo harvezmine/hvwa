@@ -215,6 +215,10 @@ describeExploitMatrix<Creds>({
 });
 ```
 
+`send` gets a fifth argument `{ sid }`, the case's session id, so stateful labs can
+reach per-session test seams (a secret, a counter). One `send` may fire several
+requests (a scenario: N failed logins, then the real one) and return the last response.
+
 Required cases (generated):
 
 - **(a)** `exploits` keys equal the challenge's non-Divine levels.
