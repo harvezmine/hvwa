@@ -15,11 +15,32 @@ export interface Challenge {
   levels: Level[];            // which levels are implemented
   points: number;             // base points (scaled by top level solved)
   hints: HintTier[];
-  // verify a submitted solution for a given session+level; return true on solve
+  /**
+   * Decide whether `ctx.submission` proves a solve AT `ctx.level`.
+   *
+   * Contract (POST /api/submit relies on it):
+   * - The checker calls check() once per implemented non-Divine level,
+   *   highest rank first (inquisitor → templar → acolyte), and credits the
+   *   first level for which it returns true. The client never picks the level.
+   * - Return true ONLY for the level the submission actually proves. Returning
+   *   true regardless of `ctx.level` would credit the highest implemented level
+   *   for any valid answer and inflate the score.
+   * - Must be side-effect free (no writes, no counters, no event logging): it
+   *   may be called up to 3 times for a single submit. The checker records
+   *   the solve itself.
+   * - Throwing yields a 500 `{ error: 'internal_error' }` with no details.
+   *
+   * Defaults to verifyFlag(id, ctx.sessionId, ctx.level, ctx.submission).
+   */
   check: (ctx: CheckContext) => Promise<boolean> | boolean;
   mount: (router: import('express').Router) => void; // attaches vulnerable routes
 }
 
+/**
+ * Input to Challenge.check(). `level` is chosen by the server (never the
+ * client) and is never 'divine'; check() may be invoked once per candidate
+ * level for the same submission, so treat `db` as read-only here.
+ */
 export interface CheckContext {
   sessionId: string;
   level: Level;
