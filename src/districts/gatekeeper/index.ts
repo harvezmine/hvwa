@@ -6,4 +6,5 @@ import './gk-15-otp-brute-force/challenge.js';
 import './gk-17-weak-session-id/challenge.js';
 import './gk-12-idor-profile/challenge.js';
 import './gk-13-hidden-admin-function/challenge.js';
+import './gk-14-mass-assignment/challenge.js';
 // GK-02 … GK-18 added here as they are implemented

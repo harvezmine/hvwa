@@ -1,0 +1,32 @@
+<%# GK-14 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Membership</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the <a href="<%= base %>/admin?level=<%= level %>">admin page</a>, which only an admin may open. Profile updates are accepted as JSON or as a form at <code><%= base %>/profile?level=<%= level %></code>.</p>
+  <form method="post">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
+    <button type="submit">Sign in</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+<% if (profile) { -%>
+  <h2>Your profile</h2>
+  <ul data-testid="profile">
+    <li>Display name: <%= profile.displayName %></li>
+    <li>Bio: <%= profile.bio %></li>
+    <li>Email: <%= profile.email %></li>
+<% if (profile.pendingEmail) { -%>
+    <li>Pending email (not verified): <%= profile.pendingEmail %></li>
+<% } -%>
+    <li>Role: <%= profile.role %></li>
+  </ul>
+  <form method="post">
+    <input type="hidden" name="intent" value="update">
+    <label>Display name <input name="displayName" type="text" autocomplete="off" spellcheck="false" value="<%= profile.displayName %>"></label>
+    <label>Bio <input name="bio" type="text" autocomplete="off" spellcheck="false" value="<%= profile.bio %>"></label>
+    <label>Email <input name="email" type="text" autocomplete="off" spellcheck="false" value="<%= profile.email %>"></label>
+    <button type="submit">Update profile</button>
+  </form>
+<% } -%>
+</section>
