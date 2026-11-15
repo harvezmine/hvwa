@@ -1,0 +1,10 @@
+<%# GK-12 profile page. Lab content is English by design. Escaped output only. Never put an EJS tag inside an EJS comment. %>
+<section class="lab">
+  <h1>Profile</h1>
+<% if (profile) { -%>
+  <p class="lab-message lab-success" role="status" data-testid="lab-message"><%= profile.username %>: <%= profile.note %></p>
+<% } else { -%>
+  <p class="lab-message lab-error" role="status" data-testid="lab-message"><%= message %></p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to Citadel Records</a></p>
+</section>

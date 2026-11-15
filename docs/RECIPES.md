@@ -50,6 +50,24 @@ src/districts/index.ts              imports each district index
   `dist/`, while `tsconfig.test.json` still type-checks it (`tests/tooling.spec.ts` asserts all three). A lab's
   spec calls the kit's `describe...` function. Worked example: `gatekeeper/_shared/jwt-lab.testkit.ts`
   (`describeJwtLabBasics`).
+- **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
+  all in `gatekeeper/_shared/`:
+  - `pilgrimLogin(req)` + the `views/pilgrim-form.ejs` partial: the sign-in check, form and message.
+  - `curlFor(req, res, { path, method?, headers?, cookies?, data?, form? })` + `views/curl-note.ejs`: a curl line that
+    can work. It carries the full quoted URL, `-X <method>` (PUT, PATCH ...), the headers it needs, `-d '<json>'` and/or
+    `--data-urlencode 'name=value'` (values are shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. Never print the
+    sid: a lab belongs to the browser session, so curl without that cookie plays in another session whose flags
+    `/api/submit` from the browser would reject. The partial also says the line is bash syntax and that Windows
+    PowerShell needs `curl.exe` (plain `curl` there is `Invoke-WebRequest`).
+  - `sendAdminPage(res, { admin, granted, denial, flag?, pre?, denyStatus? })` + `views/admin.ejs`: the admin page.
+    **A denial is 403 by default**; pass `denyStatus` only with a reason. (GK-17 passes `denyStatus: 200`: that is a
+    Batch A exception from before the default existed. Do not copy it.) Pass `flag: { req, challenge }` and the page
+    appends the flag line itself, only when `admin` is true, and Divine's rule is built in: "Welcome back." instead of
+    a flag, whatever the lab passes. `flagLine(req, challenge)` is the same line for a lab that builds its own page.
+    The lab's real access check still lives in `levels/*.ts`.
+  - The test kit `pilgrim-lab.testkit.ts`: `describePilgrimLab`, `newCtx`, `pilgrimClient`, `describeCurlExample`,
+    `describeCurlPartial`.
+  Views include the partials with `<%- include('../../_shared/views/curl-note', { curl: curl }) %>`.
 - `fixtures/`: any path segment named `fixtures` is exempt from the repo
   hygiene scan (UTF-8, no control characters). Non-`.ts` files there are copied
   into `dist/` by `copy-assets`.

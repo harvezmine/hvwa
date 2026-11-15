@@ -1,0 +1,19 @@
+<%# GK-12 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Records</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the private note of <code><%= target %></code>. Records are served as a page at <code><%= base %>/profile/&lt;id&gt;</code> and as JSON at <code><%= base %>/api/profiles/&lt;id&gt;</code> (add <code>?level=<%= level %></code>).</p>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+<% if (apiNote) { -%>
+  <p class="lab-note"><%= apiNote %></p>
+<% } -%>
+  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+<% if (ownId) { -%>
+  <p class="lab-note">Your own profile: <code><%= ownId %></code> (<a href="<%= base %>/profile/<%= ownId %>?level=<%= level %>">open</a>)</p>
+<% } -%>
+  <h2>Team directory (public)</h2>
+  <ul data-testid="directory">
+<% for (const e of directory) { -%>
+    <li><%= e.username %><% if (e.id !== null) { %>: <code><%= e.id %></code><% } %></li>
+<% } -%>
+  </ul>
+</section>

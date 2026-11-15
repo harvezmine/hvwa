@@ -3,7 +3,7 @@
   <h1>Citadel Archive API</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Sign in to receive a JSON Web Token. The vault only opens for the citadel admin: <a href="<%= base %>/vault?level=<%= level %>">GET <code>/vault</code></a>. <%= blurb %><% links.forEach(function (l, i) { %><%= i > 0 ? ', ' : ' ' %><a href="<%= l.href %>"><%= l.text %></a><% }); %><%= links.length > 0 ? '.' : '' %></p>
   <p class="lab-note">The token is also stored in the cookie <code><%= cookie %></code> (not HttpOnly: edit it in the browser devtools storage). A request with the header wins over the cookie.</p>
-  <p class="lab-note">From a terminal: <code>curl "<%= origin %><%= base %>/vault?level=<%= level %>" -H "Authorization: Bearer &lt;token&gt;" -b "hvwa_sid=&lt;copy from devtools&gt;"</code>. Your lab belongs to your browser session: copy the (HttpOnly) <code>hvwa_sid</code> cookie from the devtools storage, otherwise curl starts a different session with different keys, and its tokens and flags will not match yours.</p>
+  <%- include('curl-note', { curl: curl }) %>
 <% if (sample) { -%>
   <p class="lab-note">Sample token: <code><%= sample %></code></p>
 <% } -%>

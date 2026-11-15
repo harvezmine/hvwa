@@ -1,0 +1,9 @@
+<%# Shared sign-in form of the pilgrim labs. Include it with username, password and result. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <form method="post">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
+    <button type="submit">Sign in</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>

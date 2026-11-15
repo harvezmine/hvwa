@@ -7,7 +7,7 @@ import { field, header, labPath } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { sendPage } from '../../../core/render.js';
 import type { Challenge } from '../../../core/registry.js';
-import { PLAYER, welcome, type Result } from './lab.js';
+import { PLAYER, curlFor, welcome, type Result } from './lab.js';
 
 export type Claims = Record<string, unknown>;
 
@@ -55,7 +55,7 @@ export function mountJwtPortal(router: Router, o: JwtPortal): void {
   const page = (req: Request, res: Response, token: string, result: Result | null, username: string, password: string) => {
     const base = labPath(res);
     return {
-      base, origin: `${req.protocol}://${req.get('host') ?? '127.0.0.1'}`, cookie: cookieName(req.level), account: PLAYER,
+      base, curl: curlFor(req, res, { path: '/vault', headers: ['Authorization: Bearer <token>'] }), cookie: cookieName(req.level), account: PLAYER,
       blurb: o.blurb, links: (o.links ?? []).map((l) => ({ text: l.text, href: `${base}${l.path}?level=${req.level}` })),
       sample: o.sample?.(req) ?? '', token, result, username, password,
     };

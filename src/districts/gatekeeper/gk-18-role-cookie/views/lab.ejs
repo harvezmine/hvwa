@@ -1,0 +1,10 @@
+<%# GK-18 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Gate - Roles</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the <a href="<%= base %>/admin?level=<%= level %>">admin page</a>. The lab cookie is <code><%= cookie %></code><% if (httpOnly) { %> (HttpOnly: edit it in the browser devtools storage panel)<% } else { %> (you can read and edit it in the browser devtools storage panel)<% } %>.</p>
+  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+<% if (who) { -%>
+  <p class="lab-note" data-testid="identity">Current identity: <%= who.user %> (role: <%= who.role %>)</p>
+<% } -%>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+</section>
