@@ -8,7 +8,13 @@ export const kid = undefined;
 // the work of a plain word, which a script finishes in a blink. (Mangling rules are the first thing a
 // cracker tries after the bare wordlist.)
 export function createKeys(words: readonly string[]): Keys {
-  return { secret: `${words[randomInt(words.length)]}${String(randomInt(100)).padStart(2, '0')}` };
+  // Redraw while the mangled secret is itself a wordlist entry (the list holds e.g. "password1" and
+  // "password123"): then the plain-wordlist attack of Acolyte would also crack Templar, breaking the step-up.
+  const known = new Set(words);
+  for (;;) {
+    const secret = `${words[randomInt(words.length)]}${String(randomInt(100)).padStart(2, '0')}`;
+    if (!known.has(secret)) return { secret };
+  }
 }
 
 export function verify(state: LabState, token: string): Verdict {

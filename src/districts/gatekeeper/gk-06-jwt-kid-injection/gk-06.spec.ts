@@ -2,14 +2,14 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import type { Express } from 'express';
 import {
   freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieHeader, setCookieValue, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeJwtLabBasics } from '../_shared/jwt-lab-basics.spec.js';
 import { buildToken, parseToken, signHmac } from '../_shared/jwt.js';
-import { GK06, mintToken } from './challenge.js'; // registers GK-06 before createApp() inside freshSession
-import { cookieName, labState } from './model.js';
+import { GK06 } from './challenge.js'; // registers GK-06 before createApp() inside freshSession
+import { cookieName, labState, mintToken } from './model.js';
 
 const LAB = '/d/gatekeeper/jwt-kid-injection';
 const ADMIN_CLAIMS = { sub: 'citadel_admin', role: 'admin' };
@@ -17,12 +17,7 @@ const ADMIN_CLAIMS = { sub: 'citadel_admin', role: 'admin' };
 interface Ctx { agent: Agent; level: Level; sid: string }
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const apps = new Map<string, Express>();
-async function session() {
-  const s = await freshSession();
-  apps.set(s.sid, s.app);
-  return s;
-}
+const session = () => freshSession();
 const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
 const vaultWith = (c: Ctx, token: string) =>
   c.agent.get(`${LAB}/vault?level=${c.level}`).set('Authorization', `Bearer ${token}`);
@@ -42,7 +37,7 @@ const inquisitorExploit: Script = (c) => vaultWith(c, forged("x' UNION SELECT 'a
 describeExploitMatrix<Script>({
   challenge: GK06,
   path: LAB,
-  send: (agent, level, script, _url, { sid, app }) => { apps.set(sid, app); return script({ agent, level, sid }); },
+  send: (agent, level, script, _url, { sid }) => script({ agent, level, sid }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Invalid token/,
   legit: [
@@ -99,16 +94,6 @@ describe('GK-06 tokens and keys', () => {
       const res = await vaultWith({ agent: who.agent, level, sid: who.sid }, stolen);
       expect(res.text, level).not.toMatch(FLAG_RE);
     }
-  });
-
-  it('the vault takes the token from the lab cookie too, and an Authorization header wins over it', async () => {
-    const { agent, sid, app } = await session();
-    const admin = mintToken(sid, 'acolyte', ADMIN_CLAIMS);
-    const viaCookie = await bare(app, sid, `${cookieName('acolyte')}=${admin}`).get(`${LAB}/vault?level=acolyte`);
-    expect(viaCookie.text).toMatch(FLAG_RE);
-    await login({ agent, level: 'acolyte', sid });
-    const bad = await agent.get(`${LAB}/vault?level=acolyte`).set('Authorization', `Bearer ${admin}x`);
-    expect(bad.text).not.toMatch(FLAG_RE);
   });
 
   it('flag only for a VERIFIED role "admin" at every level below Divine', async () => {
@@ -168,6 +153,7 @@ describe('GK-06 the simulated file system (acolyte, templar)', () => {
       expect(res.text, level).toBe(labState(sid, level).files.get('/srv/www/robots.txt'));
       const page = await agent.get(`${LAB}?level=${level}`);
       expect(page.text, level).toContain(`href="${LAB}/robots.txt?level=${level}"`);
+      expect(page.text, level).toContain('/srv/www'); // the web root is named, so the robots.txt trail is discoverable
     }
   });
 
@@ -246,7 +232,7 @@ describe('GK-06 divine', () => {
     const { agent, sid } = await session();
     const c: Ctx = { agent, level: 'divine', sid };
     const key = labState(sid, 'divine').signingKey;
-    const bad = ['k1.key', 'K1', 'k1 ', ' k1', 'k1\n', "k1' --", '../keys/k1.key', '....//....//dev/null', "x' UNION SELECT 'a", '', 'k0'];
+    const bad = ['k1.key', 'K1', 'k1 ', ' k1', 'k1\n', "k1' --", '../keys/k1.key', '....//....//dev/null', 'k1/../k1', './k1', "x' UNION SELECT 'a", '', 'k0'];
     for (const kid of bad) {
       for (const k of [key, '', 'a']) {
         const res = await vaultWith(c, forged(kid, k));
@@ -262,13 +248,6 @@ describe('GK-06 divine', () => {
     expect(real.text).not.toMatch(FLAG_RE);
   });
 
-  it('below Divine the denial says why; Divine only says "Invalid token."', async () => {
-    const a = await session();
-    const low = await vaultWith({ agent: a.agent, level: 'templar', sid: a.sid }, forged('nope', 'x'));
-    expect(low.text).toMatch(/Invalid token: [a-z]/);
-    const d = await vaultWith({ agent: a.agent, level: 'divine', sid: a.sid }, forged('nope', 'x'));
-    expect(d.text).toMatch(/Invalid token\.</);
-  });
 });
 
 describeLabView({
@@ -282,28 +261,4 @@ describeLabView({
   bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'x' }),
 });
 
-describe('GK-06 lab view specifics', () => {
-  it('a wrong password signs nobody in; the admin cannot be signed in through the form', async () => {
-    const { agent } = await session();
-    for (const level of LEVELS) {
-      for (const creds of [{ username: 'pilgrim', password: 'nope' }, { username: 'citadel_admin', password: 'pilgrim' }]) {
-        const res = await agent.post(`${LAB}?level=${level}`).type('form').send(creds);
-        expect(res.text, level).toContain('Invalid username or password.');
-        expect([res.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-      }
-    }
-  });
-
-  it('links are absolute lab paths even for an upper-case request URL; probing the vault mints no cookie', async () => {
-    const { agent, app, sid } = await session();
-    const res = await agent.get(`${LAB.toUpperCase()}?level=inquisitor`);
-    expect(res.text).toContain(`href="${LAB}/vault?level=inquisitor"`);
-    const probe = await bare(app, sid).get(`${LAB}/vault?level=templar`);
-    expect([probe.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-  });
-
-  it('POST /_reset is 404 (JWT labs need no Restart)', async () => {
-    const { agent } = await session();
-    expect((await agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(404);
-  });
-});
+describeJwtLabBasics({ challenge: GK06, path: LAB, mint: mintToken });

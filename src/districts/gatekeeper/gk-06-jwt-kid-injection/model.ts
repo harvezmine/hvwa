@@ -2,13 +2,17 @@
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
 import { randomBytes } from 'node:crypto';
 import { challengeDb, type ChallengeDb } from '../../../core/challenge-db.js';
-import { perSession, type DbResult } from '../../../core/lab.js';
+import { byLevel, perSession, type DbResult } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { signHmac } from '../_shared/jwt.js';
+import * as acolyte from './levels/acolyte.js';
+import * as templar from './levels/templar.js';
+import * as inquisitor from './levels/inquisitor.js';
+import * as divine from './levels/divine.js';
 
-export type Claims = Record<string, unknown>;
-
-/** What a level's verify answers: the claims it accepts, or why it refused (shown below Divine only). */
-export type Verdict = { readonly ok: true; readonly claims: Claims } | { readonly ok: false; readonly reason: string };
+import type { Claims, Verdict } from '../_shared/jwt-lab.js';
+export { cookieName } from '../_shared/jwt-lab.js';
+export type { Claims, Verdict };
 
 /** Runs ONE synchronous key-store call so a database error is shown the way tryDb shows it (generic at Divine). */
 export type Guard = <T>(fn: () => T) => DbResult<T>;
@@ -36,10 +40,7 @@ export interface JwtLevel {
   verify(state: LabState, token: string, guard: Guard): Verdict;
 }
 
-/** The lab's token cookie. One name per level: levels share a path and must not overwrite each other. */
-export function cookieName(level: Level): string {
-  return `citadel_jwt_${level}`;
-}
+export const impl = byLevel<JwtLevel>({ acolyte, templar, inquisitor, divine });
 
 const SCHEMA = 'CREATE TABLE keys (kid TEXT PRIMARY KEY, secret TEXT NOT NULL)';
 
@@ -73,4 +74,15 @@ export function labFor(req: { sessionId: string; level: Level }): LabState {
 /** Test seam: the lab state of session `sessionId` at `level`. */
 export function labState(sessionId: string, level: Level): LabState {
   return labs.for({ sessionId, level });
+}
+
+/** Sign claims the way the genuine server does: HS256 with the lab's key, naming the key by this level's kid. */
+export function issueToken(req: { sessionId: string; level: Level }, claims: Claims): string {
+  const state = labFor(req);
+  return signHmac('HS256', state.signingKey, { ...claims, iat: Math.floor(state.now() / 1000) }, { kid: impl.for(req.level).kid });
+}
+
+/** Test seam: a genuine token (signed by the real server key) for any claims. */
+export function mintToken(sessionId: string, level: Level, claims: Claims): string {
+  return issueToken({ sessionId, level }, claims);
 }

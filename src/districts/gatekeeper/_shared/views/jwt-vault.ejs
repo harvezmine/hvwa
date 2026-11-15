@@ -1,0 +1,8 @@
+<%# Shared vault view of the JWT labs. No form: a vault answer is only ever a GET. Never put an EJS tag inside an EJS comment. %>
+<section class="lab">
+  <h1>Citadel vault</h1>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to sign-in</a></p>
+</section>

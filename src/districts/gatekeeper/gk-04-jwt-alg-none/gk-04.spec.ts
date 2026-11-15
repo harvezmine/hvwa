@@ -1,11 +1,11 @@
 // src/districts/gatekeeper/gk-04-jwt-alg-none/gk-04.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import type { Express } from 'express';
 import {
   freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieHeader, setCookieValue, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeJwtLabBasics } from '../_shared/jwt-lab-basics.spec.js';
 import { buildToken, hmacSignature, parseToken, signHmac } from '../_shared/jwt.js';
 import { GK04 } from './challenge.js'; // registers GK-04 before createApp() inside freshSession
 import { cookieName, labState, mintToken } from './model.js';
@@ -16,12 +16,7 @@ const ADMIN_CLAIMS = { sub: 'citadel_admin', role: 'admin' };
 interface Ctx { agent: Agent; level: Level; sid: string }
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const apps = new Map<string, Express>();
-async function session() {
-  const s = await freshSession();
-  apps.set(s.sid, s.app);
-  return s;
-}
+const session = () => freshSession();
 const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
 const vaultWith = (c: Ctx, token: string) =>
   c.agent.get(`${LAB}/vault?level=${c.level}`).set('Authorization', `Bearer ${token}`);
@@ -35,7 +30,7 @@ const inquisitorExploit: Script = (c) => vaultWith(c, buildToken({ alg: 'HS256',
 describeExploitMatrix<Script>({
   challenge: GK04,
   path: LAB,
-  send: (agent, level, script, _url, { sid, app }) => { apps.set(sid, app); return script({ agent, level, sid }); },
+  send: (agent, level, script, _url, { sid }) => script({ agent, level, sid }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Invalid token/,
   legit: [
@@ -73,20 +68,6 @@ describe('GK-04 token handling', () => {
       expect(line).not.toMatch(/HttpOnly/i); // deliberately editable: the page says so
       expect(res.text).toMatch(/devtools[\s\S]*Authorization: Bearer/);
     }
-  });
-
-  it('the vault takes the token from the lab cookie too, and an Authorization header wins over it', async () => {
-    const { agent, sid, app } = await session();
-    const c: Ctx = { agent, level: 'acolyte', sid };
-    const admin = mintToken(sid, 'acolyte', ADMIN_CLAIMS);
-    const viaCookie = await bare(app, sid, `${cookieName('acolyte')}=${admin}`).get(`${LAB}/vault?level=acolyte`);
-    expect(viaCookie.text).toMatch(FLAG_RE);
-    // the agent holds pilgrim's cookie; the header carries the admin token and is the one that counts
-    await login(c);
-    expect((await vaultWith(c, admin)).text).toMatch(FLAG_RE);
-    const withBadHeader = await agent.get(`${LAB}/vault?level=acolyte`).set('Authorization', `Bearer ${admin}x`);
-    expect(withBadHeader.text).not.toMatch(FLAG_RE);
-    expect(withBadHeader.text).toContain('Invalid token');
   });
 
   it('flag only for a VERIFIED role "admin": a user token never gets one, a forged role needs a forged signature', async () => {
@@ -171,6 +152,12 @@ describe('GK-04 level behaviour', () => {
       expect((await vaultWith(c, buildToken({ alg }, ADMIN_CLAIMS, 'x'))).text, alg).not.toMatch(FLAG_RE);
     }
     expect((await vaultWith(c, buildToken({ alg: 'HS256' }, ADMIN_CLAIMS))).text).toMatch(FLAG_RE);
+    // an empty signature only waives the check for HS256: other algorithms are refused
+    for (const alg of ['HS384', 'HS512', 'RS256']) {
+      const res = await vaultWith(c, buildToken({ alg }, ADMIN_CLAIMS));
+      expect(res.text, alg).not.toMatch(FLAG_RE);
+      expect(res.text, alg).toContain('Invalid token');
+    }
     // a non-empty wrong signature is refused, and the right one is accepted
     expect((await vaultWith(c, buildToken({ alg: 'HS256' }, ADMIN_CLAIMS, 'AAAA'))).text).not.toMatch(FLAG_RE);
     expect((await vaultWith(c, signHmac('HS256', secretOf(c), ADMIN_CLAIMS))).text).toMatch(FLAG_RE);
@@ -195,13 +182,6 @@ describe('GK-04 level behaviour', () => {
     expect(real.text).not.toMatch(FLAG_RE);
   });
 
-  it('below Divine the denial says why; Divine only says "Invalid token."', async () => {
-    const a = await session();
-    const low = await vaultWith({ agent: a.agent, level: 'templar', sid: a.sid }, buildToken({ alg: 'none' }, ADMIN_CLAIMS));
-    expect(low.text).toMatch(/Invalid token: [a-z]/);
-    const d = await vaultWith({ agent: a.agent, level: 'divine', sid: a.sid }, buildToken({ alg: 'none' }, ADMIN_CLAIMS));
-    expect(d.text).toMatch(/Invalid token\.</);
-  });
 });
 
 describeLabView({
@@ -215,32 +195,4 @@ describeLabView({
   bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'x' }),
 });
 
-describe('GK-04 lab view specifics', () => {
-  it('a wrong password signs nobody in; the admin cannot be signed in through the form', async () => {
-    const { agent } = await session();
-    for (const level of LEVELS) {
-      for (const creds of [{ username: 'pilgrim', password: 'nope' }, { username: 'citadel_admin', password: 'pilgrim' }, { username: 'citadel_admin', password: '' }]) {
-        const res = await agent.post(`${LAB}?level=${level}`).type('form').send(creds);
-        expect(res.text, level).toContain('Invalid username or password.');
-        expect(res.headers['set-cookie']?.toString() ?? '', level).not.toContain('citadel_jwt');
-      }
-    }
-  });
-
-  it('the page links the vault by absolute lab path with the level, even for an upper-case request URL', async () => {
-    const { agent } = await session();
-    const res = await agent.get(`${LAB.toUpperCase()}?level=inquisitor`);
-    expect(res.text).toContain(`href="${LAB}/vault?level=inquisitor"`);
-  });
-
-  it('a request without a token changes nothing: probing the vault mints no cookie', async () => {
-    const { app, sid } = await session();
-    const res = await bare(app, sid).get(`${LAB}/vault?level=templar`);
-    expect([res.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-  });
-
-  it('POST /_reset is 404 (JWT labs need no Restart: nothing can get stuck)', async () => {
-    const { agent } = await session();
-    expect((await agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(404);
-  });
-});
+describeJwtLabBasics({ challenge: GK04, path: LAB, mint: mintToken });

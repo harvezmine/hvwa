@@ -1,14 +1,15 @@
 // src/districts/gatekeeper/gk-07-jwt-weak-secret/gk-07.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import type { Express } from 'express';
 import {
   freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieHeader, setCookieValue, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeJwtLabBasics } from '../_shared/jwt-lab-basics.spec.js';
 import { buildToken, hmacSignature, parseToken, signHmac } from '../_shared/jwt.js';
 import { GK07 } from './challenge.js'; // registers GK-07 before createApp() inside freshSession
-import { cookieName, labState, mintToken } from './model.js';
+import { cookieName, labState, mintToken, wordlist as lines } from './model.js';
+import * as templar from './levels/templar.js';
 
 const LAB = '/d/gatekeeper/jwt-weak-secret';
 const ADMIN_CLAIMS = { sub: 'citadel_admin', role: 'admin' };
@@ -17,12 +18,7 @@ const TOKEN_RE = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
 interface Ctx { agent: Agent; level: Level; sid: string }
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const apps = new Map<string, Express>();
-async function session() {
-  const s = await freshSession();
-  apps.set(s.sid, s.app);
-  return s;
-}
+const session = () => freshSession();
 const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
 const vaultWith = (c: Ctx, token: string) =>
   c.agent.get(`${LAB}/vault?level=${c.level}`).set('Authorization', `Bearer ${token}`);
@@ -66,7 +62,7 @@ const inquisitorExploit: Script = async (c) => {
 describeExploitMatrix<Script>({
   challenge: GK07,
   path: LAB,
-  send: (agent, level, script, _url, { sid, app }) => { apps.set(sid, app); return script({ agent, level, sid }); },
+  send: (agent, level, script, _url, { sid }) => script({ agent, level, sid }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Invalid token/,
   legit: [
@@ -132,6 +128,25 @@ describe('GK-07 secrets', () => {
   });
 });
 
+describe('GK-07 templar secret', () => {
+  it('is never itself a wordlist entry (else the plain-wordlist attack of acolyte would beat templar)', () => {
+    // ['pw', 'pw12']: "pw" + "12" collides with the list entry "pw12" (as "password1" + "23" does in the real list)
+    const words = ['pw', 'pw12'];
+    for (let i = 0; i < 3000; i++) {
+      const { secret } = templar.createKeys(words);
+      expect(words, secret).not.toContain(secret);
+      expect(secret).toMatch(/^pw(12)?\d\d$/);
+    }
+  });
+
+  it('the real wordlist really has such collisions, and the lab secret is never in it', () => {
+    const words = new Set(lines());
+    const collisions = [...words].filter((w) => [...Array(100).keys()].some((n) => words.has(`${w}${String(n).padStart(2, '0')}`)));
+    expect(collisions.length).toBeGreaterThan(0);
+    for (let i = 0; i < 2000; i++) expect(words.has(templar.createKeys(lines()).secret)).toBe(false);
+  });
+});
+
 describe('GK-07 the page and its files', () => {
   it('shows a sample token (stable across visits, a genuine non-admin token of that lab) and links the wordlist and release notes', async () => {
     const { agent, sid } = await session();
@@ -187,6 +202,8 @@ describe('GK-07 the page and its files', () => {
       const res = await agent.get(`${LAB}/release-notes.txt?level=${level}`);
       expect(res.status, level).toBe(200);
       expect(res.headers['content-type'], level).toMatch(/^text\/plain/);
+      // the kid line is only true (and only shown) where tokens carry a kid
+      expect(/key id \(kid\)/.test(res.text), level).toBe(level === 'inquisitor');
       if (level !== 'inquisitor') { expect(res.text, level).not.toMatch(TOKEN_RE); continue; }
       const token = TOKEN_RE.exec(res.text)![0];
       const p = parseToken(token);
@@ -195,16 +212,6 @@ describe('GK-07 the page and its files', () => {
       expect(hmacSignature('HS256', labState(sid, level).legacySecret!, p.signingInput)).toBe(p.signature);
       expect(hmacSignature('HS256', labState(sid, level).secret, p.signingInput)).not.toBe(p.signature);
     }
-  });
-
-  it('the vault takes the token from the lab cookie too, and an Authorization header wins over it', async () => {
-    const { agent, sid, app } = await session();
-    const admin = mintToken(sid, 'acolyte', ADMIN_CLAIMS);
-    const viaCookie = await bare(app, sid, `${cookieName('acolyte')}=${admin}`).get(`${LAB}/vault?level=acolyte`);
-    expect(viaCookie.text).toMatch(FLAG_RE);
-    await login({ agent, level: 'acolyte', sid });
-    const bad = await agent.get(`${LAB}/vault?level=acolyte`).set('Authorization', `Bearer ${admin}x`);
-    expect(bad.text).not.toMatch(FLAG_RE);
   });
 
   it('flag only for a VERIFIED role "admin"; missing or odd tokens are plain denials, never a 500', async () => {
@@ -223,7 +230,12 @@ describe('GK-07 the page and its files', () => {
       for (const kid of [undefined, null, 1, [], {}, '', '2024', '2025', '__proto__', 'constructor', 'x'.repeat(5000)]) {
         const res = await vaultWith(c, signHmac('HS256', key, ADMIN_CLAIMS, kid === undefined ? {} : { kid }));
         expect(res.status, `${level} ${JSON.stringify(kid)?.slice(0, 12)}`).toBe(200);
-        if (level === 'inquisitor' && kid !== '2025') expect(res.text).not.toMatch(FLAG_RE);
+        // only the inquisitor lab selects a key by kid; every other level ignores it
+        const accepted = level !== 'inquisitor' || kid === '2025';
+        const label = `${level} kid=${JSON.stringify(kid)?.slice(0, 12)}`;
+        if (!accepted) { expect(res.text, label).not.toMatch(FLAG_RE); expect(res.text, label).toContain('Invalid token'); }
+        else if (level === 'divine') expect(res.text, label).toContain('Welcome, citadel_admin (role: admin)');
+        else expect(res.text, label).toMatch(FLAG_RE);
       }
       for (const t of ['', 'x', 'a.b.c', 'x'.repeat(9000), buildToken({}, {}), buildToken({ alg: 'none' }, ADMIN_CLAIMS),
         buildToken({ alg: 'HS256' }, ADMIN_CLAIMS), buildToken({ alg: 'HS256' }, ADMIN_CLAIMS, 'AAAA')]) {
@@ -282,14 +294,6 @@ describe('GK-07 level behaviour', () => {
     }
   });
 
-  it('below Divine the denial says why; Divine only says "Invalid token."', async () => {
-    const a = await session();
-    const t = signHmac('HS256', 'x', ADMIN_CLAIMS);
-    const low = await vaultWith({ agent: a.agent, level: 'templar', sid: a.sid }, t);
-    expect(low.text).toMatch(/Invalid token: [a-z]/);
-    const d = await vaultWith({ agent: a.agent, level: 'divine', sid: a.sid }, t);
-    expect(d.text).toMatch(/Invalid token\.</);
-  });
 });
 
 describeLabView({
@@ -303,28 +307,4 @@ describeLabView({
   bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'x' }),
 });
 
-describe('GK-07 lab view specifics', () => {
-  it('a wrong password signs nobody in; the admin cannot be signed in through the form', async () => {
-    const { agent } = await session();
-    for (const level of LEVELS) {
-      for (const creds of [{ username: 'pilgrim', password: 'nope' }, { username: 'citadel_admin', password: 'pilgrim' }]) {
-        const res = await agent.post(`${LAB}?level=${level}`).type('form').send(creds);
-        expect(res.text, level).toContain('Invalid username or password.');
-        expect([res.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-      }
-    }
-  });
-
-  it('links are absolute lab paths even for an upper-case request URL; probing the vault mints no cookie', async () => {
-    const { agent, app, sid } = await session();
-    const res = await agent.get(`${LAB.toUpperCase()}?level=inquisitor`);
-    expect(res.text).toContain(`href="${LAB}/vault?level=inquisitor"`);
-    const probe = await bare(app, sid).get(`${LAB}/vault?level=templar`);
-    expect([probe.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-  });
-
-  it('POST /_reset is 404 (JWT labs need no Restart)', async () => {
-    const { agent } = await session();
-    expect((await agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(404);
-  });
-});
+describeJwtLabBasics({ challenge: GK07, path: LAB, mint: mintToken });

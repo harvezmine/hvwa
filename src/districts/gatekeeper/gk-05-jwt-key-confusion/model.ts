@@ -4,10 +4,9 @@ import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { generateRsaKeyPair, signRsa } from '../_shared/jwt.js';
 
-export type Claims = Record<string, unknown>;
-
-/** What a level's verify answers: the claims it accepts, or why it refused (shown below Divine only). */
-export type Verdict = { readonly ok: true; readonly claims: Claims } | { readonly ok: false; readonly reason: string };
+import type { Claims, Verdict } from '../_shared/jwt-lab.js';
+export { cookieName } from '../_shared/jwt-lab.js';
+export type { Claims, Verdict };
 
 /** One player's lab at one level: its own RSA key pair. */
 export interface LabState {
@@ -23,11 +22,6 @@ export interface LabState {
 export interface JwtLevel {
   /** Decide whether `token` is acceptable. Which algorithm and which key to trust is the whole lesson. */
   verify(state: LabState, token: string): Verdict;
-}
-
-/** The lab's token cookie. One name per level: levels share a path and must not overwrite each other. */
-export function cookieName(level: Level): string {
-  return `citadel_jwt_${level}`;
 }
 
 // Per player AND per level, generated lazily on first use (2048-bit RSA takes a moment): a key that leaks

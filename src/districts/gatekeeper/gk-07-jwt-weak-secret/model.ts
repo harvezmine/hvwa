@@ -8,10 +8,9 @@ import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
 import * as divine from './levels/divine.js';
 
-export type Claims = Record<string, unknown>;
-
-/** What a level's verify answers: the claims it accepts, or why it refused (shown below Divine only). */
-export type Verdict = { readonly ok: true; readonly claims: Claims } | { readonly ok: false; readonly reason: string };
+import type { Claims, Verdict } from '../_shared/jwt-lab.js';
+export { cookieName } from '../_shared/jwt-lab.js';
+export type { Claims, Verdict };
 
 /** The HMAC secrets one lab runs on. How they are chosen is the lesson, so each level makes its own. */
 export interface Keys {
@@ -47,11 +46,6 @@ export const impl = byLevel<JwtLevel>({ acolyte, templar, inquisitor, divine });
 
 /** The wordlist the lab publishes at ./wordlist.txt (and the weak secrets are drawn from). */
 export const wordlist = fixtureLines(new URL('./fixtures/wordlist.txt', import.meta.url));
-
-/** The lab's token cookie. One name per level: levels share a path and must not overwrite each other. */
-export function cookieName(level: Level): string {
-  return `citadel_jwt_${level}`;
-}
 
 const sign = (secret: string, claims: Claims, kid: string | undefined, iatMs: number) =>
   signHmac('HS256', secret, { ...claims, iat: Math.floor(iatMs / 1000) }, kid === undefined ? {} : { kid });

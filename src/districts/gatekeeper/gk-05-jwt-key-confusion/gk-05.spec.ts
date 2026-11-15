@@ -1,12 +1,12 @@
 // src/districts/gatekeeper/gk-05-jwt-key-confusion/gk-05.spec.ts
-import { createPublicKey } from 'node:crypto';
+import { createPublicKey, createSign, generateKeyPairSync } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import type { Express } from 'express';
 import {
   freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieHeader, setCookieValue, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeJwtLabBasics } from '../_shared/jwt-lab-basics.spec.js';
 import { buildToken, generateRsaKeyPair, parseToken, rsaVerify, signHmac, signRsa } from '../_shared/jwt.js';
 import { GK05 } from './challenge.js'; // registers GK-05 before createApp() inside freshSession
 import { cookieName, labState, mintToken } from './model.js';
@@ -21,12 +21,7 @@ type Script = (c: Ctx) => Promise<request.Response>;
 const attacker = generateRsaKeyPair();
 const attackerJwk = createPublicKey(attacker.publicPem).export({ format: 'jwk' });
 
-const apps = new Map<string, Express>();
-async function session() {
-  const s = await freshSession();
-  apps.set(s.sid, s.app);
-  return s;
-}
+const session = () => freshSession();
 const login = (c: Ctx) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
 const vaultWith = (c: Ctx, token: string) =>
   c.agent.get(`${LAB}/vault?level=${c.level}`).set('Authorization', `Bearer ${token}`);
@@ -45,7 +40,7 @@ const inquisitorExploit: Script = (c) => vaultWith(c, signRsa('RS256', attacker.
 describeExploitMatrix<Script>({
   challenge: GK05,
   path: LAB,
-  send: (agent, level, script, _url, { sid, app }) => { apps.set(sid, app); return script({ agent, level, sid }); },
+  send: (agent, level, script, _url, { sid }) => script({ agent, level, sid }),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: /Invalid token/,
   legit: [
@@ -118,16 +113,6 @@ describe('GK-05 keys and tokens', () => {
     expect(res.text).not.toMatch(FLAG_RE);
   });
 
-  it('the vault takes the token from the lab cookie too, and an Authorization header wins over it', async () => {
-    const { agent, sid, app } = await session();
-    const admin = mintToken(sid, 'acolyte', ADMIN_CLAIMS);
-    const viaCookie = await bare(app, sid, `${cookieName('acolyte')}=${admin}`).get(`${LAB}/vault?level=acolyte`);
-    expect(viaCookie.text).toMatch(FLAG_RE);
-    await login({ agent, level: 'acolyte', sid });
-    const bad = await agent.get(`${LAB}/vault?level=acolyte`).set('Authorization', `Bearer ${admin}x`);
-    expect(bad.text).not.toMatch(FLAG_RE);
-  });
-
   it('flag only for a VERIFIED role "admin"; a missing or odd token is a plain denial, never a 500', async () => {
     const { agent, sid, app } = await session();
     for (const level of ['acolyte', 'templar', 'inquisitor'] as const) {
@@ -140,7 +125,7 @@ describe('GK-05 keys and tokens', () => {
       const none = await bare(app, sid).get(`${LAB}/vault?level=${level}`);
       expect(none.status).toBe(200);
       expect(none.text).toContain('Missing token');
-      for (const t of ['', 'x', 'a.b.c', '..', 'x'.repeat(9000), buildToken({}, {}), buildToken({ alg: 1 }, {}),
+      for (const t of ['', 'x', 'a.b.c', '..', 'x'.repeat(9000), buildToken({}, {}), buildToken({ alg: 1 }, {}), buildToken({ alg: 'constructor' }, ADMIN_CLAIMS, 'AAAA'), buildToken({ alg: 'toString' }, ADMIN_CLAIMS, 'AAAA'), buildToken({ alg: '__proto__' }, ADMIN_CLAIMS, 'AAAA'),
         buildToken({ alg: 'RS256', jwk: 'x' }, ADMIN_CLAIMS), buildToken({ alg: 'RS256', jwk: { kty: 'RSA' } }, ADMIN_CLAIMS),
         buildToken({ alg: 'RS256', jwk: [1] }, ADMIN_CLAIMS, 'AAAA'), buildToken({ alg: 'RS256', jwk: null }, ADMIN_CLAIMS, 'AAAA'),
         buildToken({ alg: 'RS256', jwk: { kty: 'EC', crv: 'P-256', x: 'a', y: 'b' } }, ADMIN_CLAIMS, 'AAAA'),
@@ -193,6 +178,13 @@ describe('GK-05 level behaviour', () => {
     for (const alg of ['RS256', 'RS384', 'RS512'] as const) {
       expect((await vaultWith(c, signRsa(alg, attacker.privatePem, ADMIN_CLAIMS, { jwk: attackerJwk }))).text, alg).toMatch(FLAG_RE);
     }
+    // an EC key in the jwk, with a perfectly valid ECDSA signature, is not an RSA verifier
+    const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const input = buildToken({ alg: 'RS256', jwk: ec.publicKey.export({ format: 'jwk' }) }, ADMIN_CLAIMS).slice(0, -1);
+    const ecSig = createSign('sha256').update(input).sign(ec.privateKey).toString('base64url');
+    const ecRes = await vaultWith(c, `${input}.${ecSig}`);
+    expect(ecRes.text).not.toMatch(FLAG_RE);
+    expect(ecRes.text).toContain('Invalid token');
     // without a jwk the server's own key is used: the attacker's signature fails
     expect((await vaultWith(c, signRsa('RS256', attacker.privatePem, ADMIN_CLAIMS))).text).not.toMatch(FLAG_RE);
     // a jwk that does not match the signing key fails too
@@ -211,6 +203,8 @@ describe('GK-05 level behaviour', () => {
       signRsa('RS256', attacker.privatePem, ADMIN_CLAIMS, { jku: `${LAB}/public.pem`, kid: 'attacker' }),
       signRsa('RS384', attacker.privatePem, ADMIN_CLAIMS, { jwk: attackerJwk }),
       buildToken({ alg: 'none' }, ADMIN_CLAIMS), buildToken({ alg: 'RS256' }, ADMIN_CLAIMS),
+      // the real key, but a size Divine does not pin
+      signRsa('RS384', labState(sid, 'divine').privatePem, ADMIN_CLAIMS), signRsa('RS512', labState(sid, 'divine').privatePem, ADMIN_CLAIMS),
     ];
     for (const t of tries) {
       const res = await vaultWith(c, t);
@@ -223,14 +217,6 @@ describe('GK-05 level behaviour', () => {
     expect(real.text).not.toMatch(FLAG_RE);
   });
 
-  it('below Divine the denial says why; Divine only says "Invalid token."', async () => {
-    const a = await session();
-    const t = signHmac('HS256', 'x', ADMIN_CLAIMS);
-    const low = await vaultWith({ agent: a.agent, level: 'inquisitor', sid: a.sid }, t);
-    expect(low.text).toMatch(/Invalid token: [a-z]/);
-    const d = await vaultWith({ agent: a.agent, level: 'divine', sid: a.sid }, t);
-    expect(d.text).toMatch(/Invalid token\.</);
-  });
 });
 
 describeLabView({
@@ -244,28 +230,4 @@ describeLabView({
   bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'x' }),
 });
 
-describe('GK-05 lab view specifics', () => {
-  it('a wrong password signs nobody in; the admin cannot be signed in through the form', async () => {
-    const { agent } = await session();
-    for (const level of LEVELS) {
-      for (const creds of [{ username: 'pilgrim', password: 'nope' }, { username: 'citadel_admin', password: 'pilgrim' }]) {
-        const res = await agent.post(`${LAB}?level=${level}`).type('form').send(creds);
-        expect(res.text, level).toContain('Invalid username or password.');
-        expect([res.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-      }
-    }
-  });
-
-  it('links are absolute lab paths even for an upper-case request URL; probing the vault mints no cookie', async () => {
-    const { agent, app, sid } = await session();
-    const res = await agent.get(`${LAB.toUpperCase()}?level=inquisitor`);
-    expect(res.text).toContain(`href="${LAB}/vault?level=inquisitor"`);
-    const probe = await bare(app, sid).get(`${LAB}/vault?level=templar`);
-    expect([probe.headers['set-cookie'] ?? []].flat().filter((l) => l.startsWith('citadel_jwt'))).toEqual([]);
-  });
-
-  it('POST /_reset is 404 (JWT labs need no Restart)', async () => {
-    const { agent } = await session();
-    expect((await agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(404);
-  });
-});
+describeJwtLabBasics({ challenge: GK05, path: LAB, mint: mintToken });

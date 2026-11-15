@@ -109,7 +109,7 @@ a:hover { text-decoration: underline; }
 .lab input, .lab textarea, .lab select { font: inherit; font-family: var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.4rem 0.5rem; }
 .lab button { justify-self: start; font: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: 0.25rem; padding: 0.4rem 1rem; font-weight: 600; cursor: pointer; }
 .lab-note { font-size: 0.875rem; color: var(--muted); }
-.lab-note code { font-family: var(--mono); color: var(--text); }
+.lab-note code { font-family: var(--mono); color: var(--text); overflow-wrap: anywhere; }
 .lab-message { font-family: var(--mono); font-size: 0.875rem; overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.75rem; margin: 1rem 0 0; }
 .lab-success { border-color: #166534; background: var(--add-bg); color: #bbf7d0; }
 .lab-error { border-color: #991b1b; background: var(--del-bg); color: var(--danger-text); }
