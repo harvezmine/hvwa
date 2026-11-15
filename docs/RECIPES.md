@@ -23,6 +23,8 @@ src/districts/<district>/<id lowercased>-<slug>/
   views/*.ejs         rendered only through sendPage()
   fixtures/           optional: deliberately binary/malformed lab files
   <id>.spec.ts        the exploit matrix + challenge-specific tests
+src/districts/<district>/_shared/   optional: plumbing several labs of the district share
+                                    (e.g. gatekeeper/_shared/lab.ts: Result, welcome(), accounts)
 src/districts/<district>/index.ts   imports each challenge.ts (registration side effect)
 src/districts/index.ts              imports each district index
 ```
@@ -33,6 +35,8 @@ src/districts/index.ts              imports each district index
   **One deliberate exception: error verbosity.** `tryDb` in `challenge.ts`
   decides it (the real message below Divine, a generic one at Divine), so say so
   in `divine.ts`'s comment, where Diff readers will see it.
+- Shared plumbing goes in `_shared/`; the flaw itself (limiter, lockout, token generator) never does:
+  it stays in the level files so View Source and the Diff show it.
 - `fixtures/`: any path segment named `fixtures` is exempt from the repo
   hygiene scan (UTF-8, no control characters). Non-`.ts` files there are copied
   into `dist/` by `copy-assets`.
@@ -60,6 +64,10 @@ case (g)). Divine resists every exploit.
 | `byLevel<M>({ acolyte, templar, inquisitor, divine })` | `core/lab` | gather the level modules against one interface `M`; `.levels` (rank order) goes to `defineChallenge`, `.for(req.level)` picks the module. Omit levels you do not implement |
 | `perLevel(factory)` | `core/lab` | one lazily created instance per level, shared by all players: `.for(level)` |
 | `perSession(factory, { maxEntries?, idleTtlMs? })` | `core/lab` | one lazily created instance per (session, level) via `factory(level, sessionId)`: `.for(req)` |
+| `perSession(...).reset(req)` | `core/lab` | drop that (session, level)'s instance (calls `dispose`): the body of a lab's `reset` hook |
+| `labPath(res)` | `core/lab` | the canonical lab path `/d/<district>/<slug>`, set by the engine as `res.locals.labPath` (also readable in views as `labPath`); use it for every lab link and cookie path |
+| `header(req, name)` | `core/lab` | a request header as a string (`undefined` if missing or repeated); client-written, never an identity |
+| `fixtureLines(url)` / `sendLines(res, lines)` | `core/lab` | a lab's fixture list read once (`new URL('./fixtures/x.txt', import.meta.url)`) and served from a lab route as `text/plain` |
 | `challengeDb(schema, seed?)` | `core/challenge-db` | private in-memory SQLite, `prepare()`-only facade |
 | `tryDb(req, () => call(), label?)` | `core/lab` | `{ ok: true, value }` or `{ ok: false, message }`: `<label>: <msg>` below Divine (label defaults to `Database error`), `Invalid request.` at Divine. Synchronous only: a Promise result throws |
 | `field(req, name)` | `core/lab` | a body field as a string, `''` for missing or non-string values |
@@ -154,6 +162,11 @@ fully attacker-chosen SQL must also cap result size.
   holder, so the worst case is `maxEntries` x the number of stateful labs: fine
   for a loopback single-player lab.
 
+**Restart lab.** A lab that keeps state a player can wedge (a lockout, a spent code, a hijacked session) passes
+`reset: (req) => holder.reset(req)` to `defineChallenge`. The engine then mounts `POST <lab>/_reset?level=<level>`
+(calls the hook, answers 303 back to the lab) and the lab bar shows a "Restart lab" button. Reset only the served
+level. Stateless labs omit it.
+
 **Every lab answers `GET /` at every implemented level** with 200, rendered
 with `sendPage` (so it has the lab bar); the `labs.spec.ts` smoke test and
 `verify:dist` request it. **API-only labs** (the Archive API district) still
@@ -167,6 +180,33 @@ generic message. Parser labs (XXE, YAML) pass a label:
 (`node:sqlite` is); `tryDb` throws if it returns a Promise. Read body fields
 with `field()`, so a JSON object or extended-urlencoded nesting is an empty
 string, not a 500.
+
+**Lab links and cookies.**
+
+- **Links are absolute, built from `labPath`.** Never a relative `href` (`wordlist.txt` on
+  `/d/gatekeeper/brute-force` resolves to `/d/gatekeeper/wordlist.txt`), and never `req.baseUrl`: it echoes the
+  request's spelling (`/D/GATEKEEPER/...`), which gives wrong links and cookie paths. Pass `base: labPath(res)`
+  to the view and include `?level=<level>` where the target is level-specific.
+- **Lab cookies:** `Path` = `labPath(res)` (browsers match cookie paths case-sensitively); a distinct name per
+  level (levels share the path and must not overwrite each other: `citadel_sid_<level>`); choose `httpOnly`
+  deliberately (a session id: yes, and say in the view how to edit it, devtools storage or `curl -b`; a
+  deliberately client-writable counter: no); never a name starting with `hvwa_` (the platform's).
+- **A request without the lab's cookie must not change lab state.** Probing a page (an admin page, a wrong guess)
+  must not mint sessions, advance generators or push activity entries; only the pages the player uses to get a
+  session do. Pin entries the lab depends on (the admin's session, the admin's activity line) so trimming a list
+  never drops them.
+- **Bound every map keyed by attacker input** (header values, usernames, spellings): cap its size, hash long keys
+  (`> 64` chars), and track only real accounts where the design allows it. A cap that evicts must not let the
+  attacker flush a counter they care about (made-up names must not push the admin's counter out).
+- **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
+  `sendLines`; the page links them by absolute path.
+- **Limiters and lockouts must not be beaten by waiting.** A short window or a short lock turns a brute-force lab
+  into "wait and retry" at every level, Divine included. Use long windows or locks (15 min or more) below Divine and
+  an escalating per-account lockout at Divine (the fifth failure locks, every further one doubles it, capped), so
+  that the designed bypass, not patience, is the practical path. Re-signing-in, resending a code or any other
+  convenience flow must not hand the budget back either (add a "re-sign-in" scenario to the spec).
+- **Time-dependent behaviour uses an injectable clock** (`state.now`, a test seam on the lab state), never
+  `setTimeout`, `sleep` or real minutes: tests move the clock (`state.now = () => t`) and stay fast.
 
 ## 5. Views, language and hints
 
@@ -189,7 +229,9 @@ string, not a 500.
   closing delimiter and the rest breaks parsing. Describe tags in words.
 - **Hints**: three tiers (typically cost 10/20/40), bilingual, each more
   specific, none containing a literal payload. Point at the mechanism (where
-  input goes, which field is filtered, what a wildcard means).
+  input goes, which field is filtered, what a wildcard means). Phrase tier 3 as a
+  guiding question ("what besides waiting makes the lock forget?", "who keeps the
+  count?"), and make every tier add information the page does not already state.
 
 ## 6. Testing: the exploit matrix
 
@@ -241,6 +283,16 @@ for labs with no such errors or no privileged identity. Add challenge-specific
 tests next to the matrix (GK-01: per-level isolation, view escaping, kept
 values, non-string fields). `FLAG_RE` and `DB_ERROR_RE` are exported for them.
 
+Test plumbing for stateful labs (all in `tests/helpers.ts`): `send(..., { sid, app })` for per-session test seams;
+`bare(app, sid, 'name=value')` for requests that carry only the session cookie plus a cookie the lab did not
+give you (the agent's jar always wins over a hand-set Cookie header, so never reach into supertest internals);
+`runWarmupThenFinal(scenario, fire)` for "N failures, then the real secret"; and
+`describeLabView({ ... })` for the view basics every lab shares (own account told, no `type="password"`,
+forms without `action`, escaped payload, odd bodies not a 500, message classes, upper-case URL uses the canonical
+path). Do not write assertions inside an `if` that can pass vacuously: draw new sessions until the condition
+holds, then assert unconditionally. Exploit scripts must detect success by "not the denial text", not only by a
+flag, because Divine never shows one.
+
 **Mutation self-check** before committing (revert by rewriting the file, not
 `git checkout` over uncommitted work):
 
@@ -263,5 +315,6 @@ If a mutation stays green, the matrix is missing a case.
    bilingual title/summary/3 hints, routes using `field`, `tryDb`, `flagFor`, `sendPage`.
 6. `views/*.ejs`: `.lab` markup, escaped output, English lab content (API-only labs: an HTML landing page).
 7. Import `challenge.js` from the district `index.ts` (and the district from `src/districts/index.ts`).
-8. Mutation self-check (section 6).
+8. Mutation self-check (section 6). For a stateful lab also: wire `reset`, use `labPath` for links and cookie paths,
+   bound attacker-keyed maps, and check that waiting and re-signing-in do not beat the limiter.
 9. `npm test`, `npm run typecheck`, `npm run verify:dist` all green; commit `feat(<district>): <ID> <title>`.
