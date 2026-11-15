@@ -3,12 +3,17 @@ import request from 'supertest';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/app.js';
 import { openDb } from '../src/db/index.js';
+import { TEST_SECRET } from './helpers.js';
 
 const tempDirs: string[] = [];
+const handles: DatabaseSync[] = [];
 afterEach(() => {
-  // Safety net if a test fails before its own cleanup.
+  // Safety net if a test fails before its own cleanup: close handles first
+  // (Windows cannot delete a file SQLite holds open), then remove the dirs.
+  for (const h of handles.splice(0)) if (h.isOpen) h.close();
   for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 3 });
 });
 
@@ -23,19 +28,18 @@ describe('smoke', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-db-'));
     tempDirs.push(dir);
     const dbPath = join(dir, 'hvwa.db');
-    const app = createApp({ dbPath, flagSecret: 'test-secret' });
+    const app = createApp({ dbPath, flagSecret: TEST_SECRET });
+    handles.push(app.locals.db);
     expect(existsSync(dbPath)).toBe(true);
 
     const check = openDb(dbPath);
-    try {
-      const names = check.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
-      expect(names.map((r) => r.name)).toEqual(['events', 'hint_unlocks', 'solves']);
-      expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 1 });
-    } finally {
-      check.close();
-    }
+    handles.push(check);
+    const names = check.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
+    expect(names.map((r) => r.name)).toEqual(['events', 'hint_unlocks', 'solves']);
+    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 1 });
 
-    // Release the app's handle too, then the temp dir must be removable.
+    // Release both handles, then the temp dir must be removable.
+    check.close();
     app.locals.db.close();
     rmSync(dir, { recursive: true, force: true });
     expect(existsSync(dir)).toBe(false);

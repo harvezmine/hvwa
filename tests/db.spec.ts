@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openDb, migrate, MIGRATIONS, SCHEMA_VERSION } from '../src/db/index.js';
 
 const userVersion = (db: DatabaseSync) =>
@@ -70,5 +73,46 @@ describe('db', () => {
     expect(userVersion(db)).toBe(0);
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
     expect(tables).toEqual([]);
+  });
+
+  it('surfaces the original error when the transaction is already gone', () => {
+    const db = openDb(':memory:');
+    const steps = [(d: DatabaseSync) => { d.exec('COMMIT'); throw new Error('the real cause'); }];
+    expect(() => migrate(db, steps)).toThrow('the real cause');
+    expect(db.isTransaction).toBe(false);
+  });
+
+  it('refuses a database newer than this build', () => {
+    const db = openDb(':memory:');
+    db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
+    expect(() => migrate(db)).toThrow(/newer than this build/i);
+    expect(userVersion(db)).toBe(SCHEMA_VERSION + 1);
+  });
+
+  it('openDb requires an explicit path', () => {
+    expect(() => openDb('')).toThrow(/path/i);
+  });
+});
+
+describe('file databases', () => {
+  const dirs: string[] = [];
+  const open: DatabaseSync[] = [];
+  afterEach(() => {
+    for (const d of open.splice(0)) if (d.isOpen) d.close();
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it('open in WAL mode with a 5 s busy timeout', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hvwa-wal-'));
+    dirs.push(dir);
+    const db = openDb(join(dir, 'p.db'));
+    open.push(db);
+    expect(db.prepare('PRAGMA journal_mode').get()).toMatchObject({ journal_mode: 'wal' });
+    expect(db.prepare('PRAGMA busy_timeout').get()).toMatchObject({ timeout: 5000 });
+  });
+
+  it(':memory: databases are left alone', () => {
+    const db = openDb(':memory:');
+    expect(db.prepare('PRAGMA journal_mode').get()).toMatchObject({ journal_mode: 'memory' });
   });
 });

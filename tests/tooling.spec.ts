@@ -18,6 +18,10 @@ describe('tooling', () => {
     expect(t.compilerOptions.noEmit).toBe(true);
   });
 
+  it('requires Node >= 22.16 (node:sqlite isTransaction + open timeout)', () => {
+    expect(json('package.json').engines.node).toBe('>=22.16');
+  });
+
   it('npm run typecheck covers both tsconfigs', () => {
     expect(json('package.json').scripts.typecheck)
       .toBe('tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit');
