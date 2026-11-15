@@ -13,10 +13,10 @@ function readSidFromHeader(req: { headers: { cookie?: string } }): string | unde
 export function sessionMiddleware(): RequestHandler {
   return (req, res, next) => {
     let sid = (req.cookies?.hvwa_sid as string | undefined) ?? readSidFromHeader(req);
-    if (!sid) {
-      sid = randomUUID();
-      res.cookie('hvwa_sid', sid, { httpOnly: true, sameSite: 'lax', path: '/' });
-    }
+    if (!sid) sid = randomUUID();
+    // Refresh the cookie on every response so the stable sid is always
+    // observable via set-cookie (required for cross-request flag issuance).
+    res.cookie('hvwa_sid', sid, { httpOnly: true, sameSite: 'lax', path: '/' });
     (req as any).sessionId = sid;
     next();
   };
