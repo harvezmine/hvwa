@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseConfig, isLoopbackHost, bindRefusal } from '../src/config.js';
+import { parseConfig, loadConfig, isLoopbackHost, bindRefusal } from '../src/config.js';
 import { resolveFlagSecret } from '../src/core/secrets.js';
 
 const dirs: string[] = [];
@@ -85,5 +85,38 @@ describe('loopback bind guard', () => {
     expect(msg).toMatch(/0\.0\.0\.0/);
     expect(msg).toMatch(/HVWA_ALLOW_REMOTE=1/);
     expect(bindRefusal(parseConfig({ HOST: '0.0.0.0', HVWA_ALLOW_REMOTE: '1' }))).toBeUndefined();
+  });
+});
+
+describe('loadConfig (friendly errors)', () => {
+  it('returns { ok: true, config } for a valid environment', () => {
+    const r = loadConfig({ PORT: '8080' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.config).toMatchObject({ HOST: '127.0.0.1', PORT: 8080 });
+  });
+
+  it('returns one "<path>: <message>" line per issue instead of throwing', () => {
+    const r = loadConfig({ PORT: '99999', FLAG_SECRET: 'short', HVWA_ALLOW_REMOTE: 'yes' });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors).toHaveLength(3);
+    expect(r.errors.find((l) => l.startsWith('PORT: '))).toMatch(/65535/);
+    expect(r.errors.find((l) => l.startsWith('FLAG_SECRET: '))).toMatch(/at least 16/);
+    expect(r.errors.find((l) => l.startsWith('HVWA_ALLOW_REMOTE: '))).toBeDefined();
+    for (const line of r.errors) {
+      expect(line).toMatch(/^[A-Z_]+: \S/);
+      expect(line).not.toContain('\n');
+    }
+  });
+
+  it('importing config.ts with a bad environment no longer throws (no import-time parse)', async () => {
+    vi.stubEnv('PORT', '99999');
+    vi.resetModules();
+    try {
+      await expect(import('../src/config.js')).resolves.toBeDefined();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });

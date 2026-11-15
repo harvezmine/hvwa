@@ -20,8 +20,24 @@ const schema = z.object({
 
 export type Config = z.infer<typeof schema>;
 
+/** Parse or throw (ZodError). Used by tests; the server uses loadConfig(). */
 export function parseConfig(env: Record<string, string | undefined>): Config {
   return schema.parse(env);
+}
+
+export type LoadResult = { ok: true; config: Config } | { ok: false; errors: string[] };
+
+/**
+ * Parse without throwing. On failure, `errors` holds one line per issue as
+ * `<path>: <message>` (e.g. `PORT: Number must be less than or equal to 65535`).
+ */
+export function loadConfig(env: Record<string, string | undefined> = process.env): LoadResult {
+  const r = schema.safeParse(env);
+  if (r.success) return { ok: true, config: r.data };
+  return {
+    ok: false,
+    errors: r.error.issues.map((i) => `${i.path.join('.') || '(env)'}: ${i.message.replace(/\s+/g, ' ')}`),
+  };
 }
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -42,5 +58,3 @@ export function bindRefusal(cfg: Pick<Config, 'HOST' | 'HVWA_ALLOW_REMOTE'>): st
     'vulnerable. Use 127.0.0.1, ::1 or localhost, or set HVWA_ALLOW_REMOTE=1 only inside an ' +
     'isolated container/network.';
 }
-
-export const config = parseConfig(process.env);

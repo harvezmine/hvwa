@@ -2,10 +2,19 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { createApp } from './app.js';
-import { bindRefusal, config } from './config.js';
+import { bindRefusal, loadConfig } from './config.js';
 import { resolveFlagSecret } from './core/secrets.js';
 import { listen, closeGracefully } from './lifecycle.js';
 import type { Server } from 'node:http';
+
+// Validate the environment: one readable line per problem, then exit 1.
+const loaded = loadConfig(process.env);
+if (!loaded.ok) {
+  console.error('HVWA: invalid configuration:');
+  for (const line of loaded.errors) console.error(`  ${line}`);
+  process.exit(1);
+}
+const { config } = loaded;
 
 // Deliberately vulnerable: refuse a non-loopback bind unless explicitly allowed.
 const refusal = bindRefusal(config);
