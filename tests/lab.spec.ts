@@ -110,6 +110,26 @@ describe('perSession(factory, opts?)', () => {
     expect(factory).toHaveBeenCalledTimes(3);
   });
 
+  it('dispose(value) runs on LRU eviction and on TTL expiry, never on a plain hit; its errors are ignored', () => {
+    let t = 0;
+    const disposed: string[] = [];
+    const p = perSession((_l, sid) => ({ sid }), {
+      maxEntries: 2, idleTtlMs: 1000, now: () => t,
+      dispose: (v) => { disposed.push(v.sid); throw new Error('dispose blew up'); },
+    });
+    p.for(req(S1));
+    p.for(req(S1)); // hit: nothing disposed
+    expect(disposed).toEqual([]);
+    p.for(req(S2));
+    p.for(req(S3)); // beyond maxEntries: S1 (least recently used) is evicted
+    expect(disposed).toEqual([S1]);
+    expect(p.size).toBe(2);
+    t = 5000;
+    p.for(req(S1)); // both S2 and S3 idled past the TTL: swept, then S1 is rebuilt
+    expect(disposed).toEqual([S1, S2, S3]);
+    expect(p.size).toBe(1);
+  });
+
   it('defaults: 5000 entries, 2 h idle TTL', () => {
     let t = 0;
     const p = perSession((_l, sid) => sid, { now: () => t });

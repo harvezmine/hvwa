@@ -27,11 +27,13 @@ export function perLevel<T>(factory: (level: Level) => T): PerLevel<T> {
   });
 }
 
-export interface PerSessionOptions {
+export interface PerSessionOptions<T = unknown> {
   /** Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000. */
   readonly maxEntries?: number;
   /** An instance unused for longer than this (ms) is dropped; the next request gets a fresh one. Default 2 h. */
   readonly idleTtlMs?: number;
+  /** Called with an instance when it is evicted (LRU) or expires (TTL), e.g. to close a DB. Errors are ignored. */
+  readonly dispose?: (value: T) => void;
   /** Clock in ms (injectable for tests). Default Date.now. */
   readonly now?: () => number;
 }
@@ -54,15 +56,16 @@ const DEFAULT_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
  * changes another player's lab, and levels are isolated too (no perLevel on
  * top). Memory is bounded: least-recently-used eviction beyond `maxEntries`,
  * and instances idle longer than `idleTtlMs` are dropped. A dropped instance
- * is rebuilt fresh, so labs must tolerate a reset.
+ * is rebuilt fresh, so labs must tolerate a reset. `dispose(value)` (optional)
+ * is called on either removal; errors in it are caught and ignored.
  *
  *   const shop = perSession(() => challengeDb(SCHEMA, seed));
  *   shop.for(req).prepare(...)
  */
 export function perSession<T>(
-  factory: (level: Level, sessionId: string) => T, opts: PerSessionOptions = {},
+  factory: (level: Level, sessionId: string) => T, opts: PerSessionOptions<T> = {},
 ): PerSession<T> {
-  const { maxEntries = DEFAULT_MAX_ENTRIES, idleTtlMs = DEFAULT_IDLE_TTL_MS, now = Date.now } = opts;
+  const { maxEntries = DEFAULT_MAX_ENTRIES, idleTtlMs = DEFAULT_IDLE_TTL_MS, now = Date.now, dispose } = opts;
   if (!Number.isInteger(maxEntries) || maxEntries < 1) {
     throw new Error(`perSession: maxEntries must be a positive integer (got ${String(maxEntries)})`);
   }
@@ -71,10 +74,14 @@ export function perSession<T>(
   }
   // Map order = least recently used first (every use re-inserts at the end).
   const entries = new Map<string, { value: T; usedAt: number }>();
+  const drop = (key: string, value: T) => {
+    entries.delete(key);
+    try { dispose?.(value); } catch { /* a failing dispose never breaks a request */ }
+  };
   const sweep = (t: number) => {
     for (const [key, e] of entries) {
       if (t - e.usedAt <= idleTtlMs) break;
-      entries.delete(key);
+      drop(key, e.value);
     }
   };
   return Object.freeze({
@@ -94,7 +101,10 @@ export function perSession<T>(
       }
       const value = factory(level, sessionId);
       entries.set(key, { value, usedAt: t });
-      if (entries.size > maxEntries) entries.delete(entries.keys().next().value as string);
+      if (entries.size > maxEntries) {
+        const [oldKey, old] = entries.entries().next().value as [string, { value: T }];
+        drop(oldKey, old.value);
+      }
       return value;
     },
     get size(): number { return entries.size; },

@@ -149,6 +149,10 @@ fully attacker-chosen SQL must also cap result size.
   recently used instances beyond `maxEntries` (default 5000) are evicted, and
   instances idle longer than `idleTtlMs` (default 2 h) are dropped. A dropped
   lab is rebuilt fresh on the next request, so labs must tolerate a reset.
+  An optional `dispose(value)` runs when an instance is evicted or expires (to
+  release a resource; its errors are swallowed). The bound is per `perSession`
+  holder, so the worst case is `maxEntries` x the number of stateful labs: fine
+  for a loopback single-player lab.
 
 **Every lab answers `GET /` at every implemented level** with 200, rendered
 with `sendPage` (so it has the lab bar); the `labs.spec.ts` smoke test and
@@ -198,7 +202,7 @@ describeExploitMatrix<Creds>({
   path: '/d/gatekeeper/sqli-login',
   send: (agent, _level, creds, url) => agent.post(url).type('form').send(creds),
   exploits: { acolyte: {...}, templar: {...}, inquisitor: {...} }, // one per non-Divine level
-  resisted: 'Invalid credentials.',            // the answer to an exploit at Divine and one level up
+  resisted: 'Invalid credentials.',            // the answer to an exploit at Divine (or a per-exploit-level map)
   legit: [{ name: 'own account', input: { username: 'pilgrim', password: 'pilgrim' }, expect: 'Welcome, pilgrim' }],
   malformed: [{ name: 'lone quote', input: { username: 'pilgrim', password: "'" }, levels: ['acolyte', 'templar'] }], // or []
   privileged: {                                 // or null
@@ -219,10 +223,13 @@ Required cases (generated):
 - **(d)** each `malformed` input shows error text at its listed levels and none at Divine.
 - **(e)** each `legit` input works at every level: 200, expected text, no flag.
 - **(f)** the `privileged` input (real credentials) works at Divine with no flag.
-- **(g)** step-up: the exploit for each level is resisted (no flag, the `resisted`
-  text) at the next implemented exploitable level above it. On by default.
-  `cumulative: [level]` skips it for that level, when the exploit from the level
-  below legitimately still works there; it must be explicit and explained in the spec.
+- **(g)** step-up: the exploit for each level is resisted (no flag) at EVERY
+  implemented non-Divine level above it, so a regression two levels up is caught
+  too (only "no flag" is required there, not the `resisted` text). On by default.
+  `cumulative: [level]` skips that level for exploits from below, when they
+  legitimately still work there; it must be explicit and explained in the spec.
+  `resisted` may also be a map keyed by the exploit's level, when Divine answers
+  different exploits differently (case (c) uses the entry for that exploit).
 
 "Error text" is `errorRe` (default `DB_ERROR_RE`; pair `/Parser error/` with a
 `tryDb` label). `malformed: []` and `privileged: null` are explicit opt-outs

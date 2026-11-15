@@ -67,8 +67,12 @@ export interface ExploitMatrix<I> {
   readonly send: (agent: Agent, level: Level, input: I, url: string) => PromiseLike<request.Response>;
   /** One working exploit per exploitable level: keys must equal the challenge's non-Divine levels. */
   readonly exploits: { readonly [L in ExploitLevel]?: I };
-  /** What Divine answers to every exploit (proves it resisted, not just withheld the flag). */
-  readonly resisted: Expectation;
+  /**
+   * What Divine answers to every exploit (proves it resisted, not just withheld the flag).
+   * One value for all exploits, or a map keyed by the EXPLOIT's level when Divine's
+   * answer differs per exploit (every exploitable level needs an entry then).
+   */
+  readonly resisted: Expectation | { readonly [L in ExploitLevel]?: Expectation };
   /** Ordinary use: works at every level, never shows a flag. At least one. */
   readonly legit: readonly { readonly name: string; readonly input: I; readonly expect: Expectation }[];
   /** Inputs that break the query: a DB error at each listed level, none at Divine. [] if not applicable. */
@@ -76,8 +80,8 @@ export interface ExploitMatrix<I> {
   /** A real privileged login at Divine: works, never a flag. null if the lab has no such identity. */
   readonly privileged: { readonly name: string; readonly input: I; readonly expect: Expectation } | null;
   /**
-   * Levels where the exploit for the level below legitimately still works, so
-   * the step-up case (g) is skipped for them. Explicit and rare: say why in the spec.
+   * Levels where the exploits from below legitimately still work, so the
+   * step-up case (g) is skipped for them. Explicit and rare: say why in the spec.
    */
   readonly cumulative?: readonly ExploitLevel[];
   /** What counts as leaked error text in (c) and (d). Default DB_ERROR_RE (e.g. /Parser error/ for XML labs). */
@@ -97,13 +101,14 @@ function expectText(text: string, e: Expectation, label: string): void {
  * itself can be tested). Throws if the matrix cannot be run meaningfully.
  *  (a) exploits cover exactly the non-Divine levels
  *  (b) each exploit at its level shows a flag that /api/submit credits at exactly that level
- *  (c) Divine answers every exploit with 200, the `resisted` text, no flag, no DB-error text
+ *  (c) Divine answers every exploit with 200, the `resisted` text (for that exploit's level),
+ *      no flag, no DB-error text
  *  (d) each malformed input shows DB-error text at its levels, and none (200, no flag) at Divine
  *  (e) each legit input works at every level: 200, expected text, no flag
  *  (f) the privileged input works at Divine: 200, expected text, no flag
- *  (g) step-up: the exploit for level L is resisted (no flag, `resisted` text) at
- *      the next implemented exploitable level above L, unless that level is listed
- *      in `cumulative` (Divine is already covered by (c))
+ *  (g) step-up: the exploit for level L is resisted (no flag) at EVERY implemented
+ *      exploitable level above L, unless that level is listed in `cumulative`
+ *      (Divine is already covered by (c))
  * "Error text" means `errorRe` (default DB_ERROR_RE).
  */
 export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
@@ -124,6 +129,14 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
     }
   }
   const errorRe = m.errorRe ?? DB_ERROR_RE;
+  const isMap = typeof m.resisted === 'object' && !(m.resisted instanceof RegExp);
+  const resistedFor = (level: ExploitLevel): Expectation => {
+    if (!isMap) return m.resisted as Expectation;
+    const e = (m.resisted as { readonly [L in ExploitLevel]?: Expectation })[level];
+    if (e === undefined) throw new Error(`${at}: resisted has no entry for the ${level} exploit`);
+    return e;
+  };
+  if (isMap) for (const l of exploitable) resistedFor(l);
   const implemented = LEVELS.filter((l) => c.levels.includes(l));
   const send = async (level: Level, input: I) => {
     const { agent } = await freshSession();
@@ -153,15 +166,14 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
       expect(res.status).toBe(200);
       expect(text, 'divine showed a flag').not.toMatch(FLAG_RE);
       expect(text, 'divine showed error text').not.toMatch(errorRe);
-      expectText(text, m.resisted, 'divine did not answer with the resisted text');
+      expectText(text, resistedFor(level), 'divine did not answer with the resisted text');
     });
-    const next = exploitable[exploitable.indexOf(level) + 1];
-    if (next !== undefined && !cumulative.includes(next)) {
-      add(`${next} resists the ${level} exploit (step-up)`, async () => {
-        const { text } = await send(next, input);
-        expect(text, `${next} accepted the ${level} exploit (showed a flag): it is no harder than ${level}`)
+    for (const higher of exploitable.slice(exploitable.indexOf(level) + 1)) {
+      if (cumulative.includes(higher)) continue;
+      add(`${higher} resists the ${level} exploit (step-up)`, async () => {
+        const { text } = await send(higher, input);
+        expect(text, `${higher} accepted the ${level} exploit (showed a flag): it is no harder than ${level}`)
           .not.toMatch(FLAG_RE);
-        expectText(text, m.resisted, `${next} did not answer the ${level} exploit with the resisted text`);
       });
     }
   }

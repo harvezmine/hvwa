@@ -167,7 +167,7 @@ describe('exploitMatrixCases', () => {
     for (const c of others) await expect(c.run(), c.name).resolves.toBeUndefined();
   });
 
-  it('(g) targets the NEXT implemented exploitable level (skips missing ones; Divine is (c))', () => {
+  it('(g) targets EVERY higher implemented exploitable level (skips missing ones; Divine is (c))', () => {
     const gap = { ...MATRIX, challenge: { id: 'HM-01', levels: ['acolyte', 'inquisitor', 'divine'] as const },
       exploits: { acolyte: 'a', inquisitor: 'i' }, malformed: [] };
     expect(exploitMatrixCases(gap).map((c) => c.name).filter((n) => n.includes('step-up')))
@@ -175,8 +175,31 @@ describe('exploitMatrixCases', () => {
     const four = { ...gap, challenge: { id: 'HM-01', levels: ['acolyte', 'templar', 'inquisitor', 'divine'] as const },
       exploits: { acolyte: 'a', templar: 't', inquisitor: 'i' } };
     expect(exploitMatrixCases(four).map((c) => c.name).filter((n) => n.includes('step-up'))).toEqual([
-      'templar resists the acolyte exploit (step-up)', 'inquisitor resists the templar exploit (step-up)',
+      'templar resists the acolyte exploit (step-up)', 'inquisitor resists the acolyte exploit (step-up)',
+      'inquisitor resists the templar exploit (step-up)',
     ]);
+  });
+
+  it('(g) cumulative skips only the opted-out level, for every exploit from below', () => {
+    const four = { ...MATRIX, challenge: { id: 'HM-01', levels: ['acolyte', 'templar', 'inquisitor', 'divine'] as const },
+      exploits: { acolyte: 'a', templar: 't', inquisitor: 'i' }, malformed: [], cumulative: ['templar'] as const };
+    expect(exploitMatrixCases(four).map((c) => c.name).filter((n) => n.includes('step-up'))).toEqual([
+      'inquisitor resists the acolyte exploit (step-up)', 'inquisitor resists the templar exploit (step-up)',
+    ]);
+  });
+
+  it('(g) step-up requires only "no flag" at the higher levels, not the resisted text', async () => {
+    const name = 'templar resists the acolyte exploit (step-up)';
+    await expect(caseNamed({ ...MATRIX, resisted: 'text-that-never-appears' }, name)).resolves.toBeUndefined();
+  });
+
+  it('resisted may be a per-exploit-level map (used for Divine (c))', async () => {
+    const map = { ...MATRIX, resisted: { acolyte: 'Denied.', templar: /Den/ } };
+    await expect(caseNamed(map, 'divine resists the acolyte exploit')).resolves.toBeUndefined();
+    await expect(caseNamed(map, 'divine resists the templar exploit')).resolves.toBeUndefined();
+    const wrong = { ...MATRIX, resisted: { acolyte: 'Denied.', templar: 'Nope' } };
+    await expect(caseNamed(wrong, 'divine resists the templar exploit')).rejects.toThrow(/resisted text/);
+    expect(() => exploitMatrixCases({ ...MATRIX, resisted: { acolyte: 'Denied.' } })).toThrow(/no entry for the templar/);
   });
 
   it('cumulative: an explicit opt-out per level drops only that step-up case', () => {
@@ -216,6 +239,47 @@ describe('exploitMatrixCases', () => {
       expect(() => exploitMatrixCases({ ...MATRIX, malformed: [{ name: 'm', input: 'BOOM', levels: levels as never }] }),
         JSON.stringify(levels)).toThrow(/malformed/);
     }
+  });
+});
+
+// A 4-level fixture where level 3 (inquisitor) can be made vulnerable to level 1's exploit again.
+const mode4 = { inquisitorLikeAcolyte: false };
+afterEach(() => { mode4.inquisitorLikeAcolyte = false; });
+const HM02 = register(defineChallenge({
+  id: 'HM-02', district: 'helpers-test', slug: 'matrix4', dir: process.cwd(),
+  title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [],
+  levels: ['acolyte', 'templar', 'inquisitor', 'divine'], hints: [],
+  mount: (router) => {
+    router.post('/', (req, res) => {
+      const q = field(req, 'q');
+      const own = { acolyte: 'A-EXPLOIT', templar: 'T-EXPLOIT', inquisitor: 'I-EXPLOIT' } as Partial<Record<Level, string>>;
+      const wins = req.level !== 'divine'
+        && (q === own[req.level] || (req.level === 'inquisitor' && mode4.inquisitorLikeAcolyte && q === 'A-EXPLOIT'));
+      res.type('text').send(wins ? `Pwned. ${flagFor(req, HM02)}` : 'Denied.');
+    });
+  },
+}));
+const MATRIX4: ExploitMatrix<string> = {
+  challenge: HM02,
+  path: '/d/helpers-test/matrix4',
+  send: (agent, _level, q, url) => agent.post(url).type('form').send({ q }),
+  exploits: { acolyte: 'A-EXPLOIT', templar: 'T-EXPLOIT', inquisitor: 'I-EXPLOIT' },
+  resisted: 'Denied.',
+  legit: [{ name: 'noop', input: 'hello', expect: 'Denied.' }],
+  malformed: [],
+  privileged: null,
+};
+describeExploitMatrix(MATRIX4);
+
+describe('(g) step-up across all higher levels', () => {
+  it('goes red when a level two above is vulnerable to the lower exploit again (the next level is still fine)', async () => {
+    const name = 'inquisitor resists the acolyte exploit (step-up)';
+    await expect(caseNamed(MATRIX4, name)).resolves.toBeUndefined();
+    mode4.inquisitorLikeAcolyte = true;
+    await expect(caseNamed(MATRIX4, name)).rejects.toThrow(/inquisitor accepted the acolyte exploit/);
+    // The adjacent step-ups stay green: the old next-level-only check missed this regression.
+    await expect(caseNamed(MATRIX4, 'templar resists the acolyte exploit (step-up)')).resolves.toBeUndefined();
+    await expect(caseNamed(MATRIX4, 'inquisitor resists the templar exploit (step-up)')).resolves.toBeUndefined();
   });
 });
 
