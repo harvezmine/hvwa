@@ -13,8 +13,10 @@ function attemptsIn(cookies: Cookies): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function gate(_state: LabState, _username: string): Reply {
-  return { ok: true, message: 'A code was sent to the account owner.', cookies: { [COUNTER]: '0' } };
+export function gate(_state: LabState, _username: string, cookies: Cookies): Reply {
+  // Start the counter only when the client has none: signing in again must not hand attempts back.
+  const cookie = cookies[COUNTER] === undefined ? { [COUNTER]: '0' } : undefined;
+  return { ok: true, message: 'A code was sent to the account owner.', cookies: cookie };
 }
 
 export function verify(state: LabState, code: string, cookies: Cookies): Reply {

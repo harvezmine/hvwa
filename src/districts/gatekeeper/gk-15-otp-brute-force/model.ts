@@ -3,11 +3,9 @@
 import { randomInt } from 'node:crypto';
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { accountsFor, type Account, type Counter } from '../_shared/lab.js';
 
-export interface Account { username: string; password: string; role: 'admin' | 'user' }
-
-/** Failed code attempts kept on the server (levels that count server-side). */
-export interface Counter { failures: number; lockedUntil: number }
+export type { Account, Counter };
 
 /** One player's lab at one level. */
 export interface LabState {
@@ -34,23 +32,18 @@ export interface Reply { ok: boolean; message: string; cookies?: Readonly<Record
 /** What every levels/<level>.ts exports (checked by byLevel<OtpLevel> in challenge.ts). */
 export interface OtpLevel {
   /** Right after the password step succeeded, before a code is issued. ok=false refuses the sign-in. */
-  gate(state: LabState, username: string): Reply;
+  gate(state: LabState, username: string, cookies: Cookies): Reply;
   /** Check a submitted code. ok=true means the pending user is through. */
   verify(state: LabState, code: string, cookies: Cookies): Reply;
   /** "Resend code". ok=false refuses. */
   resend(state: LabState, cookies: Cookies): Reply;
 }
 
-/** The player's own (unprivileged) account; its codes appear in the on-page inbox. */
-export const PLAYER = Object.freeze({ username: 'pilgrim', password: 'pilgrim' });
-export const ADMIN_NAME = 'citadel_admin';
 /** The admin's password, "phished" and shown on the lab page: the code step is the whole challenge. */
 export const ADMIN_PASSWORD = 'Citadel-Gate-Open';
 
-export const ACCOUNTS: readonly Account[] = Object.freeze([
-  Object.freeze({ username: ADMIN_NAME, password: ADMIN_PASSWORD, role: 'admin' as const }),
-  Object.freeze({ username: PLAYER.username, password: PLAYER.password, role: 'user' as const }),
-]);
+/** Both accounts: the player's pilgrim (its codes appear in the on-page inbox) and the admin. */
+export const ACCOUNTS: readonly Account[] = Object.freeze(accountsFor(ADMIN_PASSWORD));
 
 /** A fresh random 4-digit code, as a zero-padded string. */
 export function newCode(): string {
@@ -80,6 +73,11 @@ const labs = perSession((): LabState => ({
 /** The lab state for this request's session at the served level. */
 export function labFor(req: { sessionId: string; level: Level }): LabState {
   return labs.for(req);
+}
+
+/** The "Restart lab" hook: forget this player's code, counters and lockouts at this level. */
+export function resetLab(req: { sessionId: string; level: Level }): void {
+  labs.reset(req);
 }
 
 /** Test seam: the lab state of session `sessionId` at `level` (the live code is `.otp`). */

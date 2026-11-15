@@ -6,8 +6,8 @@ const LIMITED: Reply = { ok: false, message: 'Too many attempts. Request a new c
 // TEMPLAR — naive limit: 5 wrong codes and the step is refused until you "request a new
 // code". The flaw: resend zeroes the counter but does NOT issue a different code, so the
 // same secret can be guessed again, five tries at a time, forever.
-export function gate(state: LabState, username: string): Reply {
-  state.counters.delete(username); // a fresh sign-in gets a fresh code and a fresh counter
+export function gate(_state: LabState, _username: string, _cookies: Cookies): Reply {
+  // Signing in again does NOT clear the counter: only "resend" does (the flaw below).
   return { ok: true, message: 'A code was sent to the account owner.' };
 }
 

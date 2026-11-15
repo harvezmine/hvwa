@@ -21,7 +21,7 @@ function counterOf(state: LabState, user: string) {
   return c;
 }
 
-export function gate(state: LabState, username: string): Reply {
+export function gate(state: LabState, username: string, _cookies: Cookies): Reply {
   if (counterOf(state, username).lockedUntil > state.now()) return LOCKED;
   return { ok: true, message: 'A code was sent to the account owner.' };
 }

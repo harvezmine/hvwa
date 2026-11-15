@@ -1,10 +1,13 @@
 // src/districts/gatekeeper/gk-15-otp-brute-force/gk-15.spec.ts
 import { describe, it, expect } from 'vitest';
-import request from 'supertest';
-import { freshSession, describeExploitMatrix, FLAG_RE, setCookieValue, type Agent } from '../../../../tests/helpers.js';
+import type { Express } from 'express';
+import {
+  freshSession, bare, describeExploitMatrix, describeLabView, FLAG_RE, setCookieValue, type Agent,
+} from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { GK15 } from './challenge.js'; // registers GK-15 before createApp() inside freshSession
-import { ADMIN_PASSWORD, labState } from './model.js';
+import * as divineLevel from './levels/divine.js';
+import { ADMIN_PASSWORD, labState, type LabState } from './model.js';
 
 const LAB = '/d/gatekeeper/otp-brute-force';
 
@@ -27,14 +30,22 @@ const RIGHT: Step = { do: 'right' };
 
 const wrongOf = (otp: string) => String((Number(otp) + 1) % 10000).padStart(4, '0');
 
-/** The Express app behind a supertest agent (the agent keeps it as `app`). */
-const appOf = (agent: Agent) => (agent as unknown as { app: never }).app;
+/** The app of each session this file started (bare requests need it). */
+const apps = new Map<string, Express>();
+async function session() {
+  const s = await freshSession();
+  apps.set(s.sid, s.app);
+  return s;
+}
 
-/** Fire one request as the player (cookie jar) or bare (session cookie only). */
-async function fire(agent: Agent, level: Level, sid: string, body: Record<string, string>, bare = false) {
+/**
+ * Fire one request as the player (cookie jar) or bare: only the session cookie plus a FORGED
+ * `otp_attempts=0`, like a client that rewrites the counter cookie instead of sending the one it was given.
+ */
+async function fire(agent: Agent, level: Level, sid: string, body: Record<string, string>, isBare = false) {
   const url = `${LAB}?level=${level}`;
-  if (!bare) return agent.post(url).type('form').send(body);
-  return request(appOf(agent)).post(url).set('Cookie', `hvwa_sid=${sid}`).type('form').send(body);
+  if (!isBare) return agent.post(url).type('form').send(body);
+  return bare(apps.get(sid)!, sid, 'otp_attempts=0').post(url).type('form').send(body);
 }
 
 async function step(agent: Agent, level: Level, sid: string, s: Step) {
@@ -56,7 +67,7 @@ async function run(agent: Agent, level: Level, steps: Scenario, sid: string) {
 describeExploitMatrix<Scenario>({
   challenge: GK15,
   path: LAB,
-  send: (agent, level, steps, _url, { sid }) => run(agent, level, steps, sid),
+  send: (agent, level, steps, _url, { sid, app }) => { apps.set(sid, app); return run(agent, level, steps, sid); },
   exploits: {
     // No attempt limit: twelve wrong codes, then the right one.
     acolyte: [LOGIN_ADMIN, ...times(12, WRONG), RIGHT],
@@ -80,13 +91,13 @@ describeExploitMatrix<Scenario>({
 
 describe('GK-15 acolyte', () => {
   it('has no attempt limit: fifty wrong codes and the right one still passes', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const text = (await run(agent, 'acolyte', [LOGIN_ADMIN, ...times(50, WRONG), RIGHT], sid)).text;
     expect(text).toMatch(FLAG_RE);
   });
 
   it('really can be brute-forced with at most 10000 guesses (counting up)', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await step(agent, 'acolyte', sid, LOGIN_ADMIN);
     const target = Number(labState(sid, 'acolyte').otp);
     // Walk only a small window around the target: the point is that nothing stops the walk.
@@ -101,14 +112,14 @@ describe('GK-15 acolyte', () => {
 
 describe('GK-15 templar', () => {
   it('locks after 5 wrong codes, even for the right one', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const text = (await run(agent, 'templar', [LOGIN_ADMIN, ...times(5, WRONG), RIGHT], sid)).text;
     expect(text).toContain('Too many attempts');
     expect(text).not.toMatch(FLAG_RE);
   });
 
   it('resend resets the counter but keeps the same code', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await run(agent, 'templar', [LOGIN_ADMIN, ...times(5, WRONG)], sid);
     const before = labState(sid, 'templar').otp;
     const resent = (await step(agent, 'templar', sid, RESEND)).text;
@@ -120,7 +131,7 @@ describe('GK-15 templar', () => {
 
 describe('GK-15 inquisitor', () => {
   it('keeps its attempt counter in a plain cookie, and locks at 5 for a client that sends it back', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const first = await run(agent, 'inquisitor', [LOGIN_ADMIN, WRONG], sid);
     expect(setCookieValue(first, 'otp_attempts')).toBe('1');
     const res = await run(agent, 'inquisitor', [...times(4, WRONG), RIGHT], sid);
@@ -129,16 +140,14 @@ describe('GK-15 inquisitor', () => {
   });
 
   it('accepts a counter the client rewrites', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await run(agent, 'inquisitor', [LOGIN_ADMIN, ...times(5, WRONG)], sid);
-    const text = (await request(appOf(agent)).post(`${LAB}?level=inquisitor`)
-      .set('Cookie', `hvwa_sid=${sid}; otp_attempts=0`).type('form')
-      .send({ step: 'verify', code: labState(sid, 'inquisitor').otp })).text;
+    const text = (await fire(agent, 'inquisitor', sid, { step: 'verify', code: labState(sid, 'inquisitor').otp }, true)).text;
     expect(text).toMatch(FLAG_RE);
   });
 
   it('resend rotates the code and does not touch the counter', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await run(agent, 'inquisitor', [LOGIN_ADMIN, ...times(3, WRONG)], sid);
     const before = labState(sid, 'inquisitor').otp;
     await step(agent, 'inquisitor', sid, RESEND);
@@ -149,7 +158,8 @@ describe('GK-15 inquisitor', () => {
 
 describe('GK-15 divine', () => {
   it('counts failures on the server: cookies and resends change nothing, the lock sticks', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
+    // Two of the guesses and the final one forge otp_attempts=0 (a client-side reset): the server does not care.
     const steps: Step[] = [LOGIN_ADMIN, WRONG, WRONG, RESEND, WRONG, { do: 'wrong', bare: true }, RESEND, WRONG, { do: 'right', bare: true }];
     const text = (await run(agent, 'divine', steps, sid)).text;
     expect(text).toContain('Too many attempts');
@@ -157,7 +167,7 @@ describe('GK-15 divine', () => {
   });
 
   it('resend rotates the code and the old one dies', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await step(agent, 'divine', sid, LOGIN_ADMIN);
     const old = labState(sid, 'divine').otp;
     await step(agent, 'divine', sid, RESEND);
@@ -169,7 +179,7 @@ describe('GK-15 divine', () => {
   });
 
   it('a lock outlives a fresh sign-in, then expires', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const state = labState(sid, 'divine');
     let t = 1_000_000;
     state.now = () => t;
@@ -183,7 +193,7 @@ describe('GK-15 divine', () => {
   });
 
   it('a code expires after 5 minutes and works only once', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const state = labState(sid, 'divine');
     let t = 2_000_000;
     state.now = () => t;
@@ -193,13 +203,20 @@ describe('GK-15 divine', () => {
     expect((await fire(agent, 'divine', sid, { step: 'verify', code })).text).toContain('Code expired');
     await step(agent, 'divine', sid, RESEND);
     expect((await step(agent, 'divine', sid, RIGHT)).text).toContain('Welcome, citadel_admin');
-    // Single use: the same code again, after success, opens nothing.
-    const again = (await fire(agent, 'divine', sid, { step: 'verify', code: state.otp })).text;
-    expect(again).not.toContain('Welcome');
+  });
+
+  it('Divine\'s own verify() makes a code single-use: after a success the same code is wrong', () => {
+    let t = 1_000;
+    const state: LabState = { otp: '1234', issuedAt: t, pending: 'citadel_admin', resends: 0, counters: new Map(), now: () => t };
+    expect(divineLevel.verify(state, '1234', {})).toMatchObject({ ok: true });
+    t += 1;
+    const again = divineLevel.verify(state, '1234', {});
+    expect(again.ok).toBe(false);
+    expect(divineLevel.verify(state, '', {}).ok).toBe(false); // the cleared code never matches an empty submission
   });
 
   it('limits resends per sign-in', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await step(agent, 'divine', sid, LOGIN_ADMIN);
     for (let i = 0; i < 3; i++) expect((await step(agent, 'divine', sid, RESEND)).text).not.toContain('Too many');
     expect((await step(agent, 'divine', sid, RESEND)).text).toContain('Too many');
@@ -209,7 +226,7 @@ describe('GK-15 divine', () => {
 describe('GK-15 flow and per-player state', () => {
   it('verifying or resending before signing in is refused at every level', async () => {
     for (const level of LEVELS) {
-      const { agent, sid } = await freshSession();
+      const { agent, sid } = await session();
       const bodies: Record<string, string>[] = [{ step: 'verify', code: '0000' }, { step: 'resend' }];
       for (const body of bodies) {
         const res = await fire(agent, level, sid, body);
@@ -221,34 +238,39 @@ describe('GK-15 flow and per-player state', () => {
   });
 
   it('a wrong password never reaches the code step', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const res = await fire(agent, 'acolyte', sid, { step: 'login', username: 'citadel_admin', password: 'nope' });
     expect(res.text).toContain('Invalid username or password.');
     expect(labState(sid, 'acolyte').pending).toBeNull();
   });
 
   it('one player\'s lockout never touches another player', async () => {
-    const a = await freshSession();
-    const b = await freshSession();
+    const a = await session();
+    const b = await session();
     await run(a.agent, 'templar', [LOGIN_ADMIN, ...times(8, WRONG)], a.sid);
     expect((await run(b.agent, 'templar', [LOGIN_ADMIN, RIGHT], b.sid)).text).toMatch(FLAG_RE);
   });
 
   it('a code from one level or session is not valid in another', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     await step(agent, 'acolyte', sid, LOGIN_ADMIN);
     await step(agent, 'templar', sid, LOGIN_ADMIN);
-    const other = await freshSession();
+    const other = await session();
     await step(other.agent, 'acolyte', other.sid, LOGIN_ADMIN);
+    // Re-issue until the three codes differ (a 4-digit code can collide by chance), then use the acolyte one elsewhere.
+    for (let i = 0; i < 40 && new Set([
+      labState(sid, 'acolyte').otp, labState(sid, 'templar').otp, labState(other.sid, 'acolyte').otp]).size < 3; i++) {
+      await step(agent, 'templar', sid, LOGIN_ADMIN);
+      await step(other.agent, 'acolyte', other.sid, LOGIN_ADMIN);
+    }
     const a = labState(sid, 'acolyte').otp;
-    const t = labState(sid, 'templar').otp;
-    const o = labState(other.sid, 'acolyte').otp;
-    if (a !== t) expect((await fire(agent, 'templar', sid, { step: 'verify', code: a })).text).not.toMatch(FLAG_RE);
-    if (a !== o) expect((await fire(other.agent, 'acolyte', other.sid, { step: 'verify', code: a })).text).not.toMatch(FLAG_RE);
+    expect(new Set([a, labState(sid, 'templar').otp, labState(other.sid, 'acolyte').otp]).size).toBe(3);
+    expect((await fire(agent, 'templar', sid, { step: 'verify', code: a })).text).not.toMatch(FLAG_RE);
+    expect((await fire(other.agent, 'acolyte', other.sid, { step: 'verify', code: a })).text).not.toMatch(FLAG_RE);
   });
 
   it('codes are four digits, random per sign-in', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const seen = new Set<string>();
     for (let i = 0; i < 12; i++) {
       await step(agent, 'acolyte', sid, LOGIN_ADMIN);
@@ -260,19 +282,71 @@ describe('GK-15 flow and per-player state', () => {
   });
 });
 
-describe('GK-15 lab view', () => {
-  it('shows the phished admin password and a sign-in form that posts back to the lab', async () => {
-    const { agent } = await freshSession();
+describe('GK-15 re-sign-in does not hand the budget back', () => {
+  // Five wrong codes, then sign in again and try the right one: must be blocked at every level with a limit.
+  const RESIGN: Scenario = [LOGIN_ADMIN, ...times(5, WRONG), LOGIN_ADMIN, RIGHT];
+
+  it.each(['templar', 'inquisitor', 'divine'] as const)('%s still refuses after signing in again', async (level) => {
+    const { agent, sid } = await session();
+    const res = await run(agent, level, RESIGN, sid);
+    expect(res.text).toContain('Too many attempts');
+    expect(res.text).not.toMatch(FLAG_RE);
+  });
+
+  it('inquisitor only starts the cookie counter when the client has none', async () => {
+    const { agent, sid } = await session();
+    const first = await step(agent, 'inquisitor', sid, LOGIN_ADMIN);
+    expect(setCookieValue(first, 'otp_attempts')).toBe('0');
+    await run(agent, 'inquisitor', times(3, WRONG), sid);
+    const again = await step(agent, 'inquisitor', sid, LOGIN_ADMIN);
+    expect(setCookieValue(again, 'otp_attempts')).toBeUndefined(); // the count the client holds is left alone
+  });
+
+  it('templar: only resend clears the counter', async () => {
+    const { agent, sid } = await session();
+    await run(agent, 'templar', [LOGIN_ADMIN, ...times(5, WRONG), LOGIN_ADMIN], sid);
+    expect((await step(agent, 'templar', sid, RIGHT)).text).toContain('Too many attempts');
+    await step(agent, 'templar', sid, RESEND);
+    expect((await step(agent, 'templar', sid, RIGHT)).text).toMatch(FLAG_RE);
+  });
+});
+
+describe('GK-15 restart', () => {
+  it('Restart lab forgets the lock and the code at that level only', async () => {
+    const { agent, sid } = await session();
+    await run(agent, 'templar', [LOGIN_ADMIN, ...times(6, WRONG)], sid);
+    await step(agent, 'acolyte', sid, LOGIN_ADMIN);
+    const acolyteCode = labState(sid, 'acolyte').otp;
+    const res = await agent.post(`${LAB}/_reset?level=templar`);
+    expect(res.status).toBe(303);
+    expect(res.headers.location).toBe(`${LAB}?level=templar`);
+    expect(labState(sid, 'templar').pending).toBeNull();
+    expect((await run(agent, 'templar', [LOGIN_ADMIN, RIGHT], sid)).text).toMatch(FLAG_RE);
+    expect(labState(sid, 'acolyte').otp).toBe(acolyteCode);
+  });
+});
+
+describeLabView({
+  challenge: GK15,
+  path: LAB,
+  account: /pilgrim[\s\S]{0,40}\/[\s\S]{0,40}pilgrim/,
+  echoField: 'username',
+  extra: { step: 'login' },
+  oddBodies: [{ step: { toString: 1 }, code: ['1'] }, { step: 'verify', code: { a: 1 } }, [1, 2], {}],
+  ok: async (agent, level, sid) => step(agent, level, sid, LOGIN_PILGRIM),
+  bad: async (agent, level, sid) => { await step(agent, level, sid, LOGIN_PILGRIM); return step(agent, level, sid, WRONG); },
+});
+
+describe('GK-15 lab view specifics', () => {
+  it('shows the phished admin password and the target', async () => {
+    const { agent } = await session();
     const res = await agent.get(`${LAB}?level=acolyte`);
-    expect(res.status).toBe(200);
     expect(res.text).toContain(ADMIN_PASSWORD);
     expect(res.text).toContain('citadel_admin');
-    expect(res.text).not.toMatch(/type="password"/);
-    for (const form of res.text.matchAll(/<form[^>]*>/g)) expect(form[0]).not.toContain('action');
   });
 
   it('after the password step shows the code form; the player\'s own code appears in their inbox, the admin\'s does not', async () => {
-    const { agent, sid } = await freshSession();
+    const { agent, sid } = await session();
     const mine = (await step(agent, 'acolyte', sid, LOGIN_PILGRIM)).text;
     expect(mine).toContain('name="code"');
     expect(mine).toContain(`Your code is ${labState(sid, 'acolyte').otp}`);
@@ -281,25 +355,12 @@ describe('GK-15 lab view', () => {
     expect(theirs).not.toContain(`Your code is ${labState(sid, 'acolyte').otp}`);
   });
 
-  it('escapes what the player typed; odd bodies are a failed step, never a 500', async () => {
-    const { agent } = await freshSession();
-    const res = await agent.post(`${LAB}?level=templar`).type('form')
-      .send({ step: 'login', username: '"><script>alert(1)</script>', password: 'x' });
-    expect(res.text).toContain('value="&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"');
-    expect(res.text).not.toContain('<script>alert(1)');
-    for (const level of LEVELS) {
-      for (const body of [{ step: { toString: 1 }, code: ['1'] }, { step: 'verify', code: { a: 1 } }, [1, 2], {}]) {
-        const r = await agent.post(`${LAB}?level=${level}`).send(body);
-        expect(r.status, `${level} ${JSON.stringify(body)}`).toBe(200);
-        expect(r.text, level).not.toMatch(FLAG_RE);
-      }
-    }
-  });
-
-  it('marks success and failure messages for styling', async () => {
-    const { agent, sid } = await freshSession();
-    expect((await step(agent, 'templar', sid, LOGIN_PILGRIM)).text).toMatch(/class="lab-message lab-success"/);
-    expect((await step(agent, 'templar', sid, WRONG)).text).toMatch(/class="lab-message lab-error"[^>]*>Incorrect code/);
-    expect((await step(agent, 'templar', sid, RIGHT)).text).toMatch(/class="lab-message lab-success"[^>]*>Welcome, pilgrim/);
+  it('the Inquisitor counter cookie is set on the canonical lab path even for an upper-case URL', async () => {
+    const { agent, sid } = await session();
+    const res = await agent.post(`${LAB.toUpperCase()}?level=inquisitor`).type('form')
+      .send({ step: 'login', username: 'citadel_admin', password: ADMIN_PASSWORD });
+    void sid;
+    const line = [res.headers['set-cookie'] ?? []].flat().find((l) => l.startsWith('otp_attempts='));
+    expect(line).toContain(`Path=${LAB}`);
   });
 });
