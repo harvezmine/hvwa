@@ -1,10 +1,11 @@
 // src/core/checker.ts
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { getChallenge } from './registry.js';
 import { recordSolve, bestSolve } from './scoreboard.js';
 import { FLAG_LEVELS, pointsForLevel } from './levels.js';
 import { unlockHint, parseTier } from './hints.js';
+import { escapeHtml } from './render.js';
 
 // Highest rank first; Divine is the secure reference and is never scored.
 const SCORED_LEVELS_DESC = Object.freeze([...FLAG_LEVELS].reverse());
@@ -12,6 +13,11 @@ const SCORED_LEVELS_DESC = Object.freeze([...FLAG_LEVELS].reverse());
 // Mounts the solve-check + hint endpoints. The client sends only
 // { challengeId, submission }; the server decides which level (if any) the
 // submission proves, so points cannot be inflated by a client-chosen level.
+// htmx callers (the challenge page) send HX-Request and get an HTML fragment;
+// every other caller keeps the JSON contract.
+const isHtmx = (req: Request): boolean => req.get('HX-Request') === 'true';
+function fragment(res: Response, html: string): void { res.type('html').send(html); }
+
 export function checkerRouter(db: DatabaseSync): Router {
   const r = Router();
 
@@ -34,9 +40,18 @@ export function checkerRouter(db: DatabaseSync): Router {
         // level/points = what this submission proved; best = the stored row
         // (unchanged when a lower level is re-solved after a higher one).
         const best = bestSolve(db, sid, ch.id) ?? { level, points };
+        if (isHtmx(req)) {
+          const msg = `${res.locals.t('challenge.result_ok')} ${res.locals.t(`level.${level}`)} (+${points} ${res.locals.t('challenge.points')})`;
+          fragment(res, `<p class="result result-ok" data-solved="true" role="status">${escapeHtml(msg)}</p>`);
+          return;
+        }
         res.json({ solved: true, level, points, best });
         return;
       }
+    }
+    if (isHtmx(req)) {
+      fragment(res, `<p class="result result-bad" data-solved="false" role="status">${escapeHtml(res.locals.t('challenge.result_bad'))}</p>`);
+      return;
     }
     res.json({ solved: false });
   });
@@ -60,6 +75,11 @@ export function checkerRouter(db: DatabaseSync): Router {
       return;
     }
     const { hint } = result;
+    if (isHtmx(req)) {
+      const text = hint.text[req.lang];
+      fragment(res, `<p class="hint-text" data-tier="${hint.id}">${escapeHtml(text)}</p>`);
+      return;
+    }
     res.json({ unlocked: true, tier: hint.id, text: hint.text, cost: hint.cost });
   });
 

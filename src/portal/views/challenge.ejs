@@ -1,0 +1,61 @@
+<h1 class="page-title"><span class="challenge-id"><%= c.id %></span> — <%= c.title[lang] %></h1>
+<p><%= c.summary[lang] %></p>
+<p class="tags">
+<% c.maps.forEach(function (m) { %><span class="tag"><%= m %></span> <% }); %>
+</p>
+
+<section class="card panel">
+  <h2><%= t('challenge.levels') %></h2>
+  <ul class="level-tabs">
+  <% levels.forEach(function (l) { %>
+    <li>
+      <a class="level-tab" data-testid="level-tab-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"><%= t('level.' + l.id) %></a>
+      <span class="badge <%= l.solved ? 'badge-ok' : 'muted' %>"><%= l.solved ? t('challenge.solved') : t('challenge.unsolved') %></span>
+    </li>
+  <% }); %>
+  </ul>
+  <p class="small">
+    <a href="<%= labPath %>"><%= t('challenge.open_lab') %></a>
+  </p>
+</section>
+
+<section class="card panel">
+  <h2><%= t('challenge.hints') %></h2>
+  <ul class="hint-list">
+  <% hints.forEach(function (h) { %>
+    <li id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>">
+    <% if (h.unlocked) { %>
+      <p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p>
+    <% } else { %>
+      <form hx-post="/api/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML">
+        <input type="hidden" name="challengeId" value="<%= c.id %>">
+        <input type="hidden" name="tier" value="<%= h.id %>">
+        <button type="submit"><%= t('challenge.hint_unlock') %> <%= h.id %> (<%= t('challenge.hint_cost') %>: <%= h.cost %>)</button>
+      </form>
+    <% } %>
+    </li>
+  <% }); %>
+  </ul>
+</section>
+
+<section class="card panel">
+  <h2><%= t('challenge.submit_heading') %></h2>
+  <form hx-post="/api/submit" hx-target="#submit-result" hx-swap="innerHTML">
+    <input type="hidden" name="challengeId" value="<%= c.id %>">
+    <label><%= t('challenge.submit_label') %> <input type="text" name="submission" autocomplete="off" required></label>
+    <button type="submit"><%= t('challenge.submit_button') %></button>
+  </form>
+  <div id="submit-result" aria-live="polite"></div>
+</section>
+
+<section class="card panel">
+  <h2><%= t('challenge.source') %></h2>
+  <ul class="source-links">
+  <% sources.forEach(function (l) { %>
+    <li><a href="/c/<%= c.id %>/source/<%= l %>"><%= t('level.' + l) %></a></li>
+  <% }); %>
+  <% if (hasDiff) { %>
+    <li><a href="/c/<%= c.id %>/diff"><%= t('challenge.diff') %></a></li>
+  <% } %>
+  </ul>
+</section>

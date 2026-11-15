@@ -1,0 +1,8 @@
+<h1 class="page-title"><span class="challenge-id"><%= c.id %></span> — <%= c.title[lang] %></h1>
+<p><a href="/c/<%= c.id %>"><%= t('challenge.back') %></a></p>
+<% if (diff !== undefined) { %>
+  <%- diff %>
+<% } else { %>
+  <h2><%= t('level.' + level) %></h2>
+  <pre class="source-view"><code><%= src %></code></pre>
+<% } %>
