@@ -45,11 +45,18 @@ export function t(key: string, lang: Lang = DEFAULT_LANG): string {
   return entry[lang];
 }
 
-// Reads ?lang= or the hvwa_lang cookie; exposes req.lang + res.locals.{lang,t}.
+// lang = valid ?lang= → valid hvwa_lang cookie → DEFAULT_LANG. A valid ?lang=
+// is persisted in the hvwa_lang cookie. Exposes req.lang + res.locals.{lang,t}.
 export function langMiddleware(): RequestHandler {
   return (req, res, next) => {
-    const raw = (req.query?.lang as string | undefined) ?? (req as any).cookies?.hvwa_lang;
-    const lang = resolveLang(raw);
+    const fromQuery = req.query?.lang;
+    let lang: Lang;
+    if (isLang(fromQuery)) {
+      res.cookie('hvwa_lang', fromQuery, { httpOnly: true, sameSite: 'lax', path: '/' });
+      lang = fromQuery;
+    } else {
+      lang = resolveLang(req.cookies?.hvwa_lang);
+    }
     (req as any).lang = lang;
     res.locals.lang = lang;
     res.locals.t = (key: string) => t(key, lang);
