@@ -34,8 +34,9 @@ describe('DB_ERROR_RE', () => {
 
 // A 3-level fixture lab (no inquisitor). `mode` breaks it in one way at a time
 // so each matrix case can be shown to go red.
-const mode = { acolyteSecure: false, divineVulnerable: false, divineLeaks: false, divineFlags: false };
-afterEach(() => { Object.assign(mode, { acolyteSecure: false, divineVulnerable: false, divineLeaks: false, divineFlags: false }); });
+const SOUND = { acolyteSecure: false, templarLikeAcolyte: false, divineVulnerable: false, divineLeaks: false, divineFlags: false };
+const mode = { ...SOUND };
+afterEach(() => { Object.assign(mode, SOUND); });
 
 const EXPLOIT: Partial<Record<Level, string>> = { acolyte: 'A-EXPLOIT', templar: 'T-EXPLOIT' };
 
@@ -48,8 +49,12 @@ const HM01 = register(defineChallenge({
       const q = field(req, 'q');
       const level = req.level;
       let out: string;
+      const errorAt = mode.divineLeaks ? { level: 'acolyte' as const } : req;
       if (q === 'BOOM') {
-        const r = tryDb(mode.divineLeaks ? { level: 'acolyte' } : req, () => { throw new Error('near "BOOM": syntax error'); });
+        const r = tryDb(errorAt, () => { throw new Error('near "BOOM": syntax error'); });
+        out = r.ok ? 'unreachable' : r.message;
+      } else if (q === 'XML-BOOM') {
+        const r = tryDb(errorAt, () => { throw new Error('unexpected end of document'); }, 'Parser error');
         out = r.ok ? 'unreachable' : r.message;
       } else if (q === 'hello') {
         out = 'Hello, guest.';
@@ -58,7 +63,10 @@ const HM01 = register(defineChallenge({
         else out = mode.divineFlags ? `Welcome admin. ${issueFlag(HM01.id, req.sessionId, 'templar')}` : 'Welcome admin.';
       } else if (level === 'divine') {
         out = mode.divineVulnerable && q.endsWith('-EXPLOIT') ? 'Pwned.' : 'Denied.';
-      } else if (q === EXPLOIT[level] && !(level === 'acolyte' && mode.acolyteSecure)) {
+      } else if (
+        (q === EXPLOIT[level] && !(level === 'acolyte' && mode.acolyteSecure))
+        || (level === 'templar' && mode.templarLikeAcolyte && q === EXPLOIT.acolyte)
+      ) {
         out = `Pwned. ${flagFor(req, HM01)}`;
       } else {
         out = 'Denied.';
@@ -94,11 +102,12 @@ describe('exploitMatrixCases', () => {
       'exploits cover exactly the exploitable levels (acolyte, templar)',
       'acolyte: exploit reveals a flag credited at acolyte',
       'divine resists the acolyte exploit',
+      'templar resists the acolyte exploit (step-up)',
       'templar: exploit reveals a flag credited at templar',
       'divine resists the templar exploit',
-      'acolyte: malformed "unbalanced input" shows a database error',
-      'templar: malformed "unbalanced input" shows a database error',
-      'divine: malformed "unbalanced input" shows no database error',
+      'acolyte: malformed "unbalanced input" shows error text',
+      'templar: malformed "unbalanced input" shows error text',
+      'divine: malformed "unbalanced input" shows no error text',
       'acolyte: legit "greeting" works without a flag',
       'templar: legit "greeting" works without a flag',
       'divine: legit "greeting" works without a flag',
@@ -129,10 +138,58 @@ describe('exploitMatrixCases', () => {
 
   it('(d) goes red when Divine leaks the DB error, or a listed level shows none', async () => {
     mode.divineLeaks = true;
-    await expect(caseNamed(MATRIX, 'divine: malformed "unbalanced input" shows no database error')).rejects.toThrow(/divine leaked a database error/);
+    await expect(caseNamed(MATRIX, 'divine: malformed "unbalanced input" shows no error text')).rejects.toThrow(/divine leaked error text/);
     mode.divineLeaks = false;
     const quiet = { ...MATRIX, malformed: [{ name: 'quiet', input: 'hello', levels: ['acolyte'] as const }] };
-    await expect(caseNamed(quiet, 'acolyte: malformed "quiet" shows a database error')).rejects.toThrow(/no database error at acolyte/);
+    await expect(caseNamed(quiet, 'acolyte: malformed "quiet" shows error text')).rejects.toThrow(/no error text at acolyte/);
+  });
+
+  it('errorRe overrides DB_ERROR_RE for (c) and (d) (parser labs)', async () => {
+    const xml = { ...MATRIX, malformed: [{ name: 'bad xml', input: 'XML-BOOM', levels: ['acolyte'] as const }] };
+    // The default pattern does not recognise a parser error...
+    await expect(caseNamed(xml, 'acolyte: malformed "bad xml" shows error text')).rejects.toThrow(/no error text at acolyte/);
+    // ...errorRe does, at the level and (as a leak) at Divine.
+    const parser = { ...xml, errorRe: /Parser error/ };
+    await expect(caseNamed(parser, 'acolyte: malformed "bad xml" shows error text')).resolves.toBeUndefined();
+    await expect(caseNamed(parser, 'divine: malformed "bad xml" shows no error text')).resolves.toBeUndefined();
+    mode.divineLeaks = true;
+    await expect(caseNamed(parser, 'divine: malformed "bad xml" shows no error text')).rejects.toThrow(/divine leaked error text/);
+    await expect(caseNamed(xml, 'divine: malformed "bad xml" shows no error text')).resolves.toBeUndefined(); // default misses it
+  });
+
+  it('(g) step-up goes red when a level is no harder than the one below', async () => {
+    const name = 'templar resists the acolyte exploit (step-up)';
+    await expect(caseNamed(MATRIX, name)).resolves.toBeUndefined();
+    mode.templarLikeAcolyte = true; // templar now also falls for the acolyte exploit
+    await expect(caseNamed(MATRIX, name)).rejects.toThrow(/templar accepted the acolyte exploit/);
+    // Every other case is still green: only (g) notices.
+    const others = exploitMatrixCases(MATRIX).filter((c) => c.name !== name);
+    for (const c of others) await expect(c.run(), c.name).resolves.toBeUndefined();
+  });
+
+  it('(g) targets the NEXT implemented exploitable level (skips missing ones; Divine is (c))', () => {
+    const gap = { ...MATRIX, challenge: { id: 'HM-01', levels: ['acolyte', 'inquisitor', 'divine'] as const },
+      exploits: { acolyte: 'a', inquisitor: 'i' }, malformed: [] };
+    expect(exploitMatrixCases(gap).map((c) => c.name).filter((n) => n.includes('step-up')))
+      .toEqual(['inquisitor resists the acolyte exploit (step-up)']);
+    const four = { ...gap, challenge: { id: 'HM-01', levels: ['acolyte', 'templar', 'inquisitor', 'divine'] as const },
+      exploits: { acolyte: 'a', templar: 't', inquisitor: 'i' } };
+    expect(exploitMatrixCases(four).map((c) => c.name).filter((n) => n.includes('step-up'))).toEqual([
+      'templar resists the acolyte exploit (step-up)', 'inquisitor resists the templar exploit (step-up)',
+    ]);
+  });
+
+  it('cumulative: an explicit opt-out per level drops only that step-up case', () => {
+    const names = exploitMatrixCases({ ...MATRIX, cumulative: ['templar'] }).map((c) => c.name);
+    expect(names.some((n) => n.includes('step-up'))).toBe(false);
+    expect(names).toContain('templar: exploit reveals a flag credited at templar');
+  });
+
+  it('cumulative only names exploitable levels that have a level below', () => {
+    for (const cumulative of [['acolyte'], ['inquisitor'], ['divine']] as const) {
+      expect(() => exploitMatrixCases({ ...MATRIX, cumulative: cumulative as never }), JSON.stringify(cumulative))
+        .toThrow(/cumulative/);
+    }
   });
 
   it('(e) goes red when legit use shows a flag or not the expected text', async () => {

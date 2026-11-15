@@ -75,6 +75,13 @@ export interface ExploitMatrix<I> {
   readonly malformed: readonly { readonly name: string; readonly input: I; readonly levels: readonly ExploitLevel[] }[];
   /** A real privileged login at Divine: works, never a flag. null if the lab has no such identity. */
   readonly privileged: { readonly name: string; readonly input: I; readonly expect: Expectation } | null;
+  /**
+   * Levels where the exploit for the level below legitimately still works, so
+   * the step-up case (g) is skipped for them. Explicit and rare: say why in the spec.
+   */
+  readonly cumulative?: readonly ExploitLevel[];
+  /** What counts as leaked error text in (c) and (d). Default DB_ERROR_RE (e.g. /Parser error/ for XML labs). */
+  readonly errorRe?: RegExp;
 }
 
 /** One generated test case: a name that says the level, and its body. */
@@ -94,6 +101,10 @@ function expectText(text: string, e: Expectation, label: string): void {
  *  (d) each malformed input shows DB-error text at its levels, and none (200, no flag) at Divine
  *  (e) each legit input works at every level: 200, expected text, no flag
  *  (f) the privileged input works at Divine: 200, expected text, no flag
+ *  (g) step-up: the exploit for level L is resisted (no flag, `resisted` text) at
+ *      the next implemented exploitable level above L, unless that level is listed
+ *      in `cumulative` (Divine is already covered by (c))
+ * "Error text" means `errorRe` (default DB_ERROR_RE).
  */
 export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
   const { challenge: c } = m;
@@ -106,6 +117,13 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
       throw new Error(`${at}: malformed "${mc.name}" must list implemented non-Divine levels (got ${mc.levels.join(', ') || 'none'})`);
     }
   }
+  const cumulative = m.cumulative ?? [];
+  for (const l of cumulative) {
+    if (exploitable.indexOf(l) < 1) {
+      throw new Error(`${at}: cumulative "${l}" must be an implemented non-Divine level with an exploitable level below it`);
+    }
+  }
+  const errorRe = m.errorRe ?? DB_ERROR_RE;
   const implemented = LEVELS.filter((l) => c.levels.includes(l));
   const send = async (level: Level, input: I) => {
     const { agent } = await freshSession();
@@ -134,22 +152,31 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
       const { res, text } = await send('divine', input);
       expect(res.status).toBe(200);
       expect(text, 'divine showed a flag').not.toMatch(FLAG_RE);
-      expect(text, 'divine showed a database error').not.toMatch(DB_ERROR_RE);
+      expect(text, 'divine showed error text').not.toMatch(errorRe);
       expectText(text, m.resisted, 'divine did not answer with the resisted text');
     });
+    const next = exploitable[exploitable.indexOf(level) + 1];
+    if (next !== undefined && !cumulative.includes(next)) {
+      add(`${next} resists the ${level} exploit (step-up)`, async () => {
+        const { text } = await send(next, input);
+        expect(text, `${next} accepted the ${level} exploit (showed a flag): it is no harder than ${level}`)
+          .not.toMatch(FLAG_RE);
+        expectText(text, m.resisted, `${next} did not answer the ${level} exploit with the resisted text`);
+      });
+    }
   }
 
   for (const mc of m.malformed) {
     for (const level of exploitable.filter((l) => mc.levels.includes(l))) {
-      add(`${level}: malformed "${mc.name}" shows a database error`, async () => {
+      add(`${level}: malformed "${mc.name}" shows error text`, async () => {
         const { text } = await send(level, mc.input);
-        expect(text, `no database error at ${level}`).toMatch(DB_ERROR_RE);
+        expect(text, `no error text at ${level}`).toMatch(errorRe);
       });
     }
-    add(`divine: malformed "${mc.name}" shows no database error`, async () => {
+    add(`divine: malformed "${mc.name}" shows no error text`, async () => {
       const { res, text } = await send('divine', mc.input);
       expect(res.status).toBe(200);
-      expect(text, 'divine leaked a database error').not.toMatch(DB_ERROR_RE);
+      expect(text, 'divine leaked error text').not.toMatch(errorRe);
       expect(text, 'divine showed a flag').not.toMatch(FLAG_RE);
     });
   }
