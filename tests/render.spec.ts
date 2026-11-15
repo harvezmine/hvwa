@@ -29,6 +29,14 @@ describe('diffView (LCS)', () => {
     expect(rowKinds(html)).toEqual(['same', 'changed', 'same']);
   });
 
+  it("diffView('', 'a') renders one add row with no numbered empty left line", () => {
+    const html = diffView('', 'a', 'en');
+    expect(rowKinds(html)).toEqual(['add']);
+    expect(html).toContain('<td class="diff-ln"></td><td class="diff-vuln diff-empty"></td>');
+    expect(html).not.toContain('<td class="diff-ln">1</td><td class="diff-vuln">');
+    expect(html).toContain('<td class="diff-ln">1</td><td class="diff-secure"><pre>a</pre></td>');
+  });
+
   it('treats CRLF like LF and ignores a single trailing newline', () => {
     expect(rowKinds(diffView('a\r\nb\r\n', 'a\nb', 'en'))).toEqual(['same', 'same']);
   });

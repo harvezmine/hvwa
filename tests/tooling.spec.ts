@@ -1,10 +1,27 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const json = (file: string) => JSON.parse(readFileSync(join(root, file), 'utf8'));
+
+describe('architecture', () => {
+  it('core/ never imports from portal/ or districts/ (the engine is challenge-agnostic)', () => {
+    const coreDir = join(root, 'src', 'core');
+    const offenders = readdirSync(coreDir)
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => /from\s+['"]\.\.\/(portal|districts)\//.test(readFileSync(join(coreDir, f), 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
+  it('the shared layout lives in core; the portal owns its own views dir', async () => {
+    expect(existsSync(join(root, 'src', 'core', 'views', 'layout.ejs'))).toBe(true);
+    expect(existsSync(join(root, 'src', 'portal', 'views', 'layout.ejs'))).toBe(false);
+    const portal = await import('../src/portal/index.js');
+    expect(portal.portalViewsDir).toBe(join(root, 'src', 'portal', 'views'));
+  });
+});
 
 describe('tooling', () => {
   it('the build tsconfig excludes spec files (district specs live under src/)', () => {

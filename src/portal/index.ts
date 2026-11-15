@@ -1,11 +1,14 @@
 // src/portal/index.ts
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { allChallenges, type Challenge } from '../core/registry.js';
 import { scoreFor, progress } from '../core/scoreboard.js';
-import { sendPage, portalViewsDir } from '../core/render.js';
+import { sendPage } from '../core/render.js';
 
+/** The portal's own EJS views (the shared layout lives in core/views). */
+export const portalViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
 const view = (name: string) => join(portalViewsDir, `${name}.ejs`);
 
 // Reads only the registry; never imports a challenge directly.
