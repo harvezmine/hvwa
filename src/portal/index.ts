@@ -158,7 +158,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const src = c && isLevel(level) ? levelSource(c, level) : undefined;
     if (!c || !isLevel(level) || src === undefined) { next(); return; }
     await sendPage(res, view('source'), {
-      title: `${c.id} — ${res.locals.t(`level.${level}`)}`, c, level, src, diff: undefined,
+      title: `${c.id} — ${res.locals.t(`level.${level}`)}`, c, srcLevel: level, src, diff: undefined,
     });
   });
 
@@ -167,7 +167,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const pair = c ? diffPair(c) : undefined;
     if (!c || !pair) { next(); return; }
     await sendPage(res, view('source'), {
-      title: `${c.id} — ${res.locals.t('challenge.diff_title')}`, c, level: undefined, src: undefined,
+      title: `${c.id} — ${res.locals.t('challenge.diff_title')}`, c, srcLevel: undefined, src: undefined,
       diff: diffView(pair.vuln, pair.secure, req.lang, pair.level),
     });
   });

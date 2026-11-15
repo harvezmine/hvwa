@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= typeof title !== 'undefined' ? title : t('app.title') %></title>
+  <title><%= typeof title !== 'undefined' ? title : (labBar ? labBar.pageTitle : t('app.title')) %></title>
   <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/vendor/htmx.min.js"></script>
@@ -21,6 +21,22 @@
     </span>
   </header>
   <main class="content">
+<% if (labBar) { -%>
+    <nav class="lab-bar" data-testid="lab-bar" aria-label="<%= t('lab.bar_label') %>">
+      <div class="lab-bar-head">
+        <span class="challenge-id"><%= labBar.id %></span>
+        <span class="lab-bar-title"><%= labBar.title %></span>
+        <span class="badge lab-bar-level" title="<%= t('lab.current_level') %>" data-testid="lab-level" data-level="<%= labBar.level %>"><%= labBar.levelLabel %></span>
+        <a class="lab-bar-back" href="<%= labBar.backHref %>"><%= t('challenge.back') %></a>
+      </div>
+      <p class="lab-bar-summary"><%= labBar.summary %></p>
+      <ul class="lab-levels" aria-label="<%= t('lab.switch_level') %>">
+<% labBar.levels.forEach(function (l) { -%>
+        <li><a href="<%= l.href %>" data-level="<%= l.id %>"<% if (l.current) { %> aria-current="page" class="current"<% } %>><%= l.label %></a></li>
+<% }); -%>
+      </ul>
+    </nav>
+<% } -%>
     <%- body %>
   </main>
 </body>

@@ -87,3 +87,29 @@ a:hover { text-decoration: underline; }
 .level-tabs, .hint-list, .source-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .result-ok { color: var(--accent); }
 .source-view { overflow-x: auto; padding: 1rem; border: 1px solid var(--border); border-radius: 0.5rem; font-family: var(--mono); font-size: 12px; }
+
+/* lab bar (layout, every /d/<district>/<slug> page): platform guidance above the lab */
+.lab-bar { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0.5rem; background: var(--surface); padding: 0.75rem 1rem; margin: 0 0 1.5rem; font-size: 0.875rem; }
+.lab-bar-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.lab-bar-title { font-weight: 600; }
+.lab-bar-level { color: var(--accent); border-color: var(--accent); }
+.lab-bar-back { margin-left: auto; color: var(--muted); }
+.lab-bar-back:hover { color: var(--text); }
+.lab-bar-summary { margin: 0.5rem 0; color: var(--muted); }
+.lab-levels { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.lab-levels a { display: inline-block; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.125rem 0.5rem; color: var(--muted); }
+.lab-levels a:hover { color: var(--text); border-color: var(--muted); text-decoration: none; }
+.lab-levels a.current { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+/* .lab: the deliberately vulnerable target app inside a challenge view */
+.lab { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1.25rem; max-width: 40rem; }
+.lab h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+.lab form { display: grid; gap: 0.75rem; }
+.lab label { display: grid; gap: 0.25rem; font-size: 0.875rem; color: var(--muted); }
+.lab input, .lab textarea, .lab select { font: inherit; font-family: var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.4rem 0.5rem; }
+.lab button { justify-self: start; font: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: 0.25rem; padding: 0.4rem 1rem; font-weight: 600; cursor: pointer; }
+.lab-note { font-size: 0.875rem; color: var(--muted); }
+.lab-note code { font-family: var(--mono); color: var(--text); }
+.lab-message { font-family: var(--mono); font-size: 0.875rem; overflow-wrap: anywhere; white-space: pre-wrap; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.75rem; margin: 1rem 0 0; }
+.lab-success { border-color: #166534; background: var(--add-bg); color: #bbf7d0; }
+.lab-error { border-color: #991b1b; background: var(--del-bg); color: var(--danger-text); }

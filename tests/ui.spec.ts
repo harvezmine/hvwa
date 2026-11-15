@@ -26,6 +26,16 @@ describe('offline UI shell', () => {
     expect(res.text).toContain('.diff-view');
   });
 
+  it('app.css styles labs: lab bar, .lab, messages (mono, wrap anywhere) with success/error modifiers', async () => {
+    const css = (await request(createApp()).get('/static/app.css')).text;
+    for (const sel of ['.lab-bar', '.lab-levels', '.lab {', '.lab-message', '.lab-success', '.lab-error']) {
+      expect(css, sel).toContain(sel);
+    }
+    const message = /\.lab-message\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(message).toContain('font-family: var(--mono)');
+    expect(message).toContain('overflow-wrap: anywhere');
+  });
+
   it('serves htmx 2.0.4 from node_modules at /static/vendor/htmx.min.js', async () => {
     const res = await request(createApp()).get('/static/vendor/htmx.min.js');
     expect(res.status).toBe(200);

@@ -452,6 +452,7 @@ describe('GET /c/:id/source/:level', () => {
     expect(res.text).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(res.text).not.toContain('<script>alert(1)');
     expect(res.text).toMatch(/<pre[^>]*>/);
+    expect((await agent.get('/c/CP-01/source/acolyte?lang=en')).text).toContain('<h2>Acolyte</h2>');
   });
   it('serves divine source when the file exists', async () => {
     const { agent } = await fresh();
