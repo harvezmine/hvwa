@@ -1,9 +1,80 @@
-/* src/public/app.css — portal static styles (Tailwind + htmx loaded via CDN). */
-:root { color-scheme: dark; }
+/* src/public/app.css — all portal styles. Served locally; no CDN at runtime. */
+:root {
+  color-scheme: dark;
+  --bg: #020617;
+  --surface: #0f172a;
+  --border: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --accent: #fbbf24;
+  --danger-bg: #7f1d1d;
+  --danger-text: #fee2e2;
+  --del-bg: #450a0a;
+  --add-bg: #052e16;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
 
-.diff-view { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.safety-banner {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  text-align: center;
+}
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; font-size: 1.125rem; }
+.site-nav { display: flex; gap: 1rem; font-size: 0.875rem; color: var(--muted); }
+.site-nav a:hover { color: var(--text); }
+.lang-switch { margin-left: auto; font-size: 0.75rem; color: var(--faint); }
+.lang-switch a:hover { color: var(--text); }
+
+.content { max-width: 64rem; margin: 0 auto; padding: 2rem 1rem; }
+.page-title { font-size: 1.5rem; font-weight: 700; margin: 0 0 1.5rem; }
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; font-weight: 400; }
+
+.card { border: 1px solid var(--border); border-radius: 0.5rem; background: var(--surface); }
+
+.district-grid { display: grid; gap: 1.5rem; }
+.district { padding: 1rem; }
+.district-name { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.75rem; text-transform: capitalize; }
+.challenge-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.875rem; }
+.challenge-id { font-family: var(--mono); color: var(--accent); }
+
+.stat-row { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.stat { padding: 1.5rem; min-width: 8rem; }
+.stat-label { color: var(--muted); font-size: 0.875rem; }
+.stat-value { font-size: 2.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.accent { color: var(--accent); }
+
+/* diffView: Acolyte (vulnerable) vs Divine (secure) */
+.diff-view { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
 .diff-view th, .diff-view td { border: 1px solid #334155; padding: 2px 6px; vertical-align: top; }
+.diff-view th { text-align: left; color: var(--muted); font-weight: 600; }
 .diff-view pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
-.diff-ln { color: #64748b; text-align: right; user-select: none; }
-.diff-changed .diff-vuln { background: #450a0a; }
-.diff-changed .diff-secure { background: #052e16; }
+.diff-ln { color: var(--faint); text-align: right; user-select: none; width: 1%; white-space: nowrap; }
+.diff-changed .diff-vuln, .diff-del .diff-vuln { background: var(--del-bg); }
+.diff-changed .diff-secure, .diff-add .diff-secure { background: var(--add-bg); }
+.diff-empty { background: repeating-linear-gradient(45deg, transparent 0 4px, #0b1220 4px 8px); }

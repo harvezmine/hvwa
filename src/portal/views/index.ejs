@@ -1,21 +1,21 @@
-<h1 class="text-2xl font-bold mb-6"><%= t('portal.heading') %></h1>
+<h1 class="page-title"><%= t('portal.heading') %></h1>
 <% if (districts.length === 0) { %>
-  <p class="text-slate-400"><%= t('portal.no_challenges') %></p>
+  <p class="muted"><%= t('portal.no_challenges') %></p>
 <% } %>
-<div class="grid gap-6">
+<div class="district-grid">
 <% districts.forEach(function (d) { %>
-  <section class="border border-slate-800 rounded-lg p-4">
-    <h2 class="text-xl font-semibold mb-3 capitalize"><%= d.id %>
-      <span class="text-slate-500 text-sm">(<%= d.challenges.length %> <%= t('portal.challenges') %>)</span>
+  <section class="card district" data-district="<%= d.id %>">
+    <h2 class="district-name"><%= d.id %>
+      <span class="muted small">(<%= d.challenges.length %> <%= t('portal.challenges') %>)</span>
     </h2>
-    <ul class="space-y-1">
+    <ul class="challenge-list">
     <% d.challenges.forEach(function (c) { %>
-      <li class="text-sm">
-        <a class="hover:underline" href="/d/<%= d.id %>/<%= c.slug %>">
-          <span class="font-mono text-amber-400"><%= c.id %></span>
+      <li>
+        <a href="/d/<%= d.id %>/<%= c.slug %>">
+          <span class="challenge-id"><%= c.id %></span>
           — <%= c.title[lang] %>
         </a>
-        <span class="text-slate-500">[<%= c.levels.join(', ') %>]</span>
+        <span class="muted">[<%= c.levels.join(', ') %>]</span>
       </li>
     <% }); %>
     </ul>

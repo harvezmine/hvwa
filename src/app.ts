@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { openDb, migrate } from './db/index.js';
@@ -14,6 +15,8 @@ import { errorHandler } from './core/errors.js';
 import { portalRouter } from './portal/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// Vendored htmx (pinned dependency), served locally — no network at runtime.
+const htmxDistDir = join(dirname(createRequire(import.meta.url).resolve('htmx.org/package.json')), 'dist');
 
 export interface AppOptions {
   /** SQLite path. Defaults to an in-memory database (tests). */
@@ -37,7 +40,8 @@ export function createApp(opts: AppOptions = {}): Express {
   app.use(sessionMiddleware());
   app.use(levelMiddleware());
   app.use(langMiddleware());
-  app.use('/static', express.static(join(here, 'public')));
+  app.use('/static/vendor', express.static(htmxDistDir, { index: false }));
+  app.use('/static', express.static(join(here, 'public'), { index: false }));
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
   app.use('/api', checkerRouter(db));

@@ -4,33 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= typeof title !== 'undefined' ? title : t('app.title') %></title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js"></script>
-  <style>
-    .diff-view { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
-    .diff-view th, .diff-view td { border: 1px solid #334155; padding: 2px 6px; vertical-align: top; }
-    .diff-view pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
-    .diff-ln { color: #64748b; text-align: right; user-select: none; }
-    .diff-changed .diff-vuln { background: #450a0a; }
-    .diff-changed .diff-secure { background: #052e16; }
-  </style>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/vendor/htmx.min.js"></script>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
-  <div class="bg-red-900 text-red-100 text-sm px-4 py-2 text-center">
-    <%= t('safety.warning') %>
-  </div>
-  <header class="border-b border-slate-800 px-6 py-4 flex items-center gap-6">
-    <a href="/" class="font-bold text-lg"><%= t('app.title') %></a>
-    <nav class="flex gap-4 text-sm text-slate-300">
-      <a href="/" class="hover:text-white"><%= t('nav.districts') %></a>
-      <a href="/scoreboard" class="hover:text-white"><%= t('nav.scoreboard') %></a>
+<body>
+  <div class="safety-banner" role="alert"><%= t('safety.warning') %></div>
+  <header class="site-header">
+    <a href="/" class="brand"><%= t('app.title') %></a>
+    <nav class="site-nav">
+      <a href="/"><%= t('nav.districts') %></a>
+      <a href="/scoreboard"><%= t('nav.scoreboard') %></a>
     </nav>
-    <span class="ml-auto text-xs text-slate-500">
-      <a href="?lang=id" class="hover:text-white">ID</a> ·
-      <a href="?lang=en" class="hover:text-white">EN</a>
+    <span class="lang-switch">
+      <a href="?lang=id">ID</a> · <a href="?lang=en">EN</a>
     </span>
   </header>
-  <main class="px-6 py-8 max-w-5xl mx-auto">
+  <main class="content">
     <%- body %>
   </main>
 </body>
