@@ -26,6 +26,17 @@ Open **http://127.0.0.1:1337**. Stop with `docker compose down`, which keeps
 your progress. `docker compose down -v` resets it. From any other directory,
 use `docker compose -p hvwa down`.
 
+**After pulling new changes**, rebuild and recreate everything:
+
+```sh
+docker compose up -d --build --force-recreate
+```
+
+A plain `up -d` can keep running an old `hvwa-app:local` image, possibly one
+built from another checkout. When a network setting has changed, it can also
+leave the app re-attached without its service name, and the proxy then
+answers 502.
+
 The stack runs the app non-root on a read-only filesystem, on an internal
 network with **no internet access and no route to your machine**, behind a
 proxy published on loopback only. To check all of that on your machine (needs

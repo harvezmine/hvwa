@@ -95,22 +95,41 @@ async function poll(what, fn, timeoutMs) {
 const isEcho = async () => JSON.parse((await getWithHost('/__echo', 'localhost:1337')).body).hvwaEcho === true;
 const isApp = async () => JSON.parse((await getWithHost('/healthz', 'localhost:1337')).body).status === 'ok';
 
-/** Run `fn` while the echo server stands in for the app; the real app is restored afterwards. */
+// Set when a check leaves the stack in a state the remaining checks cannot use;
+// they are then reported as SKIP with this reason instead of failing confusingly.
+let brokenStack = '';
+
+/**
+ * Run `fn` while the echo server stands in for the app, then restore the real
+ * app. If the restore fails, the stack is marked broken, and the error
+ * reports BOTH fn's failure (if any) and the restore failure.
+ */
 async function withEchoUpstream(fn) {
   const stop = compose(['stop', 'app']);
   if (stop.code !== 0) throw new Error(`docker compose stop app: ${show(stop)}`);
+  let result;
+  let failure;
   try {
     run('docker', ['rm', '-f', ECHO_NAME]);
     const r = compose(['run', '-d', '--no-deps', '--use-aliases', '--name', ECHO_NAME, 'app', 'node', '-e', ECHO_JS]);
     if (r.code !== 0) throw new Error(`starting the echo upstream: ${show(r)}`);
     await poll('the proxy did not reach the echo upstream', isEcho, 45_000); // nginx re-resolves `app` every 10 s
-    return await fn();
-  } finally {
+    result = await fn();
+  } catch (err) {
+    failure = err;
+  }
+  try {
     run('docker', ['rm', '-f', ECHO_NAME]);
-    compose(['start', 'app']);
+    const start = compose(['start', 'app']);
+    if (start.code !== 0) throw new Error(`docker compose start app: ${show(start)}`);
     await waitHealthy('app', 60_000);
     await poll('the proxy did not reach the restored app', isApp, 45_000);
+  } catch (err) {
+    brokenStack = `the real app was not restored after the echo check (${err.message})`;
+    throw new Error(failure ? `${failure.message} — AND ${brokenStack}` : brokenStack);
   }
+  if (failure) throw failure;
+  return result;
 }
 
 /** Parse a raw HTTP/1.x response: status, whether it sets a cookie, body. */
@@ -201,13 +220,22 @@ function tcpProbe(targets) {
   return JSON.parse(r.out);
 }
 
-/** a.b.c.d/n -> the first host address of the subnet (where a bridge gateway would sit). */
-function firstHost(cidr) {
+const ipToInt = (ip) => ip.split('.').reduce((acc, o) => (acc * 256) + Number(o), 0);
+const intToIp = (v) => [24, 16, 8, 0].map((s) => (v >>> s) & 255).join('.');
+/** a.b.c.d/n -> { network, size } as integers. */
+function subnetOf(cidr) {
   const [ip, bits] = cidr.split('/');
-  const n = ip.split('.').reduce((acc, o) => (acc * 256) + Number(o), 0);
-  const mask = Number(bits) === 0 ? 0 : (2 ** 32) - (2 ** (32 - Number(bits)));
-  const v = ((n & mask) >>> 0) + 1;
-  return [24, 16, 8, 0].map((s) => (v >>> s) & 255).join('.');
+  const size = 2 ** (32 - Number(bits));
+  return { network: Math.floor(ipToInt(ip) / size) * size, size };
+}
+/** The first host address of the subnet (where a bridge gateway would sit). */
+const firstHost = (cidr) => intToIp(subnetOf(cidr).network + 1);
+/** Up to two host addresses in the subnet that no container holds (the middle and the last one). */
+function unusedHosts(cidr, held) {
+  const { network, size } = subnetOf(cidr);
+  if (size < 8) return [];
+  return [...new Set([network + Math.floor(size / 2), network + size - 2])]
+    .map(intToIp).filter((ip) => !held.has(ip) && ip !== firstHost(cidr));
 }
 
 /** The app's only network (the internal `lab`), inspected. */
@@ -421,38 +449,57 @@ const checks = [
     }
     return `${lab.Name}: internal, gateway_mode_ipv4=isolated`;
   }],
-  ['NO route to the Docker host (lab subnet .1 / IPAM gateway, host address on edge; many ports)', () => {
+  ['NO route to the Docker host (no host address on lab; unused lab addresses silent; many ports)', () => {
     const lab = labNetwork();
-    // Where the host would sit on lab: the subnet's first address and the IPAM
-    // gateway. With an isolated gateway Docker hands .1 to a container instead;
-    // an address held by one of our containers is not the host, so it is skipped.
     const held = new Map(Object.values(lab.Containers ?? {}).map((c) => [c.IPv4Address?.split('/')[0], c.Name]));
+    const subnets = (lab.IPAM?.Config ?? []).filter((c) => c.Subnet && !c.Subnet.includes(':'));
+    if (subnets.length === 0) throw new Error(`${lab.Name} has no IPv4 subnet to probe`);
+    // 1. Where the host would sit on lab: the subnet's .1 and the IPAM gateway.
+    //    With an isolated gateway there is no host address and Docker hands .1
+    //    to a container; an address one of our containers holds is not the
+    //    host, so it is reported instead of probed.
     const candidates = new Set();
-    for (const c of lab.IPAM?.Config ?? []) {
-      if (c.Subnet && !c.Subnet.includes(':')) candidates.add(firstHost(c.Subnet));
+    for (const c of subnets) {
+      candidates.add(firstHost(c.Subnet));
       if (c.Gateway && !c.Gateway.includes(':')) candidates.add(c.Gateway);
     }
-    if (candidates.size === 0) throw new Error(`${lab.Name} has no IPv4 subnet to probe`);
-    const skipped = [...candidates].filter((ip) => held.has(ip)).map((ip) => `${ip} is ${held.get(ip)}`);
-    const ips = [...candidates].filter((ip) => !held.has(ip));
-    // The host's own address on the other HVWA bridge (edge) must be unreachable too.
+    const ours = [...candidates].filter((ip) => held.has(ip)).map((ip) => `${ip} is ${held.get(ip)}`);
+    const groups = {
+      'host candidates': [...candidates].filter((ip) => !held.has(ip)),
+      // 2. Sanity: addresses on lab that nobody holds must not answer either.
+      'unused lab addresses': subnets.flatMap((c) => unusedHosts(c.Subnet, held)),
+      // 3. Off-link control: the host's address on edge. Expect ENETUNREACH (no route at all).
+      'off-link control (edge gateway)': [],
+    };
     const proxyNets = Object.keys(inspect('container', containerId('proxy')).NetworkSettings.Networks ?? {});
     for (const name of proxyNets.filter((n) => n !== lab.Name)) {
       for (const c of inspect('network', name).IPAM?.Config ?? []) {
-        if (c.Gateway && !c.Gateway.includes(':')) ips.push(c.Gateway);
-        else if (c.Subnet && !c.Subnet.includes(':')) ips.push(firstHost(c.Subnet));
+        if (c.Gateway && !c.Gateway.includes(':')) groups['off-link control (edge gateway)'].push(c.Gateway);
       }
     }
-    if (ips.length === 0) throw new Error('nothing to probe');
     const ports = [9, 22, 53, 80, 443, 1337, 2375, 3000, 5432, 8080];
-    const outcomes = tcpProbe(ips.flatMap((ip) => ports.map((p) => [ip, p])));
+    const all = Object.values(groups).flat();
+    if (all.length === 0) throw new Error('nothing to probe');
+    const outcomes = tcpProbe(all.flatMap((ip) => ports.map((p) => [ip, p])));
     const reached = [];
     for (const [target, outcome] of Object.entries(outcomes)) {
       try { blockedOrThrow(target, outcome); } catch { reached.push(`${target} ${outcome}`); }
     }
     if (reached.length) throw new Error(`the app reaches the host: ${reached.join(', ')}`);
-    const kinds = [...new Set(Object.values(outcomes))].join('/');
-    return `${ips.join(', ')} x ${ports.length} ports: all ${kinds}${skipped.length ? ` (skipped: ${skipped.join('; ')})` : ''}`;
+    const summary = (ips) => {
+      const kinds = [...new Set(ips.flatMap((ip) => ports.map((p) => outcomes[`${ip}:${p}`])))].join('/');
+      return `${ips.join(', ')} x ${ports.length} ports: ${kinds}`;
+    };
+    const parts = [];
+    if (groups['host candidates'].length) parts.push(`host candidates ${summary(groups['host candidates'])}`);
+    else {
+      const isolated = lab.Options?.['com.docker.network.bridge.gateway_mode_ipv4'] === 'isolated';
+      parts.push(`no host address on lab (${isolated ? 'gateway isolated; ' : ''}${ours.join('; ')})`);
+    }
+    for (const label of ['unused lab addresses', 'off-link control (edge gateway)']) {
+      if (groups[label].length) parts.push(`${label} ${summary(groups[label])}`);
+    }
+    return parts.join('; ');
   }],
   ['NO egress from the app (example.com, 1.1.1.1, the Docker host)', () => {
     // Positive control: the very same probe can reach the app itself.
@@ -577,8 +624,13 @@ async function main() {
   say(assertNoForeignStack());
   say(await assertPortAvailable());
   started = true;
-  say('building and starting: docker compose -p hvwa up -d --build --wait');
-  const up = compose(['up', '-d', '--build', '--wait', '--wait-timeout', '180'], { inherit: true, timeoutMs: 900_000 });
+  // --force-recreate: every run starts from a known state. Without it, an
+  // existing container whose config did not change is only re-attached to a
+  // re-created network (e.g. after a driver option changed) and loses its
+  // `app` alias, which makes the proxy answer 502.
+  say('building and starting: docker compose -p hvwa up -d --build --force-recreate --wait');
+  const up = compose(['up', '-d', '--build', '--force-recreate', '--wait', '--wait-timeout', '180'],
+    { inherit: true, timeoutMs: 900_000 });
   if (up.code !== 0) {
     const ps = compose(['ps', '-a']);
     const logs = compose(['logs', '--no-color', '--tail', '60']);
@@ -588,6 +640,11 @@ async function main() {
 
   const failures = [];
   for (const [name, fn] of checks) {
+    if (brokenStack) {
+      failures.push(name);
+      say(`SKIP ${name} — not run: ${brokenStack}`);
+      continue;
+    }
     try {
       const detail = await fn();
       say(`PASS ${name}${detail ? ` — ${detail}` : ''}`);
@@ -599,8 +656,9 @@ async function main() {
   if (failures.length) {
     const logs = compose(['logs', '--no-color', '--tail', '40']);
     console.error(logs.out || logs.err);
-    throw new Error(`${failures.length} check(s) failed: ${failures.join('; ')}`);
+    throw new Error(`${failures.length} of ${checks.length} check(s) failed or were skipped: ${failures.join('; ')}`);
   }
+  return checks.length;
 }
 
 function down() {
@@ -627,6 +685,6 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]
 }
 
 main().then(
-  () => { down(); say('OK — the hardened container stack holds'); },
+  (n) => { down(); say(`OK — all ${n} checks passed: the hardened container stack holds`); },
   (err) => { down(); console.error(`verify:docker FAILED: ${err.message}`); process.exitCode = 1; },
 );
