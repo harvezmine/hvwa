@@ -1,7 +1,8 @@
 <%# GK-17 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <section class="lab">
   <h1>Citadel Gate — Sessions</h1>
-  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the session of <code><%= target %></code>, who is already signed in. His console is at <a href="<%= base %>/admin?level=<%= level %>">admin</a>. The lab cookie is <code><%= cookie %></code>; it is HttpOnly, so edit it in the browser devtools (storage) or send it with <code>curl -b</code>.</p>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the session of <code><%= target %></code>, who is already signed in. His console is at <a href="<%= base %>/admin?level=<%= level %>">admin</a>. The lab cookie is <code><%= cookie %></code>; it is HttpOnly, so edit it in the browser devtools (storage panel).</p>
+  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
   <p class="lab-note">Your session: <code><%= token %></code></p>
   <p class="lab-note">Sessions issued to you, oldest first: <% ownTokens.forEach(function (t, i) { %><%= i > 0 ? ', ' : '' %><code><%= t %></code><% }); %></p>
   <form method="post">

@@ -1,0 +1,13 @@
+<%# Shared admin page of the Gatekeeper labs (see sendAdminPage in lab.ts). Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Admin area</h1>
+<% if (admin) { -%>
+  <p class="lab-message lab-success" role="status" data-testid="lab-message"><%= granted %></p>
+<% if (pre) { -%>
+  <pre><%= pre %></pre>
+<% } -%>
+<% } else { -%>
+  <p class="lab-message lab-error" role="status" data-testid="lab-message"><%= denial %></p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to the lab</a></p>
+</section>

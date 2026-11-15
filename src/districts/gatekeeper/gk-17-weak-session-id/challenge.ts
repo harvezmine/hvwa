@@ -3,10 +3,9 @@ import { join } from 'node:path';
 import type { Request, Response } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
 import { byLevel, field, labPath } from '../../../core/lab.js';
-import { flagFor } from '../../../core/mount.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
-import { ADMIN_NAME, PLAYER, type Result } from '../_shared/lab.js';
+import { ADMIN_NAME, PLAYER, adminNote, curlFor, sendAdminPage, type Result } from '../_shared/lab.js';
 import {
   GUEST_NAME, cookieName, giveToVisitor, labFor, resetLab, startSession, whoIs, type LabState, type TokenLevel,
 } from './model.js';
@@ -17,7 +16,6 @@ import * as divine from './levels/divine.js';
 
 const dir = challengeDir(import.meta.url);
 const sessionView = join(dir, 'views', 'session.ejs');
-const adminView = join(dir, 'views', 'admin.ejs');
 const impl = byLevel<TokenLevel>({ acolyte, templar, inquisitor, divine });
 
 // The lab cookie is HttpOnly on purpose (a session cookie should be); the page tells players to use
@@ -80,7 +78,7 @@ export const GK17 = register(defineChallenge({
       result: Result | null, username: string, password: string,
     ): Record<string, unknown> {
       return {
-        base: labPath(res), cookie: cookieName(req.level), account: PLAYER, target: ADMIN_NAME, token, result, username, password,
+        base: labPath(res), cookie: cookieName(req.level), curl: curlFor(req, res, { path: '/admin', cookies: [`${cookieName(req.level)}=<session id>`] }), account: PLAYER, target: ADMIN_NAME, token, result, username, password,
         ownTokens: state.ownTokens,
         activity: state.activity.map((a) => ({ user: a.user, epoch: level.showsLoginTime ? a.epoch : null })),
       };
@@ -116,8 +114,10 @@ export const GK17 = register(defineChallenge({
       // Probing the admin page changes nothing: before the lab starts there is simply no admin session.
       const admin = whoIs(state, cookieOf(req)) === ADMIN_NAME;
       // Only the admin's session sees the flag, and Divine never issues one.
-      const note = !admin ? '' : req.level === 'divine' ? 'Welcome back.' : `Flag: ${flagFor(req, GK17)}`;
-      await sendPage(res, adminView, { base: labPath(res), admin, note });
+      await sendAdminPage(res, {
+        admin, granted: `Citadel admin console. ${adminNote(req, GK17, admin)}`.trim(),
+        denial: 'Admin only. Present the session cookie of the citadel admin.', denyStatus: 200,
+      });
     });
   },
   reset: (req) => { resetLab(req); },

@@ -9,6 +9,7 @@ import {
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { GK17 } from './challenge.js'; // registers GK-17 before createApp() inside freshSession
 import { cookieName, labState } from './model.js';
+import { describeCurlExample } from '../_shared/pilgrim-lab.testkit.js';
 
 const LAB = '/d/gatekeeper/weak-session-id';
 const ADMIN = 'citadel_admin';
@@ -371,7 +372,7 @@ describe('GK-17 the lab is not disturbed by probing', () => {
     expect(line).toContain(`Path=${LAB}`);
     expect(line).toMatch(/HttpOnly/i);
     expect(res.text).toContain('citadel_sid_templar');
-    expect(res.text).toMatch(/devtools[\s\S]*curl -b/);
+    expect(res.text).toMatch(/devtools[\s\S]*-b/);
   });
 
   it('Restart lab starts that level over: a new admin session, and the old admin token is dead', async () => {
@@ -399,6 +400,11 @@ describeLabView({
   oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
   ok: (agent, level, sid) => login({ agent, level, sid }),
   bad: (agent, level) => agent.post(`${LAB}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'x' }),
+});
+
+describeCurlExample({
+  challenge: GK17, path: LAB,
+  curl: (level) => ({ path: '/admin', cookies: [`${cookieName(level)}=<session id>`] }),
 });
 
 describe('GK-17 lab view specifics', () => {

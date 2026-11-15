@@ -1,8 +1,11 @@
 // _shared/lab.ts — plumbing shared by the Gatekeeper labs (login-style labs with citadel_admin and pilgrim).
 // Not a challenge: nothing here is served by View Source. Limiter and lockout LOGIC stays in each
 // challenge's levels/*.ts, where the flaw (and its Diff) must be visible.
-import type { Request } from 'express';
+import { fileURLToPath } from 'node:url';
+import type { Request, Response } from 'express';
+import { field, labPath } from '../../../core/lab.js';
 import { flagFor } from '../../../core/mount.js';
+import { sendPage } from '../../../core/render.js';
 import type { Challenge } from '../../../core/registry.js';
 
 /** The lab's message: ok selects the success/error style. */
@@ -37,4 +40,75 @@ export function welcome(
   if (who.role !== 'admin') return { ok: true, text: `${hello} Only the citadel admin holds the flag.` };
   if (req.level === 'divine') return { ok: true, text: hello };
   return { ok: true, text: `${hello} Flag: ${flagFor(req, challenge)}` };
+}
+
+/** The player's credentials check, shared by the pilgrim sign-in forms (GK-12 ... GK-18). Reads the username/password fields. */
+export function pilgrimLogin(req: Request): { readonly ok: boolean; readonly result: Result; readonly username: string; readonly password: string } {
+  const username = field(req, 'username');
+  const password = field(req, 'password');
+  const ok = username === PLAYER.username && password === PLAYER.password;
+  return { ok, username, password, result: ok ? { ok: true, text: `Signed in as ${PLAYER.username}.` } : { ok: false, text: 'Invalid username or password.' } };
+}
+
+/**
+ * The admin page's one line for the flag: nothing for a non-admin, a plain welcome at Divine (Divine never issues
+ * a flag), else the flag. Call it only when `admin` is true because the lab's REAL access check said so.
+ */
+export function adminNote(req: Pick<Request, 'sessionId' | 'level'>, challenge: Pick<Challenge, 'id' | 'levels'>, admin: boolean): string {
+  if (!admin) return '';
+  return req.level === 'divine' ? 'Welcome back.' : `Flag: ${flagFor(req, challenge)}`;
+}
+
+/** What `sendAdminPage` shows. */
+export interface AdminPage {
+  /** Whether the caller got in. The page answers 403 when not. */
+  readonly admin: boolean;
+  /** The success message (the flag line, if any, is part of it). */
+  readonly granted: string;
+  /** The denial message. */
+  readonly denial: string;
+  /** Optional preformatted content shown to the admin only (an export). */
+  readonly pre?: string;
+  /** The status of the denial (default 403). */
+  readonly denyStatus?: number;
+}
+
+const adminView = fileURLToPath(new URL('./views/admin.ejs', import.meta.url));
+
+/** Render the shared admin page: 200 with `granted` for the admin, 403 (or `denyStatus`) with `denial` for everyone else. */
+export async function sendAdminPage(res: Response, o: AdminPage): Promise<void> {
+  res.status(o.admin ? 200 : (o.denyStatus ?? 403));
+  await sendPage(res, adminView, { base: labPath(res), admin: o.admin, granted: o.granted, denial: o.denial, pre: o.admin ? (o.pre ?? '') : '' });
+}
+
+/** A curl example a player can actually use: the data `_shared/views/curl-note.ejs` renders. */
+export interface CurlView {
+  readonly url: string;
+  readonly headers: readonly string[];
+  readonly cookies: readonly string[];
+  readonly data: string;
+}
+
+export interface CurlSpec {
+  /** Path below the lab, e.g. '/vault'. */
+  readonly path: string;
+  /** Extra headers, "Name: value" (use <placeholders>). */
+  readonly headers?: readonly string[];
+  /** Extra cookies besides the platform session, "name=value" (use <placeholders>). */
+  readonly cookies?: readonly string[];
+  /** A request body for a POST, shown in single quotes. */
+  readonly data?: string;
+}
+
+/**
+ * The curl example for a lab page. It always carries the FULL quoted URL (origin + canonical lab path + the served
+ * level) and a `-b` for the platform session cookie with a placeholder: a lab belongs to the browser session, and curl
+ * without it starts another session whose state and flags the browser cannot submit. Never prints the real session id.
+ */
+export function curlFor(req: Request, res: Response, spec: CurlSpec): CurlView {
+  const origin = `${req.protocol}://${req.get('host') ?? '127.0.0.1'}`;
+  return {
+    url: `${origin}${labPath(res)}${spec.path}?level=${req.level}`,
+    headers: spec.headers ?? [], cookies: spec.cookies ?? [], data: spec.data ?? '',
+  };
 }
