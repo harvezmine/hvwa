@@ -10,6 +10,7 @@ import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
 import { checkerRouter } from './core/checker.js';
+import { errorHandler } from './core/errors.js';
 import { portalRouter } from './portal/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -42,5 +43,6 @@ export function createApp(opts: AppOptions = {}): Express {
   app.use('/api', checkerRouter(db));
   app.use('/', portalRouter(db));
 
+  app.use(errorHandler()); // must stay last
   return app;
 }
