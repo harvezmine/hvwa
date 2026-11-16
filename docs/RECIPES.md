@@ -112,6 +112,11 @@ case (g)). Divine resists every exploit.
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
 | `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
+| `parseMultipart(req, limits?)`, `settle(p)`, `UPLOAD_LIMITS`, `UploadError` | `core/upload` | upload labs: the raw multipart body `express.raw` read on the upload route, parsed and capped; `tryDb(req, await settle(parseMultipart(req)), 'Upload error')` (section 9) |
+| `looksLikeImage(bytes)`, `sniffImage(bytes)` | `core/upload` | PNG/JPEG/GIF/WebP magic bytes and size, from the header ONLY (SC-09's polyglot lesson; never a safety check) (section 9) |
+| `readZip(bytes, limits?)`, `ZIP_LIMITS` | `core/upload-zip` | an archive's entries (names exactly as written, bytes), with a zip-bomb guard; synchronous, inside `tryDb` (section 9) |
+| `simFs(opts?)`, `resolveSimPath(path, separators?)`, `SIMFS_LIMITS` | `core/simfs` | one player's simulated file system per level, made in the `perSession` factory; paths resolved by the simulated OS's rules (section 9) |
+| `simInterpret(bytes, canary)` | `core/simfs` | the "webshell": nothing executes; prints the canary if the file holds `<?hvwa CANARY ?>` (section 9) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -395,6 +400,7 @@ If a mutation stays green, the matrix is missing a case.
 2. Write `<id>.spec.ts` first (matrix + specifics); run `npm test -- <id>` and watch it fail.
 3. `model.ts`: schema, seed, row types, the level-module interface, `perLevel` or `perSession` state, test seams.
    A lab where someone else must click (a reset mail, an OAuth link, a session link) adds a simulated victim: section 8.
+   A lab that takes uploads, archives or files keeps them in a simulated file system: section 9.
 4. `levels/*.ts`: Acolyte no defense, Templar naive filter, Inquisitor flawed defense, Divine correct
    for the weakness; `divine.ts`'s comment notes generic errors and any gaps left out of scope.
 5. `challenge.ts`: `byLevel<M>`, `register(defineChallenge({ ..., dir: challengeDir(import.meta.url), levels: impl.levels }))`,
@@ -679,3 +685,158 @@ mailbox, in either language. Test seams: `labFor({ sessionId: sid, level }).worl
 works unchanged (it skips the panel's `sim-action` forms). Add the lab-specific cases: the victim's secret never
 appears on the page except through the flaw, players and levels are isolated, the legit victim flow ends on a citadel
 page, and links the lab builds from attacker input are shown escaped.
+
+## 9. Upload labs (`core/upload.ts`, `core/upload-zip.ts`, `core/simfs.ts`)
+
+The Scriptorium's upload labs (SC-05 SVG, SC-07/08 webshell filters, SC-09 polyglot, SC-10 ZIP slip, SC-11 path
+traversal) take files from the player, keep them in a **simulated file system**, and "run" some of them. All of it is
+in memory, and **nothing ever executes** (owner decision Q7). No dependency: Node 22's built-in `Response.formData()`
+parses multipart, and `node:zlib` inflates archives. `tests/upload-guard.spec.ts` parses the three modules with tsc and
+allows only `node:buffer`, `node:zlib`, each other, `core/sim/limits.ts` and `core/lab.ts` (no `node:fs`, network,
+`child_process`, `vm`, `eval`); it then spies on all of those through a whole upload, unzip, store and "run".
+The worked example is the fixture lab UP-01 in `tests/upload-lab.spec.ts`.
+
+### The upload route
+
+```ts
+// challenge.ts
+import express from 'express';
+import { UPLOAD_LIMITS, parseMultipart, settle } from '../../../core/upload.js';
+
+router.post('/upload', express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
+  const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1 })), 'Upload error'); // await OUTSIDE tryDb
+  if (!up.ok) return show(res, { ok: false, text: up.message });
+  const file = up.value.files.find((f) => f.field === 'scroll');
+  if (file === undefined) return show(res, { ok: false, text: 'Choose a scroll to upload.' });
+  const stored = tryDb(req, () => impl.for(req.level).store(labFor(req).fs, file), 'Storage error'); // the level's flaw
+  // ...
+});
+```
+
+- **`express.raw` on the upload route only** (owner decision Q6), with `limit: UPLOAD_LIMITS.maxBytes` (2 MiB). The
+  app-wide `express.json()`/`urlencoded()` ignore multipart. A bigger body gets 413 from the error handler before the
+  lab runs, and the limit counts the *inflated* body, so a small gzip of a large one gets 413 too. A form posted without
+  `enctype="multipart/form-data"` arrives as an object, and `parseMultipart` refuses it.
+- **`parseMultipart` is async and `tryDb` is not.** `settle(promise)` turns the settled parse into a thunk that returns
+  the value or rethrows, so `tryDb` applies its usual rule: `Upload error: <message>` below Divine, `Invalid request.`
+  at Divine. Every refusal is an `UploadError` with a message meant for the player; one that escapes is a 400.
+- **Caps** (`UPLOAD_LIMITS`): body 2 MiB, 32 parts, 8 files, 512 KiB per file, 16 KiB per text field, 255-character
+  filenames and field names, 255-character content types. The part count is checked by a scan of the body before it
+  is parsed, so a flood of tiny parts costs a scan, not 40 000 entries. A lab may pass **lower** caps (an SVG lab:
+  `{ maxFileBytes: 64 * 1024 }`), never higher. A higher one, or a non-integer, is a plain `Error`: a lab bug.
+- **Fields** are a null-prototype record; a repeated name keeps its first value. Read them with
+  `field({ body: up.value.fields }, 'caption')`. The empty part a browser sends for an empty file input is dropped.
+
+### What a level receives
+
+- **`filename` exactly as the client sent it**: `../`, `\`, a leading `/`, case, dots, spaces, `%00` and every other
+  percent sequence. Only the three escapes browsers write are undone, as the WHATWG parser does: `%0A`, `%0D`, `%22`.
+  A NUL byte stays U+0000 (never stripped, never a truncation point). Invalid UTF-8 becomes U+FFFD, and its bytes cannot
+  be recovered. A lab that decodes a name, or ends it at a NUL the way C does, does it in its level file, where View
+  Source shows it.
+- **`contentType` is the uploader's claim**, as the File API reports it: ASCII-lowercased with its parameters,
+  `text/plain` when the part had none, `''` for a non-ASCII value. It says what the client claims, never what the bytes
+  are.
+- **`bytes`** is the parser's own copy, not a view of the request body.
+
+### Storing: `simFs()`
+
+```ts
+// model.ts
+const labs = perSession((): LabState => {
+  const fs = simFs();                       // or simFs({ separators: '/\\' }) for a Windows-style server
+  fs.write('/srv/app/templates/welcome.txt', 'Welcome, pilgrim.', { contentType: 'text/plain', pinned: true });
+  return { fs, canary: newCanary() };
+});
+```
+
+- **One per player and level, made in the `perSession` factory** (it throws anywhere else), next to the rest of the
+  lab state, so one eviction or one `reset` drops it all together. Seed it there, and **pin** what the lab depends on
+  (a sentinel, a secret): a pinned file is never dropped to make room, but it can still be overwritten (SC-10's proof).
+- **Paths go through the simulated OS** (`resolveSimPath`, also `fs.resolve`). Every call splits on the separators (`/`,
+  plus `\` on a `'/\\'` file system), drops empty and `.` segments, lets `..` remove the segment before it (never above
+  the root), and makes the path absolute. Nothing else changes: `....` and `..b` are ordinary names, and case, NUL,
+  trailing dots and percent sequences are kept. This is the ground truth, as `classifySimUrl` is for URLs: **the level's
+  own check is the flaw**, and the file system decides where the write really lands. `write('/srv/app/uploads/restore/
+  ../../templates/welcome.txt', ...)` overwrites `/srv/app/templates/welcome.txt`. A correct (Divine) check uses the
+  same rules:
+
+  ```ts
+  const key = fs.resolve(`${dir}/${name}`);
+  if (!key.startsWith(`${fs.resolve(dir)}/`)) return reject(name); // escapes dir: refused, the sentinel untouched
+  ```
+- **Bounds** (`SIMFS_LIMITS`): 64 files, 256 KiB per file, 512 KiB in all, 512-character paths, 255-character content
+  types. Past the file count or the total, the **oldest unpinned file is dropped**, the way the sim drops its oldest
+  mail. A file over 256 KiB, a write to the root, or no room even after dropping every unpinned file is a `SimFsError`
+  and changes nothing. Wrap writes in `tryDb(req, () => ..., 'Storage error')`.
+- **Every stored Buffer is a copy with memory of its own.** `Buffer.subarray` keeps its whole parent alive, and
+  `Buffer.from(x)` of a small `x` is a slice of Node's shared 8 KiB pool (zlib even answers small inflates with a view of
+  16 KiB). `simFs` copies with `ownBytes` from `core/upload.ts`; use it for any other Buffer a lab keeps.
+- **Memory.** A full instance is about 630 KiB at worst (measured with a full GC; about 540 KiB with short ASCII names).
+  `simFs` caps its holder like a victim world: at most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute, in
+  the process-wide budget of `SIM_LIMITS.worldsTotal` (150) instances shared with every victim world. That is about
+  92 MiB if every slot is a full file system, and about 1.6 MB for a slot that holds both a world and a file system
+  (SC-05, SC-09). Eviction from that budget is a reset, so keep no limiter in this state. Upload labs have no limiter,
+  so they may offer Restart (`reset: (req) => labs.reset(req)`).
+
+### Archives: `readZip(bytes)` (SC-10)
+
+Synchronous: `tryDb(req, () => readZip(file.bytes), 'Archive error')`. It returns `{ name, directory, method, size,
+compressedSize, bytes }` per entry, in central-directory order. **Names are exactly as written** (`../`, `\`, absolute
+and drive paths, NUL) and decoded as UTF-8, with U+FFFD for an invalid sequence. Bounds (`ZIP_LIMITS`): 64 entries
+(read from the end record before anything else), 255-character names, and a zip-bomb guard: the declared sizes may total
+2 MiB, and no entry inflates past its declared size (`inflateRawSync`'s `maxOutputLength` stops it there). A nested
+archive is one entry of bytes and is never opened. CRC-32 and sizes are checked. ZIP64, multi-volume, encrypted and
+other-method archives are refused, and so are trailing bytes after the archive comment. Errors name an entry by
+number, never by its name. The level "extracts": it builds the path with its own (flawed) join or filter and calls
+`fs.write`. Note for the lab page: Python's `zipfile` on Windows turns `\` into `/` in `ZipInfo(name)`, so a
+backslash name has to be set on `.filename` afterwards (see `tests/upload-zip.spec.ts`).
+
+### Images: `looksLikeImage(bytes)` / `sniffImage(bytes)` (SC-09)
+
+They check the magic bytes and the declared size of PNG, JPEG, GIF and WebP, and **only the header, on purpose**.
+Whatever follows the header is never read, so `GIF89a` + a size + `<?hvwa CANARY ?>` passes. That is the Inquisitor
+lesson (a correct header proves the file's start, not the whole of it). Never use either as a safety check. Divine
+does not validate, it re-encodes: the engine has no image decoder, so Divine builds a fresh image of its own (for
+example a blank GIF of the sniffed size) and keeps no byte the player sent. SVG is not a raster: `looksLikeImage(svg)`
+is false.
+
+### "Execution": `simInterpret(bytes, canary)`, and why nothing runs
+
+Whether a stored file "runs" is **the level's decision**: its flawed name or type mapping (`.php` anywhere, the first
+extension, a sniffed type). It is made before `simInterpret` is called. `simInterpret` answers what running the file
+prints. It scans the bytes (as Latin-1, so binary files work) for the one statement the simulated interpreter knows,
+`<?hvwa CANARY ?>` (`SIM_SCRIPT_STATEMENT`), anywhere in the file, so a polyglot's tail counts. If the statement is
+there, the output is the canary alone; if not, it is `null` ("printed nothing"). Pass the canary lazily,
+`simInterpret(file.bytes, () => flagFor(req, C))`, so no flag is computed for a file without the statement. The
+uploaded bytes are never echoed. The lab page documents the statement (it is the simulated server's language). Hints
+still never contain a payload.
+
+**No uploaded file or template ever runs for real**: no PHP, EJS or Node, and no `eval`, `vm`, `child_process` or
+worker. A real interpreter would be remote code execution on the host's container, and the "webshell" lesson does not
+need one. The lesson is the upload **filter**, and the token oracle proves it was beaten. The guard spec keeps it that
+way.
+
+### Serving uploads to the player's real browser
+
+The simulated server's answer is shown, never re-enacted. **Never send uploaded bytes to the player's browser as an
+active type**, whatever was claimed or sniffed. A route that hands a stored file back sends `Content-Type:
+application/octet-stream`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment` and
+`Content-Security-Policy: sandbox`. What the simulated server would have sent (its content type, whether the file
+ran, what it printed) goes on a lab page as escaped text. An SVG or HTML payload that must be seen firing (SC-05)
+goes only through E0's sandboxed preview frame.
+
+### Testing
+
+`tests/support/uploads.ts`:
+
+- `multipart(parts, boundary?)` writes a body byte by byte. Use it, not superagent's `.attach()`, which takes the
+  basename of a filename, so `../x.php` arrives as `x.php`. Send it with
+  `.set('Content-Type', m.contentType).send(m.body)`.
+- `uploadReq(m)` is the `{ headers, body }` `parseMultipart` reads.
+- `zipOf(items, opts?)` writes an archive with any names, and with headers that can lie (sizes, CRC, offsets, counts).
+
+Real-writer archives are in `tests/fixtures/upload/` (Python `zipfile`, with and without data descriptors). Test seam:
+`labFor({ sessionId: sid, level }).fs.list()`. Add the lab-specific cases: each level's name trick and the next level
+refusing it, names shown escaped, Divine's stored names, the sentinel unchanged after a refused extraction, and an
+upload served back as an inert download.
