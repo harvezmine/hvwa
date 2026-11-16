@@ -525,10 +525,12 @@ register(defineChallenge({
   victim: {
     sim: (req) => labFor(req).world,
     actions: [
-      { name: 'check-mail', label: VICTIM_LABELS.checkMail, run: (req) => {
+      { name: 'check-mail', label: VICTIM_LABELS.checkMail,
+        description: { id: 'membuka surat terbaru dan mengklik tautan pertamanya', en: 'opens the newest mail and clicks its first link' },
+        run: (req) => {
           const s = labFor(req);
           const link = s.world.inbox.newest(ADMIN_MAILBOX)?.links[0];
-          if (link === undefined) return 'The admin has no new mail.'; // an optional note for the panel (English)
+          if (link === undefined) return { id: 'Admin tidak punya surat baru.', en: 'The admin has no new mail.' }; // a note
           s.admin.follow(link);
       } },
       { name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url',
@@ -547,6 +549,16 @@ URLs**: they can carry the very secret the lab is about), **the player's mailbox
 (attacker.test) received…". Platform strings are bilingual; everything else is escaped. The only way a victim-side
 secret may reach the player is the lab's flaw (the attacker log, or a stolen session): never echo the victim's pages
 or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLink`, or a lab `Text`.
+
+- **`description`** (optional `Text`) is shown under the button: the victim's script in a few words ("opens the newest
+  mail and clicks its first link", "opens any link you send, while signed in to Pilgrim-ID").
+- **The note carries what the summary cannot show.** The panel summarises each visit by outcome and request count only,
+  so it cannot say *why* nothing happened: "the admin was not signed in", "the admin has no new mail", "the reset link
+  had expired". `run` returns that note as `Text` (player guidance, shown in the player's language) or, rarely, a plain
+  string (lab content, shown as-is); either is clipped to 500 chars. Anything else is a programming error (500).
+- **A click on a citadel page passes `referrer` explicitly**: `follow(link, { referrer: 'http://citadel.test/inbox' })`.
+  Without it the request carries no Referer, as for a link opened from a mail client, and a Referer-based lab would
+  silently test nothing.
 
 Restart: a victim-driven lab whose state can get stuck may pass `reset: (req) => labs.reset(req)`; that drops the
 world (inbox, attacker log, victim cookies) with the rest. The usual rule applies: no Restart on a lab with limiters.

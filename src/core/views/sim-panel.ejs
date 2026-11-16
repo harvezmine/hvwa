@@ -8,6 +8,9 @@
         <label><%= t('sim.link') %> <input name="url" type="text" autocomplete="off" spellcheck="false" value="<%= simPanel.lastLink %>"></label>
 <% } -%>
         <button type="submit"><%= a.label %></button>
+<% if (a.description) { -%>
+        <p class="sim-action-description"><%= a.description %></p>
+<% } -%>
       </form>
 <% }); -%>
 <% if (simPanel.report) { -%>

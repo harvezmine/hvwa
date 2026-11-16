@@ -14,7 +14,7 @@ import { flagFor } from '../src/core/mount.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import { sendPage } from '../src/core/render.js';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, VICTIM_LABELS, sendSimRedirect, simWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, VICTIM_LABELS, sendSimRedirect, simWorld,
   type SimBrowser, type SimRedirectStatus, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 import { FLAG_RE, bare, describeExploitMatrix, describeLabView, freshSession, type Agent } from './helpers.js';
@@ -121,6 +121,12 @@ register(defineChallenge({
     actions: [
       { name: 'async', label: { id: 'a', en: 'a' }, run: (() => Promise.resolve('late')) as never },
       { name: 'chatty', label: { id: 'c', en: 'c' }, run: () => `${'n'.repeat(5000)}END` },
+      {
+        name: 'bilingual', label: { id: 'b', en: 'b' },
+        description: { id: 'membuka surat terbaru, saat masuk ke Pilgrim-ID', en: 'opens the newest mail, while signed in to Pilgrim-ID' },
+        run: () => ({ id: `Admin belum masuk.${'i'.repeat(600)}`, en: `The admin was not signed in.${'e'.repeat(600)}` }),
+      },
+      { name: 'odd-note', label: { id: 'o', en: 'o' }, run: (() => ({ en: 'only English' })) as never },
     ],
   },
   mount: (router) => { router.get('/', (_req, res) => sendPage(res, hello, { name: 'misbehaving' })); },
@@ -419,6 +425,29 @@ describe('victim plumbing', () => {
     expect(page.status).toBe(200);
     expect(page.text).not.toContain('sim-panel');
     expect((await agent.post('/d/sim-test/plain/victim/send-link?level=acolyte')).status).toBe(404);
+  });
+
+  it('a note may be bilingual Text (shown in the player\'s language, clipped); an action may describe its victim', async () => {
+    const { agent } = await freshSession();
+    const panelIn = async (lang: string) => panelOf((await agent.get(`/d/sim-test/misbehaving?level=acolyte&lang=${lang}`)).text);
+    const before = await panelIn('en');
+    expect(before).toMatch(/<button type="submit">b<\/button>\s*<p class="sim-action-description">opens the newest mail, while signed in to Pilgrim-ID<\/p>/);
+    expect(await panelIn('id')).toContain('<p class="sim-action-description">membuka surat terbaru, saat masuk ke Pilgrim-ID</p>');
+    expect(before).not.toMatch(/sim-action-description">\s*</); // actions without a description show none
+    expect((await agent.post('/d/sim-test/misbehaving/victim/bilingual?level=acolyte')).status).toBe(303);
+    const en = await panelIn('en');
+    expect(en).toContain(`<p class="sim-note">The admin was not signed in.${'e'.repeat(SIM_LIMITS.noteLength - 28)}</p>`);
+    expect(en).not.toContain('Admin belum masuk');
+    const id = await panelIn('id');
+    expect(id).toContain(`<p class="sim-note">Admin belum masuk.${'i'.repeat(SIM_LIMITS.noteLength - 18)}</p>`);
+    expect(id).not.toContain('The admin was not signed in');
+  });
+
+  it('a note that is neither a string nor Text { id, en } is a programming error (stack-free 500)', async () => {
+    const { agent } = await freshSession();
+    const res = await agent.post('/d/sim-test/misbehaving/victim/odd-note?level=acolyte');
+    expect(res.status).toBe(500);
+    expect(res.text).not.toMatch(/at |sim\.ts/);
   });
 
   it('an async victim action is a programming error (stack-free 500); a long note is clipped', async () => {

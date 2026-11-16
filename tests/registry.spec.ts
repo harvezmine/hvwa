@@ -102,6 +102,8 @@ describe('defineChallenge: victim (core/sim.ts)', () => {
 
   it('accepts a victim with a sim accessor and kebab-case actions', () => {
     expect(() => defineChallenge(input({ victim: { sim, actions: [action, { ...action, name: 'check-mail', input: undefined }] } }))).not.toThrow();
+    const described = { ...action, description: { id: 'membuka tautan apa pun', en: 'opens any link you send' } };
+    expect(() => defineChallenge(input({ victim: { sim, actions: [described] } }))).not.toThrow();
   });
 
   it.each([
@@ -115,6 +117,8 @@ describe('defineChallenge: victim (core/sim.ts)', () => {
     ['a label that is not bilingual text', { sim, actions: [{ ...action, label: 'Send' }] }, /label/],
     ['a label missing a language', { sim, actions: [{ ...action, label: { en: 'Send' } }] }, /label/],
     ['an unknown input', { sim, actions: [{ ...action, input: 'file' }] }, /input/],
+    ['a description that is not bilingual text', { sim, actions: [{ ...action, description: 'opens links' }] }, /description/],
+    ['a description missing a language', { sim, actions: [{ ...action, description: { id: 'x' } }] }, /description/],
     ['no run function', { sim, actions: [{ ...action, run: 'go' }] }, /run must be a function/],
     ['a null action', { sim, actions: [null] }, /action/],
   ])('rejects a victim with %s', (_name, victim, re) => {

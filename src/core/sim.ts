@@ -815,8 +815,8 @@ export interface SimWorld {
   now: () => number;
   /** The victim's recent visits, newest last (at most SIM_LIMITS.visits). Each victim action starts a fresh list. */
   readonly visits: readonly SimVisit[];
-  /** The note the last victim action left (lab content), or ''. */
-  readonly note: string;
+  /** The note the last victim action left: bilingual Text, or a string (lab content, English), or ''. */
+  readonly note: Text | string;
   /** A victim's browser whose citadel.test is `handler`. Create it in the same factory (the jar is state). */
   browser(handler: SimHandler): SimBrowser;
 }
@@ -827,7 +827,7 @@ class World implements SimWorld {
   readonly attackerLog: AttackerLog;
   private recent: SimVisit[] = [];
   /** Set by the victim routes (mountVictim). */
-  noteText = '';
+  noteText: Text | string = '';
   acted = false;
   lastLink = '';
 
@@ -840,7 +840,7 @@ class World implements SimWorld {
   }
 
   get visits(): readonly SimVisit[] { return Object.freeze([...this.recent]); }
-  get note(): string { return this.noteText; }
+  get note(): Text | string { return this.noteText; }
 
   browser(handler: SimHandler): SimBrowser {
     requireSession('SimWorld.browser');
@@ -890,14 +890,20 @@ export interface VictimAction {
   readonly name: string;
   /** The button text. VICTIM_LABELS has the two usual ones. */
   readonly label: Text;
+  /**
+   * What the scripted victim does, shown under the button (player guidance, so bilingual), e.g. "opens the newest
+   * mail and clicks its first link" or "opens any link you send, while signed in to Pilgrim-ID".
+   */
+  readonly description?: Text;
   /** 'url': the form has a link field; run gets it as `input.url` ('' when missing or not a string). */
   readonly input?: 'url';
   /**
    * The scripted victim, e.g. "the admin opens the newest mail and clicks its first link". Synchronous; works on
    * the lab's own per-session state for this request (req.sessionId, req.level). May return a short note for the
-   * panel (lab content, English), e.g. 'The admin has no new mail.'.
+   * panel: feedback the visit summary cannot show (e.g. "the admin was not signed in"), as bilingual Text (shown
+   * in the player's language) or a string (lab content, English). Each is clipped to SIM_LIMITS.noteLength.
    */
-  readonly run: (req: Request, input: { readonly url: string }) => string | void;
+  readonly run: (req: Request, input: { readonly url: string }) => Text | string | void;
 }
 
 /** A challenge's simulated victim: `defineChallenge({ victim })`. The engine mounts the actions and the panel. */
@@ -919,6 +925,10 @@ export const VICTIM_LABELS = Object.freeze({
 
 const ACTION_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+function isText(x: unknown): x is Text {
+  return x !== null && typeof x === 'object' && typeof (x as Text).id === 'string' && typeof (x as Text).en === 'string';
+}
+
 /** Validate `defineChallenge({ victim })` (the registry calls it). Throws a message naming the problem. */
 export function assertVictimConfig(v: unknown, at: string): asserts v is VictimConfig {
   if (v === null || typeof v !== 'object') throw new Error(`${at}: victim must be an object`);
@@ -928,15 +938,15 @@ export function assertVictimConfig(v: unknown, at: string): asserts v is VictimC
   const names = new Set<string>();
   for (const a of actions as unknown[]) {
     if (a === null || typeof a !== 'object') throw new Error(`${at}: a victim action must be an object`);
-    const { name, label, input, run } = a as Record<string, unknown>;
+    const { name, label, description, input, run } = a as Record<string, unknown>;
     if (typeof name !== 'string' || !ACTION_NAME_RE.test(name)) {
       throw new Error(`${at}: victim action name "${clip(String(name), 40)}" must be kebab-case a-z0-9`);
     }
     if (names.has(name)) throw new Error(`${at}: duplicate victim action "${name}"`);
     names.add(name);
-    const l = label as { id?: unknown; en?: unknown } | null;
-    if (l === null || typeof l !== 'object' || typeof l.id !== 'string' || typeof l.en !== 'string') {
-      throw new Error(`${at}: victim action "${name}" needs a label { id, en }`);
+    if (!isText(label)) throw new Error(`${at}: victim action "${name}" needs a label { id, en }`);
+    if (description !== undefined && !isText(description)) {
+      throw new Error(`${at}: victim action "${name}": description must be bilingual text { id, en }`);
     }
     if (input !== undefined && input !== 'url') throw new Error(`${at}: victim action "${name}": input must be 'url' or absent`);
     if (typeof run !== 'function') throw new Error(`${at}: victim action "${name}": run must be a function`);
@@ -950,7 +960,11 @@ export function assertVictimConfig(v: unknown, at: string): asserts v is VictimC
  */
 export interface SimPanel {
   readonly hosts: string;
-  readonly actions: readonly { readonly name: string; readonly action: string; readonly label: string; readonly input: boolean }[];
+  readonly actions: readonly {
+    readonly name: string; readonly action: string; readonly label: string; readonly input: boolean;
+    /** What the scripted victim does (the action's description), in the request's language. */
+    readonly description?: string;
+  }[];
   /** The link the player last sent (pre-fills the link field). */
   readonly lastLink: string;
   /** After a victim action: its note and one summary line per visit (outcome and request count, never URLs). */
@@ -1002,9 +1016,17 @@ function panelModel(v: VictimConfig, req: Request, res: Response): SimPanel {
   const level = req.level;
   return {
     hosts: fmt(t('sim.hosts', lang), { citadel: CITADEL_ORIGIN, attacker: ATTACKER_ORIGIN, lab: base }),
-    actions: v.actions.map((a) => ({ name: a.name, action: `${base}/victim/${a.name}?level=${level}`, label: a.label[lang], input: a.input === 'url' })),
+    actions: v.actions.map((a) => ({
+      name: a.name, action: `${base}/victim/${a.name}?level=${level}`, label: a.label[lang], input: a.input === 'url',
+      ...(a.description === undefined ? {} : { description: a.description[lang] }),
+    })),
     lastLink: world.lastLink,
-    ...(world.acted ? { report: { note: world.noteText, visits: world.visits.map((x, i) => visitLine(x, i, lang)) } } : {}),
+    ...(world.acted ? {
+      report: {
+        note: typeof world.noteText === 'string' ? world.noteText : world.noteText[lang],
+        visits: world.visits.map((x, i) => visitLine(x, i, lang)),
+      },
+    } : {}),
     mailboxHeading: fmt(t('sim.mailbox', lang), { address: PLAYER_MAILBOX }),
     mails: world.inbox.list(PLAYER_MAILBOX).map((m) => ({
       from: m.from, subject: m.subject, at: iso(m.at), body: m.body,
@@ -1018,6 +1040,14 @@ function panelModel(v: VictimConfig, req: Request, res: Response): SimPanel {
       ...(h.referer === undefined ? {} : { referer: h.referer }), ...(h.body === undefined ? {} : { body: h.body }),
     })),
   };
+}
+
+/** A victim action's note, checked and clipped: a string (lab content), bilingual Text, or '' for none. */
+function noteOf(note: unknown, action: string): Text | string {
+  if (note === undefined || note === null) return '';
+  if (typeof note === 'string') return clip(note, SIM_LIMITS.noteLength);
+  if (isText(note)) return Object.freeze({ id: clip(note.id, SIM_LIMITS.noteLength), en: clip(note.en, SIM_LIMITS.noteLength) });
+  throw new Error(`victim action "${action}": run must return a string, bilingual text { id, en } or nothing`);
 }
 
 /** The redirect statuses sendSimRedirect answers with. */
@@ -1071,7 +1101,7 @@ export function mountVictim(router: Router, v: VictimConfig): void {
         note.then(undefined, () => {}); // never leave its rejection unhandled
         throw new Error(`victim action "${a.name}" must be synchronous (it returned a Promise)`);
       }
-      world.noteText = typeof note === 'string' ? clip(note, SIM_LIMITS.noteLength) : '';
+      world.noteText = noteOf(note, a.name);
       res.redirect(303, `${labPath(res)}?level=${req.level}`);
     });
   }
