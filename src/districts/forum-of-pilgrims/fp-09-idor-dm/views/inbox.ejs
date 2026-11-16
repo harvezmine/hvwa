@@ -1,0 +1,21 @@
+<%# FP-09 lab view: the forum's direct messages. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Forum of Pilgrims — Messages</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the private message of <code><%= target %></code>, which is not yours to read. Messages are at <code><%= base %>/dm/&lt;id&gt;</code> (page) and <code><%= base %>/api/dm/&lt;id&gt;</code> (JSON).<% if (apiNote) { %> <%= apiNote %><% } %></p>
+<%- include('../../_shared/views/forum-form', { username: username, password: password, result: result }) %>
+<% if (inbox) { -%>
+  <h2>Your inbox</h2>
+  <ul>
+<% inbox.forEach(function (m) { -%>
+    <li><a href="<%= base %>/dm/<%= m.id %>?level=<%= level %>"><%= m.subject %></a> (<%= m.from %> to <%= m.to %>)</li>
+<% }); -%>
+  </ul>
+<% } -%>
+  <h2>Recent message activity</h2>
+  <ul>
+<% feed.forEach(function (m) { -%>
+    <li><%= m.from %> → <%= m.to %><% if (m.ref) { %>: <code><%= m.ref %></code><% } %></li>
+<% }); -%>
+  </ul>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>
