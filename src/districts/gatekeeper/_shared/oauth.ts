@@ -1,13 +1,18 @@
 // _shared/oauth.ts — plumbing the Pilgrim-ID labs (GK-10, GK-11) share: PKCE's verifier and S256, the code record,
-// withParams, and Pilgrim-ID's own sign-in and /idp/authorize (random ids and bounded maps live in
-// districts/_shared/collections.ts). No policy lives here: which redirect_uri Pilgrim-ID accepts and what it asks of PKCE
-// come in as callbacks (PilgrimId.policy), and which state Citadel honours, whether a code is single-use or bound to a
-// verifier is each lab's level decision (levels/*.ts, where View Source and the Diff show it).
+// and Pilgrim-ID's own sign-in and /idp/authorize (random ids and bounded maps live in
+// districts/_shared/collections.ts, withParams in districts/_shared/url.ts, re-exported here). No policy lives here:
+// which redirect_uri Pilgrim-ID accepts and what it asks of PKCE come in as callbacks (PilgrimId.policy), and which
+// state Citadel honours, whether a code is single-use or bound to a verifier is each lab's level decision (levels/*.ts,
+// where View Source and the Diff show it).
 import { createHash, randomBytes } from 'node:crypto';
 import type { Level } from '../../../core/levels.js';
 import { cookiePath, type Reply, type Visit } from '../../../core/sim.js';
 import { newId, putBounded } from '../../_shared/collections.js';
+import { withParams } from '../../_shared/url.js';
 import { accountOf } from './lab.js';
+
+// District-agnostic (districts/_shared/url.ts), re-exported so the Gatekeeper imports stay as they were.
+export { withParams } from '../../_shared/url.js';
 
 /** Citadel's client id at Pilgrim-ID. */
 export const CLIENT_ID = 'citadel';
@@ -38,17 +43,6 @@ export interface Exchange {
   readonly redirectUri: string;
   /** The PKCE code_verifier, when the sign-in used PKCE. */
   readonly verifier?: string;
-}
-
-/**
- * `uri` with `params` appended to its query, as an authorization server does: the uri is otherwise left as given, and a
- * fragment stays last (params after the `#` would be part of the fragment, which a browser never sends).
- */
-export function withParams(uri: string, params: Readonly<Record<string, string>>): string {
-  const hash = uri.indexOf('#');
-  const before = hash === -1 ? uri : uri.slice(0, hash);
-  const fragment = hash === -1 ? '' : uri.slice(hash);
-  return `${before}${before.includes('?') ? '&' : '?'}${new URLSearchParams(params).toString()}${fragment}`;
 }
 
 // --- Pilgrim-ID itself: sign-in and /idp/authorize -----------------------------------------------------------------

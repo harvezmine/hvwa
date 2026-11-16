@@ -75,6 +75,9 @@ src/districts/index.ts              imports each district index
     pin goes) and `trimBounded(map, { max, pin?, spare? })` for a lab that inserts elsewhere and trims later (`pin`:
     never evicted, e.g. the admin's session; `spare`: evicted only when nothing else can go, e.g. signed-in sessions
     after anonymous ones). Each lab states its own rule: GK-10/11 pin the admin's session, GK-16 spares signed-in ones.
+  - `url.ts`: `withParams(uri, params)`: `uri` with `params` appended to its query, as an authorization server
+    appends a code (the uri otherwise left as given, a fragment kept last). Build such URLs with it, never by
+    concatenating `${uri}?code=` (that breaks a uri that already has a query or a fragment).
   - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
@@ -97,7 +100,8 @@ src/districts/index.ts              imports each district index
   Views include the Gatekeeper partials with `<%- include('../../_shared/views/pilgrim-form', { ... }) %>` and the curl
   partial with `<%- include('../../../_shared/views/curl-note', { curl: curl }) %>`.
 - **Pilgrim-ID, the identity provider of the OAuth labs** (GK-10, GK-11), in `gatekeeper/_shared/oauth.ts`: besides
-  `CLIENT_ID`, `CODE_TTL_MS`, `newVerifier()`, `s256()`, `IssuedCode`, `Exchange` and `withParams()`, its sign-in and
+  `CLIENT_ID`, `CODE_TTL_MS`, `newVerifier()`, `s256()`, `IssuedCode`, `Exchange` and `withParams()` (re-exported
+  from `src/districts/_shared/url.ts`), its sign-in and
   `/idp/authorize` are shared as a shell driven by callbacks, like `mountJwtPortal`: a lab declares
   `const PILGRIM_ID: PilgrimId<LabState> = { cookie, adminPassword, pinnedSession?, maxEntries, policy }` and calls
   `pilgrimIdSignIn(PILGRIM_ID, v, state, username, password)`, `pilgrimIdAuthorize(PILGRIM_ID, v, state)` and
@@ -668,7 +672,7 @@ export function authorize(v: Visit, state: LabState): Reply {
   if (user === undefined) return { status: 200, text: 'Sign in first.' };
   const to = v.query.get('redirect_uri') ?? '';
   if (!impl.for(v.level).allowRedirect(to)) return { status: 400, text: 'Unregistered redirect_uri.' }; // the flaw: levels/*.ts
-  return { status: 302, location: `${to}?code=${issueCode(state, user)}`, text: '' };
+  return { status: 302, location: withParams(to, { code: issueCode(state, user) }), text: '' }; // districts/_shared/url.ts
 }
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
   if (r.path === '/idp/authorize') return toSim(authorize(simVisitOf(level, r, labCookies(level)), state));
