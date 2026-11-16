@@ -12,14 +12,30 @@ import { CUSTOMER, formatMoney, type CartTotals, type Order, type Product, type 
 
 export type { Result } from '../../_shared/result.js';
 
-/** What an intent came to: the message to show and, optionally, the response status. */
-export interface Outcome { readonly result: Result | null; readonly status?: number }
+/**
+ * What an intent came to: the message to show and, optionally, the response status. mountIntents adds `intent`, the
+ * name of the intent that ran (undefined for an unknown action), before it calls render.
+ */
+export interface Outcome { readonly result: Result | null; readonly status?: number; readonly intent?: string }
 
 /** One action of a shop page: a hidden `intent` on `POST /`, and its own path (`POST <lab><path>`) for curl. */
 export interface Intent {
   readonly path: string;
+  /** The body fields it reads, for the page's endpoint list (documentation only). */
+  readonly fields?: readonly string[];
   readonly run: (req: Request, res: Response) => Outcome | Promise<Outcome>;
 }
+
+/** An intent's own door, as the page's endpoint list shows it. */
+export interface Endpoint { readonly method: 'POST'; readonly path: string; readonly intent: string; readonly fields: readonly string[] }
+
+/** The doors of an intent table, in its order. */
+export function endpointsOf(intents: Readonly<Record<string, Intent>>): Endpoint[] {
+  return Object.entries(intents).map(([intent, i]) => ({ method: 'POST', path: i.path, intent, fields: [...(i.fields ?? [])] }));
+}
+
+/** Paths an intent may not take: POST / dispatches, and the engine mounts Restart and the victim's actions. */
+const isReserved = (path: string): boolean => path === '/' || path === '/_reset' || path === '/victim' || path.startsWith('/victim/');
 
 /** Renders the lab page after an intent ran. */
 export type Render = (req: Request, res: Response, outcome: Outcome) => Promise<void>;
@@ -35,19 +51,29 @@ export const success = (text: string): Outcome => ({ result: { ok: true, text } 
 /**
  * Mount a shop page's actions: `POST /` dispatches on the body's `intent` field (the page's forms post back with no
  * action and a hidden intent), and each intent is also mounted on its own path. Then `render` draws the page with the
- * outcome. A missing, unknown or non-string intent answers 200 with UNKNOWN_ACTION.
+ * outcome and the intent's name. A missing, unknown or non-string intent answers 200 with UNKNOWN_ACTION. Throws at
+ * mount time on a path that is relative, repeated, `/`, or one of the engine's (`/_reset`, `/victim/...`). Returns the
+ * table's endpoints (endpointsOf).
  */
-export function mountIntents(router: Router, intents: Readonly<Record<string, Intent>>, render: Render): void {
+export function mountIntents(router: Router, intents: Readonly<Record<string, Intent>>, render: Render): Endpoint[] {
   const table = new Map(Object.entries(intents)); // a Map: `constructor` or `__proto__` is no intent
-  const answer = async (req: Request, res: Response, intent: Intent | undefined): Promise<void> => {
+  const paths = new Set<string>();
+  for (const [name, i] of table) {
+    if (!i.path.startsWith('/') || isReserved(i.path)) throw new Error(`mountIntents: intent "${name}" may not use the path "${i.path}"`);
+    if (paths.has(i.path)) throw new Error(`mountIntents: two intents use the path "${i.path}"`);
+    paths.add(i.path);
+  }
+  const answer = async (req: Request, res: Response, name: string | undefined): Promise<void> => {
+    const intent = name === undefined ? undefined : table.get(name);
     const outcome: Outcome = intent === undefined ? { result: UNKNOWN_ACTION } : await intent.run(req, res);
     if (outcome.status !== undefined) res.status(outcome.status);
-    await render(req, res, outcome);
+    await render(req, res, { ...outcome, intent: intent === undefined ? undefined : name });
   };
-  router.post('/', async (req, res) => { await answer(req, res, table.get(field(req, 'intent'))); });
-  for (const intent of table.values()) {
-    router.post(intent.path, async (req, res) => { await answer(req, res, intent); });
+  router.post('/', async (req, res) => { await answer(req, res, field(req, 'intent')); });
+  for (const [name, intent] of table) {
+    router.post(intent.path, async (req, res) => { await answer(req, res, name); });
   }
+  return endpointsOf(intents);
 }
 
 /**
