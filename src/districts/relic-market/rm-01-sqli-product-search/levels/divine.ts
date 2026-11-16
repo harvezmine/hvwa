@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import { firstRows } from '../../_shared/sql.js';
+import { firstRows } from '../../../_shared/sql.js';
 import { MAX_ROWS, type Row } from '../model.js';
 
 // DIVINE — secure reference: both fields are bound parameters, and the max price must be a whole number of dollars

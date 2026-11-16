@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import { firstRows } from '../../_shared/sql.js';
+import { firstRows } from '../../../_shared/sql.js';
 import { MAX_ROWS, type Row } from '../model.js';
 
 // TEMPLAR — naive filter: the keywords UNION and SELECT are removed from both fields, once. The removal is not

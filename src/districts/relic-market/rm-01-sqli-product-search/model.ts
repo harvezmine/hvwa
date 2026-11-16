@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { challengeDb, type ChallengeDb } from '../../../core/challenge-db.js';
 import { perLevel } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
-import { clip } from '../_shared/sql.js';
+import { cell } from '../../_shared/sql.js';
 import { formatMoney } from '../_shared/shop.js';
 
 /** The most rows a search ever shows (platform safety, not the lesson): the level reads with firstRows, never a LIMIT. */
@@ -69,11 +69,11 @@ export function vaultKey(level: Level): string {
 
 /** A result row as the page shows it: four display cells, each at most 200 characters. The price is money when it is one. */
 export function cellsOf(row: Row): string[] {
-  return Object.values(row).slice(0, 4).map((v, i) => (i === 2 && typeof v === 'number' && Number.isSafeInteger(v) ? formatMoney(v) : clip(v)));
+  return Object.values(row).slice(0, 4).map((v, i) => (i === 2 && typeof v === 'number' && Number.isSafeInteger(v) ? formatMoney(v) : cell(v)));
 }
 
 /** The oracle: the vault key is a rendered result cell. The echoed search term is not (it is never a cell). */
 export function proves(cells: readonly (readonly string[])[], level: Level): boolean {
   const key = vaultKey(level);
-  return cells.some((row) => row.some((cell) => cell.includes(key)));
+  return cells.some((row) => row.some((c) => c.includes(key)));
 }

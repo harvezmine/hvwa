@@ -8,7 +8,7 @@ import { challengeDir } from '../../../core/source.js';
 import { curlFor } from '../../_shared/curl.js';
 import { endpointsOf, mountIntents, refusal, success, type Intent, type Outcome } from '../_shared/shop-lab.js';
 import { redeemCode } from '../_shared/staff-code.js';
-import { clip } from '../_shared/sql.js';
+import { cell } from '../../_shared/sql.js';
 import { DEFAULT_REGION, PRODUCTS, REGIONS, regionCookie, staffCode, stockDb, type StockLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -33,7 +33,7 @@ function checkStock(req: Request): Outcome {
   const found = tryDb(req, () => level.inStock(stockDb(req.level), sku, region));
   if (!found.ok) return refusal('Not available.'); // never found.message: that would be an error-based oracle
   if (typeof found.value === 'string') return refusal(found.value);
-  return found.value ? success(`${clip(sku, 100)}: In stock (${clip(region, 40)}).`) : refusal('Not available.');
+  return found.value ? success(`${cell(sku, 100)}: In stock (${cell(region, 40)}).`) : refusal('Not available.');
 }
 
 /** The region setter writes only allowlisted values; a player edits the cookie directly to write anything else. */
@@ -63,7 +63,7 @@ async function render(req: Request, res: Response, outcome: Outcome): Promise<vo
   await sendPage(res, view, {
     base: labPath(res), served: req.level, result: outcome.result,
     sku: intent === 'check' ? field(req, 'sku') : '', code: intent === 'redeem' ? field(req, 'code') : '',
-    region: typeof shown === 'string' ? shown : clip(impl.for(req.level).region(cookieRegion(req)), 40),
+    region: typeof shown === 'string' ? shown : cell(impl.for(req.level).region(cookieRegion(req)), 40),
     regions: REGIONS, products: PRODUCTS,
     endpoints: endpointsOf(INTENTS).map((e) => ({ ...e, href: `${labPath(res)}${e.path}?level=${req.level}` })),
     curl: curlFor(req, res, { path: '/check', form: { sku: 'RELIC-CHALICE' }, cookies: [`${regionCookie(req.level)}=eu`], signIn: false }),

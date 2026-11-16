@@ -8,7 +8,7 @@ import { challengeDir } from '../../../core/source.js';
 import { curlFor } from '../../_shared/curl.js';
 import { realClock } from '../_shared/clock.js';
 import { endpointsOf, mountIntents, refusal, success, type Intent, type Outcome } from '../_shared/shop-lab.js';
-import { clip } from '../_shared/sql.js';
+import { cell } from '../../_shared/sql.js';
 import { redeemCode } from '../_shared/staff-code.js';
 import { LAST_ORDER, measured, ordersDb, vaultPin, type TrackLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
@@ -31,7 +31,7 @@ async function track(req: Request): Promise<Outcome> {
   await realClock.wait(delayMs);
   if (found.ok && typeof found.value === 'string') return refusal(found.value);
   // A database error (found.ok false) is deliberately the same answer: never found.message.
-  return success(`If order ${clip(orderNo, 100)} exists, its status has been emailed to the address on file.`);
+  return success(`If order ${cell(orderNo, 100)} exists, its status has been emailed to the address on file.`);
 }
 
 /** Redeem the vault PIN read out through the timing oracle (no limiter, on purpose: 6 hex characters are no brute-force target). */
