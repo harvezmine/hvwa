@@ -1,7 +1,7 @@
 // core/simfs.ts: the upload labs' simulated filesystem (one per player and level, bounded, stored copies only, never
 // the real disk) and the simulated interpreter (nothing executes: one statement is pattern-matched).
 import { Buffer } from 'node:buffer';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { perSession, setCappedBudget } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { SIM_LIMITS } from '../src/core/sim.js';
@@ -85,6 +85,17 @@ describe('resolveSimPath: the simulated OS path rules (the ground truth a level\
     for (const p of ['/Up/A.PHP', '/up/shell.php\u0000.jpg', '/up/shell.php.', '/up/shell.php ', '/up/ a ', '/up/shell%2ephp', '/up/%2e%2e%2fx']) {
       expect(resolveSimPath(p), JSON.stringify(p)).toBe(p);
     }
+  });
+
+  it('one or more .. above the root stay at the root (an odd count too)', () => {
+    expect(['/../etc/passwd', '/../../../etc/passwd', '/a/../../etc/passwd', '../etc/passwd'].map((p) => resolveSimPath(p)))
+      .toEqual(['/etc/passwd', '/etc/passwd', '/etc/passwd', '/etc/passwd']);
+  });
+
+  it('the RESOLVED path is checked too: a relative path that resolves past 512 characters throws, never is cut', () => {
+    expect(resolveSimPath('p'.repeat(511))).toBe(`/${'p'.repeat(511)}`);
+    expect(() => resolveSimPath('p'.repeat(512))).toThrow(/longer than 512/);
+    expect(() => fresh().write('p'.repeat(512), 'x')).toThrow(SimFsError);
   });
 
   it('a path over 512 characters, or a non-string, is a SimFsError', () => {
@@ -184,7 +195,26 @@ describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like t
     fs.write('/a', 'a');
     expect(fs.write('/max', Buffer.alloc(SIMFS_LIMITS.fileBytes)).bytes.length).toBe(SIMFS_LIMITS.fileBytes);
     expect(() => fs.write('/big', Buffer.alloc(SIMFS_LIMITS.fileBytes + 1))).toThrow(/too large/);
+    expect(() => fs.write('/big.txt', 'é'.repeat(SIMFS_LIMITS.fileBytes / 2 + 1))).toThrow(/too large/); // UTF-8 bytes, not characters
     expect(fs.list().map((f) => f.path)).toEqual(['/a', '/max']);
+  });
+
+  it('an over-size write is refused by its byte length, before any copy is made', () => {
+    const fs = fresh();
+    const big = Buffer.alloc(SIMFS_LIMITS.fileBytes + 1);
+    const text = 'x'.repeat(SIMFS_LIMITS.fileBytes + 1);
+    const alloc = vi.spyOn(Buffer, 'allocUnsafeSlow');
+    const from = vi.spyOn(Buffer, 'from');
+    try {
+      expect(() => fs.write('/big', big)).toThrow(/too large/);
+      expect(() => fs.write('/big.txt', text)).toThrow(/too large/);
+      // (The path itself is copied; the payload never is.)
+      expect(alloc.mock.calls.filter(([n]) => n > SIMFS_LIMITS.fileBytes)).toEqual([]);
+      expect(from.mock.calls.filter(([x]) => x === text || x === big)).toEqual([]);
+    } finally {
+      alloc.mockRestore();
+      from.mockRestore();
+    }
   });
 
   it('over the file count, the oldest unpinned file goes; pinned files stay', () => {
@@ -210,6 +240,21 @@ describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like t
     fs.write('/d', Buffer.alloc(SIMFS_LIMITS.fileBytes)); // needs 256 KiB: a and b go
     expect(fs.list().map((f) => f.path)).toEqual(['/pinned', '/c', '/d']);
     expect(fs.bytes).toBe(SIMFS_LIMITS.totalBytes);
+  });
+
+  it('at full capacity, an overwrite keeps the byte count exact: same size, smaller, and larger with an eviction', () => {
+    const fs = fresh();
+    const q = SIMFS_LIMITS.totalBytes / 4;
+    for (const p of ['/a', '/b', '/c', '/d']) fs.write(p, Buffer.alloc(q));
+    expect([fs.size, fs.bytes]).toEqual([4, SIMFS_LIMITS.totalBytes]);
+    fs.write('/b', Buffer.alloc(q)); // same size: nothing goes
+    expect([fs.size, fs.bytes]).toEqual([4, SIMFS_LIMITS.totalBytes]);
+    fs.write('/c', Buffer.alloc(10)); // smaller: frees the difference
+    expect([fs.size, fs.bytes]).toEqual([4, 3 * q + 10]);
+    fs.write('/c', Buffer.alloc(q + 10)); // larger than it was, past the total: the oldest other file (/a) goes
+    expect(fs.list().map((f) => f.path)).toEqual(['/d', '/b', '/c']);
+    expect([fs.size, fs.bytes]).toEqual([3, 3 * q + 10]);
+    expect(fs.has('/a')).toBe(false);
   });
 
   it('when pinned files leave no room, the write is refused and nothing changes', () => {

@@ -118,7 +118,10 @@ export function resolveSimPath(path: string, separators: SimSeparators = '/'): s
     if (segment === '..') out.pop();
     else out.push(segment);
   }
-  return clip(`/${out.join('/')}`, SIMFS_LIMITS.pathLength);
+  const key = `/${out.join('/')}`;
+  // A relative path gains its leading `/`: the resolved key is checked as well, never cut short.
+  if (key.length > SIMFS_LIMITS.pathLength) throw new SimFsError(`the path is longer than ${SIMFS_LIMITS.pathLength} characters once resolved`);
+  return clip(key, key.length); // a copy (never a view of the caller's string), whole
 }
 
 /**
@@ -157,8 +160,10 @@ export function simFs(opts: SimFsOptions = {}): SimFs {
       const key = resolveSimPath(path, separators);
       if (key === '/') throw new SimFsError('cannot write to the root directory');
       if (typeof data !== 'string' && !(data instanceof Uint8Array)) throw new SimFsError('a file holds bytes or a string');
+      // The size first, from the byte length: an over-size write is refused before anything is copied.
+      const size = typeof data === 'string' ? Buffer.byteLength(data, 'utf8') : data.byteLength;
+      if (size > SIMFS_LIMITS.fileBytes) throw new SimFsError(`the file is too large (${size} bytes; at most ${SIMFS_LIMITS.fileBytes})`);
       const bytes = ownBytes(typeof data === 'string' ? Buffer.from(data, 'utf8') : data);
-      if (bytes.length > SIMFS_LIMITS.fileBytes) throw new SimFsError(`the file is too large (${bytes.length} bytes; at most ${SIMFS_LIMITS.fileBytes})`);
       const prev = files.get(key);
       // Decide what goes before changing anything: a refused write leaves the file system as it was.
       let count = files.size + (prev === undefined ? 1 : 0);
