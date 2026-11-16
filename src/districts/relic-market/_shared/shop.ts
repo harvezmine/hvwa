@@ -37,7 +37,8 @@ export interface OrderLine {
 }
 
 export interface Order {
-  readonly no: number;
+  /** The order's id: a running number for orders the shop places, or a string id for a lab that seeds its own (RM-11). */
+  readonly no: number | string;
   /** The customer id (CUSTOMER.id in every shop lab). */
   readonly owner: string;
   readonly lines: readonly OrderLine[];
@@ -59,8 +60,13 @@ export interface ShopState {
   wallet: number;
   readonly cart: CartLine[];
   readonly discounts: Discount[];
-  /** Oldest first, at most LIMITS.orders. */
+  /** The player's own orders, oldest first, at most LIMITS.orders. */
   readonly orders: Order[];
+  /**
+   * Seeded orders (those of other customers included): never trimmed, never evicted by the player's own newest
+   * LIMITS.orders. Filled once, at the lab's factory, with pinOrder; at most LIMITS.pinned.
+   */
+  readonly pinned: Order[];
   nextOrderNo: number;
   /** The clock waits and timestamps use (a test seam). */
   clock: LabClock;
@@ -97,6 +103,8 @@ export const LIMITS = Object.freeze({
   orders: 30,
   discounts: 10,
   history: 30,
+  /** Seeded (pinned) orders a lab may keep: platform safety, a seed is a handful of rows. */
+  pinned: 20,
   /** Largest |quantity| a cart line holds (above RM-14 Templar's 4 293 967 496). */
   qty: 9_999_999_999,
   /** Stored free text is clipped to this many characters. */
@@ -153,7 +161,7 @@ export function newShop(o: { readonly catalog: Catalog; readonly wallet: number 
   if (!Number.isSafeInteger(o.wallet)) throw new Error('newShop: the wallet must be a safe integer (cents)');
   return {
     catalog: o.catalog, startWallet: o.wallet, wallet: o.wallet,
-    cart: [], discounts: [], orders: [], nextOrderNo: 1,
+    cart: [], discounts: [], orders: [], pinned: [], nextOrderNo: 1,
     clock: realClock, gate: waitGate(realClock), locks: new KeyedMutex(),
   };
 }
@@ -204,16 +212,34 @@ export function pushOrder(state: ShopState, order: Order): void {
   while (state.orders.length > LIMITS.orders) state.orders.shift();
 }
 
+/**
+ * Seed an order that must outlive the player's own newest LIMITS.orders (an order of another customer, a past order of
+ * the player's): kept in `pinned`, never trimmed. For a lab's factory: it throws (a programming error, not a player
+ * error) on more than LIMITS.pinned orders or on an id seeded twice.
+ */
+export function pinOrder(state: ShopState, order: Order): void {
+  if (state.pinned.length >= LIMITS.pinned) throw new Error(`pinOrder: at most ${LIMITS.pinned} pinned orders`);
+  if (state.pinned.some((o) => o.no === order.no)) throw new Error(`pinOrder: order ${String(order.no)} is already pinned (twice)`);
+  state.pinned.push(order);
+}
+
+/** Every order the shop holds, pinned (seeded) first, then the player's own, oldest first. */
+export function allOrders(state: ShopState): Order[] {
+  return [...state.pinned, ...state.orders];
+}
+
 /** What a lab's checkout decided to charge. */
 export interface Checkout {
   readonly lines: readonly OrderLine[];
   readonly subtotal: number;
   readonly total: number;
   readonly charged: number;
+  /** The order's status: `paid` when omitted (RM-13 places orders in other states). */
+  readonly status?: string;
 }
 
 /**
- * Place a paid order: debit `charged` (a negative charge credits), number it, stamp it with the clock, empty the cart
+ * Place an order (`paid` unless the checkout names a status): debit `charged` (a negative charge credits), number it, stamp it with the clock, empty the cart
  * and the discounts, and keep it (pushOrder). Whether the order may be placed is the level's decision, made before.
  * Platform safety: a charge or a resulting wallet that is not a safe integer is refused (OUT_OF_RANGE), changing nothing.
  */
@@ -222,7 +248,7 @@ export function placeOrder(state: ShopState, c: Checkout): Order | string {
   if (!Number.isSafeInteger(c.charged) || !Number.isSafeInteger(wallet)) return OUT_OF_RANGE;
   const order: Order = Object.freeze({
     no: state.nextOrderNo, owner: CUSTOMER.id, lines: Object.freeze([...c.lines]), discounts: Object.freeze([...state.discounts]),
-    subtotal: c.subtotal, total: c.total, charged: c.charged, status: 'paid', at: state.clock.now(),
+    subtotal: c.subtotal, total: c.total, charged: c.charged, status: c.status ?? 'paid', at: state.clock.now(),
   });
   state.wallet = wallet;
   state.nextOrderNo += 1;

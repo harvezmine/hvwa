@@ -1,0 +1,10 @@
+<%# RM-11 single order page (GET <lab>/orders/:id): the order detail, or the refusal. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1><%= heading %></h1>
+<% if (detail) { -%>
+<%- include('order-detail', { detail: detail }) %>
+<% } else { -%>
+  <p class="lab-message lab-error" role="status" data-testid="lab-message"><%= message %></p>
+<% } -%>
+  <p><a href="<%= base %>?level=<%= served %>">Back to your orders</a></p>
+</section>

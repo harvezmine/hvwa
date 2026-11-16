@@ -1,0 +1,29 @@
+<%# RM-12 lab view. Lab content is English by design. An API landing page: what the endpoint takes, an example, a Try it form that renders the same JSON, the curl note. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: heading }) %>
+<%- include('../../_shared/views/message') %>
+  <p class="lab-note">The sales ledger holds <%= totalRows.toLocaleString('en-US') %> rows. This API plans an export of it and shows a preview of at most <%= previewRows %> rows, with the cost of the export as the server would pay it.</p>
+  <h2>Endpoint</h2>
+  <table class="shop-endpoints">
+    <thead><tr><th>Parameter</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>limit</code></td><td>how many rows to export (default 100)</td></tr>
+      <tr><td><code>cursor</code></td><td>where to start: the <code>next</code> cursor of the previous page</td></tr>
+      <tr><td><code>expand</code></td><td>relations to include with each row, joined by dots: a row has a <code>product</code>; a product has <code>related</code> products and <code>reviews</code></td></tr>
+    </tbody>
+  </table>
+<%- include('../../_shared/views/api') %>
+  <p class="lab-note">The response is JSON: <code>rows</code>, <code>cost</code>, <code>returned</code>, <code>next</code>, <code>data</code> and a <code>note</code>. In curl, append <code>&amp;limit=...&amp;expand=...</code> to the URL.</p>
+  <h2>Try it</h2>
+  <form method="post">
+    <input type="hidden" name="intent" value="export">
+    <label>limit <input name="limit" type="text" autocomplete="off" spellcheck="false" value="<%= limitValue %>"></label>
+    <label>expand <input name="expand" type="text" autocomplete="off" spellcheck="false" value="<%= expandValue %>"></label>
+    <button type="submit">Export</button>
+  </form>
+<% if (answer) { -%>
+  <pre data-testid="export-answer"><%= answer %></pre>
+<% } -%>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>

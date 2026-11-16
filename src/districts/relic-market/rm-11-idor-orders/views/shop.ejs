@@ -1,0 +1,37 @@
+<%# RM-11 lab view. Lab content is English by design. Your orders (with links), the Find form, what the Find form found, the "recently shipped" feed, the API box and the curl note. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: heading }) %>
+<%- include('../../_shared/views/message') %>
+  <h2>Your orders</h2>
+<% if (orders.length === 0) { -%>
+  <p class="lab-note">No orders yet.</p>
+<% } else { -%>
+  <ul class="shop-orders">
+<% orders.forEach(function (o) { -%>
+    <li data-order="<%= o.no %>" data-total="<%= o.total.cents %>" data-charged="<%= o.charged.cents %>" data-status="<%= o.status %>">
+      <p><a href="<%= base %>/orders/<%= encodeURIComponent(o.no) %>?level=<%= served %>">Order <%= o.no %></a>, <%= o.status %>: <% o.lines.forEach(function (l, i) { %><%= i ? '; ' : '' %><%= l.name %> × <%= l.qty %> at <%= l.unit.text %><% }); %>. Total <%= o.total.text %>.</p>
+    </li>
+<% }); -%>
+  </ul>
+<% } -%>
+  <h2>Find an order</h2>
+  <form method="post">
+    <input type="hidden" name="intent" value="find">
+    <label>Order id <input name="id" type="text" autocomplete="off" spellcheck="false" value="<%= findId %>"></label>
+    <button type="submit">Find</button>
+  </form>
+<% if (detail) { -%>
+<%- include('order-detail', { detail: detail }) %>
+<% } -%>
+  <section data-testid="feed">
+    <h2>Recently shipped</h2>
+    <ul class="shop-feed">
+<% feed.forEach(function (f) { -%>
+      <li><%= f.city %>: <%= f.items %><% if (f.id) { %> (order <code><%= f.id %></code>)<% } %></li>
+<% }); -%>
+    </ul>
+  </section>
+<%- include('../../_shared/views/api') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>

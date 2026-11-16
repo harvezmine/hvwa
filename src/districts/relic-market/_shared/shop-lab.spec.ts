@@ -8,13 +8,13 @@ import { describe, it, expect } from 'vitest';
 import { FLAG_RE } from '../../../../tests/helpers.js';
 import { flagFor } from '../../../core/mount.js';
 import type { Level } from '../../../core/levels.js';
-import { catalogOf, exactTotals, newShop, placeOrder, orderLines, setLine, type Order, type ShopState } from './shop.js';
+import { catalogOf, exactTotals, newShop, pinOrder, placeOrder, orderLines, setLine, type Order, type ShopState } from './shop.js';
 import {
   baseView, cartView, catalogView, endpointsOf, flagLine, mountIntents, ordersView, removeLineIntent, shopView, welcome,
   type Intent, type Outcome,
 } from './shop-lab.js';
 import { redeemCode } from './staff-code.js';
-import { cartOf, ordersOf, productForm, walletOf } from './shop-lab.testkit.js';
+import { cartOf, orderIdsOf, ordersOf, productForm, walletOf } from './shop-lab.testkit.js';
 
 const C = { id: 'RX-01', levels: ['acolyte', 'templar', 'divine'] as const satisfies readonly Level[] };
 const at = (level: Level) => ({ sessionId: 'sid-shell', level });
@@ -187,7 +187,7 @@ describe('shopView', () => {
         { sku: 'CANDLE', name: 'Votive Candle', qty: 3, kind: '', unit: { cents: 250, text: '$2.50' }, line: { cents: 750, text: '$7.50' }, note: '' },
         { sku: 'RELIQUARY', name: 'Reliquary <of> "Saints"', qty: -25, kind: 'return', unit: { cents: 100000, text: '$1,000.00' }, line: { cents: -2500000, text: '-$25,000.00' }, note: '' },
       ],
-      total: { cents: -2499250, text: '-$24,992.50' }, note: '', removable: false,
+      total: { cents: -2499250, text: '-$24,992.50' }, note: '', removable: false, checkoutIntent: 'checkout',
     });
     expect(d.curl).toMatchObject({ url: `http://127.0.0.1:3000${LAB}/cart?level=acolyte`, form: ['sku=CANDLE', 'qty=1'] });
   });
@@ -223,7 +223,7 @@ describe('shopView', () => {
     const d = (await request(app).get('/')).body as { cart: unknown };
     expect(d.cart).toEqual({
       rows: [{ sku: 'CANDLE', name: 'Votive Candle', qty: 1, kind: '', unit: { cents: 250, text: '$2.50' }, line: null, note: 'Line total too large.' }],
-      total: null, note: 'out of range', removable: false,
+      total: null, note: 'out of range', removable: false, checkoutIntent: 'checkout',
     });
   });
 });
@@ -404,5 +404,71 @@ describe('shop partials', () => {
     expect(html).toContain('Redeem staff code (8 characters)');
     expect(html).toContain('name="code" type="text"');
     expect(html).toContain('value="&#34;&gt;&lt;b&gt;"');
+  });
+});
+
+describe('batch D shell support: the orders list, string ids and parameterised API paths', () => {
+  const foreign = (no: number | string, owner: string): Order => ({
+    no, owner, lines: [{ sku: 'RELIQUARY', name: 'Reliquary', qty: 1, unitPrice: 1, listPrice: 100000 }], discounts: [],
+    subtotal: 1, total: 1, charged: 1, status: 'shipped', at: 0,
+  });
+  const mixedShop = (): ShopState => {
+    const s = fixtureShop();
+    pinOrder(s, foreign(1002, 'C-1043'));
+    pinOrder(s, foreign('ORD-ABCDEFGHIJ', 'C-1042'));
+    s.orders.push(foreign(9001, 'C-1044')); // a foreign order even in the player's own list is never shown
+    return s;
+  };
+
+  it('ordersView lists only the signed-in customer orders (pinned ones included), newest first, with string ids', async () => {
+    const d = await built('acolyte', {}, (req) => ordersView(req, mixedShop(), { challenge: C, proves }));
+    expect((d.orders as { no: number | string }[]).map((o) => o.no)).toEqual([2, 1, 'ORD-ABCDEFGHIJ']);
+  });
+
+  it('shopView shows no order of another customer in the page', async () => {
+    const d = await built('acolyte', {}, (req, res) => {
+      const state = mixedShop();
+      return shopView(req, res, state, { challenge: C, result: null, proves, curl: { path: '/cart' }, totals: exactTotals(state) });
+    });
+    const html = await renderAll(d);
+    expect(orderIdsOf(html)).toEqual(['2', '1', 'ORD-ABCDEFGHIJ']);
+    expect(html).not.toContain('1002');
+    expect(html).not.toContain('9001');
+  });
+
+  it('the checkout form of the cart posts the intent the lab names (default checkout), for a multi-step checkout', async () => {
+    const html = async (o: { checkoutIntent?: string }) => {
+      const d = await built('acolyte', {}, (_req) => {
+        const state = fixtureShop();
+        return { ...cartView(state, exactTotals(state), o), heading: 'x' };
+      });
+      return renderFile(views('cart'), d, opts);
+    };
+    expect(await html({})).toContain('<input type="hidden" name="intent" value="checkout">');
+    const start = await html({ checkoutIntent: 'start' });
+    expect(start).toContain('<input type="hidden" name="intent" value="start">');
+    expect(start).not.toContain('value="checkout"');
+  });
+
+  it('an API endpoint with a parameter links to its example, and has no link without one', async () => {
+    const d = await built('inquisitor', {}, (req, res) => baseView(req, res, {
+      result: null, curl: { path: '/api/orders/1' },
+      api: [
+        { path: '/api/price-lists', description: 'plain' },
+        { path: '/api/orders/:id', example: '/api/orders/ORD-1', description: 'one order' },
+        { path: '/api/orders?ids=a,b', example: '/api/orders?ids=ORD-1,ORD-2', description: 'several' },
+        { path: '/api/things/:id', description: 'no example' },
+      ],
+    }));
+    expect(d.api).toEqual([
+      { method: 'GET', path: '/api/price-lists', href: `${LAB}/api/price-lists?level=inquisitor`, description: 'plain' },
+      { method: 'GET', path: '/api/orders/:id', href: `${LAB}/api/orders/ORD-1?level=inquisitor`, description: 'one order' },
+      { method: 'GET', path: '/api/orders?ids=a,b', href: `${LAB}/api/orders?ids=ORD-1,ORD-2&level=inquisitor`, description: 'several' },
+      { method: 'GET', path: '/api/things/:id', href: '', description: 'no example' },
+    ]);
+    const html = await renderFile(views('api'), d, opts);
+    expect(html).toContain(`<a href="${LAB}/api/orders/ORD-1?level=inquisitor">/api/orders/:id</a>`);
+    expect(html).toContain('<code>GET /api/things/:id</code>: no example');
+    expect(html).not.toContain('href=""');
   });
 });

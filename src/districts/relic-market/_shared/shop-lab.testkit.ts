@@ -105,6 +105,11 @@ export function ordersOf(html: string): ShownOrder[] {
   });
 }
 
+/** The ids of the orders the page lists, newest first, as text: numbers and string ids alike (ordersOf reads numbers only). */
+export function orderIdsOf(html: string): string[] {
+  return [...html.matchAll(/<li data-order="([^"]*)" data-total=/g)].map((m) => unescapeHtml(m[1]));
+}
+
 /** A cart line as the page shows it: `line` is its total in cents, null when the lab could not price it. */
 export interface ShownLine { readonly sku: string; readonly qty: number; readonly line: number | null; readonly kind: string }
 

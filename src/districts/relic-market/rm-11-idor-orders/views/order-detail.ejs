@@ -1,0 +1,17 @@
+<%# RM-11 order detail: one order as the lab shows it (id, customer, status, where it ships, items, total, gift message, and the flag line of a foreign order below Divine). Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <section class="order-detail" data-testid="order-detail" data-id="<%= detail.id %>">
+    <h2>Order <code><%= detail.id %></code></h2>
+    <p>Placed by <%= detail.placedBy %> (<code><%= detail.customer %></code>), status <%= detail.status %>. Ships to <strong><%= detail.city %></strong>.</p>
+    <ul>
+<% detail.lines.forEach(function (l) { -%>
+      <li><%= l.name %> × <%= l.qty %> at <%= l.unit %></li>
+<% }); -%>
+    </ul>
+    <p>Total <%= detail.total %>.</p>
+<% if (detail.gift) { -%>
+    <p>Gift message: <q><%= detail.gift %></q></p>
+<% } -%>
+<% if (detail.flag) { -%>
+    <p class="lab-message lab-success" data-testid="order-flag"><%= detail.flag %></p>
+<% } -%>
+  </section>
