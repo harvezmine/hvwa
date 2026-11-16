@@ -138,7 +138,7 @@ describe('SC-08 Templar: the last extension is checked, the first one is mapped'
 describe('SC-08 Inquisitor: a php segment in the raw name is refused, then the name is decoded once', () => {
   it('refuses any dot-separated segment equal to php, in any case, in the name as sent', async () => {
     const c = await fresh('inquisitor');
-    for (const name of ['shell.php', 'shell.PHP', 'shell.php.jpg', 'x.Php.png', 'a.b.php.c', '.php']) {
+    for (const name of ['shell.php', 'shell.PHP', 'shell.php.jpg', 'x.Php.png', 'a.b.php.c', '.php', 'shell.php/', 'shell.php/.']) {
       const r = await upload(c, [scroll(name, STATEMENT)]);
       expect(r.text, name).toContain('Scrolls with a php extension are not accepted.');
       expect(fsOf(c).has(`/srv/uploads/${name}`), name).toBe(false);
@@ -150,6 +150,7 @@ describe('SC-08 Inquisitor: a php segment in the raw name is refused, then the n
     ['shell%2ephp', 'shell.php'],
     ['shell%2Ephp', 'shell.php'],
     ['shell.php%2ejpg', 'shell.php.jpg'],
+    ['shell.php%2f', 'shell.php'], // a decoded trailing slash: the file system resolves it away
     [Buffer.from('shell.php\0.jpg', 'latin1'), 'shell.php\u0000.jpg'],
   ] as const)('%j gets past the raw check; the stored name is %j and the server runs it', async (sent, stored) => {
     const c = await fresh('inquisitor');
