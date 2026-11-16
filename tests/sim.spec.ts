@@ -1,9 +1,11 @@
 // The simulated victim's stores and browser (src/core/sim.ts): inbox, attacker log, cookie jar, SimBrowser.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import net from 'node:net';
 import v8 from 'node:v8';
 import vm from 'node:vm';
-import { describe, it, expect, onTestFinished, vi } from 'vitest';
+import ts from 'typescript';
+import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { NewSessionLimitError, insidePerSessionFactory, perSession, setPerSessionDefaults } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import {
@@ -32,6 +34,46 @@ function site(routes: Record<string, SimResponse | ((r: SimRequest) => SimRespon
 }
 const redirect = (location: string, status = 302, extra: Record<string, string | string[]> = {}): SimResponse =>
   ({ status, headers: { location, ...extra } });
+
+// Every TCP connection (http, https, http2, tls, fetch/undici, net) goes through net.Socket.prototype.connect: this
+// whole file runs with it spied, and nothing in it may open one.
+const socketConnect = vi.spyOn(net.Socket.prototype, 'connect');
+afterAll(() => {
+  const calls = socketConnect.mock.calls.length;
+  socketConnect.mockRestore();
+  expect(calls, 'a socket was opened while the sim specs ran').toBe(0);
+});
+
+/** Runtime imports the simulation may have; type-only imports are erased. Anything else fails the guard. */
+const SIM_ALLOWED_IMPORTS: ReadonlySet<string> = new Set(['node:buffer', 'node:path', 'node:url', './i18n.js', './lab.js', './render.js']);
+/** Globals that reach the network or load code, however the call site spells the rest. */
+const SIM_DENIED_GLOBALS: ReadonlySet<string> = new Set([
+  'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'globalThis', 'global', 'window', 'self', 'process', 'require',
+  'module', 'eval', 'Function', 'Deno', 'Bun',
+]);
+
+/** A module's runtime imports, and what it must never do (dynamic import, require, a denied global), parsed by tsc. */
+function simSourceCheck(src: string): { runtime: string[]; problems: string[] } {
+  const sf = ts.createSourceFile('sim.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const runtime: string[] = [];
+  const problems: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.importClause?.isTypeOnly) runtime.push(node.moduleSpecifier.text);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.isTypeOnly) runtime.push(node.moduleSpecifier.text);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      problems.push('import = require');
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      problems.push('dynamic import()');
+    } else if (ts.isIdentifier(node) && SIM_DENIED_GLOBALS.has(node.text)) {
+      problems.push(`${node.text} (line ${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1})`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return { runtime, problems };
+}
 
 describe('sim state lives in perSession (per player and level)', () => {
   it('every sim store refuses to be created outside a perSession factory', () => {
@@ -681,23 +723,36 @@ describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
 });
 
 describe('no real network', () => {
-  it('src/core/sim.ts imports no networking module and never calls fetch', () => {
-    const src = readFileSync(new URL('../src/core/sim.ts', import.meta.url), 'utf8');
-    const imports = [...src.matchAll(/(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g)].map((m) => m[1]);
-    const net = /^(node:)?(http|https|http2|net|tls|dns|dgram|child_process|worker_threads)(\/|$)|^undici/;
-    expect(imports.filter((m) => net.test(m))).toEqual([]);
-    expect(src).not.toMatch(/\bfetch\s*\(/);
-    expect(src).not.toMatch(/\b(XMLHttpRequest|WebSocket|EventSource)\b/);
+  it('the guard flags every way to reach a module or a global it does not allow (self-test)', () => {
+    const evasions = [
+      "import 'node:http';", "import * as h from 'node:https';", 'const m = await import(`node:http`);', "export * from 'node:tls';",
+      "export { connect } from 'node:net';", "import d = require('node:dns');", "const r = require('node:dgram');",
+      "globalThis['fe' + 'tch']('http://x');", "fetch('http://x');", "new WebSocket('ws://x');", 'process.binding("tcp_wrap");',
+      "(0, eval)('1');", "Function('return this')();", "import { request } from 'undici';", "import x from './render.js'; import y from 'express';",
+    ];
+    for (const src of evasions) {
+      const { runtime, problems } = simSourceCheck(src);
+      expect([...runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m)), ...problems], src).not.toEqual([]);
+    }
+    expect(simSourceCheck("import type { Request } from 'express'; import { t } from './i18n.js';")).toEqual({ runtime: ['./i18n.js'], problems: [] });
   });
 
-  it('a full visit (citadel redirect -> attacker) touches no fetch, http, https, net or dns function', () => {
+  it('src/core/sim.ts imports only what the allow-list names, never loads code dynamically, and names no network global', () => {
+    const { runtime, problems } = simSourceCheck(readFileSync(new URL('../src/core/sim.ts', import.meta.url), 'utf8'));
+    expect(runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m))).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+
+  it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {
     const require = createRequire(import.meta.url);
+    const on = (id: string, fns: readonly string[]) => fns.map((f) => vi.spyOn(require(id) as Record<string, () => unknown>, f));
+    const dns = require('node:dns') as { promises: Record<string, () => unknown> };
     const spies = [
       vi.spyOn(globalThis, 'fetch'),
-      ...(['request', 'get'] as const).map((f) => vi.spyOn(require('node:http') as Record<string, () => unknown>, f)),
-      ...(['request', 'get'] as const).map((f) => vi.spyOn(require('node:https') as Record<string, () => unknown>, f)),
-      ...(['connect', 'createConnection'] as const).map((f) => vi.spyOn(require('node:net') as Record<string, () => unknown>, f)),
-      ...(['lookup', 'resolve'] as const).map((f) => vi.spyOn(require('node:dns') as Record<string, () => unknown>, f)),
+      ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
+      ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
+      ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
+      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
     ];
     try {
       const w = world();
@@ -711,3 +766,4 @@ describe('no real network', () => {
     }
   });
 });
+

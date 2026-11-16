@@ -397,8 +397,11 @@ If a mutation stays green, the matrix is missing a case.
 Some flaws need someone else to click: the admin opens a reset mail whose link host came from a header (GK-09),
 follows an OAuth authorize link while signed in (GK-10, GK-11), signs in through a session link (GK-16). The engine
 simulates that victim deterministically and with **no real network**: nothing in `core/sim.ts` opens a socket,
-resolves a name or fetches (a guard test in `tests/sim.spec.ts` checks the imports and spies on fetch, http, https,
-net and dns during a visit). The worked example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
+resolves a name or fetches. A guard in `tests/sim.spec.ts` parses the module with the TypeScript compiler and allows
+only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as `fetch` or
+`globalThis`), spies on fetch, http(s), http2, tls, net, dgram and dns during a visit, and spies on
+`net.Socket.prototype.connect` for the whole spec file. The worked example is the fixture lab SV-01 in
+`tests/sim-lab.spec.ts`.
 
 ### The two hosts
 
