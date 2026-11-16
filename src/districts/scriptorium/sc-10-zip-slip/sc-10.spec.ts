@@ -171,6 +171,18 @@ describe('SC-10 page and state', () => {
   });
 });
 
+describe('SC-10 archive limits', () => {
+  it('an archive that holds more than (honestly declared, 360 KiB) the simulated file system holds (256 KiB in all) is refused as an archive, nothing extracted', async () => {
+    for (const level of ['acolyte', 'divine'] as const) {
+      const c = await fresh(level);
+      const res = await restore(c, [1, 2, 3].map((i) => ({ name: `${i}.bin`, data: Buffer.alloc(120 * 1024, 0x61) })));
+      expect(res.text, level).toContain(level === 'divine' ? 'Invalid request.' : 'Archive error');
+      expect(res.text, level).not.toContain('Restored');
+      expect(paths(c).filter((p) => p.startsWith(RESTORE_DIR))).toEqual([`${RESTORE_DIR}/README.txt`]);
+    }
+  });
+});
+
 describe('SC-10 Acolyte: the entry name is joined onto the restore folder with no check', () => {
   it('../../templates/welcome.txt overwrites the sentinel and the welcome page runs the statement: the flag, credited at Acolyte', async () => {
     const c = await fresh('acolyte');
@@ -233,6 +245,7 @@ describe('SC-10 Divine: each entry is resolved under the restore folder and refu
       { name: '/srv/app/templates/welcome.txt', data: STATEMENT },
       { name: 'C:\\srv\\app\\templates\\welcome.txt', data: STATEMENT },
       { name: 'a/../../../templates/welcome.txt', data: STATEMENT },
+      { name: 'C:/srv/app/templates/welcome.txt', data: STATEMENT }, // a drive letter with forward slashes: only the drive rule refuses it
       { name: '../restore2/sibling.txt', data: STATEMENT }, // a sibling folder that shares the prefix
       { name: 'ok.txt', data: 'fine' },
     ]);
@@ -243,7 +256,8 @@ describe('SC-10 Divine: each entry is resolved under the restore folder and refu
     expect(res.text).toContain('Skipped C:\\srv\\app\\templates\\welcome.txt: absolute and backslash names are not accepted.');
     expect(res.text).toContain('Restored ok.txt to /srv/app/uploads/restore/ok.txt');
     expect(res.text).toContain('Skipped ../restore2/sibling.txt: it would land outside /srv/app/uploads/restore.');
-    expect(res.text).toContain('Restored 1 of 7 entries.');
+    expect(res.text).toContain('Skipped C:/srv/app/templates/welcome.txt: absolute and backslash names are not accepted.');
+    expect(res.text).toContain('Restored 1 of 8 entries.');
     expect(sentinelText(c)).toBe(before);
     expect(ranWith(res)).toBe(false);
   });
