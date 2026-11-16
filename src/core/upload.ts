@@ -167,6 +167,87 @@ export async function parseMultipart(req: UploadRequest, limits: Partial<UploadL
   return Object.freeze({ fields: Object.freeze(fields), files: Object.freeze(files) });
 }
 
+export type ImageType = 'png' | 'jpeg' | 'gif' | 'webp';
+
+/** What a raster image's header says it is. */
+export interface ImageSniff {
+  readonly type: ImageType;
+  readonly mime: `image/${ImageType}`;
+  readonly width: number;
+  readonly height: number;
+}
+
+const startsWith = (b: Uint8Array, at: number, sig: string): boolean => {
+  if (at + sig.length > b.length) return false;
+  for (let i = 0; i < sig.length; i++) if (b[at + i] !== sig.charCodeAt(i)) return false;
+  return true;
+};
+const be16 = (b: Uint8Array, i: number) => (b[i] << 8) | b[i + 1];
+const le16 = (b: Uint8Array, i: number) => b[i] | (b[i + 1] << 8);
+const le24 = (b: Uint8Array, i: number) => b[i] | (b[i + 1] << 8) | (b[i + 2] << 16);
+const be32 = (b: Uint8Array, i: number) => ((b[i] << 24) >>> 0) + ((b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]);
+const image = (type: ImageType, width: number, height: number): ImageSniff | null =>
+  (width > 0 && height > 0 ? Object.freeze({ type, mime: `image/${type}` as const, width, height }) : null);
+
+// JPEG frame headers (SOF0-3, 5-7, 9-11, 13-15): the segment that carries the image's height and width.
+const JPEG_SOF = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+function sniffJpeg(b: Uint8Array): ImageSniff | null {
+  let i = 2; // after SOI (FF D8): a chain of FF-prefixed markers up to the first frame header
+  while (i + 4 <= b.length) {
+    if (b[i] !== 0xff) return null;
+    const marker = b[i + 1];
+    if (marker === 0xff) { i += 1; continue; } // a fill byte
+    if (marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; } // no length
+    if (marker === 0xd9 || marker === 0xda) return null; // end of image, or the scan data, before any frame header
+    const length = be16(b, i + 2); // counts itself, not the marker
+    if (length < 2) return null;
+    if (JPEG_SOF.has(marker)) return length >= 7 && i + 9 <= b.length ? image('jpeg', be16(b, i + 7), be16(b, i + 5)) : null;
+    i += 2 + length;
+  }
+  return null;
+}
+
+/**
+ * The type and size a raster image's header declares (PNG, JPEG, GIF, WebP), or null. Hand-rolled, no dependency:
+ * the magic bytes, then the size fields (PNG's IHDR, GIF's logical screen, JPEG's first frame header after a marker
+ * walk, WebP's VP8/VP8L/VP8X chunk); a zero size is not an image.
+ *
+ * ONLY THE HEADER IS READ, on purpose: whatever follows it is never looked at, so a valid header followed by a script
+ * (`GIF89a...<?hvwa CANARY ?>`, a JPEG with `<svg onload=...>` after it) passes. That is SC-09's lesson (a correct
+ * header proves the file's start, not the whole of it): use it as the lab's flawed "is it an image?" check, never as
+ * a safety check. The safe answer (SC-09 Divine) does not validate; it re-encodes, keeping nothing the player sent.
+ */
+export function sniffImage(bytes: Uint8Array): ImageSniff | null {
+  const b = bytes;
+  if (startsWith(b, 0, '\x89PNG\r\n\x1a\n')) {
+    // The first chunk must be IHDR (length 13): width and height are 31-bit big-endian.
+    if (b.length < 24 || be32(b, 8) !== 13 || !startsWith(b, 12, 'IHDR')) return null;
+    const width = be32(b, 16);
+    const height = be32(b, 20);
+    return width <= 0x7fffffff && height <= 0x7fffffff ? image('png', width, height) : null;
+  }
+  if (startsWith(b, 0, 'GIF87a') || startsWith(b, 0, 'GIF89a')) return b.length < 10 ? null : image('gif', le16(b, 6), le16(b, 8));
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return sniffJpeg(b);
+  if (startsWith(b, 0, 'RIFF') && startsWith(b, 8, 'WEBP')) {
+    if (startsWith(b, 12, 'VP8 ')) { // lossy: a frame tag, the start code 9D 01 2A, then 14-bit width and height
+      return b.length >= 30 && b[23] === 0x9d && b[24] === 0x01 && b[25] === 0x2a ? image('webp', le16(b, 26) & 0x3fff, le16(b, 28) & 0x3fff) : null;
+    }
+    if (startsWith(b, 12, 'VP8L')) { // lossless: the signature 2F, then (width - 1) and (height - 1) in 14 bits each
+      if (b.length < 25 || b[20] !== 0x2f) return null;
+      const bits = (b[21] | (b[22] << 8) | (b[23] << 16) | (b[24] << 24)) >>> 0;
+      return image('webp', (bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1);
+    }
+    if (startsWith(b, 12, 'VP8X')) return b.length < 30 ? null : image('webp', le24(b, 24) + 1, le24(b, 27) + 1); // extended: 24-bit sizes - 1
+  }
+  return null;
+}
+
+/** Whether the bytes START like a PNG, JPEG, GIF or WebP image with a non-zero size (see sniffImage: header only). */
+export function looksLikeImage(bytes: Uint8Array): boolean {
+  return sniffImage(bytes) !== null;
+}
+
 /**
  * A settled promise as a synchronous thunk that returns its value or rethrows its error, so an awaited parse goes
  * through tryDb's error rule (the real message below Divine, a generic one at Divine) like any parser call:

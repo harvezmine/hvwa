@@ -3,7 +3,7 @@
 import { Buffer } from 'node:buffer';
 import { describe, it, expect, vi } from 'vitest';
 import { DIVINE_DB_ERROR, field, tryDb } from '../src/core/lab.js';
-import { UPLOAD_LIMITS, UploadError, parseMultipart, settle, type ParsedUpload } from '../src/core/upload.js';
+import { UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, settle, sniffImage, type ParsedUpload } from '../src/core/upload.js';
 import { multipart, uploadReq, type Part } from './support/uploads.js';
 
 const parse = (parts: readonly Part[], limits = {}): Promise<ParsedUpload> => parseMultipart(uploadReq(multipart(parts)), limits);
@@ -282,5 +282,98 @@ describe('memory: what a parse returns does not keep the request body alive', ()
     // As views of their bodies (or of the parser's blobs): 40 x ~0.5 MiB = 20 MiB. As their own bytes: a few KB.
     expect(retained).toBeLessThan(4 * 1024 * 1024);
     expect(kept[39]).toEqual({ caption: 'caption-39', bytes: Buffer.from('<?hvwa CANARY ?> 39'), name: 'small-39.php' });
+  });
+});
+
+// --- looksLikeImage / sniffImage ----------------------------------------------------------------------------------
+
+const u16be = (n: number) => [(n >> 8) & 0xff, n & 0xff];
+const u16le = (n: number) => [n & 0xff, (n >> 8) & 0xff];
+const u32be = (n: number) => [(n >>> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+const u32le = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
+const u24le = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff];
+const bytes = (...parts: Array<number[] | string>): Buffer =>
+  Buffer.from(parts.flatMap((p) => (typeof p === 'string' ? [...Buffer.from(p, 'latin1')] : p)));
+
+/** Minimal real headers: every byte the sniff needs. */
+const IMG = {
+  png: (w: number, h: number) => bytes([0x89], 'PNG\r\n\x1a\n', u32be(13), 'IHDR', u32be(w), u32be(h), [8, 6, 0, 0, 0]),
+  gif: (w: number, h: number, v = '89a') => bytes(`GIF${v}`, u16le(w), u16le(h), [0xf7, 0, 0]),
+  // SOI, an APP0 (JFIF) segment, then a frame header (SOF0 baseline by default): precision, height, width.
+  jpeg: (w: number, h: number, sof = 0xc0) => bytes([0xff, 0xd8, 0xff, 0xe0], u16be(16), 'JFIF\0', [1, 1, 0], u16be(1), u16be(1), [0, 0],
+    [0xff, sof], u16be(17), [8], u16be(h), u16be(w), [3]),
+  webpVp8: (w: number, h: number) => bytes('RIFF', u32le(30), 'WEBPVP8 ', u32le(10), [0x30, 0x01, 0x00, 0x9d, 0x01, 0x2a], u16le(w), u16le(h)),
+  webpVp8l: (w: number, h: number) => bytes('RIFF', u32le(30), 'WEBPVP8L', u32le(5), [0x2f], u32le(((w - 1) & 0x3fff) | (((h - 1) & 0x3fff) << 14))),
+  webpVp8x: (w: number, h: number) => bytes('RIFF', u32le(30), 'WEBPVP8X', u32le(10), [0, 0, 0, 0], u24le(w - 1), u24le(h - 1)),
+};
+const shortestAccepted = (img: Buffer): number | undefined => [...Array(img.length + 1).keys()].find((n) => looksLikeImage(img.subarray(0, n)));
+
+describe('looksLikeImage / sniffImage: magic bytes and dimensions from the header', () => {
+  it('PNG, GIF87a/89a, JPEG (baseline and progressive), WebP (VP8, VP8L, VP8X): type, MIME type and size', () => {
+    expect(sniffImage(IMG.png(640, 480))).toEqual({ type: 'png', mime: 'image/png', width: 640, height: 480 });
+    expect(sniffImage(IMG.gif(1, 2, '87a'))).toEqual({ type: 'gif', mime: 'image/gif', width: 1, height: 2 });
+    expect(sniffImage(IMG.gif(300, 65535))).toEqual({ type: 'gif', mime: 'image/gif', width: 300, height: 65535 });
+    expect(sniffImage(IMG.jpeg(1024, 768))).toEqual({ type: 'jpeg', mime: 'image/jpeg', width: 1024, height: 768 });
+    expect(sniffImage(IMG.jpeg(16, 9, 0xc2))).toEqual({ type: 'jpeg', mime: 'image/jpeg', width: 16, height: 9 });
+    expect(sniffImage(IMG.webpVp8(320, 200))).toEqual({ type: 'webp', mime: 'image/webp', width: 320, height: 200 });
+    expect(sniffImage(IMG.webpVp8l(5000, 7))).toEqual({ type: 'webp', mime: 'image/webp', width: 5000, height: 7 });
+    expect(sniffImage(IMG.webpVp8x(70000, 3))).toEqual({ type: 'webp', mime: 'image/webp', width: 70000, height: 3 });
+    for (const img of [IMG.png(1, 1), IMG.gif(1, 1), IMG.jpeg(1, 1), IMG.webpVp8(1, 1), IMG.webpVp8l(1, 1), IMG.webpVp8x(1, 1)]) {
+      expect(looksLikeImage(img)).toBe(true);
+      expect(looksLikeImage(new Uint8Array(img))).toBe(true); // any Uint8Array, not only a Buffer
+    }
+  });
+
+  it('JPEG: fill bytes and standalone markers before the frame header are skipped', () => {
+    const j = IMG.jpeg(8, 8);
+    const filled = Buffer.concat([j.subarray(0, 2), Buffer.from([0xff, 0xff, 0xff, 0xd0, 0xff, 0x01]), j.subarray(2)]);
+    expect(sniffImage(filled)).toEqual({ type: 'jpeg', mime: 'image/jpeg', width: 8, height: 8 });
+  });
+
+  it('not an image: text, markup, a script, other formats, an empty file', () => {
+    const not = ['', 'hello', '<?hvwa CANARY ?>', '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"/>', '<?xml version="1.0"?><svg/>',
+      '%PDF-1.7', 'BM6\0\0\0', 'GIF90a\x01\0\x01\0', 'RIFF\0\0\0\0WAVEfmt ', '\x89PNX\r\n\x1a\n'];
+    for (const s of not) expect(looksLikeImage(Buffer.from(s, 'latin1')), JSON.stringify(s)).toBe(false);
+  });
+
+  it('a right signature with a broken or zero-size header is not an image', () => {
+    const bad: Record<string, Buffer> = {
+      'PNG without IHDR first': bytes([0x89], 'PNG\r\n\x1a\n', u32be(13), 'tEXt', u32be(1), u32be(1)),
+      'PNG 0 wide': IMG.png(0, 5),
+      'PNG over 2^31-1 high': IMG.png(5, 0x80000000),
+      'GIF 0 high': IMG.gif(5, 0),
+      'JPEG 0 wide': IMG.jpeg(0, 5),
+      'JPEG: start of scan before any frame header': bytes([0xff, 0xd8, 0xff, 0xda], u16be(8), [1, 1, 0, 0, 0, 0]),
+      'JPEG: end of image first': bytes([0xff, 0xd8, 0xff, 0xd9]),
+      'JPEG: a segment length under 2': bytes([0xff, 0xd8, 0xff, 0xe0, 0, 1, 0, 0]),
+      'JPEG: no marker where one belongs': bytes([0xff, 0xd8, 0x00, 0xe0, 0, 4, 0, 0]),
+      'WebP VP8 without its start code': bytes('RIFF', u32le(30), 'WEBPVP8 ', u32le(10), [0x30, 0x01, 0x00, 0x9d, 0x01, 0x2b], u16le(4), u16le(4)),
+      'WebP VP8 0 wide': IMG.webpVp8(0, 4),
+      'WebP VP8L without its signature byte': bytes('RIFF', u32le(30), 'WEBPVP8L', u32le(5), [0x2e], u32le(0)),
+      'WebP with an unknown first chunk': bytes('RIFF', u32le(30), 'WEBPVP9 ', u32le(10), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    };
+    for (const [what, b] of Object.entries(bad)) expect(looksLikeImage(b), what).toBe(false);
+  });
+
+  it('every truncation of a valid header is not an image (bounds are checked, nothing reads past the end)', () => {
+    const makers = [IMG.png, IMG.gif, IMG.jpeg, IMG.webpVp8, IMG.webpVp8l, IMG.webpVp8x];
+    for (const make of makers) {
+      const img = make(9, 9);
+      const need = shortestAccepted(img);
+      expect(need).toBeDefined();
+      for (let n = 0; n < (need as number); n++) expect(sniffImage(img.subarray(0, n))).toBeNull();
+    }
+    // The shortest prefix each format is accepted with: just the bytes up to its size fields.
+    expect(makers.map((make) => shortestAccepted(make(9, 9)))).toEqual([24, 10, 29, 30, 25, 30]);
+  });
+
+  it("SC-09's lesson: only the header is checked, so a valid header followed by a script passes (a polyglot)", () => {
+    const tail = '\n<?hvwa CANARY ?>\n<svg onload="hvwa(1)"/>';
+    for (const head of [IMG.gif(1, 1), IMG.jpeg(1, 1), IMG.png(1, 1), IMG.webpVp8x(1, 1)]) {
+      expect(looksLikeImage(Buffer.concat([head, Buffer.from(tail)]))).toBe(true);
+    }
+    expect(looksLikeImage(Buffer.from(tail))).toBe(false);
+    // The bytes after the header are never looked at: a megabyte of anything changes nothing.
+    expect(sniffImage(Buffer.concat([IMG.gif(2, 3), Buffer.alloc(1024 * 1024, 0x3c)]))).toEqual({ type: 'gif', mime: 'image/gif', width: 2, height: 3 });
   });
 });
