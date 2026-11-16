@@ -1,7 +1,7 @@
 // The static XSS oracle (src/core/xss/): does attacker HTML create an executable sink that runs the lab's marker?
 // No player JS ever runs here: parse5 builds the tree a browser would, and a rules table decides what would execute.
 import { readFileSync, readdirSync } from 'node:fs';
-import { parseFragment, parse, type DefaultTreeAdapterTypes } from 'parse5';
+import { parseFragment, parse, serialize, type DefaultTreeAdapterTypes } from 'parse5';
 import { createRequire } from 'node:module';
 import net from 'node:net';
 import ts from 'typescript';
@@ -9,6 +9,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   PREVIEW_CSP, PREVIEW_SANDBOX, XSS_LIMITS, linkSinks, markerCall, previewFrame, roundTrip, xssOracle, type Sink, type XssOracleOptions,
 } from '../src/core/xss.js';
+import { serializedLength } from '../src/core/xss/oracle.js';
 
 const N = '0123456789abcdef';
 const M = markerCall(N); // hvwa('0123456789abcdef')
@@ -395,6 +396,84 @@ describe('xssOracle: bounds (size, tags, depth, srcdoc, budget, time)', () => {
       quick(`xssOracle ${html.slice(0, 30)}`, () => xssOracle(html, M));
       quick(`linkSinks ${html.slice(0, 30)}`, () => linkSinks(html));
     }
+  });
+
+  /** `<p>` + b distinct `<b a=i>` + p × `<p>x</p>`: the first new `<p>` pops the b's, and every later block rebuilds all
+   * of them (b × p elements from a few KB, within the tag cap). */
+  const rebuiltFormatting = (b: number, p: number): string =>
+    `<p>${Array.from({ length: b }, (_, i) => `<b a=${i}>`).join('')}${'<p>x</p>'.repeat(p)}`;
+
+  it(`caps the tree, not just the tags (I1): past ${XSS_LIMITS.elements} elements, rebuilt copies included, the page is refused quickly`, () => {
+    const html = rebuiltFormatting(400, 300);
+    expect(html.length).toBeLessThan(6000);
+    quick('xssOracle', () => expect(xssOracle(html, M)).toMatchObject({ executes: false, sinks: [], limited: 'nodes' }), 300);
+    quick('linkSinks', () => expect(linkSinks(html)).toEqual([]), 300);
+    quick('roundTrip', () => expect(roundTrip(html)).toBeUndefined(), 300);
+    // A refused page is refused whole, deterministically, even with a sink before the amplifier.
+    expect(xssOracle(`<img src=x onerror=${M}>${rebuiltFormatting(20, 300)}`, M)).toMatchObject({ executes: false, limited: 'nodes' });
+    expect(xssOracle(`<img src=x onerror=${M}>${rebuiltFormatting(10, 300)}`, M)).toMatchObject({ executes: true }); // 3000 elements: fine
+  });
+
+  it(`caps attribute text across the tree (rebuilt copies included) at ${XSS_LIMITS.attributeText} characters`, () => {
+    expect(xssOracle(reopenedLink(400), M)).toMatchObject({ executes: false, limited: 'nodes' });
+    // An ordinary unclosed link copied into a page of reviews is still judged.
+    const reviews = `<div><a href="javascript:${M}">click${'<p>a review</p>'.repeat(20)}</div>`;
+    expect(xssOracle(reviews, M)).toMatchObject({ executes: true });
+    expect(xssOracle(reviews, M).limited).toBeUndefined();
+  });
+
+  it('measures the serialization exactly before building it (the round trip never builds a string past the budget)', () => {
+    const corpus = [
+      '<!DOCTYPE html><p class="a&quot;b" title="&amp;&nbsp;\'">x &amp; &lt; &gt; &nbsp; y</p>', '<script>if (a < b && c > "d") x()</script><style>a>b{}</style>',
+      '<xmp><b></xmp><iframe><p>x</p></iframe><noembed>&amp;</noembed><plaintext><b>&', '<noscript><p>x &amp;</p></noscript>',
+      '<template><b x="1">&amp;</b><!--c--></template>', '<br><img src=x><input value="&quot;"><hr>', '<!-- a -- comment --><p>x</p>',
+      '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><a xlink:href="#x" xml:lang="en"><text>&lt;</text></a></svg>', '<math><mi>x</mi></math>',
+      `${MGLYPH}${FORM}${NESTED}`,
+    ];
+    for (const html of corpus) {
+      for (const scripting of [true, false]) {
+        const doc = parse(html, { scriptingEnabled: scripting });
+        expect(serializedLength(doc, scripting), html).toBe(serialize(doc, { scriptingEnabled: scripting }).length);
+        const fragment = parseFragment(html, { scriptingEnabled: scripting });
+        expect(serializedLength(fragment, scripting), html).toBe(serialize(fragment, { scriptingEnabled: scripting }).length);
+      }
+    }
+    expect(serializedLength(parse('<p>x</p>'.repeat(100)), true, 50)).toBeGreaterThan(50); // stops early past the limit
+  });
+
+  describe('time (I2): only the mXSS round trips are ever skipped for time; the page and its frames are always read whole', () => {
+    /** performance.now() as the oracle sees it: `first` for the first `fresh` calls, then an hour later. */
+    const clock = (fresh: number) => {
+      let calls = 0;
+      return vi.spyOn(performance, 'now').mockImplementation(() => (++calls <= fresh ? 1000 : 1000 + 3_600_000));
+    };
+
+    it('past the deadline after the page was read: no round trip (limited: time), the same executes and sinks', () => {
+      const pages = [MGLYPH, `<iframe srcdoc="<script>${M}</script>"></iframe>`, `<img src=x onerror=${M}>`, '<p>plain</p>'];
+      for (const html of pages) {
+        const normal = xssOracle(html, M);
+        const spy = clock(1); // the call's own start, then late at every later look
+        try {
+          const late = xssOracle(html, M);
+          expect(late, html).toMatchObject({ executes: normal.executes, sinks: normal.sinks, reachedMarker: normal.reachedMarker, mxss: false, limited: 'time' });
+        } finally {
+          spy.mockRestore();
+        }
+      }
+      expect(xssOracle(MGLYPH, M).mxss).toBe(true); // on time, the round trip runs
+    });
+
+    it('past the deadline in the middle of a round trip parse: it stops there (checked every 256 elements)', () => {
+      const html = `${MGLYPH}${'<i>x</i>'.repeat(300)}`;
+      expect(xssOracle(html, M).mxss).toBe(true);
+      const spy = clock(3); // the start, and the two looks before the round trip parses; late inside the parse
+      try {
+        expect(xssOracle(html, M)).toMatchObject({ executes: false, mxss: false, limited: 'time' });
+        expect(spy.mock.calls.length).toBeGreaterThan(3); // the parse itself looked at the clock
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 
   it('the verdict and its sinks are frozen', () => {

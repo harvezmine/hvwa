@@ -11,6 +11,8 @@ export const NS = Object.freeze({
   SVG: 'http://www.w3.org/2000/svg',
   MATHML: 'http://www.w3.org/1998/Math/MathML',
   XLINK: 'http://www.w3.org/1999/xlink',
+  XML: 'http://www.w3.org/XML/1998/namespace',
+  XMLNS: 'http://www.w3.org/2000/xmlns/',
 });
 
 /** How a sink fires: by itself while the page loads, or when the victim acts on the page (click, hover, focus...). */

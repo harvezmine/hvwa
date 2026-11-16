@@ -37,7 +37,7 @@ export interface Sink {
 }
 
 /** Which bound stopped part of the analysis (see XSS_LIMITS). */
-export type XssLimit = 'size' | 'tags' | 'depth' | 'srcdoc' | 'budget' | 'time';
+export type XssLimit = 'size' | 'tags' | 'nodes' | 'depth' | 'srcdoc' | 'budget' | 'time';
 
 /**
  * How the HTML reaches the DOM.
@@ -77,7 +77,11 @@ export interface XssVerdict {
    * which does not escape `<` and `>` in attribute values).
    */
   readonly mxss: boolean;
-  /** A bound stopped part of the analysis: 'size' / 'tags' (nothing parsed), otherwise what was skipped. */
+  /**
+   * A bound stopped part of the analysis. 'size', 'tags' or 'nodes' with no sinks: the page was refused whole
+   * (executes false, deterministically). Otherwise what was skipped: a framed document ('srcdoc', 'nodes', 'budget')
+   * or the mXSS round trip ('depth', 'budget', 'time': mxss is then false, not proven).
+   */
   readonly limited?: XssLimit;
 }
 
@@ -104,7 +108,13 @@ interface Walk {
   incomplete: boolean;
 }
 
-interface Context { readonly re: RegExp; readonly interact: boolean; readonly budget: Budget }
+interface Context {
+  readonly re: RegExp;
+  readonly interact: boolean;
+  readonly budget: Budget;
+  /** Inside an mXSS round trip: its framed-document parses stop at the deadline too. */
+  readonly timed: boolean;
+}
 
 /** `<` followed by a letter, `!`, `/` or `?`: every tag, comment or doctype starts with one (an upper bound on tokens). */
 function tagOpens(s: string): number {
@@ -123,20 +133,107 @@ function limit(b: Budget, why: XssLimit): undefined {
 
 const divContext = (): Element => defaultTreeAdapter.createElement('div', parse5Html.NS.HTML, []);
 
-/** One bounded parse: within the tag cap (for fresh input), the budget and the deadline; a stack overflow is a bound. */
-function parseBounded(html: string, insertion: XssInsertion, scripting: boolean, b: Budget, checkTags: boolean): Root | undefined {
-  if (checkTags && tagOpens(html) > XSS_LIMITS.tags) return limit(b, 'tags');
+/** Thrown by the bounded tree adapter to stop a parse (never escapes parseBounded). */
+class ParseStop {
+  constructor(readonly why: 'nodes' | 'time') {}
+}
+
+/**
+ * parse5's default tree adapter, counting what the parse creates: every element (a formatting element rebuilt in a
+ * later block counts again) and its attribute text. Past XSS_LIMITS.elements or XSS_LIMITS.attributeText the parse
+ * stops ('nodes'), so a few KB cannot build a tree of a hundred thousand elements. With a deadline (the mXSS round
+ * trip only), it also stops once the deadline has passed, looking every 256 elements ('time').
+ */
+function boundedAdapter(deadline: number | undefined): typeof defaultTreeAdapter {
+  let elements = 0;
+  let text = 0;
+  return {
+    ...defaultTreeAdapter,
+    createElement(tagName, namespaceURI, attrs) {
+      elements++;
+      for (const a of attrs) text += a.name.length + a.value.length;
+      if (elements > XSS_LIMITS.elements || text > XSS_LIMITS.attributeText) throw new ParseStop('nodes');
+      if (deadline !== undefined && elements % 256 === 0 && performance.now() > deadline) throw new ParseStop('time');
+      return defaultTreeAdapter.createElement(tagName, namespaceURI, attrs);
+    },
+  };
+}
+
+interface ParseOptions {
+  /** Count `<` openers first (fresh input: the page, a framed document). */
+  readonly checkTags: boolean;
+  /** Stop at the call's deadline (the mXSS round trip only: time never stops the page or a framed document). */
+  readonly timed: boolean;
+}
+
+/** One bounded parse: the tag cap (for fresh input), the budget, the tree caps, and for a round trip the deadline. */
+function parseBounded(html: string, insertion: XssInsertion, scripting: boolean, b: Budget, o: ParseOptions): Root | undefined {
+  if (o.checkTags && tagOpens(html) > XSS_LIMITS.tags) return limit(b, 'tags');
   if (html.length > b.left) return limit(b, 'budget');
-  if (performance.now() > b.deadline) return limit(b, 'time');
+  if (o.timed && performance.now() > b.deadline) return limit(b, 'time');
   b.left -= html.length;
+  const options = { scriptingEnabled: scripting, treeAdapter: boundedAdapter(o.timed ? b.deadline : undefined) };
   try {
-    return insertion === 'document'
-      ? parse(html, { scriptingEnabled: scripting })
-      : parseFragment(divContext(), html, { scriptingEnabled: scripting });
+    return insertion === 'document' ? parse(html, options) : parseFragment(divContext(), html, options);
   } catch (e) {
+    if (e instanceof ParseStop) return limit(b, e.why);
     if (e instanceof RangeError) return limit(b, 'depth'); // parse5 recursed too deep: the bounds above make it rare
     throw e;
   }
+}
+
+const VOID_ELEMENTS: ReadonlySet<string> = new Set([
+  'area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'img', 'input', 'keygen', 'link', 'meta',
+  'param', 'source', 'track', 'wbr',
+]);
+const RAW_TEXT_PARENTS: ReadonlySet<string> = new Set(['style', 'script', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext']);
+
+/** How much longer than its text a string gets when parse5 escapes it (text: `& < > NBSP`; attributes: `" & NBSP`). */
+function escapeGrowth(s: string, attribute: boolean): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x26) n += 4; // &amp;
+    else if (c === 0xa0) n += 5; // &nbsp;
+    else if (attribute ? c === 0x22 : c === 0x3c || c === 0x3e) n += attribute ? 5 : 3; // &quot; / &lt; &gt;
+  }
+  return n;
+}
+
+/**
+ * The exact length of parse5's `serialize(root, { scriptingEnabled })`, without building it (iterative: no recursion
+ * on a deep tree). Stops counting once past `limit`. The round trip checks it against the budget before it serializes.
+ */
+export function serializedLength(root: Root, scripting: boolean, limit = Infinity): number {
+  let n = 0;
+  const stack: Node[] = [...root.childNodes].reverse();
+  for (let node = stack.pop(); node !== undefined && n <= limit; node = stack.pop()) {
+    if (node.nodeName === '#text') {
+      const { value, parentNode } = node as DefaultTreeAdapterTypes.TextNode;
+      const raw = parentNode !== null && 'tagName' in parentNode && parentNode.namespaceURI === NS.HTML
+        && (RAW_TEXT_PARENTS.has(parentNode.tagName) || (scripting && parentNode.tagName === 'noscript'));
+      n += value.length + (raw ? 0 : escapeGrowth(value, false));
+    } else if (node.nodeName === '#comment') {
+      n += (node as DefaultTreeAdapterTypes.CommentNode).data.length + 7; // <!--...-->
+    } else if (node.nodeName === '#documentType') {
+      n += (node as DefaultTreeAdapterTypes.DocumentType).name.length + 11; // <!DOCTYPE ...>
+    } else if ('tagName' in node) {
+      const el = node as Element;
+      n += el.tagName.length + 2; // <tag>
+      for (const a of el.attrs) {
+        const prefix = a.namespace === undefined ? 0
+          : a.namespace === NS.XMLNS ? (a.name === 'xmlns' ? 0 : 6) : a.namespace === NS.XML ? 4 : a.namespace === NS.XLINK ? 6
+            : String(a.prefix).length + 1;
+        n += prefix + a.name.length + a.value.length + escapeGrowth(a.value, true) + 4; // ` name="value"`
+      }
+      if (el.namespaceURI === NS.HTML && VOID_ELEMENTS.has(el.tagName)) continue;
+      n += el.tagName.length + 3; // </tag>
+      const children = el.tagName === 'template' && el.namespaceURI === NS.HTML
+        ? (el as DefaultTreeAdapterTypes.Template).content.childNodes : el.childNodes;
+      for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+    }
+  }
+  return n;
 }
 
 function textOf(el: Element): string {
@@ -210,7 +307,7 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
       w.incomplete = true;
       return;
     }
-    const doc = parseBounded(srcdoc, 'document', true, ctx.budget, true);
+    const doc = parseBounded(srcdoc, 'document', true, ctx.budget, { checkTags: true, timed: ctx.timed });
     if (doc === undefined) {
       w.incomplete = true;
       return;
@@ -229,8 +326,16 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
     for (let i = children.length - 1; i >= 0; i--) stack.push({ node: children[i], depth, inert });
   };
   push(root.childNodes, 1, false);
+  let elements = 0;
   for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
     const { node, depth, inert } = item;
+    // A backstop: every tree here was built under the same cap (boundedAdapter, the XML reader), so this never stops a
+    // tree the oracle parsed; it bounds the walk whatever tree it is given.
+    if ('tagName' in node && ++elements > XSS_LIMITS.elements) {
+      w.incomplete = true;
+      limit(ctx.budget, 'nodes');
+      return;
+    }
     if (node.nodeName === '#text') {
       if (!w.reached && ctx.re.test((node as DefaultTreeAdapterTypes.TextNode).value)) w.reached = true;
       continue;
@@ -262,9 +367,12 @@ function roundTripAdds(tree: Root, before: Walk, insertion: XssInsertion, script
     if (before.deep) limit(ctx.budget, 'depth');
     return false;
   }
-  const again = parseBounded(serialize(tree, { scriptingEnabled: scripting }), insertion, true, ctx.budget, false);
+  // Late already: no round trip (the page itself was read whole). Too long once serialized: never build the string.
+  if (performance.now() > ctx.budget.deadline) return limit(ctx.budget, 'time') ?? false;
+  if (serializedLength(tree, scripting, ctx.budget.left) > ctx.budget.left) return limit(ctx.budget, 'budget') ?? false;
+  const again = parseBounded(serialize(tree, { scriptingEnabled: scripting }), insertion, true, ctx.budget, { checkTags: false, timed: true });
   if (again === undefined) return false;
-  const after = walk(again, f, ctx);
+  const after = walk(again, f, { ...ctx, timed: true });
   for (const [sig, n] of after.firing) if (n > (before.firing.get(sig) ?? 0)) return true;
   return false;
 }
@@ -289,20 +397,20 @@ export function xssOracle(html: string, marker: string, opts: XssOracleOptions =
   const page = typeof html === 'string' ? html : '';
   if (page.length > XSS_LIMITS.htmlLength) return refused('size');
   const budget: Budget = { left: XSS_LIMITS.parseBudget, deadline: performance.now() + XSS_LIMITS.timeMs };
-  const tree = parseBounded(page, insertion, true, budget, true);
+  const tree = parseBounded(page, insertion, true, budget, { checkTags: true, timed: false });
   if (tree === undefined) return refused(budget.limited ?? 'size');
   const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
   const top: Frame = {
     isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
     scriptElements: insertion === 'document', prefix: '', srcdocDepth: 0,
   };
-  const ctx: Context = { re, interact: opts.interact !== false, budget };
+  const ctx: Context = { re, interact: opts.interact !== false, budget, timed: false };
   const first = walk(tree, top, ctx);
   let mxss = roundTripAdds(tree, first, insertion, true, top, ctx);
   if (!mxss && !first.deep && !first.incomplete && /noscript/i.test(page)) {
     // A sanitizer that parses with scripting off (DOMParser, a template element) sees noscript content as markup.
-    const off = parseBounded(page, insertion, false, budget, false);
-    if (off !== undefined) mxss = roundTripAdds(off, walk(off, top, ctx), insertion, false, top, ctx);
+    const off = parseBounded(page, insertion, false, budget, { checkTags: false, timed: true });
+    if (off !== undefined) mxss = roundTripAdds(off, walk(off, top, { ...ctx, timed: true }), insertion, false, top, ctx);
   }
   return Object.freeze({
     executes: first.firing.size > 0, sinks: Object.freeze([...first.sinks]), reachedMarker: first.reached, mxss,
@@ -319,9 +427,9 @@ export function roundTrip(html: string, opts: { readonly insertion?: XssInsertio
   const insertion = insertionOf(opts.insertion);
   if (typeof html !== 'string' || html.length > XSS_LIMITS.htmlLength) return undefined;
   const budget: Budget = { left: XSS_LIMITS.parseBudget, deadline: Infinity };
-  const tree = parseBounded(html, insertion, true, budget, true);
+  const tree = parseBounded(html, insertion, true, budget, { checkTags: true, timed: false });
   if (tree === undefined) return undefined;
-  const ctx: Context = { re: /(?!)/, interact: true, budget };
+  const ctx: Context = { re: /(?!)/, interact: true, budget, timed: false };
   if (walk(tree, { isolated: false, live: false, scriptElements: false, prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
   return serialize(tree);
 }
@@ -408,7 +516,7 @@ export function linkSinks(html: string, opts: { readonly scripting?: boolean } =
   const out: LinkSink[] = [];
   if (typeof html !== 'string' || html.length > XSS_LIMITS.htmlLength) return Object.freeze(out);
   const budget: Budget = { left: XSS_LIMITS.parseBudget, deadline: Infinity };
-  const doc = parseBounded(html, 'document', opts.scripting === true, budget, true);
+  const doc = parseBounded(html, 'document', opts.scripting === true, budget, { checkTags: true, timed: false });
   if (doc === undefined) return Object.freeze(out);
   const add = (kind: LinkSink['kind'], element: string, attribute: string, raw: string): void => {
     const url = urlText(raw);
