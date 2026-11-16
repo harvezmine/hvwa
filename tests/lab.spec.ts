@@ -318,6 +318,34 @@ describe('perSession(factory, opts?)', () => {
     expect(() => p.for({ sessionId: '', level: 'acolyte' })).toThrow(/sessionId/);
     expect(() => p.for({ sessionId: undefined as unknown as string, level: 'acolyte' })).toThrow(/sessionId/);
   });
+
+  it('an instance that expires (idle TTL) frees its place in the shared budget', () => {
+    const prev = setCappedBudget(2);
+    onTestFinished(() => { setCappedBudget(prev); });
+    const caps = { maxNewPerMinute: 1000, budget: 10_000 };
+    const disposed: string[] = [];
+    let t = 0;
+    const other = perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid }; }, { dispose: (v) => { disposed.push(v.sid); } });
+    const idle = perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid }; }, { now: () => t, idleTtlMs: 1000 });
+    other.for(req('o')); // [o]
+    idle.for(req('a')); // [o, a]
+    t = 5000; // a expires: the next use sweeps it out of the budget too...
+    idle.for(req('b')); // ...so b takes its place and o is not evicted
+    expect(disposed).toEqual([]);
+    expect([other.size, idle.size]).toEqual([1, 1]);
+  });
+
+  // Declared budgets stay for the life of the process (this file): keep this test last among the capped ones.
+  it('the smallest budget any capped holder declares is the shared budget', () => {
+    const prev = setCappedBudget(undefined);
+    onTestFinished(() => { setCappedBudget(prev); });
+    const small = perSession((_l, sid) => { capPerSessionHolder('small', { maxNewPerMinute: 1000, budget: 3 }); return { sid }; });
+    const large = perSession((_l, sid) => { capPerSessionHolder('large', { maxNewPerMinute: 1000, budget: 4 }); return { sid }; });
+    small.for(req('s1')); // declares 3 (earlier tests in this file declared only larger budgets)
+    for (let i = 1; i <= 3; i++) large.for(req(`l${i}`)); // declares 4 afterwards: 3 still holds
+    expect(small.size + large.size).toBe(3);
+    expect(small.size).toBe(0);
+  });
 });
 
 interface Mod { run(): string }
