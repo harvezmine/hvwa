@@ -402,7 +402,13 @@ If a mutation stays green, the matrix is missing a case.
 7. Import `challenge.js` from the district `index.ts` (and the district from `src/districts/index.ts`).
 8. Mutation self-check (section 6). For a stateful lab also: use `labPath` for links and cookie paths,
    bound attacker-keyed maps, and check that waiting and re-signing-in do not beat the limiter.
-9. `npm test`, `npm run typecheck`, `npm run verify:dist` all green; commit `feat(<district>): <ID> <title>`.
+9. Catalog: the row already exists in `src/catalog.ts` (levels there must equal `impl.levels`; `tests/catalog.spec.ts` checks it).
+   Run `npm run gen:catalog` so `docs/CATALOG.md` shows the row as ✅ registered, and commit it with the challenge
+   (the stale-catalog test fails otherwise).
+10. `npm test`, `npm run typecheck`, `npm run verify:dist` all green; commit `feat(<district>): <ID> <title>`.
+
+Release gate: `npm run gate:catalog` prints `N/122 registered` and exits non-zero below 100. It is deliberately not part of
+`npm test` (red until Phases 2-4 land); run it before a release.
 
 ## 8. Victim-driven labs (`core/sim.ts`)
 
