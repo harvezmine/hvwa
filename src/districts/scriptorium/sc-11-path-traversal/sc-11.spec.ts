@@ -199,6 +199,12 @@ describe('SC-11 Inquisitor: ../, backslash and absolute names are refused as the
     expect([third.status, ranWith(third)]).toEqual([404, false]);
   });
 
+  it('the page form encodes the typed text itself, so a single-encoded ../ typed there is the second layer and solves it', async () => {
+    const c = await fresh('inquisitor');
+    expect(ranWith(await fetchByForm(c, '%2e%2e%2fvault%2fflag.txt'))).toBe(true);
+    expect(ranWith(await fetchByForm(c, '../vault/flag.txt'))).toBe(false); // a typed ../ is still refused
+  });
+
   it('....// is an ordinary name here: a miss; a broken percent sequence is a download error below Divine', async () => {
     const c = await fresh('inquisitor');
     const r = await download('file=....//vault/flag.txt')(c);
@@ -218,7 +224,7 @@ describe('SC-11 Divine: a scroll is looked up by name in a fixed list; no path i
     const misses = new Set<string>();
     for (const q of ['file=../vault/flag.txt', 'file=....//vault/flag.txt', 'file=%252e%252e%252fvault%252fflag.txt', 'file=%2e%2e%2fvault%2fflag.txt',
       'file=..%5cvault%5cflag.txt', 'file=/vault/flag.txt', 'file=flag.txt', 'file=vault/flag.txt', 'file=/public/psalms.txt', 'file=public/psalms.txt',
-      'file=PSALMS.TXT', 'file=psalms.txt%20', 'file=psalms.txt%00', 'file=__proto__', 'file=constructor', 'file=toString', 'file=bad%25zz', 'file=']) {
+      'file=PSALMS.TXT', 'file=./psalms.txt', 'file=x/../psalms.txt', 'file=psalms.txt%20', 'file=psalms.txt%00', 'file=__proto__', 'file=constructor', 'file=toString', 'file=bad%25zz', 'file=']) {
       const r = await download(q)(c);
       expect(r.status, q).toBe(404);
       expect(ranWith(r), q).toBe(false);

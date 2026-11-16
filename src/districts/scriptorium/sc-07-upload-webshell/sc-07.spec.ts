@@ -189,7 +189,7 @@ describe('SC-07 Divine: a server-made name, a fixed type, never run', () => {
     expect(served.headers['content-type']).toBe('application/octet-stream');
     expect(served.headers['content-disposition']).toBe('attachment');
     expect(served.body.toString()).toBe(STATEMENT);
-    for (const name of ['shell.php', 'shell.php.', 'shell.PHP']) expect((await fetchScroll(c, name)).status, name).toBe(404);
+    for (const name of ['shell.php', 'shell.php.', 'shell.PHP', '../uploads/' + path, `${path}\u0000.jpg`]) expect((await fetchScroll(c, name)).status, JSON.stringify(name)).toBe(404);
   });
 
   it('no response of any exploit round shows a flag at Divine: the pages and the bytes of the downloads', async () => {
