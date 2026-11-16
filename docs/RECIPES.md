@@ -990,7 +990,10 @@ does not validate, it re-encodes. The engine has no image decoder, so Divine ser
 GIF the server writes from the sniffed size alone. It keeps no byte the player sent and is always 35 bytes: its
 logical screen is the size clamped to 65535, and its image is 1x1. **Never allocate pixels from a sniffed size**:
 `sniffImage` accepts PNG sizes up to 2^31 - 1 on each side, so "a blank image of that size" would exhaust the 512 MB
-container. SVG is not a raster: `looksLikeImage(svg)` is false.
+container. **Size the placeholder with CSS on the lab page**: its logical screen can be up to 65535 x 65535, which a
+browser lays out (and may try to decode) at that size, so give the `<img>` a fixed box, e.g.
+`<img src="..." alt="" style="width: 8rem; height: 8rem; object-fit: contain">`, never its intrinsic size. SVG is not
+a raster: `looksLikeImage(svg)` is false.
 
 ### "Execution": `simInterpret(bytes, canary)`, and why nothing runs
 
