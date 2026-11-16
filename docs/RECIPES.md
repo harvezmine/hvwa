@@ -77,6 +77,9 @@ src/districts/index.ts              imports each district index
     pin goes) and `trimBounded(map, { max, pin?, spare? })` for a lab that inserts elsewhere and trims later (`pin`:
     never evicted, e.g. the admin's session; `spare`: evicted only when nothing else can go, e.g. signed-in sessions
     after anonymous ones). Each lab states its own rule: GK-10/11 pin the admin's session, GK-16 spares signed-in ones.
+  - `sql.ts`: `firstRows(stmt, max, ...params)` (at most `max` rows read with `iterate()` and stopped there: the result cap of
+    rule (g); a SQL `LIMIT` is no cap) and `cell(v, n = 200)` (a result cell as display text; core `clip` is the copying clip
+    for stored text). Relic Market's `_shared/sql.ts` re-exports them (`cell` as `clip`).
   - `url.ts`: `withParams(uri, params)`: `uri` with `params` appended to its query, as an authorization server
     appends a code (the uri otherwise left as given, a fragment kept last). Build such URLs with it, never by
     concatenating `${uri}?code=` (that breaks a uri that already has a query or a fragment).
