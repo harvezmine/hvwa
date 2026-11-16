@@ -713,17 +713,18 @@ describe('SimBrowser cookie jar (citadel.test only, never real cookies)', () => 
     expect(b.cookies.list()).toEqual([]);
   });
 
-  it('Domain must be citadel.test; Secure needs https (as browsers enforce)', () => {
+  it('Domain must be citadel.test; Secure is kept from http too: citadel.test is a secure context, like loopback (E1)', () => {
+    // Before E1 the jar refused a Secure cookie from http://citadel.test, as a browser does on plain http. It now
+    // treats the citadel as browsers treat http://localhost, so a TwinCookie with `SameSite=None; Secure` works in both
+    // browsers (tests/sim-cross.spec.ts has the rest).
     const w = world();
     const cookies = ['a=1; Domain=attacker.test', 'b=2; Domain=citadel.test', 'c=3; Domain=.CITADEL.TEST', 'd=4; Domain=test', 'e=5; Domain=x.citadel.test', 'f=6; Secure'];
     const s = site({ '/set': { status: 200, headers: { 'set-cookie': cookies } }, '/me': { status: 200 } });
     const b = inSession(() => w.browser(s.handler));
     b.follow('http://citadel.test/set');
-    expect(b.cookies.list().map((c) => c.name)).toEqual(['b', 'c']);
-    b.follow('https://citadel.test/set');
     expect(b.cookies.list().map((c) => c.name)).toEqual(['b', 'c', 'f']);
     b.follow('http://citadel.test/me');
-    expect(s.seen.at(-1)?.headers.cookie).toBe('b=2; c=3');
+    expect(s.seen.at(-1)?.headers.cookie).toBe('b=2; c=3; f=6');
     b.follow('https://citadel.test/me');
     expect(s.seen.at(-1)?.headers.cookie).toBe('b=2; c=3; f=6');
   });

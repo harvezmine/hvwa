@@ -197,11 +197,22 @@ describe('twin: sendReply for the real browser', () => {
     expect(line('gone_acolyte')).toBe(`gone_acolyte=; Path=${LAB}; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`);
   });
 
-  it('the simulated browser on http://citadel.test refuses a Secure cookie, as a browser does on plain http', () => {
+  it('the simulated browser keeps a Secure cookie from http://citadel.test: a secure context, as browsers treat loopback (E1)', () => {
+    // Inverted on purpose by engine task E1: the sim jar used to refuse it (plain http), so a `SameSite=None; Secure`
+    // TwinCookie could not work in both browsers. The player's own browser keeps it from http://127.0.0.1 in
+    // Chromium and Firefox (Safari may not).
     const browser = sims.for({ sessionId: 'sim-secure', level: 'acolyte' });
     browser.follow('http://citadel.test/start/secureOnly');
-    expect(browser.cookies.get('sec_acolyte')).toBeUndefined();
+    expect(browser.cookies.list().find((c) => c.name === 'sec_acolyte')).toMatchObject({ value: 's', secure: true, sameSite: 'Lax' });
     expect(browser.cookies.get('plain_acolyte')).toBe('p');
+  });
+
+  it('a SameSite=None; Secure TwinCookie reaches the simulated jar with its SameSite', () => {
+    const browser = sims.for({ sessionId: 'sim-none', level: 'acolyte' });
+    browser.follow('http://citadel.test/start/attributes');
+    expect(browser.cookies.list().map((c) => [c.name, c.sameSite, c.secure])).toEqual([
+      ['js_acolyte', 'Lax', false], ['strict_acolyte', 'Strict', false], ['none_acolyte', 'None', true],
+    ]);
   });
 });
 

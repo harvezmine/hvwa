@@ -20,7 +20,7 @@ export {
   ATTACKER_HOST, ATTACKER_ORIGIN, CITADEL_HOST, CITADEL_ORIGIN, classifySimUrl, labHref,
   type SimSite, type SimUnreachable, type SimUrl,
 } from './sim/url.js';
-export type { SimCookie, SimCookieJar, SimCookieOptions } from './sim/cookies.js';
+export type { SimCookie, SimCookieContext, SimCookieJar, SimCookieOptions, SimSameSite } from './sim/cookies.js';
 export {
   REDIRECT_STATUSES, SIM_USER_AGENT,
   type SimBrowser, type SimHandler, type SimHop, type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse,

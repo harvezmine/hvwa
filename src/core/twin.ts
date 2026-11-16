@@ -39,9 +39,9 @@ export interface TwinCookie {
    */
   readonly sameSite?: TwinSameSite;
   /**
-   * Default false. A browser keeps a Secure cookie only from a secure origin. Today the simulated browser on
-   * http://citadel.test refuses one, as a browser does on plain http (engine task E1 will make it accept them); the
-   * player's own browser treats http://127.0.0.1 as secure in Chromium and Firefox, maybe not in Safari.
+   * Default false. A browser keeps a Secure cookie only from a secure context. The simulated browser treats
+   * http://citadel.test as one, as browsers treat loopback, so it keeps a Secure cookie from it (and sends it back over
+   * http); the player's own browser treats http://127.0.0.1 as secure in Chromium and Firefox, maybe not in Safari.
    */
   readonly secure?: boolean;
 }
