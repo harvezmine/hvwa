@@ -5,7 +5,7 @@
 import { byLevel, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import {
-  REDIRECT_STATUSES, classifySimUrl, simVisitOf, simWorld, toSim,
+  simVisitOf, simWorld, toSim,
   type Reply, type SimBrowser, type SimRequest, type SimResponse, type SimWorld, type Visit,
 } from '../../../core/sim.js';
 import { threadById } from '../_shared/forum.js';
@@ -28,7 +28,7 @@ export interface LabState {
   readonly world: SimWorld;
   /** The admin's browser: it opens whatever share link the player sends. */
   readonly admin: SimBrowser;
-  /** Whether the admin's browser has arrived at the player's server by way of /go (the flag's proof). */
+  /** Whether the admin's browser has ARRIVED at the player's server by way of a redirect from the lab (the flag's proof; set by the victim action, which sees the visit's trace). */
   escaped: boolean;
 }
 
@@ -53,16 +53,9 @@ export function thread(id: string): Reply & { readonly title?: string } {
 }
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
-function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
+function citadel(level: Level, r: SimRequest): SimResponse {
   const v = simVisitOf(level, r, []);
-  if (r.path === '/go') {
-    const reply = go(v);
-    // The ground truth of where the admin's browser goes next, resolved as the simulated browser resolves a Location.
-    if (reply.location !== undefined && REDIRECT_STATUSES.has(reply.status) && classifySimUrl(reply.location, r.url).site === 'attacker') {
-      state.escaped = true;
-    }
-    return toSim(reply);
-  }
+  if (r.path === '/go') return toSim(go(v));
   const m = /^\/thread\/([^/]*)$/.exec(r.path);
   if (m !== null) return toSim(thread(m[1]));
   if (r.path === '/') return { status: 200, body: 'Forum of Pilgrims - Home' };
@@ -73,8 +66,7 @@ function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
 // eviction drops them all. No limiter and no map of the lab's own live here, so nothing needs declareLabWeight.
 const labs = perSession((level: Level): LabState => {
   const world = simWorld();
-  // The handler reads `state` only when the admin browses, after it is assigned.
-  const state: LabState = { world, admin: world.browser((r) => citadel(level, state, r)), escaped: false };
+  const state: LabState = { world, admin: world.browser((r) => citadel(level, r)), escaped: false };
   return state;
 });
 

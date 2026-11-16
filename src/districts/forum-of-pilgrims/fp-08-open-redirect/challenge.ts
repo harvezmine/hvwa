@@ -5,7 +5,7 @@ import { defineChallenge, register } from '../../../core/registry.js';
 import { field, labPath } from '../../../core/lab.js';
 import { flagFor } from '../../../core/mount.js';
 import { sendPage } from '../../../core/render.js';
-import { sendLinkAction, sendReply, visitOf, type Visit } from '../../../core/sim.js';
+import { VICTIM_LABELS, sendReply, visitOf, type Visit } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, THREADS, curlFor, type Result } from '../_shared/forum.js';
 import { go, impl, labFor, thread } from './model.js';
@@ -23,8 +23,8 @@ export const FP08 = register(defineChallenge({
   id: 'FP-08', district: 'forum-of-pilgrims', slug: 'open-redirect', dir,
   title: { id: 'Open Redirect (tautan berbagi)', en: 'Open Redirect (share link)' },
   summary: {
-    id: 'Buat tautan berbagi forum yang membawa peramban admin ke servermu. Bukti: kunjungan admin tercatat di log servermu.',
-    en: 'Craft a forum share link that carries the admin\'s browser to your server. The proof is the admin\'s visit in your server log.',
+    id: 'Buat tautan berbagi forum yang membawa peramban admin ke servermu. Buktinya: kunjungan admin tiba di servermu melalui tautan berbagi.',
+    en: 'Craft a forum share link that carries the admin\'s browser to your server. The proof is the admin\'s visit arriving at your server through the share link.',
   },
   maps: ['A01:2025', 'CWE-601'],
   levels: impl.levels,
@@ -37,11 +37,20 @@ export const FP08 = register(defineChallenge({
   victim: {
     sim: (req) => labFor(req).world,
     actions: [
-      sendLinkAction((req) => labFor(req).admin, {
-        // The admin has no standing state to restore (nobody is signed in), so the re-arm is an explicit no-op.
-        rearm: () => {},
+      {
+        name: 'send-link',
+        label: VICTIM_LABELS.sendLink,
         description: { id: 'membuka tautan berbagi apa pun yang Anda kirim', en: 'opens any share link you send' },
-      }),
+        input: 'url',
+        // The admin has no standing state to restore (nobody is signed in), so there is nothing to re-arm.
+        // Custom (not the preset) because the proof needs the visit's trace: the admin must really ARRIVE at your server,
+        // and by way of a redirect from the lab (a direct link to your server, or a chain the browser gives up on, proves nothing).
+        run: (req, { url }) => {
+          const state = labFor(req);
+          const visit = state.admin.follow(url);
+          if (visit.outcome === 'attacker' && visit.hops.at(-1)?.via === 'redirect') state.escaped = true;
+        },
+      },
     ],
   },
   mount: (router) => {

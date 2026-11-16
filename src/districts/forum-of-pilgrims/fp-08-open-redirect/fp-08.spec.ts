@@ -38,6 +38,9 @@ describeExploitMatrix<Script>({
   path: LAB,
   send: (agent, level, script) => script(agent, level),
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
+  // Matrix case (c) cannot fail here by itself: Divine's refusal is guarded by the per-level table in "where each level lets
+  // a share link go" below (every off-lab spelling, including //localhost/x and a dotless //x, is refused at Divine and the
+  // admin's browser never leaves). Mutants that weaken Divine's allowNext die there, not in (c).
   resisted: NOTHING,
   legit: [
     { name: 'compose a share link', input: (a, l) => compose(a, l, '/thread/1'), expect: 'Share link: http://citadel.test/go?next=%2Fthread%2F1' },
@@ -66,7 +69,7 @@ describe('FP-08 where each level lets a share link go', () => {
   const OFF: readonly string[] = [
     'http://attacker.test/x', '//attacker.test/x', '/\\attacker.test/x', 'http://citadel.test.attacker.test/x',
     'http://citadel.test@attacker.test/x', 'http://attacker.test\\@citadel.test/x', 'http://attacker.test/?x=citadel.test',
-    'javascript:alert(1)', 'http://127.0.0.1/',
+    'javascript:alert(1)', 'http://127.0.0.1/', '//localhost/x', '//x', '/\\x', '/a\\b', '/\t/attacker.test/x', '/\n/attacker.test/x', '/\r/attacker.test/x',
   ];
   // [level, next, where the ADMIN's browser ends up]
   const cases: [Level, string, 'attacker' | 'refused' | 'citadel' | 'unreachable'][] = [
@@ -81,6 +84,13 @@ describe('FP-08 where each level lets a share link go', () => {
     ['inquisitor', '//attacker.test/x', 'refused'],
     ['inquisitor', '/\\attacker.test/x', 'refused'],
     ['inquisitor', 'http://attacker.test/?x=citadel.test', 'refused'],
+    // WHATWG deletes tab, CR and LF anywhere in a URL, so "/<TAB>/host" IS "//host": Templar's trick must not pass here.
+    ['inquisitor', '/\t/attacker.test/x', 'refused'],
+    ['inquisitor', '/\n/attacker.test/x', 'refused'],
+    ['inquisitor', '/\r/attacker.test/x', 'refused'],
+    ['inquisitor', '/\t\\attacker.test/x', 'refused'],
+    ['inquisitor', 'ht\ttp://attacker.test/x', 'refused'],
+    ['templar', '/\t/attacker.test/x', 'attacker'],
     ['inquisitor', 'http://citadel.test.attacker.test/x', 'attacker'],
     ['inquisitor', 'http://attacker.test\\@citadel.test/x', 'attacker'],
     ['inquisitor', 'http://citadel.test/thread/2', 'citadel'],
@@ -121,6 +131,32 @@ describe('FP-08 where each level lets a share link go', () => {
       expect(page, level).not.toMatch(FLAG_RE);
       expect(page, level).toContain(NOTHING);
     }
+  });
+
+  /** A chain of `n` share links, each continuing to the next, the last continuing to your server (Acolyte lets all through). */
+  const chain = (n: number): string => {
+    let next = 'http://attacker.test/x';
+    for (let i = 0; i < n; i++) next = `/go?next=${encodeURIComponent(next)}`;
+    return `http://citadel.test${next}`;
+  };
+
+  it('the flag needs a REAL arrival: a chain too long for the browser ends in too-many-redirects, no hit, no flag', async () => {
+    const { agent, sid } = await freshSession();
+    await sendLink(agent, 'acolyte', chain(11));
+    expect(lastVisit(sid, 'acolyte').outcome).toBe('too-many-redirects');
+    const page = (await home(agent, 'acolyte')).text;
+    expect(attackerHits(page)).toEqual([]);
+    expect(page).not.toMatch(FLAG_RE);
+    expect(page).toContain(NOTHING);
+  });
+
+  it('a chain short enough to arrive (still by way of redirects) earns the flag', async () => {
+    const { agent, sid } = await freshSession();
+    await sendLink(agent, 'acolyte', chain(4));
+    expect(lastVisit(sid, 'acolyte').outcome).toBe('attacker');
+    const page = (await home(agent, 'acolyte')).text;
+    expect(attackerHits(page)).toHaveLength(1);
+    expect(page).toMatch(FLAG_RE);
   });
 
   it('the flag stays after a later honest visit, and is this player\'s only', async () => {
@@ -249,5 +285,13 @@ describe('FP-08 thread page', () => {
     const res = await agent.get(`${LAB}/thread/1?level=acolyte`);
     expect(res.text).toMatch(/<title>FP-08/);
     expect(res.text).toContain('Welcome to the Forum of Pilgrims');
+  });
+});
+
+describe('FP-08 challenge text', () => {
+  it('the summary says the visit arrives at your server through the share link, in both languages', async () => {
+    const { agent } = await freshSession();
+    expect((await agent.get('/c/FP-08?lang=en')).text).toContain('arriving at your server through the share link');
+    expect((await agent.get('/c/FP-08?lang=id')).text).toContain('tiba di servermu melalui tautan berbagi');
   });
 });
