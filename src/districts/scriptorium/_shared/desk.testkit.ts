@@ -8,6 +8,7 @@ import { createApp } from '../../../app.js';
 import { FLAG_RE, TEST_SECRET, freshSession, serve, type Agent } from '../../../../tests/helpers.js';
 import { multipart, type Part } from '../../../../tests/support/uploads.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { setPerSessionDefaults } from '../../../core/lab.js';
 import { UPLOADS_IN_FLIGHT, UPLOAD_LIMITS, uploadsInFlight } from '../../../core/upload.js';
 import type { Challenge } from '../../../core/registry.js';
 import { UPLOADS_DIR, type DeskState } from './desk.js';
@@ -154,6 +155,25 @@ export function describeDeskBasics(k: DeskKit): void {
       const files = listed(sid, 'acolyte');
       expect(files).toContain(`${UPLOADS_DIR}/README.txt`);
       expect(files.length).toBeLessThanOrEqual(32);
+    });
+
+    it('the first lab instance of a session is built OUTSIDE tryDb: the 429 of the platform passes through an upload, not a Storage error', async () => {
+      setPerSessionDefaults({ maxNewPerMinute: 1 });
+      onTestFinished(() => { setPerSessionDefaults({ maxNewPerMinute: Infinity }); });
+      const first = await freshSession();
+      const second = await freshSession();
+      await upload(first.agent, 'acolyte', [scroll('a.txt', 'x')]);
+      const r = await upload(second.agent, 'acolyte', [scroll('b.txt', 'x')]);
+      expect(r.status).toBe(429);
+      expect(r.text).not.toContain('Storage error');
+    });
+
+    it('a scroll over the simulated file-system file cap (130 KiB) is refused as an upload, not a storage error', async () => {
+      const { agent } = await freshSession();
+      const r = await upload(agent, 'acolyte', [scroll('big.bin', Buffer.alloc(130 * 1024, 0x61))]);
+      expect(r.text).toContain('Upload error');
+      expect(r.text).not.toContain('Storage error');
+      expect((await upload(agent, 'divine', [scroll('big.bin', Buffer.alloc(130 * 1024, 0x61))])).text).toContain('Invalid request.');
     });
 
     it('Restart lab: drops the scrolls (the seed comes back), at the served level only', async () => {

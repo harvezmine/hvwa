@@ -1,10 +1,11 @@
 // src/districts/scriptorium/sc-11-path-traversal/sc-11.spec.ts — SC-11 Path traversal download.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished } from 'vitest';
 import type request from 'supertest';
 import {
   freshSession, describeExploitMatrix, describeLabView, FLAG_RE, type Agent,
 } from '../../../../tests/helpers.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
+import { setPerSessionDefaults } from '../../../core/lab.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { SC11 } from './challenge.js'; // registers SC-11 before createApp() inside freshSession
 import { VAULT_FLAG, labFor } from './model.js';
@@ -125,6 +126,25 @@ describe('SC-11 the library', () => {
       for (const p of [VAULT_FLAG, '/public/psalms.txt']) expect(fs.read(p)?.pinned, `${level} ${p}`).toBe(true);
     }
     expect(seps).toEqual({ acolyte: '/', templar: '/', inquisitor: '/\\', divine: '/' });
+  });
+});
+
+describe('SC-11 the first lab instance', () => {
+  it('is built outside tryDb: the 429 of the platform passes through a download and the form, never a Download error', async () => {
+    setPerSessionDefaults({ maxNewPerMinute: 1 });
+    onTestFinished(() => { setPerSessionDefaults({ maxNewPerMinute: Infinity }); });
+    for (const level of ['acolyte', 'divine'] as const) {
+      const a = await freshSession();
+      const b = await freshSession();
+      const c = await freshSession();
+      await a.agent.get(`${LAB}?level=${level}`);
+      const get = await download('file=psalms.txt')({ agent: b.agent, level, sid: b.sid });
+      const post = await fetchByForm({ agent: c.agent, level, sid: c.sid }, 'psalms.txt');
+      for (const r of [get, post]) {
+        expect([r.status, level]).toEqual([429, level]);
+        expect(r.text).not.toContain('Download error');
+      }
+    }
   });
 });
 

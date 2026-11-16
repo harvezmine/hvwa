@@ -21,7 +21,8 @@ type Lookup =
 
 /** Ask the level for `name`: only its own call is inside tryDb (the real message below Divine, a generic one at Divine). */
 function lookup(req: Request, name: string): Lookup {
-  const found = tryDb(req, () => impl.for(req.level).read(labFor(req).fs, name), 'Download error');
+  const fs = labFor(req).fs; // OUTSIDE tryDb: building the lab (issueFlag, the platform's 429) is not a download error
+  const found = tryDb(req, () => impl.for(req.level).read(fs, name), 'Download error');
   if (!found.ok) return { kind: 'error', text: found.message };
   if (!found.value.ok) return { kind: 'refused', text: found.value.text };
   return found.value.file === undefined ? { kind: 'missing' } : { kind: 'file', file: found.value.file };

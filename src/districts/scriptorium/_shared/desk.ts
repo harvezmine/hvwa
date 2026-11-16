@@ -76,7 +76,8 @@ export function mountDesk(router: Router, o: DeskOptions): void {
     const caption = got.fields.caption ?? '';
     if (got.file === undefined) return show(req, res, { ok: false, text: 'Choose a scroll to upload.' }, caption);
     const file = got.file;
-    const stored = tryDb(req, () => o.levels.for(req.level).store(o.labFor(req).fs, file), 'Storage error');
+    const fs = o.labFor(req).fs; // OUTSIDE tryDb: building the lab (the platform's 429) is not a storage error
+    const stored = tryDb(req, () => o.levels.for(req.level).store(fs, file), 'Storage error');
     if (!stored.ok) return show(req, res, { ok: false, text: stored.message }, caption);
     if (!stored.value.ok) return show(req, res, { ok: false, text: stored.value.text }, caption);
     return show(req, res, { ok: true, text: `Stored as ${visible(stored.value.path)}.` }, caption);
