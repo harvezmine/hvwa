@@ -13,6 +13,7 @@
 //   core/sim/cookies.ts  the victim's cookie jar
 //   core/sim/browser.ts  SimBrowser: the navigation loop, REDIRECT_STATUSES
 //   core/sim/world.ts    simWorld, simInbox, attackerLog (pure simulation: no Express at runtime)
+//   core/sim/cross.ts    the browser rules across sites: Origin, Sec-Fetch, form bodies, CORS, framing
 //   core/victim.ts       the engine side: VictimConfig, the presets, the panel, mountVictim, sendSimRedirect
 //   core/twin.ts         one lab app, two browsers: Reply (toSim / sendReply), TwinCookie, the forward note, Visit
 export { SIM_LIMITS } from './sim/limits.js';
@@ -34,7 +35,9 @@ export {
   type SimWorld, type SimWorldOptions,
 } from './sim/world.js';
 export {
-  VICTIM_LABELS, assertVictimConfig, checkMailAction, mountVictim, sendLinkAction, sendSimRedirect,
+  ATTACKER_EXFIL_URL, VICTIM_LABELS, assertVictimConfig, checkMailAction, frameAndClickAction, mountVictim, sendAttackerPageAction,
+  sendLinkAction, sendSimRedirect, visitAttackerPageAction,
+  type AttackerPageOptions, type AttackerScript, type AttackerStep, type FrameAndClickOptions, type FramedForm, type FramedPage,
   type CheckMailOptions, type SimPanel, type SimRedirectStatus, type VictimAction, type VictimConfig, type VictimPresetOptions,
   type VictimRearm,
 } from './victim.js';

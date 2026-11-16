@@ -364,6 +364,8 @@ interface Start {
   readonly policy: ReferrerPolicy;
   /** The initiator of a POST from the victim's own navigation (submit): its Origin. */
   readonly origin?: SimInitiator;
+  /** What a relative `url` is relative to: the attacker page that made the request (the victim's own navigations take absolute URLs). */
+  readonly base?: string;
 }
 
 export class Browser implements SimBrowser {
@@ -393,13 +395,13 @@ export class Browser implements SimBrowser {
 
   crossSiteLink(url: string, opts: SimCrossSiteOptions = {}): SimVisit {
     const page = attackerPage(opts.page);
-    return this.navigate({ method: 'GET', url, referrer: page.url, policy: page.policy }, fromPage(page));
+    return this.navigate({ method: 'GET', url, base: page.url.url, referrer: page.url, policy: page.policy }, fromPage(page));
   }
 
   crossSitePost(url: string, form: SimFormFields, opts: SimCrossSitePostOptions = {}): SimVisit {
     const page = attackerPage(opts.page);
     const { type, raw } = encodeForm(formEntries(form), formEnctype(opts.contentType));
-    return this.navigate({ method: 'POST', url, payload: { type, raw, fields: bodyFields(type, raw) }, referrer: page.url, policy: page.policy }, fromPage(page));
+    return this.navigate({ method: 'POST', url, payload: { type, raw, fields: bodyFields(type, raw) }, base: page.url.url, referrer: page.url, policy: page.policy }, fromPage(page));
   }
 
   corsFetch(url: string, opts: SimFetchOptions = {}): SimFetch {
@@ -414,13 +416,13 @@ export class Browser implements SimBrowser {
     // fetch() throws before sending: a header it cannot carry, or a GET with a body.
     if (headers === undefined || (method === 'GET' && body !== undefined)) return Object.freeze({ sent: false, verdict: 'invalid' });
     if (body !== undefined && !Object.hasOwn(headers, 'content-type')) headers['content-type'] = 'text/plain;charset=UTF-8';
-    if (classifySimUrl(url).site === 'citadel' && needsPreflight(method, headers)) return Object.freeze({ sent: false, verdict: 'preflight' });
+    if (classifySimUrl(url, page.url.url).site === 'citadel' && needsPreflight(method, headers)) return Object.freeze({ sent: false, verdict: 'preflight' });
     const type = headers['content-type'] ?? '';
     const payload: Payload | undefined = method === 'POST' ? { type, raw: body ?? '', fields: bodyFields(type, body ?? '') } : undefined;
     const withCredentials = credentials === 'include';
     let read: SimCorsRead | undefined;
     const visit = this.navigate(
-      { method, url, ...(payload ? { payload } : {}), referrer: page.url, policy: page.policy },
+      { method, url, ...(payload ? { payload } : {}), base: page.url.url, referrer: page.url, policy: page.policy },
       { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, shaped: true, extra: headers },
       (req, _res, h) => {
         read = corsCheck(h, req.headers.origin ?? 'null', withCredentials);
@@ -437,7 +439,7 @@ export class Browser implements SimBrowser {
     const page = attackerPage(opts.page);
     const ctx = inFrame(page.init, page.url);
     let policy: ReferrerPolicy = DEFAULT_POLICY;
-    const visit = this.navigate({ method: 'GET', url, referrer: page.url, policy: page.policy }, ctx, (_req, _res, h, redirect) => {
+    const visit = this.navigate({ method: 'GET', url, base: page.url.url, referrer: page.url, policy: page.policy }, ctx, (_req, _res, h, redirect) => {
       if (!redirect) policy = parsePolicy(h.get('referrer-policy')) ?? DEFAULT_POLICY; // the shown page's own policy
       return false;
     });
@@ -475,7 +477,7 @@ export class Browser implements SimBrowser {
     let { method, referrer, policy } = start;
     let payload = start.payload;
     let raw = str(start.url);
-    let target = classifySimUrl(start.url);
+    let target = classifySimUrl(start.url, start.base);
     let via: SimHop['via'] = 'start';
     let redirects = 0;
     /** The URLs requested since the current initiator made the request (Fetch's URL list). */

