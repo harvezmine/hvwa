@@ -4,7 +4,7 @@ import { describeExploitMatrix, describeLabView, freshSession, FLAG_RE, type Age
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
 import { RM12 } from './challenge.js'; // registers RM-12 before createApp() inside freshSession
-import { FANOUT, FLAG_COST, TOTAL_ROWS, proves } from './model.js';
+import { FANOUT, FLAG_COST, TOTAL_ROWS, proves, setFanoutForTests } from './model.js';
 import * as divine from './levels/divine.js';
 
 const LAB = '/d/relic-market/unbounded-export';
@@ -58,6 +58,10 @@ describe('RM-12 seams and the proof', () => {
   it('the ledger is virtual: 2 500 000 rows, a fan-out graph, and the flag needs a cost of 100 000', () => {
     expect(TOTAL_ROWS).toBe(2_500_000);
     expect(FANOUT).toEqual({ product: 1, related: 20, reviews: 50 });
+    expect(Object.isFrozen(FANOUT)).toBe(true);
+    const restore = setFanoutForTests({ related: 2 });
+    expect(FANOUT.related).toBe(20); // the exported table is never changed
+    restore();
     expect(FLAG_COST).toBe(100_000);
     expect(proves(99_999)).toBe(false);
     expect(proves(100_000)).toBe(true);
@@ -236,17 +240,16 @@ describe('RM-12 divine', () => {
     const { agent } = await freshSession();
     expect(divine.overBudget(10_000)).toBeUndefined();
     expect(divine.overBudget(10_001)).toMatch(/budget/i);
-    const before = FANOUT.product;
-    FANOUT.product = 1000; // 100 rows x 1000 = 100 000 > 10 000
+    const restore = setFanoutForTests({ product: 1000 }); // 100 rows x 1000 = 100 000 > 10 000
     try {
       const res = await exp(agent, 'divine', 'limit=100&expand=product');
       expect(res.status).toBe(413);
       expect(res.text).not.toMatch(FLAG_RE);
       expect((await exp(agent, 'divine', 'limit=5&expand=product')).status).toBe(200); // 5 x 1000 = 5000: inside the budget
     } finally {
-      FANOUT.product = before;
+      restore();
     }
-    expect(FANOUT.product).toBe(1);
+    expect((await exp(agent, 'divine', 'limit=100&expand=product')).status).toBe(200);
   });
 });
 
@@ -294,5 +297,35 @@ describe('RM-12 every level', () => {
     expect(refused.status).toBe(400);
     expect(refused.text).toContain('limit must be between 1 and 100.');
     expect(refused.text).not.toMatch(FLAG_RE);
+  });
+});
+
+describe('RM-12 review fixes (surviving mutants)', () => {
+  it('a non-canonical cursor (leading zero) is a 400 at every level', async () => {
+    const { agent } = await freshSession();
+    const noncanonical = Buffer.from('05').toString('base64url'); // MDU
+    expect(noncanonical).toBe('MDU');
+    for (const level of LEVELS) expect((await exp(agent, level, `cursor=${noncanonical}`)).status, level).toBe(400);
+  });
+
+  it('an expand over 200 characters is "too long" even with at most 10 segments', async () => {
+    const { agent } = await freshSession();
+    const expand = `product.${'r'.repeat(250)}`; // 2 segments
+    for (const level of LEVELS) {
+      const res = await exp(agent, level, `expand=${expand}`);
+      expect(res.status, level).toBe(400);
+      expect(res.text, level).toContain('expand is too long');
+    }
+  });
+
+  it('near the end of the ledger a plan never covers more than the rows left (the route clamps)', async () => {
+    const { agent } = await freshSession();
+    const offset = TOTAL_ROWS - 30;
+    for (const [level, qs] of [['acolyte', 'limit=1000000'], ['templar', 'limit=0'], ['inquisitor', 'limit=100']] as const) {
+      const j = json(await exp(agent, level, `${qs}&cursor=${cursorOf(offset)}`));
+      expect(j.rows, level).toBeLessThanOrEqual(TOTAL_ROWS - offset);
+      expect(j.next, level).toBeNull();
+    }
+    expect(json(await exp(agent, 'inquisitor', `limit=100&cursor=${cursorOf(offset)}`)).rows).toBe(30);
   });
 });

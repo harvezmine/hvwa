@@ -14,10 +14,19 @@ export type Relation = 'product' | 'related' | 'reviews';
 
 /**
  * How many records one step of each relation stands for: a row has 1 product, a product 20 related products and 50
- * reviews (a leaf). A plain object on purpose: a test raises one fan-out to reach the Divine cost budget, which no
- * request can reach otherwise (test seam; restore it).
+ * reviews (a leaf). Frozen: a test that needs another table (to reach the Divine cost budget, which no request can reach
+ * otherwise) installs it with setFanoutForTests and restores it.
  */
-export const FANOUT: Record<Relation, number> = { product: 1, related: 20, reviews: 50 };
+export const FANOUT: Readonly<Record<Relation, number>> = Object.freeze({ product: 1, related: 20, reviews: 50 });
+
+let fanout: Readonly<Record<Relation, number>> = FANOUT;
+
+/** Test seam: use these fan-outs (the others unchanged) until the returned function is called, like setClockForTests. */
+export function setFanoutForTests(o: Partial<Record<Relation, number>>): () => void {
+  const prev = fanout;
+  fanout = Object.freeze({ ...prev, ...o });
+  return () => { fanout = prev; };
+}
 
 /** A served plan whose cost reaches this earns the flag (below Divine). */
 export const FLAG_COST = 100_000;
@@ -95,7 +104,7 @@ export function walkExpand(segments: readonly string[]): { readonly multiplier: 
   for (const seg of segments) {
     const step: { readonly to: Node; readonly relation: Relation } | undefined = GRAPH.get(at)?.get(seg);
     if (step === undefined) return { error: `expand: unknown relation "${seg.length > 30 ? `${seg.slice(0, 30)}...` : seg}" here.` };
-    multiplier *= FANOUT[step.relation];
+    multiplier *= fanout[step.relation];
     at = step.to;
   }
   return { multiplier };
