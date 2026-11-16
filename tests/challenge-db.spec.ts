@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { challengeDb, firstKeyword } from '../src/core/challenge-db.js';
+import { CHALLENGE_BLOB_CAP, challengeDb, firstKeyword } from '../src/core/challenge-db.js';
 
 const SCHEMA = `
   CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, role TEXT);
@@ -200,6 +200,51 @@ describe('challengeDb rejects CREATE VIRTUAL TABLE (shadow-table corruption clas
       raw.exec("CREATE VIRTUAL TABLE docs USING fts5(body); INSERT INTO docs (body) VALUES ('hello world')");
     });
     expect(db.prepare("SELECT body FROM docs WHERE docs MATCH 'hello'").get()).toMatchObject({ body: 'hello world' });
+  });
+});
+
+describe('challengeDb caps randomblob() and zeroblob() (one-call memory bombs)', () => {
+  const one = (sql: string): unknown => (challengeDb(SCHEMA).prepare(sql).get() as { n?: unknown } | undefined)?.n;
+
+  it('an injected length(randomblob(900000000)) returns at most the cap, and does not allocate it', () => {
+    const peakKb = () => process.resourceUsage().maxRSS; // the process's peak resident set so far, in KiB
+    const before = peakKb();
+    expect(one('SELECT length(randomblob(900000000)) AS n')).toBe(CHALLENGE_BLOB_CAP);
+    expect(peakKb() - before).toBeLessThan(100 * 1024); // the built-in would have touched ~900 MB
+  });
+
+  it('a size beyond SQLite\'s own limit is capped as well, never even attempted ("string or blob too big")', () => {
+    for (const fn of ['randomblob', 'zeroblob']) {
+      expect(one(`SELECT length(${fn}(1000000000000)) AS n`), fn).toBe(CHALLENGE_BLOB_CAP);
+      expect(one(`SELECT length(${fn}(9223372036854775807)) AS n`), fn).toBe(CHALLENGE_BLOB_CAP);
+    }
+  });
+
+  it('a zeroblob() that gets materialized (hex, concatenation) is capped too', () => {
+    expect(one('SELECT length(hex(zeroblob(900000000))) AS n')).toBe(2 * CHALLENGE_BLOB_CAP);
+    // || makes text, and length() of text stops at the first NUL: count the bytes as a blob
+    expect(one("SELECT length(CAST(zeroblob(900000000) || 'x' AS BLOB)) AS n")).toBe(CHALLENGE_BLOB_CAP + 1);
+  });
+
+  it('below the cap they behave as SQLite\'s: exact sizes, random or zero bytes, the same rules for odd sizes', () => {
+    const db = challengeDb(SCHEMA);
+    expect(db.prepare(`SELECT length(randomblob(16)) a, length(randomblob(${CHALLENGE_BLOB_CAP})) b, length(randomblob(0)) c,
+      length(randomblob(-5)) d, length(randomblob(NULL)) e, length(randomblob('7')) f, length(randomblob(2.9)) g,
+      typeof(randomblob(4)) h, length(zeroblob(5)) i, hex(zeroblob(3)) j, length(zeroblob(-1)) k, length(zeroblob(NULL)) l`).get())
+      .toEqual({ a: 16, b: CHALLENGE_BLOB_CAP, c: 1, d: 1, e: 1, f: 7, g: 2, h: 'blob', i: 5, j: '000000', k: 0, l: 0 });
+    expect(db.prepare('SELECT randomblob(16) = randomblob(16) AS same').get()).toEqual({ same: 0 }); // never constant-folded
+    expect(db.prepare('SELECT count(DISTINCT hex(randomblob(8))) AS n FROM (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3)').get()).toEqual({ n: 3 });
+  });
+
+  it('every challenge DB has them, inside views and triggers as well, and so does its seed', () => {
+    let seeded: unknown;
+    const db = challengeDb(SCHEMA, (raw) => { seeded = (raw.prepare('SELECT length(randomblob(900000000)) AS n').get() as { n: unknown }).n; });
+    expect(seeded).toBe(CHALLENGE_BLOB_CAP);
+    db.prepare('CREATE VIEW bomb AS SELECT length(zeroblob(900000000)) AS n').run();
+    expect(db.prepare('SELECT n FROM bomb').get()).toEqual({ n: CHALLENGE_BLOB_CAP });
+    db.prepare("CREATE TRIGGER t AFTER INSERT ON notes BEGIN UPDATE notes SET body = hex(randomblob(900000000)) WHERE id = new.id; END").run();
+    db.prepare("INSERT INTO notes (body) VALUES ('x')").run();
+    expect(db.prepare('SELECT length(body) AS n FROM notes').get()).toEqual({ n: 2 * CHALLENGE_BLOB_CAP });
   });
 });
 

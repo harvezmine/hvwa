@@ -185,6 +185,16 @@ query timeout: a heavy injected query blocks the whole server. Time-based labs
 evaluate the injected condition, then `await` a simulated delay. Labs that run
 fully attacker-chosen SQL must also cap result size.
 
+**SQL memory bombs.** `node:sqlite` (Node 22) has no `sqlite3_limit()`, so SQLite's own `randomblob(n)` and
+`zeroblob(n)` make blobs of up to 1 GB in one call: one injected `randomblob(900000000)` allocates 900 MB, and the app
+container has 512 MB. `challengeDb` therefore registers capped overrides of both on EVERY challenge DB, before the schema
+and seed run (an application-defined function takes precedence over the built-in): they return at most
+`CHALLENGE_BLOB_CAP` (64 KiB) and behave like the built-ins below it. Labs need do nothing, and must not depend on
+bigger blobs. **Accepted residual gap:** growth that takes a width or several steps (`printf`/`format` widths such as
+`printf('%.*c', n, 'x')`, `replace()`, a recursive CTE that doubles a string) can still exhaust memory. In a loopback,
+single-player lab that is a self-DoS (the player stops their own app), so it is documented, not mitigated. Rule (g)
+still applies on top: a lab that runs fully attacker-chosen SQL caps what it returns (rows read, text shown).
+
 **Lab state: `perLevel` or `perSession`.** Never a bare module-level
 `challengeDb` for a lab that holds a secret or state.
 

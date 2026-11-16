@@ -1,4 +1,5 @@
 // src/core/challenge-db.ts — challenge-side data, kept apart from the platform DB.
+import { randomBytes } from 'node:crypto';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 
 /**
@@ -8,6 +9,37 @@ import { DatabaseSync, type StatementSync } from 'node:sqlite';
  */
 export interface ChallengeDb {
   prepare(sql: string): StatementSync;
+}
+
+/** The most bytes randomblob() and zeroblob() return in a challenge DB (see challengeDb: availability). */
+export const CHALLENGE_BLOB_CAP = 65_536;
+
+/**
+ * A blob size as SQLite's randomblob() and zeroblob() read their argument (sqlite3_value_int64): an integer as is, a
+ * real truncated toward zero, text (or a blob, as text) by its leading integer, anything else 0. Then at least `min`
+ * (randomblob 1, zeroblob 0, as SQLite) and at most CHALLENGE_BLOB_CAP.
+ */
+function blobSize(arg: unknown, min: number): number {
+  let n: bigint | number = 0;
+  if (typeof arg === 'bigint') n = arg;
+  else if (typeof arg === 'number') n = Number.isNaN(arg) ? 0 : Math.trunc(arg);
+  else if (typeof arg === 'string' || arg instanceof Uint8Array) {
+    const text = typeof arg === 'string' ? arg : Buffer.from(arg).toString('utf8');
+    const lead = /^\s*([+-]?\d+)/.exec(text);
+    n = lead === null ? 0 : BigInt(lead[1]);
+  }
+  if (n < min) return min;
+  return n > CHALLENGE_BLOB_CAP ? CHALLENGE_BLOB_CAP : Number(n);
+}
+
+/**
+ * Capped randomblob(n) and zeroblob(n), registered on every challenge DB: an application-defined function takes
+ * precedence over SQLite's built-in of the same name and arity (verified on Node 22.22 / SQLite 3.50.4). Below the cap
+ * they answer as the built-ins do; randomblob is not deterministic, so it is never constant-folded.
+ */
+function capBlobFunctions(raw: DatabaseSync): void {
+  raw.function('randomblob', { useBigIntArguments: true, deterministic: false }, (n: unknown) => randomBytes(blobSize(n, 1)));
+  raw.function('zeroblob', { useBigIntArguments: true, deterministic: true }, (n: unknown) => new Uint8Array(blobSize(n, 0)));
 }
 
 // Fail closed: only these first keywords may run. Everything else (ATTACH,
@@ -106,6 +138,17 @@ function scan(sql: string): { kw: string; word: () => string } {
  * must simulate delay (e.g. `await` a timer when a condition holds) instead
  * of running heavy queries.
  *
+ * GUARANTEED (memory, one call): randomblob(n) and zeroblob(n) return at most
+ * CHALLENGE_BLOB_CAP (64 KiB) bytes. node:sqlite (Node 22) has no
+ * sqlite3_limit(), so the built-ins make blobs up to SQLITE_MAX_LENGTH (1 GB):
+ * one injected `randomblob(900000000)` allocates 900 MB, and the app container
+ * has 512 MB. Capped overrides are registered on every challenge DB before the
+ * schema and seed run, so every lab and level is covered (the seed may
+ * register its own functions after them). NOT covered, an accepted self-DoS of
+ * a loopback single-player lab (docs/RECIPES.md section 4 (g)): growth through
+ * printf()/format() widths, replace(), or a recursive CTE that doubles a
+ * string. Labs that run fully attacker-chosen SQL still cap their result size.
+ *
  * Create it in the challenge's model.ts and close over the facade in handlers
  * and in a custom check(). Use perLevel() (core/lab.ts) when a secret in it
  * could be extracted at one level and replayed at another (docs/RECIPES.md):
@@ -114,6 +157,7 @@ function scan(sql: string): { kw: string; word: () => string } {
  */
 export function challengeDb(schemaSql: string, seed?: (db: DatabaseSync) => void): ChallengeDb {
   const raw = new DatabaseSync(':memory:', { allowExtension: false });
+  capBlobFunctions(raw); // before the schema and seed: no statement ever sees the built-ins
   raw.exec(schemaSql);
   seed?.(raw);
   return Object.freeze({
