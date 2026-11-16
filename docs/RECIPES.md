@@ -24,7 +24,8 @@ src/districts/<district>/<id lowercased>-<slug>/
   fixtures/           optional: deliberately binary/malformed lab files
   <id>.spec.ts        the exploit matrix + challenge-specific tests
 src/districts/<district>/_shared/   optional: plumbing several labs of the district share
-                                    (e.g. gatekeeper/_shared/lab.ts: Result, welcome(), accounts)
+                                    (e.g. gatekeeper/_shared/lab.ts: welcome(), accounts, the admin page)
+src/districts/_shared/              plumbing labs of EVERY district share (below): Result, curl, bounded maps, test kits
 src/districts/<district>/index.ts   imports each challenge.ts (registration side effect)
 src/districts/index.ts              imports each district index
 ```
@@ -33,6 +34,11 @@ src/districts/index.ts              imports each district index
   modules (`byLevel`) in `model.ts`, because its citadel handler needs them (section 8); its level files then import
   ONLY types from `model.ts` (a runtime import would be an ESM cycle), and take shared values from `_shared/` or local
   constants.
+- **A victim-driven lab may keep its page functions and its citadel handler in `model.ts`** (GK-10, GK-11, GK-16): the
+  functions both browsers' requests go through (`startLogin`, `authorize`, `callback`, `portalSignIn` ..., each taking a
+  `Visit` and answering a `Reply`, section 8) and `citadel(level, state, r)` live next to the lab state and `byLevel`,
+  and `challenge.ts` keeps the metadata, the victim actions and the real routes. They are plumbing: every decision the
+  lesson is about is a call into `impl.for(level)`, so the flaw stays in `levels/*.ts`.
 - Everything the vulnerability needs lives in the level file, so View Source
   and the Diff tell the whole story. `challenge.ts` and `model.ts` are plumbing.
   **One deliberate exception: error verbosity.** `tryDb` in `challenge.ts`
@@ -53,24 +59,52 @@ src/districts/index.ts              imports each district index
   `dist/`, while `tsconfig.test.json` still type-checks it (`tests/tooling.spec.ts` asserts all three). A lab's
   spec calls the kit's `describe...` function. Worked example: `gatekeeper/_shared/jwt-lab.testkit.ts`
   (`describeJwtLabBasics`).
+- **Plumbing for every district: `src/districts/_shared/`.** A district never imports another district's `_shared/`;
+  what two districts need lives here. Like any `_shared/`, it never holds a flaw.
+  - `result.ts`: `Result` (`{ ok, text }`), the lab message a view shows as `lab-message lab-success|lab-error`.
+  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form? })` → `CurlView`, `shellQuote(text)`,
+    with the partial `views/curl-note.ejs`: a curl line that can work. It carries the full quoted URL, `-X <method>`
+    (PUT, PATCH ...), the headers it needs, `-d '<json>'` and/or `--data-urlencode 'name=value'` (values are
+    shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. Never print the sid: a lab belongs to the browser session,
+    so curl without that cookie plays in another session whose flags `/api/submit` from the browser would reject. The
+    partial also says the line is bash syntax and that Windows PowerShell needs `curl.exe` (plain `curl` there is
+    `Invoke-WebRequest`). A lab view at `src/districts/<district>/<lab>/views/` (or `<district>/_shared/views/`)
+    includes it with `<%- include('../../../_shared/views/curl-note', { curl: curl }) %>`.
+  - `collections.ts`: bounded maps and ids for lab state (section 4, "Bound every map"): `newId()` (16 CSPRNG bytes,
+    32 hex), `putBounded(map, key, value, max, keep?)` (store newest last; beyond `max` the oldest key `keep` does not
+    pin goes) and `trimBounded(map, { max, pin?, spare? })` for a lab that inserts elsewhere and trims later (`pin`:
+    never evicted, e.g. the admin's session; `spare`: evicted only when nothing else can go, e.g. signed-in sessions
+    after anonymous ones). Each lab states its own rule: GK-10/11 pin the admin's session, GK-16 spares signed-in ones.
+  - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
+    line at every level. `curl.spec.ts` tests the helpers and the partial.
+  - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
   all in `gatekeeper/_shared/`:
   - `pilgrimLogin(req)` + the `views/pilgrim-form.ejs` partial: the sign-in check, form and message.
-  - `curlFor(req, res, { path, method?, headers?, cookies?, data?, form? })` + `views/curl-note.ejs`: a curl line that
-    can work. It carries the full quoted URL, `-X <method>` (PUT, PATCH ...), the headers it needs, `-d '<json>'` and/or
-    `--data-urlencode 'name=value'` (values are shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. Never print the
-    sid: a lab belongs to the browser session, so curl without that cookie plays in another session whose flags
-    `/api/submit` from the browser would reject. The partial also says the line is bash syntax and that Windows
-    PowerShell needs `curl.exe` (plain `curl` there is `Invoke-WebRequest`).
+  - `accountOf(username, password, adminPassword)` (the admin with this lab's password, pilgrim/pilgrim, or undefined)
+    and `roleOf(username)` (for `welcome()`), shared by labs with their own sign-in (GK-10, GK-11).
+  - `curlFor`, `shellQuote` and `Result` are re-exported from `gatekeeper/_shared/lab.ts`, so Gatekeeper code imports
+    them from there; they live in `src/districts/_shared/` (above).
   - `sendAdminPage(res, { admin, granted, denial, flag?, pre?, denyStatus? })` + `views/admin.ejs`: the admin page.
     **A denial is 403 by default**; pass `denyStatus` only with a reason. (GK-17 passes `denyStatus: 200`: that is a
     Batch A exception from before the default existed. Do not copy it.) Pass `flag: { req, challenge }` and the page
     appends the flag line itself, only when `admin` is true, and Divine's rule is built in: "Welcome back." instead of
     a flag, whatever the lab passes. `flagLine(req, challenge)` is the same line for a lab that builds its own page.
+    (It stays in Gatekeeper: "Welcome back." at Divine is this admin page's wording, not every district's.)
     The lab's real access check still lives in `levels/*.ts`.
-  - The test kit `pilgrim-lab.testkit.ts`: `describePilgrimLab`, `newCtx`, `pilgrimClient`, `describeCurlExample`,
-    `describeCurlPartial`.
-  Views include the partials with `<%- include('../../_shared/views/curl-note', { curl: curl }) %>`.
+  - The test kit `pilgrim-lab.testkit.ts`: `describePilgrimLab`, `newCtx`, `pilgrimClient`, and `describeCurlExample`
+    (re-exported from `src/districts/_shared/curl.testkit.ts`).
+  Views include the Gatekeeper partials with `<%- include('../../_shared/views/pilgrim-form', { ... }) %>` and the curl
+  partial with `<%- include('../../../_shared/views/curl-note', { curl: curl }) %>`.
+- **Pilgrim-ID, the identity provider of the OAuth labs** (GK-10, GK-11), in `gatekeeper/_shared/oauth.ts`: besides
+  `CLIENT_ID`, `CODE_TTL_MS`, `newVerifier()`, `s256()`, `IssuedCode`, `Exchange` and `withParams()`, its sign-in and
+  `/idp/authorize` are shared as a shell driven by callbacks, like `mountJwtPortal`: a lab declares
+  `const PILGRIM_ID: PilgrimId<LabState> = { cookie, adminPassword, pinnedSession?, maxEntries, policy }` and calls
+  `pilgrimIdSignIn(PILGRIM_ID, v, state, username, password)`, `pilgrimIdAuthorize(PILGRIM_ID, v, state)` and
+  `pilgrimIdUser(PILGRIM_ID, v, state)`. The lab state holds `idpSessions`, `codes` and `world` (`PilgrimIdState`).
+  `policy(level)` returns the `PilgrimIdPolicy` (`allowRedirect(uri)`, `checkPkce(challenge, method)`): GK-10 passes
+  `(level) => impl.for(level)`, so its flaw stays in `levels/*.ts`; GK-11, whose Pilgrim-ID is sound, passes its fixed
+  rules.
 - `fixtures/`: any path segment named `fixtures` is exempt from the repo
   hygiene scan (UTF-8, no control characters). Non-`.ts` files there are copied
   into `dist/` by `copy-assets`.
@@ -102,7 +136,7 @@ case (g)). Divine resists every exploit.
 | `labPath(res)` | `core/lab` | the canonical lab path `/d/<district>/<slug>`, set by the engine as `res.locals.labPath` (also readable in views as `labPath`); use it for every lab link and cookie path |
 | `header(req, name)` | `core/lab` | a request header as a string (`undefined` if missing or repeated); client-written, never an identity |
 | `fixtureLines(url)` / `sendLines(res, lines)` | `core/lab` | a lab's fixture list read once (`new URL('./fixtures/x.txt', import.meta.url)`) and served from a lab route as `text/plain` |
-| `challengeDb(schema, seed?)` | `core/challenge-db` | private in-memory SQLite, `prepare()`-only facade |
+| `challengeDb(schema, seed?)` | `core/challenge-db` | private in-memory SQLite, `prepare()`-only facade; `randomblob()`/`zeroblob()` capped at `CHALLENGE_BLOB_CAP` (64 KiB, section 4) |
 | `tryDb(req, () => call(), label?)` | `core/lab` | `{ ok: true, value }` or `{ ok: false, message }`: `<label>: <msg>` below Divine (label defaults to `Database error`), `Invalid request.` at Divine. Synchronous only: a Promise result throws |
 | `field(req, name)` | `core/lab` | a body field as a string, `''` for missing or non-string values |
 | `flagFor(req, challenge)` | `core/mount` | this session's flag at the served level; throws at Divine |
@@ -112,6 +146,9 @@ case (g)). Divine resists every exploit.
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
 | `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
+| `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
+| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
+| `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -263,14 +300,20 @@ string, not a 500.
 - **Lab cookies:** `Path` = `labPath(res)` (browsers match cookie paths case-sensitively); a distinct name per
   level (levels share the path and must not overwrite each other: `citadel_sid_<level>`); choose `httpOnly`
   deliberately (a session id: yes, and say in the view how to edit it, devtools storage or `curl -b`; a
-  deliberately client-writable counter: no); never a name starting with `hvwa_` (the platform's).
+  deliberately client-writable counter: no); never a name starting with `hvwa_` (the platform's). A victim-driven lab
+  sets them through its `Reply` (`TwinCookie`: `httpOnly` and `sameSite` default to HttpOnly and Lax, section 8).
+  Tests: `describeLabCookies` (`victim-lab.testkit.ts`) checks the name per level, the canonical path and HttpOnly.
 - **A request without the lab's cookie must not change lab state.** Probing a page (an admin page, a wrong guess)
   must not mint sessions, advance generators or push activity entries; only the pages the player uses to get a
   session do. Pin entries the lab depends on (the admin's session, the admin's activity line) so trimming a list
   never drops them.
 - **Bound every map keyed by attacker input** (header values, usernames, spellings): cap its size, hash long keys
   (`> 64` chars), and track only real accounts where the design allows it. A cap that evicts must not let the
-  attacker flush a counter they care about (made-up names must not push the admin's counter out).
+  attacker flush a counter they care about (made-up names must not push the admin's counter out). Use the helpers in
+  `src/districts/_shared/collections.ts` (section 1) rather than a hand-written loop: `putBounded(map, key, value, max,
+  keep?)`, or `trimBounded(map, { max, pin?, spare? })` where entries are added elsewhere (a level file) and trimmed
+  after; `pin` what the lab depends on, `spare` what should go last. A bound that is platform safety, not the lesson,
+  belongs in `model.ts`.
 - **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
   `sendLines`; the page links them by absolute path.
 - **Limiters and lockouts must not be beaten by waiting.** A short window or a short lock turns a brute-force lab
@@ -435,8 +478,10 @@ example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
 
 Import everything from `core/sim.ts`, a barrel over the pure simulation in `core/sim/` (`limits.ts`: `SIM_LIMITS` and
 the copying clip; `url.ts`: the hosts and `classifySimUrl`; `cookies.ts`: the jar; `browser.ts`: `SimBrowser`;
-`world.ts`: `simWorld`, `simInbox`, `attackerLog`; no Express at runtime) and the engine side in `core/victim.ts`
-(`VictimConfig`, the presets, the panel, `mountVictim`, `sendSimRedirect`).
+`world.ts`: `simWorld`, `simInbox`, `attackerLog`; no Express at runtime), the engine side in `core/victim.ts`
+(`VictimConfig`, the presets, the panel, `mountVictim`, `sendSimRedirect`) and `core/twin.ts` (one page answer for both
+browsers: `Reply`, `TwinCookie`, `toSim`, `sendReply`, `cookiePath`, `Visit`, `visitOf`, `simVisitOf`; see "A page that
+moves on by itself" below).
 
 ### The two hosts
 
@@ -516,7 +561,7 @@ Keep the world and the victim's browser in the lab's own per-session state, next
 export interface LabState { readonly world: SimWorld; readonly admin: SimBrowser; readonly adminPid: string; /* accounts, tokens ... */ }
 const labs = perSession((level): LabState => {
   const world = simWorld({ mailboxes: [ADMIN_MAILBOX] });
-  const adminPid = newId();
+  const adminPid = newId(); // src/districts/_shared/collections.ts
   // Typed, not `as LabState`: an assertion silently accepts a missing required field. The handler reads `state` only
   // when the victim browses, after the const is assigned.
   const state: LabState = { world, admin: world.browser((r) => citadel(level, state, r)), adminPid /* , ... */ };
@@ -530,7 +575,8 @@ The handler needs the level modules, and it lives where the factory does. So a v
 `model.ts` (`export const impl = byLevel<M>({ acolyte, templar, inquisitor, divine })`), and `challenge.ts` passes
 `impl.levels` to `defineChallenge`. Its level files then import ONLY types from `model.ts`: a runtime import would close
 an ESM cycle (model imports the levels). Shared values come from `_shared/` (e.g. `gatekeeper/_shared/oauth.ts`) or
-are local constants in the level file. Worked examples: GK-10, GK-11, GK-16.
+are local constants in the level file. The page functions both browsers call and the citadel handler may live in
+`model.ts` too (section 1). Worked examples: GK-10, GK-11, GK-16.
 
 ### How levels plug in
 
@@ -575,22 +621,58 @@ the route itself.
 GK-10 Inquisitor's callback forwarding to `next=`) must never send the player's real browser a real `Refresh` to a
 level-made URL either, and a silent 302 would hide the very forward the lab teaches. Render the page instead, with a
 note saying where it moves the browser on to: a link to the same place in the lab for a citadel target, the URL as
-escaped text otherwise. `gatekeeper/_shared/twin.ts` does both directions from one `Reply` (`status`, `location`,
-`forward`, `referrerPolicy`, `cookies`, `text`): `toSim(reply)` for the citadel handler, and
-`sendReply(res, reply, render)` for the real route, which sets the cookies, sends a `location` through
-`sendSimRedirect` only on a redirect status (a Location on any other status is a page, as in the sim), and otherwise
-calls `render(forward?)`, handing a forward's `ForwardNote` to the view (`<%- include('../../_shared/views/forward-note',
-{ forward: forward }) %>`). The page's own message, and a flag it carries, stay visible.
+escaped text otherwise.
+
+**The twin: one `Reply`, two browsers (`core/twin.ts`, imported from `core/sim.ts`).** A page function answers a
+`Reply` (`status`, `location?`, `forward?`, `referrerPolicy?`, `cookies?`, `text`), and the engine turns it into each
+browser's answer:
+
+- `toSim(reply)` for the citadel handler: a `SimResponse` with `Location`, `Refresh: 0; url=<forward>`,
+  `Referrer-Policy` and one `Set-Cookie` per cookie.
+- `sendReply(res, reply, render)` for the real route: it sets the cookies, sends a `location` through `sendSimRedirect`
+  only on a redirect status (`REDIRECT_STATUSES`; a Location on any other status is a page, as in the sim), and
+  otherwise calls `render(forward?)` at the Reply's status, handing a forward's `ForwardNote` to the view. A view at
+  `src/districts/<district>/<lab>/views/` includes the engine's note with
+  `<%- include('../../../../core/views/forward-note', { forward: forward }) %>`. The page's own message, and a flag it
+  carries, stay visible.
+- **Cookies** (`TwinCookie`): `{ name, value, path, clear?, maxAgeSec?, httpOnly?, sameSite?, secure? }`. The path is
+  `cookiePath(base)` (`base || '/'`). The defaults are HttpOnly and `SameSite=Lax` (as `hvwa_sid`), not Secure; both
+  browsers get the same attributes. `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
+  `sameSite: 'Strict' | 'Lax' | 'None'`: a lab whose lesson is SameSite (CSRF) sets it per level IN THE LEVEL FILE, so
+  View Source and the Diff show it (Acolyte's `'None'` is the realistic misconfiguration); any other value throws.
+  `secure: true` adds Secure. Mind the open edge: today the simulated browser on `http://citadel.test` refuses a
+  Secure cookie (as a browser does on plain http), and its jar ignores SameSite, while real browsers drop
+  `SameSite=None` without Secure. How the sim treats `None` is engine task E1's SameSite jar; a CSRF lab builds on that.
+  `maxAgeSec` is in seconds (Express's `maxAge` is milliseconds: `sendReply` converts).
+- **Requests** (`Visit`: `level`, `query` (the raw query string as `URLSearchParams`, never Express's parsed
+  `req.query`), `cookies` (only the lab's own, as strings), `base`): `visitOf(req, res, cookieNames)` on a real route
+  (pass this level's cookie names; `base` is `labPath(res)`), `simVisitOf(level, r)` in the citadel handler (`base` is
+  `''`). The page function takes the `Visit` and never sees Express or the sim.
 
 ```ts
-router.get('/idp/authorize', async (req, res) => { // the twin of http://citadel.test/idp/authorize, in the player's own browser
-  const params = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
-  const out = impl.for(req.level).authorize(labFor(req), params, req.cookies.pid_session, labPath(res));
-  const location = out.headers?.Location;
-  if (typeof location === 'string') return sendSimRedirect(res, location); // never res.redirect(location)
-  await sendPage(res, view('consent'), { message: out.body ?? '' });
+// model.ts: one page function, both browsers
+export function authorize(v: Visit, state: LabState): Reply {
+  const user = state.sessions.get(v.cookies[pidCookie(v.level)] ?? '');
+  if (user === undefined) return { status: 200, text: 'Sign in first.' };
+  const to = v.query.get('redirect_uri') ?? '';
+  if (!impl.for(v.level).allowRedirect(to)) return { status: 400, text: 'Unregistered redirect_uri.' }; // the flaw: levels/*.ts
+  return { status: 302, location: `${to}?code=${issueCode(state, user)}`, text: '' };
+}
+function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
+  if (r.path === '/idp/authorize') return toSim(authorize(simVisitOf(level, r), state));
+  return { status: 404, body: 'Not found' };
+}
+
+// challenge.ts: the twin of http://citadel.test/idp/authorize, in the player's own browser
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, [pidCookie(req.level)]);
+router.get('/idp/authorize', (req, res) => {
+  const r = authorize(visit(req, res), labFor(req));
+  return sendReply(res, r, () => sendPage(res, view('idp'), { base: labPath(res), text: r.text })); // never res.redirect
 });
 ```
+
+A lab that does not use `Reply` still answers a level's Location with `sendSimRedirect(res, location, status?)`, never
+`res.redirect(location)`.
 
 ### Scripting the victim
 
@@ -689,3 +771,26 @@ mailbox, in either language. Test seams: `labFor({ sessionId: sid, level }).worl
 works unchanged (it skips the panel's `sim-action` forms). Add the lab-specific cases: the victim's secret never
 appears on the page except through the flaw, players and levels are isolated, the legit victim flow ends on a citadel
 page, and links the lab builds from attacker input are shown escaped.
+
+**The victim-lab test kit** (`src/districts/_shared/victim-lab.testkit.ts`, any district; GK-08, 09, 10, 11 and 16 use
+it) holds what these specs repeat, modelled on `pilgrim-lab.testkit.ts`:
+
+- `victimClient(path)`: `sendLink(agent, level, url, action?)` and `checkMail(agent, level, action?)` (the victim's
+  buttons); `browse(agent, url, maxHops = 6)` follows your real browser's redirects and returns `{ res, at }`.
+- `describeSignInView({ challenge, path, account? })`: `describeLabView` for a front page that signs in with a
+  username and password (default pilgrim/pilgrim).
+- `describeVictimAction({ challenge, path, description: { en, id }, label? })`: the panel says what the victim does, in
+  both languages, at every implemented level (write `'` as `&#39;`: the panel escapes it).
+- `describeLabCookies({ challenge, path, cookies: [{ name: (level) => string, set: (agent, level, base) => request,
+  httpOnly? }] })`: each lab cookie has one name per level and gets the canonical path even from an upper-case URL
+  (`set` receives the upper-cased path as `base`), and is HttpOnly unless `httpOnly: false`.
+- `describeOddBodies({ challenge, path, forms, statuses?, bodies? })`: odd JSON bodies on the forms besides the front
+  page (e.g. `['/forgot', '/reset']`) are a failed request at every level (default status 200; add 303 for a form that
+  redirects), never a 500 or a flag.
+- "Never leaves the lab" assertions: `expectInLab(res, path, level)` (a redirect status whose Location is under the lab
+  path with `level=<level>`; returns the Location), `expectAwayPage(res)` (sendSimRedirect's page for an off-lab target:
+  200, no Location, no Refresh, the URL as text, no link; returns the section), `expectNoWayOut(res)` (200, no Location,
+  no Refresh) and `forwardNoteOf(html)` / `awayOf(html)` to read the forward note and the away page.
+
+Engine-level twin tests live in `tests/twin.spec.ts` (a fixture lab for both browsers, `sendReply` on a fake Response,
+the cookie attributes, `visitOf`).
