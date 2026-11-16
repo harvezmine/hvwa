@@ -7,8 +7,8 @@ import { SIM_LIMITS, clip } from '../sim/limits.js';
 import { XSS_LIMITS } from './limits.js';
 import { markerNonce, markerPattern } from './marker.js';
 import {
-  DOCUMENT_MIME_TYPES, NS, attr, dataUrl, handlerTrigger, hrefOf, javascriptSource, label, navAttributes, sandboxOf,
-  schemeOf, scriptKind, scriptMimeRuns, urlText, type Trigger,
+  DOCUMENT_MIME_TYPES, NS, attr, canHostShadow, dataUrl, handlerTrigger, hrefAnimation, hrefOf, javascriptSource, label,
+  navAttributes, sandboxOf, schemeOf, scriptKind, scriptMimeRuns, shadowRootMode, urlText, type Trigger,
 } from './rules.js';
 
 type Node = DefaultTreeAdapterTypes.Node;
@@ -106,6 +106,8 @@ interface Walk {
   deep: boolean;
   /** A framed document was not analysed (a bound): the walk's sinks are not the whole story. */
   incomplete: boolean;
+  /** Elements that already got a declarative shadow root (only the first template attaches). */
+  readonly shadowHosts: Set<Node>;
 }
 
 interface Context {
@@ -327,6 +329,9 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
   };
   push(root.childNodes, 1, false);
   let elements = 0;
+  // SMIL href animations whose target is `href="#id"`: resolved against this document's ids once it is all read.
+  const ids = new Map<string, Element>();
+  const animations: { readonly el: Element; readonly target: string; readonly urls: readonly string[] }[] = [];
   for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
     const { node, depth, inert } = item;
     // A backstop: every tree here was built under the same cap (boundedAdapter, the XML reader), so this never stops a
@@ -348,15 +353,41 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
     const el = node as Element;
     if (depth > XSS_LIMITS.depth) w.deep = true;
     if (!w.reached) for (const a of el.attrs) if (ctx.re.test(a.value)) { w.reached = true; break; }
-    if (!inert && f.live) elementSinks(el, f, ctx, w);
-    // A template's content is inert: no script runs, no image loads, no handler fires until a script clones it.
-    if (el.tagName === 'template' && el.namespaceURI === NS.HTML) push((el as DefaultTreeAdapterTypes.Template).content.childNodes, depth + 1, true);
-    else push(el.childNodes, depth + 1, inert);
+    const id = attr(el, 'id');
+    if (id !== undefined && !ids.has(id)) ids.set(id, el);
+    if (!inert && f.live) {
+      elementSinks(el, f, ctx, w);
+      const animation = hrefAnimation(el);
+      if (animation !== undefined && animation.target === undefined) animatedHref(el, el.parentNode, animation.urls, f, ctx, w);
+      else if (animation !== undefined) animations.push({ el, target: animation.target ?? '', urls: animation.urls });
+    }
+    if (el.tagName === 'template' && el.namespaceURI === NS.HTML) {
+      // A template's content is inert (no script runs, no image loads, no handler fires until a script clones it),
+      // except a declarative shadow root: a page's <template shadowrootmode> on a host that can take one (the first
+      // such template per host; never through innerHTML) becomes live content, as Chrome attaches it.
+      const host = el.parentNode;
+      const live = !inert && f.scriptElements && shadowRootMode(el) !== undefined && host !== null && 'tagName' in host
+        && canHostShadow(host as Element) && !w.shadowHosts.has(host);
+      if (live) w.shadowHosts.add(host);
+      push((el as DefaultTreeAdapterTypes.Template).content.childNodes, depth + 1, !live);
+    } else {
+      push(el.childNodes, depth + 1, inert);
+    }
+  }
+  for (const a of animations) animatedHref(a.el, ids.get(a.target) ?? null, a.urls, f, ctx, w);
+}
+
+/** An animate/set element that sets its target link's href: a javascript: URL there runs when the victim clicks the link. */
+function animatedHref(el: Element, target: DefaultTreeAdapterTypes.ParentNode | null, urls: readonly string[], f: Frame, ctx: Context, w: Walk): void {
+  if (target === null || !('tagName' in target) || target.namespaceURI !== NS.SVG || target.tagName !== 'a') return;
+  for (const value of urls) {
+    const url = urlText(value);
+    if (schemeOf(url) === 'javascript') addSink(w, f, ctx, 'url-scheme', `svg:a[href=javascript:] < ${label(el)}`, 'interaction', false, ctx.re.test(javascriptSource(url)));
   }
 }
 
 function walk(root: Root, f: Frame, ctx: Context): Walk {
-  const w: Walk = { sinks: [], firing: new Map(), reached: false, deep: false, incomplete: false };
+  const w: Walk = { sinks: [], firing: new Map(), reached: false, deep: false, incomplete: false, shadowHosts: new Set() };
   walkInto(root, f, ctx, w);
   return w;
 }
@@ -375,6 +406,15 @@ function roundTripAdds(tree: Root, before: Walk, insertion: XssInsertion, script
   const after = walk(again, f, { ...ctx, timed: true });
   for (const [sig, n] of after.firing) if (n > (before.firing.get(sig) ?? 0)) return true;
   return false;
+}
+
+const sinkKey = (s: Sink): string => `${s.kind}|${s.detail}|${s.trigger}|${s.isolated}|${s.marker}`;
+
+/** The page with every select tag renamed (an unknown element: its content parsed as ordinary markup), read like the page. */
+function selectPass(page: string, insertion: XssInsertion, top: Frame, ctx: Context): Walk | undefined {
+  const renamed = page.replace(/<(\/?)select(?=[\t\n\f\r />]|$)/gi, '<$1hvwa-select');
+  const tree = parseBounded(renamed, insertion, true, ctx.budget, { checkTags: false, timed: false });
+  return tree === undefined ? undefined : walk(tree, top, ctx);
 }
 
 function insertionOf(x: unknown): XssInsertion {
@@ -406,14 +446,21 @@ export function xssOracle(html: string, marker: string, opts: XssOracleOptions =
   };
   const ctx: Context = { re, interact: opts.interact !== false, budget, timed: false };
   const first = walk(tree, top, ctx);
+  // Chrome 135+ parses select content as ordinary markup (the customizable select); parse5 8.0.1 drops most of it. A
+  // second, deterministic pass reads the page with select renamed to an unknown element, and its sinks count too.
+  const select = /<select/i.test(page) ? selectPass(page, insertion, top, ctx) : undefined;
   let mxss = roundTripAdds(tree, first, insertion, true, top, ctx);
   if (!mxss && !first.deep && !first.incomplete && /noscript/i.test(page)) {
     // A sanitizer that parses with scripting off (DOMParser, a template element) sees noscript content as markup.
     const off = parseBounded(page, insertion, false, budget, { checkTags: false, timed: true });
     if (off !== undefined) mxss = roundTripAdds(off, walk(off, top, { ...ctx, timed: true }), insertion, false, top, ctx);
   }
+  const sinks = [...first.sinks];
+  const seen = new Set(sinks.map(sinkKey));
+  for (const extra of select?.sinks ?? []) if (!seen.has(sinkKey(extra)) && sinks.length < XSS_LIMITS.sinks) sinks.push(extra);
   return Object.freeze({
-    executes: first.firing.size > 0, sinks: Object.freeze([...first.sinks]), reachedMarker: first.reached, mxss,
+    executes: first.firing.size > 0 || (select?.firing.size ?? 0) > 0, sinks: Object.freeze(sinks),
+    reachedMarker: first.reached || select?.reached === true, mxss,
     ...(budget.limited === undefined ? {} : { limited: budget.limited }),
   });
 }

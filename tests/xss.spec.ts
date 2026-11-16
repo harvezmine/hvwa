@@ -195,6 +195,67 @@ describe('xssOracle: escaped sources and non-sinks run nothing', () => {
   });
 });
 
+// Each row below was checked in headless Chrome 157 (the review's false negatives FN1 to FN3).
+describe('xssOracle: what parse5 8.0.1 does not build but Chrome 157 runs', () => {
+  it('declarative shadow DOM (FN1): a page\'s <template shadowrootmode> content is live, on a host that can take a shadow root', () => {
+    for (const html of [
+      `<div><template shadowrootmode=open><img src=x onerror=${M}></template></div>`,
+      `<div><template shadowrootmode=closed><script>${M}</script></template></div>`,
+      `<div><template shadowrootmode=OPEN><img src=x onerror=${M}></template></div>`,
+      `<my-el><template shadowrootmode=open><img src=x onerror=${M}></template></my-el>`, // a custom element
+      `<p>x</p><template shadowrootmode=open><img src=x onerror=${M}></template>`, // the body is the host
+      `<span><template shadowrootmode=open><div><template shadowrootmode=open><img src=x onerror=${M}></template></div></template></span>`,
+    ]) {
+      expect(xssOracle(html, M).executes, html).toBe(true);
+      expect(xssOracle(html, M, { insertion: 'innerHTML' }).executes, `innerHTML ${html}`).toBe(false); // innerHTML never attaches one
+    }
+    for (const html of [
+      `<a href=#><template shadowrootmode=open><img src=x onerror=${M}></template></a>`, // <a> cannot host one
+      `<div><template shadowrootmode=open></template><template shadowrootmode=open><img src=x onerror=${M}></template></div>`, // the second
+      `<div><template shadowrootmode=bogus><img src=x onerror=${M}></template></div>`, `<div><template><img src=x onerror=${M}></template></div>`,
+    ]) {
+      expect(xssOracle(html, M).executes, html).toBe(false);
+    }
+  });
+
+  it('the customizable <select> parser (FN2): elements inside a select are kept, as Chrome 135+ parses them', () => {
+    for (const html of [
+      `<select><img src=x onerror=${M}></select>`, `<select><svg onload=${M}></select>`, `<select><option><img src=x onerror=${M}></option></select>`,
+      `<select><iframe srcdoc="<script>${M}</script>"></iframe></select>`, `<table><select><img src=x onerror=${M}></select></table>`,
+      `<select><div><img src=x onerror=${M}></div></select>`, `<SELECT><img src=x onerror=${M}></SELECT>`,
+    ]) {
+      for (const insertion of ['document', 'innerHTML'] as const) expect(xssOracle(html, M, { insertion }).executes, `${insertion} ${html}`).toBe(true);
+    }
+    expect(xssOracle(`<select><b onmouseover=${M}>x</b></select>`, M, { interact: false }).executes).toBe(false);
+    expect(xssOracle(`<select><b onmouseover=${M}>x</b></select>`, M).executes).toBe(true);
+    expect(xssOracle(`<select><option>&lt;img src=x onerror=${M}&gt;</option></select>`, M).executes).toBe(false); // text stays text
+    expect(xssOracle(`<p title="<select><img src=x onerror=${M}>">x</p>`, M).executes).toBe(false); // the word in an attribute
+  });
+
+  it('SMIL href animation (FN3): animate/set of an SVG link\'s href to a javascript: URL runs on click', () => {
+    for (const html of [
+      `<svg><a><animate attributeName=href values="javascript:${M}" /><text>x</text></a></svg>`,
+      `<svg><a><set attributeName=href to="javascript:${M}" /><text>x</text></a></svg>`,
+      `<svg><a><animate attributeName=href from="javascript:${M}" to="javascript:${M}" dur=10s /><text>x</text></a></svg>`,
+      `<svg><a id=l><text>x</text></a><animate href=#l attributeName=href values="javascript:${M}" /></svg>`,
+      `<svg><a><animate attributeName=href values="http://x/;javascript:${M}" /><text>x</text></a></svg>`,
+    ]) {
+      const v = xssOracle(html, M);
+      expect(v.executes, html).toBe(true);
+      expect(v.sinks, html).toContainEqual(expect.objectContaining({ kind: 'url-scheme', trigger: 'interaction', marker: true }));
+      expect(xssOracle(html, M, { interact: false }).executes, html).toBe(false);
+    }
+    for (const html of [
+      `<svg><a><animate attributeName=xlink:href values="javascript:${M}" /><text>x</text></a></svg>`, // Chrome does not animate xlink:href
+      `<svg><image><animate attributeName=href values="javascript:${M}" /></image></svg>`, // not a link
+      `<svg><a><animate attributeName=fill values="javascript:${M}" /><text>x</text></a></svg>`,
+      `<svg><a id=l><text>x</text></a><animate href=#nope attributeName=href values="javascript:${M}" /></svg>`,
+    ]) {
+      expect(xssOracle(html, M).executes, html).toBe(false);
+    }
+  });
+});
+
 describe('xssOracle: options', () => {
   it('insertion innerHTML: inserted scripts never run (HTML or SVG); handlers and framed documents do', () => {
     const opts: XssOracleOptions = { insertion: 'innerHTML' };

@@ -307,6 +307,53 @@ export function navAttributes(el: Element): readonly (readonly [NavRule, string,
   return out;
 }
 
+// --- Declarative shadow DOM (Chrome 157 attaches it; parse5 8.0.1 keeps it an inert template) -----------------------
+
+/** HTML's valid shadow host names (custom element names can host one too). */
+const SHADOW_HOSTS: ReadonlySet<string> = new Set([
+  'article', 'aside', 'blockquote', 'body', 'div', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'main', 'nav', 'p',
+  'section', 'span',
+]);
+const RESERVED_CUSTOM_NAMES: ReadonlySet<string> = new Set([
+  'annotation-xml', 'color-profile', 'font-face', 'font-face-src', 'font-face-uri', 'font-face-format', 'font-face-name', 'missing-glyph',
+]);
+
+/** Whether an element can host a shadow root: one of HTML's valid shadow host names, or a custom element. */
+export function canHostShadow(el: Element): boolean {
+  if (el.namespaceURI !== NS.HTML) return false;
+  if (SHADOW_HOSTS.has(el.tagName)) return true;
+  const c = el.tagName.charCodeAt(0);
+  return c >= 97 && c <= 122 && el.tagName.includes('-') && !RESERVED_CUSTOM_NAMES.has(el.tagName);
+}
+
+/** A `<template shadowrootmode>`'s mode as the parser reads it (ASCII case-insensitive), or undefined. */
+export function shadowRootMode(el: Element): 'open' | 'closed' | undefined {
+  if (el.namespaceURI !== NS.HTML || el.tagName !== 'template') return undefined;
+  const mode = (attr(el, 'shadowrootmode') ?? '').toLowerCase();
+  return mode === 'open' || mode === 'closed' ? mode : undefined;
+}
+
+// --- SMIL animation of a link's href -------------------------------------------------------------------------------
+
+/**
+ * An SVG animate or set element that animates its target's `href` (Chrome 157 animates `href`, not `xlink:href`):
+ * the URLs it would set (to, from, by, each of values) and its target, the id in `href="#id"` or undefined for its
+ * parent. Undefined for any other element or attribute. The target must be an SVG `<a>` for a click to follow it.
+ */
+export function hrefAnimation(el: Element): { readonly target: string | undefined; readonly urls: readonly string[] } | undefined {
+  if (!isSvg(el, 'animate', 'set') || attr(el, 'attributeName') !== 'href') return undefined;
+  const urls: string[] = [];
+  for (const name of ['to', 'from', 'by']) {
+    const v = attr(el, name);
+    if (v !== undefined) urls.push(v);
+  }
+  const values = attr(el, 'values');
+  if (values !== undefined) urls.push(...values.split(';'));
+  const href = hrefOf(el)?.value;
+  if (href !== undefined && !href.startsWith('#')) return undefined; // a target in another document: nothing here
+  return { target: href === undefined ? undefined : href.slice(1), urls };
+}
+
 /** A sandbox attribute (or a CSP `sandbox` directive's value): may scripts run, and keep the page's origin? */
 export function sandboxOf(value: string): { readonly scripts: boolean; readonly sameOrigin: boolean } {
   const tokens = new Set(value.toLowerCase().split(/[\t\n\f\r ]+/).filter((t) => t !== ''));
