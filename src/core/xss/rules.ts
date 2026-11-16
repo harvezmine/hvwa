@@ -469,13 +469,16 @@ const NAV_HTML: Readonly<Record<string, readonly NavRule[]>> = Object.freeze({
 });
 
 /**
- * Whether a button or input submits a form, so its formaction navigates: a submit button (a button of any type but
- * button and reset; an input of type submit or image) with a form owner (an ancestor form, or a form= attribute).
+ * Whether a button or input is a submit button (a button of any type but button and reset; an input of type submit or
+ * image): only one submits, so only its formaction navigates, and only with a form owner (the oracle resolves that).
  */
-function submitsForm(el: Element): boolean {
+export function isSubmitButton(el: Element): boolean {
   const type = (attr(el, 'type') ?? '').trim().toLowerCase();
-  if (el.tagName === 'button' ? type === 'button' || type === 'reset' : type !== 'submit' && type !== 'image') return false;
-  if ((attr(el, 'form') ?? '') !== '') return true;
+  return el.tagName === 'button' ? type !== 'button' && type !== 'reset' : type === 'submit' || type === 'image';
+}
+
+/** Whether an element has a form among its ancestors. */
+export function insideForm(el: Element): boolean {
   for (let p = el.parentNode; p !== null && 'tagName' in p; p = p.parentNode) if (isHtml(p, 'form')) return true;
   return false;
 }
@@ -488,7 +491,7 @@ export function navAttributes(el: Element): readonly (readonly [NavRule, string,
     return href === undefined ? [] : [[{ attribute: 'href', trigger: 'interaction', frame: false, javascript: true }, href.name, href.value]];
   }
   if (el.namespaceURI !== NS.HTML || !Object.hasOwn(NAV_HTML, el.tagName)) return [];
-  if ((el.tagName === 'button' || el.tagName === 'input') && !submitsForm(el)) return []; // formaction needs a submit with a form
+  if ((el.tagName === 'button' || el.tagName === 'input') && !isSubmitButton(el)) return []; // formaction needs a submit button
   const out: (readonly [NavRule, string, string])[] = [];
   for (const rule of NAV_HTML[el.tagName]) {
     const value = attr(el, rule.attribute);

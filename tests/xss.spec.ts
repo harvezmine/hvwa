@@ -445,6 +445,28 @@ describe('xssOracle: rule precision', () => {
     }
   });
 
+  it('formaction: the form owner as Chrome 157 resolves it (form= by id; the parser\'s form pointer in a page)', () => {
+    const doc = (html: string) => xssOracle(html, M).executes;
+    const inner = (html: string) => xssOracle(html, M, { insertion: 'innerHTML' }).executes;
+    // The parser's form element pointer: a form whose start tag came before, not yet ended by </form>, owns the button.
+    for (const html of [
+      `<div><form></div><button formaction="javascript:${M}">x</button>`, `<div><form></div><input type=submit formaction="javascript:${M}">`,
+      `<table><form><tr><td><button formaction="javascript:${M}">x</button></td></tr></table>`,
+    ]) {
+      expect(doc(html), html).toBe(true);
+      expect(inner(html), `innerHTML ${html}`).toBe(false); // innerHTML keeps no such association
+    }
+    expect(doc(`<form></form><button formaction="javascript:${M}">x</button>`)).toBe(false); // </form> cleared it
+    expect(doc(`<form><button form="" formaction="javascript:${M}">x</button></form>`)).toBe(false); // form= decides, even inside one
+    expect(doc(`<form><button form=nope formaction="javascript:${M}">x</button></form>`)).toBe(false);
+    expect(doc(`<button form=nope formaction="javascript:${M}">x</button>`)).toBe(false);
+    expect(doc(`<div id=f></div><button form=f formaction="javascript:${M}">x</button>`)).toBe(false); // the id is not a form
+    for (const html of [`<form id=f></form><button form=f formaction="javascript:${M}">x</button>`, `<button form=f formaction="javascript:${M}">x</button><form id=f></form>`]) {
+      expect(doc(html), html).toBe(true);
+      expect(inner(html), `innerHTML ${html}`).toBe(true);
+    }
+  });
+
   it('M3: formaction runs only on a submit button that has a form', () => {
     for (const html of [`<form><button formaction="javascript:${M}">x</button></form>`, `<form><input type=submit formaction="javascript:${M}"></form>`,
       `<form><input type=image src=x formaction="javascript:${M}"></form>`, `<form id=f></form><button form=f formaction="javascript:${M}">x</button>`,

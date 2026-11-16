@@ -8,7 +8,7 @@ import { XSS_LIMITS } from './limits.js';
 import { markerNonce, markerPattern } from './marker.js';
 import { readXml } from './xml.js';
 import {
-  DOCUMENT_MIME_TYPES, NS, attr, canHostShadow, dataUrl, handlerTrigger, hrefAnimation, hrefOf, javascriptSource, label,
+  DOCUMENT_MIME_TYPES, NS, attr, canHostShadow, dataUrl, handlerTrigger, hrefAnimation, hrefOf, insideForm, javascriptSource, label,
   navAttributes, sandboxOf, schemeOf, scriptKind, scriptMimeRuns, shadowRootMode, tagOpens, urlText, type Trigger,
 } from './rules.js';
 
@@ -178,15 +178,30 @@ interface ParseOptions {
   readonly timed: boolean;
 }
 
+/**
+ * For a document whose text mentions formaction: where its `</form` end tags are (sorted offsets). With the elements'
+ * source offsets, they give the parser's form element pointer: a form whose start tag came before a button, not yet
+ * ended by </form>, owns it even when it is not an ancestor (Chrome 157: `<div><form></div><button formaction>`).
+ */
+const FORM_ENDS = new WeakMap<Root, readonly number[]>();
+const formEndsOf = (html: string): number[] => {
+  const out: number[] = [];
+  for (const m of html.matchAll(/<\/form/gi)) out.push(m.index);
+  return out;
+};
+
 /** One bounded parse: the tag cap (for fresh input), the budget, the tree caps, and for a round trip the deadline. */
 function parseBounded(html: string, insertion: XssInsertion, scripting: boolean, b: Budget, o: ParseOptions): Root | undefined {
   if (o.checkTags && tagOpens(html) > XSS_LIMITS.tags) return limit(b, 'tags');
   if (html.length > b.left) return limit(b, 'budget');
   if (o.timed && performance.now() > b.deadline) return limit(b, 'time');
   b.left -= html.length;
-  const options = { scriptingEnabled: scripting, treeAdapter: boundedAdapter(o.timed ? b.deadline : undefined) };
+  const locations = insertion === 'document' && /formaction/i.test(html); // only then is the form pointer needed
+  const options = { scriptingEnabled: scripting, treeAdapter: boundedAdapter(o.timed ? b.deadline : undefined), sourceCodeLocationInfo: locations };
   try {
-    return insertion === 'document' ? parse(html, options) : parseFragment(divContext(), html, options);
+    const root = insertion === 'document' ? parse(html, options) : parseFragment(divContext(), html, options);
+    if (locations) FORM_ENDS.set(root, formEndsOf(html));
+    return root;
   } catch (e) {
     if (e instanceof ParseStop) return limit(b, e.why);
     if (e instanceof RangeError) return limit(b, 'depth'); // parse5 recursed too deep: the bounds above make it rare
@@ -267,8 +282,16 @@ function addSink(w: Walk, f: Frame, ctx: Context, kind: SinkKind, detail: string
   }
 }
 
+/** What one document's walk resolves once it is all read: ids, its forms, and the sinks that wait on them. */
+interface DocState {
+  readonly ids: Map<string, Element>;
+  readonly forms: Element[];
+  /** formaction sinks whose form owner is a form= id or the parser's form pointer: [the button, add the sink]. */
+  readonly owners: (readonly [Element, () => void])[];
+}
+
 /** The sinks one element makes (its script, its handlers, its URLs, its framed document). */
-function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
+function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk, doc: DocState): void {
   const html = el.namespaceURI === NS.HTML;
   const svg = el.namespaceURI === NS.SVG;
   // Script elements (not inserted by innerHTML).
@@ -305,7 +328,10 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
     const scheme = schemeOf(url);
     if (rule.frame && sandbox !== undefined && !sandbox.scripts) continue; // a sandbox without allow-scripts runs nothing
     if (scheme === 'javascript' && rule.javascript) {
-      addSink(w, f, ctx, 'url-scheme', `${label(el)}[${name}=javascript:]`, rule.trigger, sandbox !== undefined && !sandbox.sameOrigin, ctx.re.test(javascriptSource(url)));
+      const add = (): void => addSink(w, f, ctx, 'url-scheme', `${label(el)}[${name}=javascript:]`, rule.trigger, sandbox !== undefined && !sandbox.sameOrigin, ctx.re.test(javascriptSource(url)));
+      if (name !== 'formaction') add();
+      else if (attr(el, 'form') !== undefined || (!insideForm(el) && f.dsd)) doc.owners.push([el, add]); // resolved at the end
+      else if (insideForm(el)) add();
     } else if (scheme === 'data' && rule.frame) {
       const d = dataUrl(url);
       if (d !== undefined && DOCUMENT_MIME_TYPES.has(d.mime)) addSink(w, f, ctx, 'url-scheme', `${label(el)}[${name}=data:]`, 'load', true, ctx.re.test(d.text));
@@ -320,12 +346,12 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
       return;
     }
     if (/<select/i.test(srcdoc)) w.selectInFrame = true;
-    const doc = parseBounded(ctx.renameSelect === true ? renameSelects(srcdoc) : srcdoc, 'document', true, ctx.budget, { checkTags: true, timed: ctx.timed });
-    if (doc === undefined) {
+    const framed = parseBounded(ctx.renameSelect === true ? renameSelects(srcdoc) : srcdoc, 'document', true, ctx.budget, { checkTags: true, timed: ctx.timed });
+    if (framed === undefined) {
       w.incomplete = true;
       return;
     }
-    walkInto(doc, {
+    walkInto(framed, {
       isolated: f.isolated || (sandbox !== undefined && !sandbox.sameOrigin), live: true, scriptElements: true, dsd: true,
       keyframes: hasKeyframes(srcdoc), loads: f.loads,
       prefix: `${f.prefix}iframe[srcdoc] > `, srcdocDepth: f.srcdocDepth + 1,
@@ -341,8 +367,9 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
   };
   push(root.childNodes, 1, false);
   let elements = 0;
-  // SMIL href animations whose target is `href="#id"`: resolved against this document's ids once it is all read.
-  const ids = new Map<string, Element>();
+  // SMIL href animations whose target is `href="#id"`, and form owners: resolved against this document once it is all read.
+  const doc: DocState = { ids: new Map(), forms: [], owners: [] };
+  const { ids } = doc;
   const animations: { readonly el: Element; readonly target: string; readonly urls: readonly string[] }[] = [];
   for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
     const { node, depth, inert } = item;
@@ -365,10 +392,11 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
     const el = node as Element;
     if (depth > XSS_LIMITS.depth) w.deep = true;
     if (!w.reached) for (const a of el.attrs) if (ctx.re.test(a.value)) { w.reached = true; break; }
-    const id = attr(el, 'id');
+    const id = inert ? undefined : attr(el, 'id'); // template content is not in the document
     if (id !== undefined && !ids.has(id)) ids.set(id, el);
+    if (!inert && el.namespaceURI === NS.HTML && el.tagName === 'form') doc.forms.push(el);
     if (!inert && f.live) {
-      elementSinks(el, f, ctx, w);
+      elementSinks(el, f, ctx, w, doc);
       const animation = hrefAnimation(el);
       if (animation !== undefined && animation.target === undefined) animatedHref(el, el.parentNode, animation.urls, f, ctx, w);
       else if (animation !== undefined) animations.push({ el, target: animation.target ?? '', urls: animation.urls });
@@ -387,6 +415,30 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
     }
   }
   for (const a of animations) animatedHref(a.el, ids.get(a.target) ?? null, a.urls, f, ctx, w);
+  for (const [button, add] of doc.owners) if (formOwned(button, doc, FORM_ENDS.get(root))) add();
+}
+
+/**
+ * Whether a submit button has a form owner, as the HTML parser leaves it: a form= attribute names the first element
+ * with that id, which must be a form (empty or unknown: none, even inside a form); without one, an ancestor form; and
+ * in a page the parser read, the form element pointer: the last form whose start tag came before the button, with no
+ * `</form` end tag between them. (innerHTML keeps no such association.)
+ */
+function formOwned(button: Element, doc: DocState, formEnds: readonly number[] | undefined): boolean {
+  const formId = attr(button, 'form');
+  if (formId !== undefined) {
+    const target = formId === '' ? undefined : doc.ids.get(formId);
+    return target !== undefined && target.namespaceURI === NS.HTML && target.tagName === 'form';
+  }
+  if (insideForm(button)) return true;
+  const at = button.sourceCodeLocation?.startOffset;
+  if (at === undefined || formEnds === undefined) return false;
+  let pointer = -1;
+  for (const form of doc.forms) {
+    const start = form.sourceCodeLocation?.startOffset;
+    if (start !== undefined && start < at && start > pointer) pointer = start;
+  }
+  return pointer !== -1 && !formEnds.some((end) => end > pointer && end < at);
 }
 
 /** An animate/set element that sets its target link's href: a javascript: URL there runs when the victim clicks the link. */
