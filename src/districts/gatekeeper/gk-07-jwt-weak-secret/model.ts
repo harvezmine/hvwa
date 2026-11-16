@@ -1,6 +1,7 @@
 // model.ts — GK-07's lab state and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
-import { fixtureLines, perSession, byLevel } from '../../../core/lab.js';
+import { fixtureLines } from '../../../core/fixtures.js';
+import { perSession, byLevel } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { signHmac } from '../_shared/jwt.js';
 import * as acolyte from './levels/acolyte.js';

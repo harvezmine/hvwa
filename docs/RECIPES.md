@@ -84,7 +84,7 @@ src/districts/index.ts              imports each district index
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
 - **The Relic Market shop shell** (`relic-market/_shared/`: money, cart, orders, intents, the shop page, its test kit)
-  is section 9; its race and time primitives are sections 10 and 11.
+  is section 10; its race and time primitives are sections 11 and 12.
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
   all in `gatekeeper/_shared/`:
   - `pilgrimLogin(req)` + the `views/pilgrim-form.ejs` partial: the sign-in check, form and message.
@@ -143,12 +143,13 @@ case (g)). Divine resists every exploit.
 | `perSession(...).reset(req)` | `core/lab` | drop that (session, level)'s instance (calls `dispose`): the body of a lab's `reset` hook |
 | `labPath(res)` | `core/lab` | the canonical lab path `/d/<district>/<slug>`, set by the engine as `res.locals.labPath` (also readable in views as `labPath`); use it for every lab link and cookie path |
 | `header(req, name)` | `core/lab` | a request header as a string (`undefined` if missing or repeated); client-written, never an identity |
-| `fixtureLines(url)` / `sendLines(res, lines)` | `core/lab` | a lab's fixture list read once (`new URL('./fixtures/x.txt', import.meta.url)`) and served from a lab route as `text/plain` |
+| `fixtureLines(url)` / `sendLines(res, lines)` | `core/fixtures` | a lab's fixture list read once (`new URL('./fixtures/x.txt', import.meta.url)`) and served from a lab route as `text/plain` |
 | `challengeDb(schema, seed?)` | `core/challenge-db` | private in-memory SQLite, `prepare()`-only facade; `randomblob()`/`zeroblob()` capped at `CHALLENGE_BLOB_CAP` (64 KiB, section 4) |
 | `tryDb(req, () => call(), label?)` | `core/lab` | `{ ok: true, value }` or `{ ok: false, message }`: `<label>: <msg>` below Divine (label defaults to `Database error`), `Invalid request.` at Divine. Synchronous only: a Promise result throws |
 | `field(req, name)` | `core/lab` | a body field as a string, `''` for missing or non-string values |
 | `flagFor(req, challenge)` | `core/mount` | this session's flag at the served level; throws at Divine |
 | `sendPage(res, viewFile, data)` | `core/render` | the only way to render (absolute `.ejs` path) |
+| `declareLabWeight(bytes, what?)` | `core/lab` | in a victim-driven (or upload) lab's `perSession` factory: what the lab's own bounded maps hold at worst, weighed in the shared byte budget (section 8) |
 | `simWorld({ mailboxes })`, `world.browser(handler)` | `core/sim` | victim-driven labs: one player's inbox, attacker log and the victim's browser, made inside the lab's `perSession` factory (section 8) |
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
@@ -157,6 +158,11 @@ case (g)). Divine resists every exploit.
 | `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
 | `visitOf(req, res, cookieNames)`, `simVisitOf(level, r, cookieNames?)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
 | `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
+| `parseMultipart(req, limits?)`, `settle(p)`, `UPLOAD_LIMITS`, `UploadError` | `core/upload` | upload labs: the raw multipart body `express.raw` read on the upload route, parsed and capped; `tryDb(req, await settle(parseMultipart(req)), 'Upload error')` (section 9) |
+| `looksLikeImage(bytes)`, `sniffImage(bytes)`, `placeholderImage(sniff)` | `core/upload` | PNG/JPEG/GIF/WebP magic bytes and size, from the header ONLY (SC-09's polyglot lesson; never a safety check); the constant-size GIF a safe level serves instead (section 9) |
+| `readZip(bytes, limits?)`, `ZIP_LIMITS` | `core/upload-zip` | an archive's entries (names exactly as written, bytes), with a zip-bomb guard; synchronous, inside `tryDb` (section 9) |
+| `simFs(opts?)`, `resolveSimPath(path, separators?)`, `SIMFS_LIMITS` | `core/simfs` | one player's simulated file system per level, made in the `perSession` factory; paths resolved by the simulated OS's rules (section 9) |
+| `simInterpret(bytes, canary)` | `core/simfs` | the "webshell": nothing executes; prints the canary if the file holds `<?hvwa CANARY ?>` (section 9) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -336,7 +342,7 @@ string, not a 500.
   convenience flow must not hand the budget back either (add a "re-sign-in" scenario to the spec).
 - **Time-dependent behaviour uses an injectable clock** (`state.now`, a test seam on the lab state), never
   `setTimeout`, `sleep` or real minutes: tests move the clock (`state.now = () => t`) and stay fast. A lab that must
-  really wait (a race window, a simulated delay) waits on the Relic Market clock, clamped and swappable (sections 10, 11).
+  really wait (a race window, a simulated delay) waits on the Relic Market clock, clamped and swappable (sections 11, 12).
 
 ## 5. Views, language and hints
 
@@ -462,6 +468,7 @@ If a mutation stays green, the matrix is missing a case.
 2. Write `<id>.spec.ts` first (matrix + specifics); run `npm test -- <id>` and watch it fail.
 3. `model.ts`: schema, seed, row types, the level-module interface, `perLevel` or `perSession` state, test seams.
    A lab where someone else must click (a reset mail, an OAuth link, a session link) adds a simulated victim: section 8.
+   A lab that takes uploads, archives or files keeps them in a simulated file system: section 9.
 4. `levels/*.ts`: Acolyte no defense, Templar naive filter, Inquisitor flawed defense, Divine correct
    for the weakness; `divine.ts`'s comment notes generic errors and any gaps left out of scope.
 5. `challenge.ts`: `byLevel<M>`, `register(defineChallenge({ ..., dir: challengeDir(import.meta.url), levels: impl.levels }))`,
@@ -486,7 +493,7 @@ follows an OAuth authorize link while signed in (GK-10, GK-11), signs in through
 simulates that victim deterministically and with **no real network**: nothing in `core/sim/` opens a socket,
 resolves a name or fetches. A guard in `tests/sim.spec.ts` parses every module in `core/sim/` with the TypeScript
 compiler and allows only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as
-`fetch` or `globalThis`; transitively they reach only `node:buffer` and `node:fs`), spies on fetch, http(s), http2,
+`fetch` or `globalThis`; transitively they reach only `node:buffer`: the fixture reader lives in `core/fixtures.ts`), spies on fetch, http(s), http2,
 tls, net, dgram and dns during a visit, and spies on `net.Socket.prototype.connect` for the whole spec file. The worked
 example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
 
@@ -553,19 +560,34 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 
 `simWorld()`, `simInbox()`, `attackerLog()` and `world.browser()` throw unless called inside a `perSession` factory, so
 victim state is always per player and level, bounded, and inherits the new-instance limits. They also cap the holder
-whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is up to about a megabyte
-and the container has 512 MB:
+whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is over a megabyte and
+the container has 512 MB:
 
-- **One budget for the whole process.** Every holder that keeps sim state (directly, or through a nested holder whose
-  instance it keeps), in every lab and at every level, shares `SIM_LIMITS.worldsTotal` (150) instances in all (about
-  100-170 MB at worst). Creating one at the budget evicts the
-  least recently used of them, whichever lab it belongs to; the new one is never refused. Adding a victim-driven lab
-  does not raise the bound. A lab's own `maxEntries` still applies within it.
+- **One byte budget for the whole process.** Every instance that keeps sim state (directly, or through a nested holder
+  whose instance it keeps), in every lab and at every level, shares `CAPPED_BUDGET_BYTES` (96 MiB). Each store weighs
+  its measured worst case plus ~10% (`SIM_LIMITS`): an inbox 576 KiB, an attacker log 416 KiB, a world's own visits
+  288 KiB, a victim browser 224 KiB. So a `simWorld()` (its inbox, log and visits) weighs 1.25 MiB, and with one
+  browser 1.47 MiB; a simulated file system (section 9) weighs 352 KiB. An instance weighs everything its factory built
+  or used. Creating one that does not fit evicts the least recently used capped instances, whichever lab they belong
+  to, as many as it takes; the new one is never refused. A reset, an idle-TTL expiry or the holder's own `maxEntries`
+  gives the bytes back. No single store may weigh more than `MAX_STORE_WEIGHT` (1/16 of the budget; the built-ins are
+  all under 1/32).
+- **The lab's own state counts too: clip it, and declare it.** The budget only sees what is declared. A lab's own maps
+  (sessions, codes, return URLs, flows...) are NOT in the sim stores' weights, so a victim-driven lab must (a) store every
+  player string through the copying `clip` at a bounded length (a URL: `clip(s, SIM_LIMITS.urlLength + 1)`, one past the
+  cap so an over-long value stays too long to follow), never the raw request value or a view of it, and (b) declare
+  what its maps hold at worst with `declareLabWeight(STATE_WEIGHT, '<ID> lab state')` in its `perSession` factory:
+  the maps filled to every cap with their longest values, measured with a full GC, plus a margin. Add the lab to
+  `tests/lab-state-weights.spec.ts`, which keeps every declaration at or above its measurement (GK-10 declares
+  736 KiB for ~662 KiB measured, GK-11 288 KiB for ~239, GK-16 128 KiB for ~99). **Only then does adding a
+  victim-driven lab leave the 96 MiB bound intact**; an unclipped 16 KB string in a map of 50 is 1.6 MB the budget never
+  sees. `declareLabWeight` caps the holder at `CAPPED_NEW_PER_MINUTE` (30) new instances a minute, like a sim store.
 - **Eviction is a reset** of that player's instance at that level (section 4), and a shared budget turns over in
   minutes: keep no limiter, lockout or attempt budget in victim-driven state.
 - At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
   pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
-- Tests may shrink the budget with `setCappedBudget(n)` from `core/lab.ts` (restore the value it returns).
+- Tests may shrink the budget with `setCappedBudget(bytes)` from `core/lab.ts` (restore the value it returns), and read
+  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`).
 
 Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
 (accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
@@ -816,7 +838,209 @@ it) holds what these specs repeat, modelled on `pilgrim-lab.testkit.ts`:
 Engine-level twin tests live in `tests/twin.spec.ts` (a fixture lab for both browsers, `sendReply` on a fake Response,
 the cookie attributes, `visitOf`).
 
-## 9. The Relic Market shop shell (`relic-market/_shared/`)
+## 9. Upload labs (`core/upload.ts`, `core/upload-zip.ts`, `core/simfs.ts`)
+
+The Scriptorium's upload labs (SC-05 SVG, SC-07/08 webshell filters, SC-09 polyglot, SC-10 ZIP slip, SC-11 path
+traversal) take files from the player, keep them in a **simulated file system**, and "run" some of them. All of it is
+in memory, and **nothing ever executes** (owner decision Q7). No dependency: Node 22's built-in `Response.formData()`
+parses multipart, and `node:zlib` inflates archives. `tests/upload-guard.spec.ts` parses the three modules with tsc and
+allows only `node:buffer`, `node:zlib`, each other, `core/sim/limits.ts` and `core/lab.ts` (no `node:fs`, network,
+`child_process`, `vm`, `eval`); it then spies on all of those through a whole upload, unzip, store and "run".
+The worked example is the fixture lab UP-01 in `tests/upload-lab.spec.ts`.
+
+### The upload route
+
+```ts
+// challenge.ts
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { SIMFS_LIMITS } from '../../../core/simfs.js';
+import { UPLOAD_LIMITS, parseMultipart, settle, uploadGate } from '../../../core/upload.js';
+
+router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req: Request, res: Response) => {
+  // A lab that stores the upload caps it at what the simulated file system takes, so a file that parses also fits.
+  const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1, maxFileBytes: SIMFS_LIMITS.fileBytes })), 'Upload error'); // await OUTSIDE tryDb
+  if (!up.ok) return show(res, { ok: false, text: up.message });
+  const file = up.value.files.find((f) => f.field === 'scroll');
+  if (file === undefined) return show(res, { ok: false, text: 'Choose a scroll to upload.' });
+  const stored = tryDb(req, () => impl.for(req.level).store(labFor(req).fs, file), 'Storage error'); // the level's flaw
+  // ...
+}, (err: unknown, req: Request, res: Response, next: NextFunction) => {
+  // Optional: express.raw's 413 on the lab's own page (status kept); any other error goes on to the platform handler.
+  if ((err as { type?: unknown } | null)?.type !== 'entity.too.large') return next(err);
+  res.status(413);
+  return show(res, { ok: false, text: 'The scroll is too large (at most 2 MiB).' });
+});
+```
+
+- **`uploadGate()` first**, before the body is read: at most `UPLOADS_IN_FLIGHT` (4) uploads at once, across every
+  upload route of every lab, so their bodies and parses stay bounded together (about 16 MiB with four near-2 MiB
+  uploads alive, measured). The fifth gets a 503 (`Retry-After: 2`, `Connection: close`) with a plain message, at once:
+  its body is never read or buffered. A slot is freed when the response finishes or closes (a client that hangs up) or
+  the request fails, and when the body stalls: no bytes for `UPLOAD_BODY_TIMEOUT_MS` (30 s; `uploadGate({ bodyTimeoutMs
+  })`) answers 408 and drops the connection. That is an idle timeout, so a client trickling a byte now and then (or
+  slowly sending a huge declared body that `express.raw` drains before its 413) still holds its slot until Node's own
+  `requestTimeout` (300 s). On a loopback, single-player lab the only such client is the player's own, so this is
+  accepted rather than defended further.
+- **`express.raw` on the upload route only** (owner decision Q6), with `limit: UPLOAD_LIMITS.maxBytes` (2 MiB). The
+  app-wide `express.json()`/`urlencoded()` ignore multipart. A bigger body gets 413 before the lab's handler runs, and
+  the limit counts the *inflated* body, so a small gzip of a large one gets 413 too. Without the optional error handler
+  above, the 413 is the platform's bare error page; with it, the lab's own page (its `err.type` is `entity.too.large`).
+  A form posted without `enctype="multipart/form-data"` arrives as an object, and `parseMultipart` refuses it.
+- **`parseMultipart` is async and `tryDb` is not.** `settle(promise)` turns the settled parse into a thunk that returns
+  the value or rethrows, so `tryDb` applies its usual rule: `Upload error: <message>` below Divine, `Invalid request.`
+  at Divine. Every refusal is an `UploadError` with a message meant for the player; one that escapes is a 400.
+- **Caps** (`UPLOAD_LIMITS`): body 2 MiB, 32 parts, 8 files, 512 KiB per file, 16 KiB per text field, 255-character
+  filenames and field names, 255-character content types. The part count is checked by a scan of the body before it
+  is parsed, so a flood of tiny parts costs a scan, not 40 000 entries. A lab may pass **lower** caps (an SVG lab:
+  `{ maxFileBytes: 64 * 1024 }`), never higher. A higher one, or a non-integer, is a plain `Error`: a lab bug. **A lab
+  that stores what it receives passes `maxFileBytes: SIMFS_LIMITS.fileBytes` (128 KiB)**, so the player gets the
+  upload's own error rather than a storage error for a file the simulated file system cannot hold. (An archive lab
+  keeps the 512 KiB default: the archive itself is not stored, its entries are.) The content type must hold exactly
+  one `boundary=`, a token or a quoted string; anything else is refused before parsing.
+- **Fields** are a null-prototype record; a repeated name keeps its first value. Read them with
+  `field({ body: up.value.fields }, 'caption')`. The empty part a browser sends for an empty file input is dropped.
+
+### What a level receives
+
+- **`filename` exactly as the client sent it**: `../`, `\`, a leading `/`, case, dots, spaces, `%00` and every other
+  percent sequence. Only the three escapes browsers write are undone, as the WHATWG parser does: `%0A`, `%0D`, `%22`.
+  A NUL byte stays U+0000 (never stripped, never a truncation point). Invalid UTF-8 becomes U+FFFD, and its bytes cannot
+  be recovered. A lab that decodes a name, or ends it at a NUL the way C does, does it in its level file, where View
+  Source shows it.
+- **`contentType` is the uploader's claim**, as the File API reports it: ASCII-lowercased with its parameters,
+  `text/plain` when the part had none, `''` for a non-ASCII value. It says what the client claims, never what the bytes
+  are.
+- **`bytes`** is the parser's own copy, not a view of the request body.
+
+### Storing: `simFs()`
+
+```ts
+// model.ts
+const labs = perSession((): LabState => {
+  const fs = simFs();                       // or simFs({ separators: '/\\' }) for a Windows-style server
+  fs.write('/srv/app/templates/welcome.txt', 'Welcome, pilgrim.', { contentType: 'text/plain', pinned: true });
+  return { fs, canary: newCanary() };
+});
+```
+
+- **One per player and level, made in the `perSession` factory** (it throws anywhere else), next to the rest of the
+  lab state, so one eviction or one `reset` drops it all together. Seed it there, and **pin** what the lab depends on
+  (a sentinel, a secret): a pinned file is never dropped to make room, but it can still be overwritten (SC-10's proof).
+- **Paths go through the simulated OS** (`resolveSimPath`, also `fs.resolve`). Every call splits on the separators (`/`,
+  plus `\` on a `'/\\'` file system), drops empty and `.` segments, lets `..` remove the segment before it (never above
+  the root), and makes the path absolute. Nothing else changes: `....` and `..b` are ordinary names, and case, NUL,
+  trailing dots and percent sequences are kept. This is the ground truth, as `classifySimUrl` is for URLs: **the level's
+  own check is the flaw**, and the file system decides where the write really lands. `write('/srv/app/uploads/restore/
+  ../../templates/welcome.txt', ...)` overwrites `/srv/app/templates/welcome.txt`. A correct (Divine) check uses the
+  same rules:
+
+  ```ts
+  const base = fs.resolve(dir);
+  const key = fs.resolve(`${base}/${name}`);
+  // Inside the root is anything but the root itself; inside any other directory is under `<dir>/`.
+  const inside = base === '/' ? key !== '/' : key.startsWith(`${base}/`);
+  if (!inside) return reject(name); // escapes dir (or names dir itself): refused, the sentinel untouched
+  ```
+
+  (`tests/simfs.spec.ts` runs this snippet against `/`, sibling directories sharing a prefix, `....//` and both
+  separator styles.)
+- **Bounds** (`SIMFS_LIMITS`): 32 files, 128 KiB per file, 256 KiB in all, 512-character paths (checked once
+  resolved, too), 255-character content types. Past the file count or the total, the **oldest unpinned file is
+  dropped**, the way the sim drops its oldest mail. A file over 128 KiB (refused by its byte length, before any copy), a
+  write to the root, or no room even after dropping every unpinned file is a `SimFsError` and changes nothing. Wrap
+  writes in `tryDb(req, () => ..., 'Storage error')`.
+- **Every stored Buffer is a copy with memory of its own.** `Buffer.subarray` keeps its whole parent alive, and
+  `Buffer.from(x)` of a small `x` is a slice of Node's shared 8 KiB pool (zlib even answers small inflates with a view of
+  16 KiB). `simFs` copies with `ownBytes` from `core/upload.ts`; use it for any other Buffer a lab keeps.
+- **Memory.** A full instance is about 315 KiB at worst (measured with a full GC; about 270 KiB with short ASCII names).
+  `simFs` caps its holder like a victim world: at most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute,
+  and each instance weighs `SIMFS_LIMITS.weight` (352 KiB) in the 96 MiB byte budget shared with every victim world
+  (section 8). A lab state with both a world and a file system (SC-05, SC-09) weighs both, about 1.6 MiB. Eviction
+  from that budget is a reset, so keep no limiter in this state. Upload labs have no limiter, so they may offer
+  Restart (`reset: (req) => labs.reset(req)`).
+
+### Archives: `readZip(bytes)` (SC-10)
+
+```ts
+// The archive's entries may inflate to at most what the simulated file system holds (the default total is 2 MiB).
+const entries = tryDb(req, () => readZip(file.bytes, { totalBytes: SIMFS_LIMITS.totalBytes }), 'Archive error');
+if (!entries.ok) return show(res, { ok: false, text: entries.message });
+const fs = labFor(req).fs;
+for (const e of entries.value) {
+  if (e.directory) continue; // a folder entry ("notes/") holds no bytes: the simulated file system has no empty directories
+  const written = tryDb(req, () => impl.for(req.level).extract(fs, TARGET_DIR, e), 'Storage error'); // the level's join
+  // ...list e.name as written or rejected
+}
+```
+
+Synchronous, inside `tryDb`. Pass `{ totalBytes: SIMFS_LIMITS.totalBytes }`, so an archive that could never fit
+is refused as an archive. **Skip `e.directory` entries**: their name ends in `/` and they hold nothing, and writing one
+would store an empty file named after the folder. It returns `{ name, directory, method, size, compressedSize, bytes }`
+per entry, in central-directory order. **Names are exactly as written** (`../`, `\`, absolute
+and drive paths, NUL) and decoded as UTF-8, with U+FFFD for an invalid sequence. Bounds (`ZIP_LIMITS`): 64 entries
+(read from the end record before anything else), 255-character names, and a zip-bomb guard: the declared sizes may total
+2 MiB, and no entry inflates past its declared size (`inflateRawSync`'s `maxOutputLength` stops it there). A nested
+archive is one entry of bytes and is never opened. CRC-32 and sizes are checked. ZIP64, multi-volume, encrypted and
+other-method archives are refused, and so are trailing bytes after the archive comment. Errors name an entry by
+number, never by its name. The level "extracts": it builds the path with its own (flawed) join or filter and calls
+`fs.write`. Note for the lab page: Python's `zipfile` on Windows turns `\` into `/` in `ZipInfo(name)`, so a
+backslash name has to be set on `.filename` afterwards (see `tests/upload-zip.spec.ts`).
+
+### Images: `looksLikeImage(bytes)` / `sniffImage(bytes)` / `placeholderImage(sniff)` (SC-09)
+
+They check the magic bytes and the declared size of PNG, JPEG, GIF and WebP, and **only the header, on purpose**.
+Whatever follows the header is never read, so `GIF89a` + a size + `<?hvwa CANARY ?>` passes. That is the Inquisitor
+lesson (a correct header proves the file's start, not the whole of it). Never use either as a safety check. Divine
+does not validate, it re-encodes. The engine has no image decoder, so Divine serves `placeholderImage(sniff)`: a fresh
+GIF the server writes from the sniffed size alone. It keeps no byte the player sent and is always 35 bytes: its
+logical screen is the size clamped to 65535, and its image is 1x1. **Never allocate pixels from a sniffed size**:
+`sniffImage` accepts PNG sizes up to 2^31 - 1 on each side, so "a blank image of that size" would exhaust the 512 MB
+container. **Size the placeholder with CSS on the lab page**: its logical screen can be up to 65535 x 65535, which a
+browser lays out (and may try to decode) at that size, so give the `<img>` a fixed box, e.g.
+`<img src="..." alt="" style="width: 8rem; height: 8rem; object-fit: contain">`, never its intrinsic size. SVG is not
+a raster: `looksLikeImage(svg)` is false.
+
+### "Execution": `simInterpret(bytes, canary)`, and why nothing runs
+
+Whether a stored file "runs" is **the level's decision**: its flawed name or type mapping (`.php` anywhere, the first
+extension, a sniffed type). It is made before `simInterpret` is called. `simInterpret` answers what running the file
+prints. It scans the bytes (as Latin-1, so binary files work) for the one statement the simulated interpreter knows,
+`<?hvwa CANARY ?>` (`SIM_SCRIPT_STATEMENT`), anywhere in the file, so a polyglot's tail counts. If the statement is
+there, the output is the canary alone; if not, it is `null` ("printed nothing"). Pass the canary lazily,
+`simInterpret(file.bytes, () => flagFor(req, C))`, so no flag is computed for a file without the statement. The
+uploaded bytes are never echoed. The lab page documents the statement (it is the simulated server's language). Hints
+still never contain a payload.
+
+**No uploaded file or template ever runs for real**: no PHP, EJS or Node, and no `eval`, `vm`, `child_process` or
+worker. A real interpreter would be remote code execution on the host's container, and the "webshell" lesson does not
+need one. The lesson is the upload **filter**, and the token oracle proves it was beaten. The guard spec keeps it that
+way.
+
+### Serving uploads to the player's real browser
+
+The simulated server's answer is shown, never re-enacted. **Never send uploaded bytes to the player's browser as an
+active type**, whatever was claimed or sniffed. A route that hands a stored file back sends `Content-Type:
+application/octet-stream`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment` and
+`Content-Security-Policy: sandbox`. What the simulated server would have sent (its content type, whether the file
+ran, what it printed) goes on a lab page as escaped text. An SVG or HTML payload that must be seen firing (SC-05)
+goes only through E0's sandboxed preview frame.
+
+### Testing
+
+`tests/support/uploads.ts`:
+
+- `multipart(parts, boundary?)` writes a body byte by byte. Use it, not superagent's `.attach()`, which takes the
+  basename of a filename, so `../x.php` arrives as `x.php`. Send it with
+  `.set('Content-Type', m.contentType).send(m.body)`.
+- `uploadReq(m)` is the `{ headers, body }` `parseMultipart` reads.
+- `zipOf(items, opts?)` writes an archive with any names, and with headers that can lie (sizes, CRC, offsets, counts).
+
+Real-writer archives are in `tests/fixtures/upload/` (Python `zipfile`, with and without data descriptors). Test seam:
+`labFor({ sessionId: sid, level }).fs.list()`. Add the lab-specific cases: each level's name trick and the next level
+refusing it, names shown escaped, Divine's stored names, the sentinel unchanged after a refused extraction, and an
+upload served back as an inert download.
+
+## 10. The Relic Market shop shell (`relic-market/_shared/`)
 
 The shop labs (RM-05, 06, 07, 08, 09, 10, 13, 14) share a shell of plumbing. Every parse rule, check, rounding rule,
 lock and price decision stays in the lab's `levels/*.ts`; the shell stores what the level decided and enforces only
@@ -829,7 +1053,7 @@ every integer (BigInt), and it throws on a fractional, NaN or infinite amount. N
 that names an amount calls `formatMoney`, or `insufficientFunds(total, wallet)` for the usual checkout refusal.
 
 **State.** `newShop({ catalog, wallet })` is a `ShopState`: `catalog`, `startWallet`, `wallet`, `cart`, `discounts`,
-`orders`, `nextOrderNo`, `clock`, `gate` and `locks` (section 10). A lab extends it, typed (never `as`), and keeps it
+`orders`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
 in `perShop`:
 
 ```ts
@@ -941,7 +1165,7 @@ Restart restores the start wallet and empties the cart and the orders, and that 
 - A defense no Divine request can reach over HTTP (RM-14's exact multiply past INT32) is unit-tested on the level
   module, or the mutant that drops it survives.
 
-## 10. Race labs (RM-07, RM-08)
+## 11. Race labs (RM-07, RM-08)
 
 Real in production, deterministic in tests (`relic-market/_shared/race.ts` and the test kit).
 
@@ -962,7 +1186,7 @@ Real in production, deterministic in tests (`relic-market/_shared/race.ts` and t
   - **Install it again after a Restart**: Restart builds a fresh state, whose gate is the real `waitGate` again.
   - Legit and other non-race cases run with `useInstantWaits()` in their describe block, so no test waits real time.
 
-## 11. Time-based labs (RM-03)
+## 12. Time-based labs (RM-03)
 
 - A delay is simulated on the injectable clock (`relic-market/_shared/clock.ts`), never a `setTimeout` in a level and
   never genuinely slow SQL (rule (g)). The route evaluates the injected condition synchronously (e.g. a `sleep()` SQL

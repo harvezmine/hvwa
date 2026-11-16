@@ -3,7 +3,7 @@
 // View Source shows only levels/*.ts. Pilgrim-ID is SOUND here at every level (exact registered redirect URIs,
 // single-use codes bound to their redirect URI, PKCE verified): the lesson is Citadel's `state`, which the levels own.
 // The level modules are gathered here because the admin's browser needs them too; they import only types from this file.
-import { byLevel, perSession } from '../../../core/lab.js';
+import { byLevel, declareLabWeight, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import {
   CITADEL_ORIGIN, cookiePath, simVisitOf, simWorld, toSim,
@@ -207,7 +207,14 @@ function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
 
 // Per player AND per level: both apps' sessions, the codes, flows and links, the admin's browser and the attacker log
 // together, so one eviction (or TTL expiry) drops them all at once. No limiter lives here.
+/**
+ * What this lab's own maps can hold at worst, in the shared byte budget (declareLabWeight): codes (a player code_challenge, clipped one past the URL cap), flows and both session maps, 50 each.
+ * ~239 KiB measured filled to every cap (tests/lab-state-weights.spec.ts), plus ~10%, rounded up to 32 KiB.
+ */
+export const STATE_WEIGHT = 288 * 1024;
+
 const labs = perSession((level: Level): LabState => {
+  declareLabWeight(STATE_WEIGHT, 'GK-11 lab state'); // its maps; its world and browser weigh themselves
   const world = simWorld();
   const adminSession = newId();
   const flows = new Map<string, Flow>();

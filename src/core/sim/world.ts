@@ -12,12 +12,15 @@ export const PLAYER_MAILBOX = 'pilgrim@citadel.test';
 /** The usual victim's mailbox (labs pass it to simWorld({ mailboxes })). Never shown to the player. */
 export const ADMIN_MAILBOX = 'citadel_admin@citadel.test';
 
-/** Sim state is per player and level, and bounded: it caps the holder that keeps it (core/lab.ts). */
-function requireSession(what: string): void {
+/**
+ * Sim state is per player and level, and bounded: it caps the holder that keeps it (core/lab.ts), weighing `weight`
+ * bytes in the shared budget. Each store weighs only itself: a world's inbox and log add their own weights.
+ */
+function requireSession(what: string, weight: number): void {
   if (!insidePerSessionFactory()) {
     throw new Error(`${what}: create it inside a perSession() factory (simulated state belongs to one player at one level)`);
   }
-  capPerSessionHolder(what, { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute, budget: SIM_LIMITS.worldsTotal });
+  capPerSessionHolder(what, { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute, weight });
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -75,7 +78,7 @@ const ADDRESS_RE = /^[^@\s]+@[^@\s]+$/;
  * by attacker input: mail to any other address bounces. Each mailbox keeps its newest SIM_LIMITS.mailsPerMailbox.
  */
 export function simInbox(opts: SimInboxOptions = {}): SimInbox {
-  requireSession('simInbox');
+  requireSession('simInbox', SIM_LIMITS.inboxWeight);
   const now = opts.now ?? Date.now;
   // Each mailbox keeps its own canonical address (a copy made here): a mail's `to` is that string, never the input,
   // which may be a trimmed view of a long, padded form field.
@@ -155,7 +158,7 @@ export interface AttackerLog {
 
 /** A per-player attacker log (create it inside a perSession factory). */
 export function attackerLog(opts: { readonly now?: () => number } = {}): AttackerLog {
-  requireSession('attackerLog');
+  requireSession('attackerLog', SIM_LIMITS.attackerLogWeight);
   const now = opts.now ?? Date.now;
   const list: AttackerHit[] = [];
   let total = 0;
@@ -211,7 +214,7 @@ export class World implements SimWorld {
   lastLink = '';
 
   constructor(opts: SimWorldOptions) {
-    requireSession('simWorld');
+    requireSession('simWorld', SIM_LIMITS.visitsWeight); // its inbox and attacker log weigh themselves, below
     this.now = opts.now ?? Date.now;
     const clock = (): number => this.now();
     this.inbox = simInbox({ mailboxes: opts.mailboxes, now: clock });
@@ -222,7 +225,7 @@ export class World implements SimWorld {
   get note(): Text | string { return this.noteText; }
 
   browser(handler: SimHandler): SimBrowser {
-    requireSession('SimWorld.browser');
+    requireSession('SimWorld.browser', SIM_LIMITS.browserWeight);
     if (typeof handler !== 'function') throw new Error('SimWorld.browser: handler must be a function');
     return new Browser(this, handler);
   }

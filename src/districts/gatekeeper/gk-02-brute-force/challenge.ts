@@ -1,7 +1,8 @@
 // challenge.ts — GK-02 metadata and routes. The vulnerable code is in levels/*.ts (served by View Source).
 import { join } from 'node:path';
 import { defineChallenge, register } from '../../../core/registry.js';
-import { byLevel, field, labPath, sendLines } from '../../../core/lab.js';
+import { sendLines } from '../../../core/fixtures.js';
+import { byLevel, field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
