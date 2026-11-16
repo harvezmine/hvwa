@@ -1,6 +1,7 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, onTestFinished, vi } from 'vitest';
-import { setCappedBudget, setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { setCappedBudget, setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { fixtureLines, sendLines } from '../src/core/fixtures.js';
 import type { Level } from '../src/core/levels.js';
 
 // Created at import time, like every lab's holder: before any test (and so possibly before setup effects)
@@ -487,7 +488,7 @@ describe('field(req, name)', () => {
   });
 });
 
-describe('fixtureLines(url) / sendLines(res, lines)', () => {
+describe('fixtureLines(url) / sendLines(res, lines) (core/fixtures.ts)', () => {
   const file = new URL('./fixtures/hello.ejs', import.meta.url);
 
   it('reads the file once, lazily, dropping blank lines (CRLF or LF)', async () => {

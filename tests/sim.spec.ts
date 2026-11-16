@@ -915,7 +915,7 @@ describe('no real network', () => {
     }
   });
 
-  it('everything src/core/sim/ loads at runtime, transitively, reaches only node:buffer and node:fs (no Express, no network)', () => {
+  it('everything src/core/sim/ loads at runtime, transitively, reaches only node:buffer (no fs, no Express, no network)', () => {
     const seen = new Set<string>();
     const outside = new Set<string>();
     const walk = (file: URL): void => {
@@ -927,7 +927,7 @@ describe('no real network', () => {
       }
     };
     for (const file of SIM_FILES) walk(new URL(file, SIM_DIR));
-    expect([...outside].sort()).toEqual(['node:buffer', 'node:fs']);
+    expect([...outside].sort()).toEqual(['node:buffer']);
     const core = new URL('../src/core/', import.meta.url).href;
     expect([...seen].map((h) => h.slice(core.length)).sort()).toEqual(['lab.ts', 'levels.ts', ...SIM_FILES.map((f) => `sim/${f}`)]);
   });

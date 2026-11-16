@@ -101,7 +101,7 @@ case (g)). Divine resists every exploit.
 | `perSession(...).reset(req)` | `core/lab` | drop that (session, level)'s instance (calls `dispose`): the body of a lab's `reset` hook |
 | `labPath(res)` | `core/lab` | the canonical lab path `/d/<district>/<slug>`, set by the engine as `res.locals.labPath` (also readable in views as `labPath`); use it for every lab link and cookie path |
 | `header(req, name)` | `core/lab` | a request header as a string (`undefined` if missing or repeated); client-written, never an identity |
-| `fixtureLines(url)` / `sendLines(res, lines)` | `core/lab` | a lab's fixture list read once (`new URL('./fixtures/x.txt', import.meta.url)`) and served from a lab route as `text/plain` |
+| `fixtureLines(url)` / `sendLines(res, lines)` | `core/fixtures` | a lab's fixture list read once (`new URL('./fixtures/x.txt', import.meta.url)`) and served from a lab route as `text/plain` |
 | `challengeDb(schema, seed?)` | `core/challenge-db` | private in-memory SQLite, `prepare()`-only facade |
 | `tryDb(req, () => call(), label?)` | `core/lab` | `{ ok: true, value }` or `{ ok: false, message }`: `<label>: <msg>` below Divine (label defaults to `Database error`), `Invalid request.` at Divine. Synchronous only: a Promise result throws |
 | `field(req, name)` | `core/lab` | a body field as a string, `''` for missing or non-string values |
@@ -425,7 +425,7 @@ follows an OAuth authorize link while signed in (GK-10, GK-11), signs in through
 simulates that victim deterministically and with **no real network**: nothing in `core/sim/` opens a socket,
 resolves a name or fetches. A guard in `tests/sim.spec.ts` parses every module in `core/sim/` with the TypeScript
 compiler and allows only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as
-`fetch` or `globalThis`; transitively they reach only `node:buffer` and `node:fs`), spies on fetch, http(s), http2,
+`fetch` or `globalThis`; transitively they reach only `node:buffer`: the fixture reader lives in `core/fixtures.ts`), spies on fetch, http(s), http2,
 tls, net, dgram and dns during a visit, and spies on `net.Socket.prototype.connect` for the whole spec file. The worked
 example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
 

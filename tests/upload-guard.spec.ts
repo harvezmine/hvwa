@@ -107,11 +107,10 @@ describe('the upload engine imports no filesystem, network or code runner', () =
     expect([...outside.keys()].sort()).toEqual(['node:buffer', 'node:zlib']);
   });
 
-  it('simfs adds core/lab.ts (its perSession cap), whose only outside import is node:fs for lab fixtures (fixtureLines)', () => {
+  it('simfs adds core/lab.ts (its perSession cap) and still reaches only node:buffer (lab fixtures live in core/fixtures.ts)', () => {
     const { files, outside } = closure(['simfs.ts']);
     expect(files).toEqual(['lab.ts', 'levels.ts', 'sim/limits.ts', 'simfs.ts', 'upload.ts']);
-    expect([...outside.keys()].sort()).toEqual(['node:buffer', 'node:fs']);
-    expect(outside.get('node:fs')).toEqual(['lab.ts']); // simfs never calls fixtureLines; the runtime check below proves no fs call
+    expect([...outside.keys()]).toEqual(['node:buffer']);
   });
 });
 
