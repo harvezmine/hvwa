@@ -277,6 +277,21 @@ describe('GK-11 Pilgrim-ID itself is sound', () => {
     expect((await agent.get(at)).text).toContain('Linking failed');
   });
 
+  it('a PKCE challenge must be S256 at every level: plain, or no method, gets "only S256 is supported." and no code', async () => {
+    for (const level of LEVELS) {
+      const { agent, sid } = await freshSession();
+      await pidSignIn(agent, level, 'pilgrim', 'pilgrim');
+      for (const method of ['&code_challenge_method=plain', '']) {
+        const res = await agent.get(`${LAB}/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(LINK_CB)}&code_challenge=abc${method}&level=${level}`);
+        expect(res.status, `${level} ${method}`).toBe(400);
+        expect(res.text, `${level} ${method}`).toContain('Pilgrim-ID: only S256 is supported.');
+      }
+      expect(labState(sid, level).codes.size, level).toBe(0);
+      const s256 = await agent.get(`${LAB}/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(LINK_CB)}&code_challenge=abc&code_challenge_method=S256&level=${level}`);
+      expect(s256.status, level).toBe(302); // S256 itself is accepted
+    }
+  });
+
   it('a code for the link callback does not sign anyone in at the sign-in callback', async () => {
     const { agent } = await freshSession();
     const { code } = await ownLinkCode(agent, 'acolyte', 'direct');

@@ -27,6 +27,8 @@ export const LOGIN_REDIRECT = `${CITADEL_ORIGIN}/callback`;
 /** One cookie name per level (levels share the lab path). */
 export const clientCookie = (level: Level): string => `citadel_session_${level}`;
 export const pidCookie = (level: Level): string => `pid_session_${level}`;
+/** Every cookie this lab's pages read at `level`: what visitOf and simVisitOf keep, so both browsers show the same. */
+export const labCookies = (level: Level): readonly string[] => [clientCookie(level), pidCookie(level)];
 
 export type Purpose = 'link' | 'login';
 /** A flow Citadel started: which Citadel session started it, what for, and (with PKCE) its verifier. */
@@ -190,7 +192,7 @@ export function loginCallback(v: Visit, state: LabState): Reply & { readonly use
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  const v = simVisitOf(level, r);
+  const v = simVisitOf(level, r, labCookies(level));
   switch (r.path) {
     case '/': return toSim({ ...openHome(v, state), text: 'Citadel — Home' });
     case '/logout': return toSim(logout(v, state));

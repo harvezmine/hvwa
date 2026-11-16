@@ -31,6 +31,8 @@ export const clientCookie = (level: Level): string => `citadel_session_${level}`
 export const nextCookie = (level: Level): string => `citadel_next_${level}`;
 /** Divine: the sign-in this browser started (its state and PKCE verifier stay on the server). */
 export const loginCookie = (level: Level): string => `citadel_login_${level}`;
+/** Every cookie this lab's pages read at `level`: what visitOf and simVisitOf keep, so both browsers show the same. */
+export const labCookies = (level: Level): readonly string[] => [pidCookie, clientCookie, nextCookie, loginCookie].map((f) => f(level));
 
 /** What every levels/<level>.ts exports. */
 export interface RedirectLevel {
@@ -165,7 +167,7 @@ export function callback(v: Visit, state: LabState): Reply & { readonly user?: s
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  const v = simVisitOf(level, r);
+  const v = simVisitOf(level, r, labCookies(level));
   if (r.path === '/login') return toSim(startLogin(v, state));
   if (r.path === '/idp/authorize') return toSim(authorize(v, state));
   if (r.path === '/callback') return toSim(callback(v, state));

@@ -1090,3 +1090,20 @@ intended teaching model (it matches GK-06's simulated filesystem and the determi
 - **Q6 `express.raw` on upload routes:** approved by the controller (route-local).
 - **Q7 execution semantics:** simulated only — no uploaded file or template ever executes for real; "webshell" = marker-matching interpreter over the sim FS, "RCE" = planted flag via a fake bridge inside the WASM sandbox.
 - **Ordering note (controller):** the shared-template task (twin → `core/victim.ts` with cookie-attribute options, district-agnostic curl helpers, bounded-map helpers, victim-lab testkit) lands before any FP/SC victim lab.
+
+---
+
+## Amendments after the E2 review (2026-11-16, binding — override the sections above where they differ)
+
+- **A3 sim FS caps:** per instance, enforced in core `SIMFS_LIMITS` (32 files, 128 KiB/file, 256 KiB total), not 2 MiB in the lab model. The process-wide sim budget is weighted by BYTES (world ≈1 MiB, simFs ≈320 KiB, total 96 MiB); uploads pass a core `uploadGate()` (≤4 in flight) before `express.raw`.
+- **SC-07 Templar:** the Windows-like server strips trailing dots and spaces before its exec mapping — in the level file (`shell.php.`); the sim FS keeps names exactly.
+- **SC-08:** Acolyte's solve is `shell.php` (the listed `x.php.jpg` also beats Templar, breaking step-up). Inquisitor: "rejects any dot-separated segment equal to `php` (case-insensitive) in the RAW name, then decodes once; the exec mapping uses the FIRST extension and ends the name at a NUL" — so `shell.php%00.jpg`, `shell%2ephp`, `shell.php%2ejpg` pass while Templar's `shell.php.jpg` is refused. NUL truncation lives in the level file (the sim FS keeps NUL).
+- **SC-09 Divine:** simulated re-encode = a server-made placeholder of fixed type and CONSTANT size via core `placeholderImage(sniff)`; no player byte survives; no decoder dependency. Never allocate width×height.
+- **SC-07/08/09 page:** documents the simulated server's single statement `<?hvwa CANARY ?>` (it is the server's language, not a payload).
+- **SC-05 Inquisitor:** the simulated serving (`image/svg+xml`, inline) is judged by the E0 oracle and shown as text; the REAL route always sends an inert download; the payload fires only in E0's sandboxed preview.
+- **SC-10 Templar:** "removes every `../` in ONE pass (`replaceAll`)" so `....//` is needed (stripping a leading `../` once is beaten by one more `../`, too close to Acolyte).
+- **SC-10 / SC-11 Inquisitor:** `simFs({ separators: '/\' })`; the page explains Python-on-Windows `zipfile` turns `\` into `/` (set `ZipInfo.filename` after creating it).
+- **SC-10 / SC-11 "absolute name" flaws:** the level writes its own join that RESETS on an absolute name (like `os.path.join`) — visible in View Source.
+- **SC-11 Inquisitor:** Express decodes the query once, so `%2e%2e%2f` arrives as `../` and is refused; the intended solve is double encoding `%252e%252e%252f…` (or the level reads the raw query — pick one and state it in the level file).
+- **Zip handling in levels:** skip `e.directory` entries; call `readZip(b, { totalBytes: SIMFS_LIMITS.totalBytes })`; labs that store uploads pass `maxFileBytes: SIMFS_LIMITS.fileBytes`.
+- **Q6/413:** a body over the cap gets the platform's generic 413 (it never reaches lab code); an optional route-level error handler may style it.

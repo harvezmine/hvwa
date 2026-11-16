@@ -288,6 +288,20 @@ describe('GK-16 the lab state', () => {
     expect(sessions.size).toBe(before);
   });
 
+  it('a flood of anonymous sessions never pushes out a signed-in one: anonymous sessions go first', async () => {
+    for (const level of ['acolyte', 'divine'] as const) {
+      const { agent, app, sid } = await freshSession();
+      await home(agent, level);
+      const mine = sessionOn((await signIn(agent, level, 'pilgrim', 'pilgrim')).text)!; // Divine rotates it here
+      for (let i = 0; i < 130; i++) await bare(app, sid).get(`${LAB}?level=${level}&lang=en&sid=flood-${i}`); // a new browser each time
+      const sessions = labState(sid, level).sessions;
+      expect(sessions.size, level).toBeLessThanOrEqual(100);
+      expect(sessions.get(mine), level).toEqual({ user: 'pilgrim' });
+      const still = await bare(app, sid, `${cookieName(level)}=${mine}`).get(`${LAB}?level=${level}&lang=en`);
+      expect(still.text, level).toContain('Signed in as pilgrim.');
+    }
+  });
+
   it('session, alias and resume maps stay bounded however many ids you push', async () => {
     const { agent, sid } = await freshSession();
     for (let i = 0; i < 130; i++) await home(agent, 'acolyte', `&sid=flood-${i}`);

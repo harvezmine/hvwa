@@ -69,6 +69,19 @@ describe('twin: a Reply for the simulated browser', () => {
     }
   });
 
+  it('SameSite=None without secure: true is a programming error, set or cleared (browsers drop such a cookie)', () => {
+    const none = [
+      { name: 'a', value: '1', path: '/', sameSite: 'None' },
+      { name: 'a', value: '1', path: '/', sameSite: 'None', secure: false },
+      { name: 'a', value: '', path: '/', clear: true, sameSite: 'None' },
+    ] as const;
+    for (const c of none) {
+      expect(() => toSim({ status: 200, text: '', cookies: [c] }), JSON.stringify(c)).toThrow(/sameSite 'None' needs secure: true/);
+    }
+    expect(toSim({ status: 200, text: '', cookies: [{ name: 'a', value: '1', path: '/', sameSite: 'None', secure: true }] }).headers?.['Set-Cookie'])
+      .toEqual(['a=1; Path=/; HttpOnly; SameSite=None; Secure']);
+  });
+
   it('the engine\'s redirect statuses are the only ones a Reply redirects on', () => {
     expect([...REDIRECT_STATUSES]).toEqual([301, 302, 303, 307, 308]);
   });
@@ -288,6 +301,17 @@ describe('twin: sendReply, unit (a fake Response)', () => {
     expect(seen).toEqual([undefined]);
   });
 
+  it('a cookie it refuses (SameSite=None without Secure) fails the Reply before any cookie is set or anything rendered', async () => {
+    const { res, calls } = fake();
+    const { seen, render } = renderer();
+    await expect(sendReply(res, {
+      status: 200, text: '',
+      cookies: [{ name: 'ok', value: 'v', path: '/d/unit/twin' }, { name: 'bad', value: 'w', path: '/d/unit/twin', sameSite: 'None' }],
+    }, render)).rejects.toThrow(/TwinCookie "bad": sameSite 'None' needs secure: true/);
+    expect(calls).toEqual([]);
+    expect(seen).toEqual([]);
+  });
+
   it('a redirect status with a Location goes through sendSimRedirect into the lab, and nothing is rendered', async () => {
     for (const status of [301, 302, 303, 307, 308]) {
       const { res, calls } = fake();
@@ -339,10 +363,28 @@ describe('twin: Visit', () => {
     expect(Object.getPrototypeOf(v.cookies)).toBeNull();
   });
 
+  it('visitOf: the query is everything after the FIRST ?, so a URL in a parameter keeps its own ? and what follows', () => {
+    const req = { level: 'inquisitor', originalUrl: '/d/unit/twin/login?next=http://attacker.test/a?b=1&level=inquisitor' } as unknown as Request;
+    const v = visitOf(req, res, []);
+    expect([...v.query]).toEqual([['next', 'http://attacker.test/a?b=1'], ['level', 'inquisitor']]);
+    const bare = visitOf({ level: 'acolyte', originalUrl: '/d/unit/twin/x??a=1' } as unknown as Request, res, []);
+    expect([...bare.query]).toEqual([['?a', '1']]);
+  });
+
   it('visitOf: no query string and no parsed cookies are an empty query and no cookies', () => {
     const v = visitOf({ level: 'acolyte', originalUrl: '/d/unit/twin' } as unknown as Request, res, ['a_acolyte']);
     expect([...v.query]).toEqual([]);
     expect({ ...v.cookies }).toEqual({});
+  });
+
+  it('simVisitOf with the lab\'s cookie names keeps only those, as visitOf does: both browsers show a page the same cookies', () => {
+    const jar = (): Record<string, string> => Object.assign(Object.create(null) as Record<string, string>, { a_divine: 'v', other: 'z', b_acolyte: 'w' });
+    const names = ['a_divine', 'missing_divine'];
+    const sim = simVisitOf('divine', { query: new URLSearchParams(''), cookies: jar() } as unknown as SimRequest, names);
+    expect({ ...sim.cookies }).toEqual({ a_divine: 'v' });
+    expect(Object.getPrototypeOf(sim.cookies)).toBeNull();
+    const real = visitOf({ level: 'divine', originalUrl: '/d/unit/twin', cookies: jar() } as unknown as Request, res, names);
+    expect({ ...sim.cookies }).toEqual({ ...real.cookies });
   });
 
   it('simVisitOf: the victim\'s request on the citadel, base \'\'', () => {
