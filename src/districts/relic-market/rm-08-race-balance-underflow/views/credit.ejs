@@ -1,0 +1,32 @@
+<%# RM-08 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market Store Credit' }) %>
+  <p class="lab-note" data-testid="credit">Store credit: <%= wallet.text %>.<% if (flag) { %> <span class="lab-success" data-testid="credit-flag"><%= flag %></span><% } %></p>
+  <p class="lab-note">Every payment is written to the ledger before your balance updates.</p>
+  <p class="lab-note">These requests only race if they arrive together. Burp Repeater's <em>send group in parallel</em> uses the single-packet technique; parallel shell jobs or <code>Promise.all</code> in the console usually land close enough here.</p>
+<%- include('../../_shared/views/message') %>
+  <h2>Spend your credit</h2>
+  <p class="lab-note">Both cost $15.00.</p>
+  <form method="post">
+    <input type="hidden" name="intent" value="buy">
+    <button type="submit">Buy a Pilgrim's Lantern</button>
+  </form>
+  <form method="post">
+    <input type="hidden" name="intent" value="gift">
+    <label>Send a gift card to <input name="to" type="text" autocomplete="off" spellcheck="false" value="<%= toKept %>"></label>
+    <button type="submit">Send gift card</button>
+  </form>
+  <h2>Gift cards sent</h2>
+<% if (gifts.length === 0) { -%>
+  <p class="lab-note">No gift cards sent yet.</p>
+<% } else { -%>
+  <ul class="shop-gifts">
+<% gifts.forEach(function (to) { -%>
+    <li data-gift>Gift card sent to <%= to %>.</li>
+<% }); -%>
+  </ul>
+<% } -%>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>
