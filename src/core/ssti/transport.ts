@@ -162,8 +162,9 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       if (r === undefined) lost(l);
       else finish(r);
     } else if (m?.type === 'stats' && l.statsWaiters.has(m.id)) {
-      l.statsWaiters.get(m.id)?.(m.stats);
+      const reply = l.statsWaiters.get(m.id);
       l.statsWaiters.delete(m.id);
+      reply?.(m.stats);
     } else {
       lost(l); // 'fatal' (it could not load or warm up), or anything this protocol does not have
     }
@@ -219,7 +220,12 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       l.worker.postMessage({ type: 'render', id: p.id, job: p.job } satisfies ToWorker);
       return;
     }
-    if (live !== undefined && inFlight === undefined && queue.length === 0) live.worker.unref();
+    idle();
+  };
+
+  /** Nothing waits on the live worker (no render, no stats reply): it may no longer keep the process up. */
+  const idle = (): void => {
+    if (live !== undefined && inFlight === undefined && queue.length === 0 && live.statsWaiters.size === 0) live.worker.unref();
   };
 
   return {
@@ -238,11 +244,13 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       let heapUsed: number | undefined;
       if (l !== undefined && l.ready) {
         const id = nextId++;
+        l.worker.ref(); // a reply is awaited: keep the process up until it comes
         worker = await new Promise<WorkerStats | undefined>((resolve) => {
           l.statsWaiters.set(id, resolve);
           l.worker.postMessage({ type: 'stats', id } satisfies ToWorker);
         });
         heapUsed = await l.worker.getHeapStatistics().then((h) => h.used_heap_size, () => undefined);
+        idle();
       }
       return {
         started, dropped, threadId: live?.worker.threadId, inFlight: inFlight !== undefined, queued: queue.length,

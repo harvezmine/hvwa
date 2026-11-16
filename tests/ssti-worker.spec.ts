@@ -227,13 +227,13 @@ describe('shutdown', () => {
     }
   });
 
-  it('an idle worker never keeps the process up: a process that rendered once exits by itself', () => {
+  it('an idle worker never keeps the process up, a pending answer does: a process that rendered exits by itself', () => {
     const root = fileURLToPath(new URL('..', import.meta.url));
     const r = spawnSync(process.execPath, ['--import', 'tsx', fileURLToPath(fixture('render-once.ts'))], {
       cwd: root, encoding: 'utf8', timeout: 20_000, env: { ...process.env, NODE_OPTIONS: '' },
     });
     expect(r.error).toBeUndefined(); // a timeout would mean the worker kept the process alive
-    expect([r.status, r.stdout]).toEqual([0, '42']);
+    expect([r.status, r.stdout]).toEqual([0, '42 1']); // exit 13 would be a stats reply the process did not wait for
   });
 });
 
