@@ -2,19 +2,22 @@
 // open, and the contract every levels/<level>.ts implements. Not served: View Source shows only levels/*.ts. The level
 // modules are gathered here because the admin's simulated browser needs them too; they import only types from this
 // file, so there is no import cycle.
-import { createHash, randomBytes } from 'node:crypto';
 import { byLevel, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { CITADEL_ORIGIN, simWorld, type SimBrowser, type SimRequest, type SimResponse, type SimWorld } from '../../../core/sim.js';
 import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
+import {
+  CLIENT_ID, newId, newVerifier, putBounded, s256, withParams, type Exchange, type IssuedCode,
+} from '../_shared/oauth.js';
 import { cookiePath, toSim, type Reply, type TwinCookie } from '../_shared/twin.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
 import * as divine from './levels/divine.js';
 
-/** Citadel's registration at Pilgrim-ID. */
-export const CLIENT_ID = 'citadel';
+export type { Exchange, IssuedCode };
+
+/** Citadel's registration at Pilgrim-ID: client CLIENT_ID with this one redirect URI. */
 export const REGISTERED_REDIRECT = `${CITADEL_ORIGIN}/callback`;
 
 /** One cookie name per level (levels share the lab path). */
@@ -24,26 +27,6 @@ export const clientCookie = (level: Level): string => `citadel_session_${level}`
 export const nextCookie = (level: Level): string => `citadel_next_${level}`;
 /** Divine: the sign-in this browser started (its state and PKCE verifier stay on the server). */
 export const loginCookie = (level: Level): string => `citadel_login_${level}`;
-
-/** An authorization code Pilgrim-ID issued. */
-export interface IssuedCode {
-  readonly user: string;
-  readonly clientId: string;
-  /** The redirect_uri it was sent to. */
-  readonly redirectUri: string;
-  /** The PKCE code_challenge (S256) the authorize request carried, if any. */
-  readonly challenge?: string;
-  readonly expiresAt: number;
-  used: boolean;
-}
-
-/** What Citadel presents at Pilgrim-ID's token endpoint to redeem a code. */
-export interface Exchange {
-  readonly clientId: string;
-  readonly redirectUri: string;
-  /** The PKCE code_verifier, when the sign-in used PKCE. */
-  readonly verifier?: string;
-}
 
 /** What every levels/<level>.ts exports. */
 export interface RedirectLevel {
@@ -82,24 +65,7 @@ export interface LabState {
 
 const MAX_ENTRIES = 50;
 const CODE_TTL_MS = 10 * 60 * 1000;
-const newId = (): string => randomBytes(16).toString('hex');
-export const s256 = (verifier: string): string => createHash('sha256').update(verifier).digest('base64url');
-
-/** Store under `key`, newest last; beyond MAX_ENTRIES the oldest key that `keep` does not pin goes. */
-function put<V>(m: Map<string, V>, key: string, value: V, keep: (k: string) => boolean = () => false): void {
-  m.delete(key);
-  m.set(key, value);
-  while (m.size > MAX_ENTRIES) {
-    const oldest = [...m.keys()].find((k) => !keep(k));
-    if (oldest === undefined) break;
-    m.delete(oldest);
-  }
-}
-
-/** `uri` with `params` appended to its query (as an authorization server does; the uri itself is left as given). */
-function withParams(uri: string, params: Readonly<Record<string, string>>): string {
-  return `${uri}${uri.includes('?') ? '&' : '?'}${new URLSearchParams(params).toString()}`;
-}
+const put = <V>(m: Map<string, V>, key: string, value: V, keep?: (k: string) => boolean): void => putBounded(m, key, value, MAX_ENTRIES, keep);
 
 /** What a page needs from a browser's request. `base`: labPath(res) for real routes, '' on the citadel. */
 export interface Visit {
@@ -136,7 +102,7 @@ export function startLogin(v: Visit, state: LabState): Reply {
   const params = new URLSearchParams({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: REGISTERED_REDIRECT });
   if (level.pkce) {
     const login = newId();
-    const pending = { state: newId(), verifier: randomBytes(32).toString('base64url') };
+    const pending = { state: newId(), verifier: newVerifier() };
     put(state.logins, login, pending);
     params.set('state', pending.state);
     params.set('code_challenge', s256(pending.verifier));
@@ -221,7 +187,7 @@ const labs = perSession((level: Level): LabState => {
   const adminPid = newId();
   // The handler reads `state` only when the admin browses, after it is assigned.
   const state: LabState = {
-    world, admin: world.browser((r) => citadel(level, state, r)), adminPassword: randomBytes(16).toString('hex'), adminPid,
+    world, admin: world.browser((r) => citadel(level, state, r)), adminPassword: newId(), adminPid,
     idpSessions: new Map([[adminPid, ADMIN_NAME]]), clientSessions: new Map(), logins: new Map(), codes: new Map(),
   };
   return state;
