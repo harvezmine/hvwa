@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { describeCurlPartial } from './pilgrim-lab.testkit.js';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { FLAG_RE, TEST_SECRET } from '../../../../tests/helpers.js';
 import { setFlagSecret } from '../../../core/flags.js';
-import { ADMIN_NAME, PLAYER, accountsFor, curlFor, flagLine, sendAdminPage, shellQuote, welcome } from './lab.js';
+import { ADMIN_NAME, PLAYER, accountsFor, flagLine, sendAdminPage, welcome } from './lab.js';
 
 // sendAdminPage renders through sendPage: capture what it is given instead of rendering a whole page.
 const rendered = vi.hoisted(() => ({ data: undefined as Record<string, unknown> | undefined }));
@@ -15,7 +14,6 @@ const fakeRes = () => {
   const res = { statusCode: 200, locals: { labPath: '/d/gatekeeper/x' }, status(n: number) { res.statusCode = n; return res; } };
   return res as unknown as Response & { statusCode: number };
 };
-const fakeReq = (level: string) => ({ protocol: 'http', level, sessionId: '11111111-1111-4111-8111-111111111111', get: () => '127.0.0.1:3000' }) as unknown as Request;
 
 const challenge = { id: 'GK-99', levels: ['acolyte', 'templar', 'divine'] as const };
 const req = (level: 'acolyte' | 'templar' | 'divine') => ({ sessionId: '11111111-1111-4111-8111-111111111111', level });
@@ -67,21 +65,4 @@ describe('gatekeeper _shared', () => {
       expect(res.statusCode).toBe(want);
     }
   });
-
-  it('shellQuote closes and reopens a single quote', () => {
-    expect(shellQuote("it's")).toBe("it'\\''s");
-    expect(shellQuote("it's")).toHaveLength(7);
-  });
-
-  it('curlFor: method, JSON data and form fields; the sid is never in the data', () => {
-    const base = curlFor(fakeReq('templar'), fakeRes(), { path: '/profile' });
-    expect(base).toEqual({ url: 'http://127.0.0.1:3000/d/gatekeeper/x/profile?level=templar', method: '', headers: [], cookies: [], data: '', form: [] });
-    const put = curlFor(fakeReq('divine'), fakeRes(), { path: '/p', method: 'PUT', headers: ['A: b'], data: `{"a":"it's"}`, form: { name: 'Brother Lamp', bio: "it's" } });
-    expect(put.method).toBe('PUT');
-    expect(put.data).toBe(`{"a":"it'\\''s"}`);
-    expect(put.form).toEqual(['name=Brother Lamp', "bio=it'\\''s"]);
-    expect(JSON.stringify(put)).not.toContain('11111111-1111');
-  });
 });
-
-describeCurlPartial();

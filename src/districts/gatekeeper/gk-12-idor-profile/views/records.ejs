@@ -6,7 +6,7 @@
 <% if (apiNote) { -%>
   <p class="lab-note"><%= apiNote %></p>
 <% } -%>
-  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+  <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
 <% if (ownId) { -%>
   <p class="lab-note">Your own profile: <code><%= ownId %></code> (<a href="<%= base %>/profile/<%= ownId %>?level=<%= level %>">open</a>)</p>
 <% } -%>
