@@ -11,7 +11,8 @@ import { capPerSessionHolder, field, insidePerSessionFactory, labPath } from './
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 import { sendPage } from './render.js';
 import {
-  REDIRECT_STATUSES, isThenable, type SimBrowser, type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimHandler,
+  REDIRECT_STATUSES, isThenable, type SimBrowser, type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimFetch,
+  type SimFetchOptions, type SimHandler,
   type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
 } from './sim/browser.js';
 import type { SimCookieJar } from './sim/cookies.js';
@@ -539,6 +540,15 @@ class XssVictimBrowser implements XssBrowser {
     return this.navigation(url, () => this.inner.crossSitePost(url, form, opts));
   }
 
+  /** A fetch is not a navigation: its answer is never rendered, so it is never judged and keeps the page's hash. */
+  corsFetch(url: string, opts?: SimFetchOptions): SimFetch {
+    try {
+      return this.inner.corsFetch(url, opts);
+    } finally {
+      this.steal();
+    }
+  }
+
   /** A navigation to `url`: its fragment is the page's location.hash; the pages that fired steal once it ends. */
   private navigation<T>(url: string, go: () => T): T {
     this.hash = fragmentOf(url);
@@ -561,6 +571,7 @@ class XssVictimBrowser implements XssBrowser {
   /** Every citadel answer passes here on its way to the browser, unchanged. A rendered page is judged first. */
   private render(r: SimRequest, res: SimResponse): SimResponse {
     if (res === null || typeof res !== 'object' || isThenable(res)) return res; // the browser reports it
+    if (r.headers['sec-fetch-dest'] === 'empty') return res; // a fetch's answer (corsFetch): data for a script, never a page
     const h = headerLists(res);
     const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;
     if (location !== undefined) { // a redirect is not a page; a Location with its own fragment replaces the link's

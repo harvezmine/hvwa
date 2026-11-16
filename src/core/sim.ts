@@ -23,10 +23,11 @@ export {
 export type { SimCookie, SimCookieContext, SimCookieJar, SimCookieOptions, SimSameSite } from './sim/cookies.js';
 export {
   ATTACKER_PAGE_URL, REDIRECT_STATUSES, SIM_USER_AGENT,
-  type SimAttackerPage, type SimBrowser, type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimHandler, type SimHop,
+  type SimAttackerPage, type SimBrowser, type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimFetch, type SimFetchOptions,
+  type SimFetchVerdict, type SimHandler, type SimHop,
   type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
 } from './sim/browser.js';
-export { SIM_FORM_BOUNDARY, type SimFormEnctype, type SimFormFields } from './sim/cross.js';
+export { SIM_FORM_BOUNDARY, type SimCorsRead, type SimFormEnctype, type SimFormFields } from './sim/cross.js';
 export {
   ADMIN_MAILBOX, PLAYER_MAILBOX, attackerLog, simInbox, simWorld,
   type AttackerHit, type AttackerLog, type AttackerRequest, type NewMail, type SimInbox, type SimInboxOptions, type SimMail,

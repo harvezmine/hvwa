@@ -6,8 +6,8 @@
 import { SIM_LIMITS, clip, str } from './limits.js';
 import { Jar, parseCookieHeader, type SimCookieContext, type SimCookieJar } from './cookies.js';
 import {
-  bodyFields, encodeForm, fetchSiteOf, formEnctype, formEntries, initiatorOf, originHeader, parsePolicy, redirectTainted,
-  refererFor, type ReferrerPolicy, type SimFormFields, type SimInitiator,
+  bodyFields, corsCheck, encodeForm, fetchHeaders, fetchSiteOf, formEnctype, formEntries, initiatorOf, needsPreflight, originHeader,
+  parsePolicy, redirectTainted, refererFor, type ReferrerPolicy, type SimCorsRead, type SimFormFields, type SimInitiator,
 } from './cross.js';
 import { ATTACKER_ORIGIN, classifySimUrl, type SimSite, type SimUnreachable, type SimUrl } from './url.js';
 import type { SimWorld, World } from './world.js'; // type only: the world imports this module at runtime
@@ -131,6 +131,44 @@ export interface SimCrossSitePostOptions extends SimCrossSiteOptions {
   readonly contentType?: string;
 }
 
+/** What the attacker page's `fetch(url, init)` call asks for. Its mode is always 'cors' (fetch's default). */
+export interface SimFetchOptions extends SimCrossSiteOptions {
+  /** Default 'GET'. */
+  readonly method?: 'GET' | 'POST';
+  /** Default 'same-origin' (fetch's): no cookies to another origin. 'include' sends the victim's cookies SameSite lets through. */
+  readonly credentials?: 'omit' | 'same-origin' | 'include';
+  /** The headers the page sets. Forbidden ones (Cookie, Origin, Referer, Sec-*, ...) are dropped, as fetch() drops them. */
+  readonly headers?: Readonly<Record<string, string>>;
+  /** A POST's body (a string: a JSON text, a form...). Without a Content-Type header it is sent as text/plain;charset=UTF-8. */
+  readonly body?: string;
+}
+
+/**
+ * The outcome of the attacker page's fetch(): sent or not, and whether the page may read the answer.
+ * - 'readable': the CORS check passed; `body` is what the page read.
+ * - 'no-allow-origin', 'origin-mismatch', 'wildcard-credentials', 'no-allow-credentials': the request was sent (and did
+ *   whatever it does on the citadel), but the browser kept the answer from the page (corsCheck).
+ * - 'preflight': not sent. It needs a CORS preflight (a header or method a simple request cannot have), and the sim
+ *   approves none: no lab answers OPTIONS.
+ * - 'invalid': not sent. fetch() itself throws (a GET with a body, a header name or value it cannot carry).
+ * - 'no-answer': sent, but no citadel answer came back to read (it reached your own server, an unreachable host,
+ *   too many redirects).
+ */
+export type SimFetchVerdict = SimCorsRead | 'preflight' | 'invalid' | 'no-answer';
+
+/** What corsFetch() did. Frozen. */
+export interface SimFetch {
+  /** Whether the browser sent the request ('preflight' and 'invalid' are not sent). */
+  readonly sent: boolean;
+  readonly verdict: SimFetchVerdict;
+  /** The requests it made, when sent. */
+  readonly visit?: SimVisit;
+  /** The status of the citadel answer the visit ended on, if one did. */
+  readonly status?: number;
+  /** Only when 'readable': the answer's body as the page read it, clipped to SIM_LIMITS.bodyLength. */
+  readonly body?: string;
+}
+
 /** A victim's browser: a cookie jar plus a request loop. */
 export interface SimBrowser {
   /** The world it lives in (its inbox, its attacker log). */
@@ -152,6 +190,14 @@ export interface SimBrowser {
    * answer renders as a page, as for any navigation.
    */
   crossSitePost(url: string, form: SimFormFields, opts?: SimCrossSitePostOptions): SimVisit;
+  /**
+   * The attacker's page calls `fetch(url, { method, credentials, headers, body })`: a CORS request (not a navigation,
+   * never rendered). With credentials: 'include' only SameSite=None cookies go (a cross-site subresource); Origin is
+   * always the page's ('null' from a sandboxed frame); a request that would need a preflight is not sent. The browser
+   * then lets the page read the answer only if the citadel's Access-Control-Allow-Origin / -Credentials allow it
+   * (corsCheck, on every answer, redirects included).
+   */
+  corsFetch(url: string, opts?: SimFetchOptions): SimFetch;
 }
 
 /** Fetch's redirect statuses: the only ones whose Location a browser follows. */
@@ -235,10 +281,22 @@ interface Context {
   /** The cookie context (cookies.ts): same-site for cookies, and whether the top-level page navigates. */
   site: 'same' | 'cross';
   readonly topLevel: boolean;
+  /** A navigation (Location and Refresh followed) or a CORS fetch (Location only; Origin always sent). */
+  readonly mode: 'navigate' | 'cors';
   readonly dest: 'document' | 'iframe' | 'empty';
+  /** Send and store cookies: always for a navigation, only with credentials: 'include' for a fetch. */
+  readonly credentials: boolean;
   /** Add sec-fetch-* (requests the attacker's page starts, and anything in a frame). */
   readonly shaped: boolean;
+  /** Headers the page's fetch() set (fetchHeaders); the body's Content-* ones go when a redirect drops the body. */
+  extra?: Record<string, string>;
 }
+
+/**
+ * Watches each citadel answer of a visit (`redirect`: it is followed next): return true to stop the visit there, on
+ * that answer, as a page. corsFetch checks CORS on every answer; frame checks framing on every page it shows.
+ */
+type Watch = (req: SimRequest, res: SimResponse, h: ReadonlyMap<string, readonly string[]>, redirect: boolean) => boolean;
 
 /** Where a visit starts. */
 interface Start {
@@ -286,13 +344,43 @@ export class Browser implements SimBrowser {
     return this.navigate({ method: 'POST', url, payload: { type, raw, fields: bodyFields(type, raw) }, referrer: page.url, policy: page.policy }, fromPage(page));
   }
 
+  corsFetch(url: string, opts: SimFetchOptions = {}): SimFetch {
+    const page = attackerPage(opts.page);
+    const { method = 'GET', credentials = 'same-origin', body } = opts;
+    if (method !== 'GET' && method !== 'POST') throw new Error(`SimBrowser.corsFetch: method must be 'GET' or 'POST' (got ${JSON.stringify(method)})`);
+    if (credentials !== 'omit' && credentials !== 'same-origin' && credentials !== 'include') {
+      throw new Error(`SimBrowser.corsFetch: credentials must be 'omit', 'same-origin' or 'include' (got ${JSON.stringify(credentials)})`);
+    }
+    if (body !== undefined && typeof body !== 'string') throw new Error('SimBrowser.corsFetch: body must be a string');
+    const headers = fetchHeaders(opts.headers);
+    // fetch() throws before sending: a header it cannot carry, or a GET with a body.
+    if (headers === undefined || (method === 'GET' && body !== undefined)) return Object.freeze({ sent: false, verdict: 'invalid' });
+    if (body !== undefined && !Object.hasOwn(headers, 'content-type')) headers['content-type'] = 'text/plain;charset=UTF-8';
+    if (classifySimUrl(url).site === 'citadel' && needsPreflight(method, headers)) return Object.freeze({ sent: false, verdict: 'preflight' });
+    const type = headers['content-type'] ?? '';
+    const payload: Payload | undefined = method === 'POST' ? { type, raw: body ?? '', fields: bodyFields(type, body ?? '') } : undefined;
+    const withCredentials = credentials === 'include';
+    let read: SimCorsRead | undefined;
+    const visit = this.navigate(
+      { method, url, ...(payload ? { payload } : {}), referrer: page.url, policy: page.policy },
+      { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, shaped: true, extra: headers },
+      (req, _res, h) => {
+        read = corsCheck(h, req.headers.origin ?? 'null', withCredentials);
+        return read !== 'readable'; // a failed check is a network error: the answer goes no further, not even a redirect
+      },
+    );
+    if (visit.outcome !== 'page' || visit.page === undefined || read === undefined) return Object.freeze({ sent: true, verdict: 'no-answer', visit });
+    const { status } = visit.page;
+    return Object.freeze(read === 'readable' ? { sent: true, verdict: read, visit, status, body: visit.page.body } : { sent: true, verdict: read, visit, status });
+  }
+
   /**
    * The request loop shared by every navigation: citadel requests go to the handler, attacker.test requests to the
    * log (the visit ends there), anything else is unreachable. Redirects (Location on a redirect status) and pages that
    * move on by themselves (Refresh) are followed, at most SIM_LIMITS.maxRedirects; the same request again with the jar
    * unchanged is a loop.
    */
-  private navigate(start: Start, ctx: Context): SimVisit {
+  private navigate(start: Start, ctx: Context, watch?: Watch): SimVisit {
     let { method, referrer, policy } = start;
     let payload = start.payload;
     let raw = str(start.url);
@@ -330,20 +418,21 @@ export class Browser implements SimBrowser {
         return finish('attacker');
       }
       const cookieCtx: SimCookieContext = { site: ctx.site, method, topLevel: ctx.topLevel };
-      const cookie = this.jar.headerFor(target, cookieCtx);
+      const cookie = ctx.credentials ? this.jar.headerFor(target, cookieCtx) : '';
       const headers: Record<string, string> = { host: target.host, 'user-agent': SIM_USER_AGENT, ...withReferer };
       if (cookie !== '') headers.cookie = cookie;
-      if (method === 'POST' && payload !== undefined) headers['content-type'] = payload.type;
+      if (method === 'POST' && payload !== undefined && payload.type !== '') headers['content-type'] = payload.type;
       const init = ctx.init ?? start.origin;
       if (init !== undefined) {
-        const origin = originHeader({ init, method, cors: false, target, policy, tainted: redirectTainted(init, urls) });
+        const origin = originHeader({ init, method, cors: ctx.mode === 'cors', target, policy, tainted: redirectTainted(init, urls) });
         if (origin !== undefined) headers.origin = clip(origin, SIM_LIMITS.urlLength);
       }
       if (ctx.shaped && ctx.init !== undefined) {
         headers['sec-fetch-site'] = fetchSiteOf(ctx.init, urls);
-        headers['sec-fetch-mode'] = 'navigate';
+        headers['sec-fetch-mode'] = ctx.mode;
         headers['sec-fetch-dest'] = ctx.dest;
       }
+      for (const [name, value] of Object.entries(ctx.extra ?? {})) if (!Object.hasOwn(headers, name)) headers[name] = value;
       const req: SimRequest = Object.freeze({
         method, url: target.url, path: target.path, query: new URLSearchParams(target.search),
         headers: Object.freeze(headers), cookies: Object.freeze(parseCookieHeader(cookie)),
@@ -351,7 +440,7 @@ export class Browser implements SimBrowser {
       });
       const res = checkResponse(this.handler(req));
       const h = headerMap(res);
-      for (const line of h.get('set-cookie') ?? []) this.jar.store(line, target, cookieCtx);
+      if (ctx.credentials) for (const line of h.get('set-cookie') ?? []) this.jar.store(line, target, cookieCtx);
       hop({ site: 'citadel', method, url: target.url, via, ...withReferer, status: res.status });
       // A Location or Refresh value with CR or LF cannot exist in real HTTP (Node refuses to send it, a browser
       // never receives it), and WHATWG URL parsing would silently drop the characters here. So the response is
@@ -363,11 +452,12 @@ export class Browser implements SimBrowser {
       }
       // Only Fetch's redirect statuses follow Location. Any other response (a 300 or 304 with a Location, a 302
       // without one) is a page, so its Refresh, if any, moves the browser on as for any page.
+      // A fetch follows redirects but never a Refresh (its answer is not a page).
       const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;
-      const refresh = location === undefined ? refreshTarget(h.get('refresh')?.[0]) : undefined;
-      if (location === undefined && refresh === undefined) {
-        return finish('page', { url: target.url, status: res.status, body: clip(res.body ?? '', SIM_LIMITS.bodyLength) });
-      }
+      const refresh = location === undefined && ctx.mode === 'navigate' ? refreshTarget(h.get('refresh')?.[0]) : undefined;
+      const page = (): SimVisit['page'] => ({ url: target.url, status: res.status, body: clip(res.body ?? '', SIM_LIMITS.bodyLength) });
+      if (watch?.(req, res, h, location !== undefined)) return finish('page', page());
+      if (location === undefined && refresh === undefined) return finish('page', page());
       if (redirects >= SIM_LIMITS.maxRedirects) return finish('too-many-redirects');
       redirects++;
       if (location !== undefined) {
@@ -377,6 +467,7 @@ export class Browser implements SimBrowser {
         if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
           method = 'GET';
           payload = undefined;
+          if (ctx.extra !== undefined) ctx.extra = withoutBodyHeaders(ctx.extra);
         }
         raw = location;
         target = classifySimUrl(location, target.url);
@@ -410,7 +501,15 @@ function citadelReferrer(opts: SimNavigateOptions): SimUrl | undefined {
 
 /** The victim's own navigation (a link from mail, a click or a form on a citadel page): same-site, top-level, as before E1. */
 function ownNavigation(): Context {
-  return { site: 'same', topLevel: true, dest: 'document', shaped: false };
+  return { site: 'same', topLevel: true, mode: 'navigate', dest: 'document', credentials: true, shaped: false };
+}
+
+/** Fetch's request-body headers, which a redirect to GET removes along with the body. */
+const BODY_HEADERS: ReadonlySet<string> = new Set(['content-encoding', 'content-language', 'content-location', 'content-type']);
+function withoutBodyHeaders(headers: Readonly<Record<string, string>>): Record<string, string> {
+  const out: Record<string, string> = Object.create(null);
+  for (const [k, v] of Object.entries(headers)) if (!BODY_HEADERS.has(k)) out[k] = v;
+  return out;
 }
 
 /** The attacker page a lab declared, checked: on attacker.test, with a known (or the default) referrer policy. */
@@ -425,5 +524,8 @@ function attackerPage(p: SimAttackerPage | undefined): Page {
 
 /** A navigation the attacker's page starts: cross-site, in the top-level window unless it runs in a sandboxed frame. */
 function fromPage(page: Page): Context {
-  return { init: page.init, site: 'cross', topLevel: !page.sandboxed, dest: page.sandboxed ? 'iframe' : 'document', shaped: true };
+  return {
+    init: page.init, site: 'cross', topLevel: !page.sandboxed, mode: 'navigate', dest: page.sandboxed ? 'iframe' : 'document',
+    credentials: true, shaped: true,
+  };
 }

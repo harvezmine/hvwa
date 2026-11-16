@@ -189,3 +189,109 @@ export function bodyFields(type: string, raw: string): Record<string, string> {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// fetch() from the attacker's page: what it may send without a preflight, and what it may read (CORS)
+
+/** Request headers a page can never set: fetch() silently drops them (Fetch "forbidden request-header"). */
+const FORBIDDEN_HEADERS: ReadonlySet<string> = new Set([
+  'accept-charset', 'accept-encoding', 'access-control-request-headers', 'access-control-request-method', 'connection',
+  'content-length', 'cookie', 'cookie2', 'date', 'dnt', 'expect', 'host', 'keep-alive', 'origin', 'referer', 'set-cookie',
+  'te', 'trailer', 'transfer-encoding', 'upgrade', 'via',
+]);
+const TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const BAD_VALUE_RE = /[\0\r\n]/;
+
+/**
+ * `s` without the leading and trailing characters in `ws`. An index loop: a trim regex such as /^\s+|\s+$/ is
+ * quadratic on a long run of spaces inside a page-made value.
+ */
+function trimOf(s: string, ws: string): string {
+  let a = 0;
+  let b = s.length;
+  while (a < b && ws.includes(s[a])) a++;
+  while (b > a && ws.includes(s[b - 1])) b--;
+  return a === 0 && b === s.length ? s : s.slice(a, b);
+}
+
+/**
+ * The headers a page's fetch() call sets, as fetch() takes them: names lower-cased, values stripped of surrounding
+ * whitespace, a name given twice (in any case) combined with ', ', and the forbidden ones (Cookie, Origin, Referer,
+ * Host, `Sec-*`, `Proxy-*` ...) dropped, as the browser drops them. Undefined when fetch() would throw instead (a name
+ * that is not a token, a value with NUL, CR or LF, a value that is not a string): nothing is sent.
+ */
+export function fetchHeaders(given: Readonly<Record<string, string>> | undefined): Record<string, string> | undefined {
+  const out: Record<string, string> = Object.create(null);
+  if (given === undefined) return out;
+  if (given === null || typeof given !== 'object' || Array.isArray(given)) return undefined;
+  for (const [name, raw] of Object.entries(given)) {
+    if (typeof raw !== 'string' || !TOKEN_RE.test(name)) return undefined;
+    const value = trimOf(raw, '\t\n\r ');
+    if (BAD_VALUE_RE.test(value)) return undefined;
+    const key = name.toLowerCase();
+    if (FORBIDDEN_HEADERS.has(key) || key.startsWith('proxy-') || key.startsWith('sec-')) continue;
+    out[key] = Object.hasOwn(out, key) ? `${out[key]}, ${value}` : value;
+  }
+  return out;
+}
+
+/** Bytes a CORS-safelisted header value may not contain (Fetch "CORS-unsafe request-header byte"). */
+const UNSAFE_BYTE_RE = /[\0-\x08\x0A-\x1F"():<>?@[\\\]{}\x7F]/;
+const MIME_ESSENCE_RE = /^[!#$%&'*+\-.^_`|~0-9a-z]+\/[!#$%&'*+\-.^_`|~0-9a-z]+$/;
+/** The content types a request without a preflight may carry (and an HTML form's three enctypes). */
+export const SIMPLE_CONTENT_TYPES: ReadonlySet<string> = new Set(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain']);
+
+/**
+ * Whether a header is CORS-safelisted (Fetch): Accept, Accept-Language, Content-Language, or a Content-Type of one of
+ * the three simple types, each at most 128 bytes and free of the unsafe bytes. So `Content-Type: application/json`,
+ * any custom header (`X-Requested-With`) and even `text/plain; charset="utf-8"` (a quote) are not. Range is treated as
+ * not safelisted (no lab needs it).
+ */
+export function corsSafelisted(name: string, value: string): boolean {
+  if (value.length > 128) return false;
+  switch (name) {
+    case 'accept': return !UNSAFE_BYTE_RE.test(value);
+    case 'accept-language': case 'content-language': return /^[0-9A-Za-z *,\-.;=]*$/.test(value);
+    case 'content-type': {
+      if (UNSAFE_BYTE_RE.test(value)) return false;
+      const essence = mimeEssence(value);
+      return MIME_ESSENCE_RE.test(essence) && SIMPLE_CONTENT_TYPES.has(essence);
+    }
+    default: return false;
+  }
+}
+
+/**
+ * Whether a cross-origin fetch() needs a CORS preflight (an OPTIONS the server must approve before the request is
+ * sent): a method other than GET, HEAD or POST, or any header that is not CORS-safelisted. `headers` as fetchHeaders()
+ * returns them (the Content-Type included).
+ */
+export function needsPreflight(method: string, headers: Readonly<Record<string, string>>): boolean {
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'POST') return true;
+  return Object.entries(headers).some(([name, value]) => !corsSafelisted(name, value));
+}
+
+/** Whether the attacker's page may read a cross-origin answer, and if not, why (CORS check, Fetch). */
+export type SimCorsRead = 'readable' | 'no-allow-origin' | 'origin-mismatch' | 'wildcard-credentials' | 'no-allow-credentials';
+
+const httpTrim = (s: string): string => trimOf(s, '\t ');
+
+/**
+ * The CORS check on one response to a request that carried `Origin: origin` (Fetch), with credentials ('include') or
+ * without:
+ * - no Access-Control-Allow-Origin: blocked;
+ * - `*` lets a request WITHOUT credentials read, never one with them ('wildcard-credentials');
+ * - otherwise it must be exactly the request's Origin, byte for byte (`null` matches `Origin: null`; two values, or
+ *   another case, do not);
+ * - with credentials, Access-Control-Allow-Credentials must also be exactly `true`.
+ * `headers` by lower-case name, each a list of values (several are combined with ', ', as a browser reads them).
+ */
+export function corsCheck(headers: ReadonlyMap<string, readonly string[]>, origin: string, credentials: boolean): SimCorsRead {
+  const allow = headers.get('access-control-allow-origin');
+  if (allow === undefined) return 'no-allow-origin';
+  const value = allow.map(httpTrim).join(', ');
+  if (!credentials && value === '*') return 'readable';
+  if (value !== origin) return value === '*' ? 'wildcard-credentials' : 'origin-mismatch';
+  if (!credentials) return 'readable';
+  return headers.get('access-control-allow-credentials')?.map(httpTrim).join(', ') === 'true' ? 'readable' : 'no-allow-credentials';
+}

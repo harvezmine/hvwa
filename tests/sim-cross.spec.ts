@@ -392,3 +392,245 @@ describe('bodyFields: what the app\'s body parsers give the lab', () => {
     }
   });
 });
+
+// --- corsFetch: fetch() from the attacker page -------------------------------------------------------------------
+
+const API = 'http://citadel.test/api/me';
+const FETCHES: readonly Kind[] = [
+  { name: 'corsFetch GET, credentials: include', run: (b) => b.corsFetch(API, { credentials: 'include' }), cookies: ['none'], origin: 'http://attacker.test', fetch: ['cross-site', 'cors', 'empty'] },
+  { name: 'corsFetch POST, credentials: include', run: (b) => b.corsFetch(API, { method: 'POST', credentials: 'include', body: '{}' }), cookies: ['none'], origin: 'http://attacker.test', fetch: ['cross-site', 'cors', 'empty'] },
+  { name: 'corsFetch GET, the default credentials (same-origin): no cookies to another origin', run: (b) => b.corsFetch(API), cookies: [], origin: 'http://attacker.test', fetch: ['cross-site', 'cors', 'empty'] },
+  { name: 'corsFetch GET, credentials: omit', run: (b) => b.corsFetch(API, { credentials: 'omit' }), cookies: [], origin: 'http://attacker.test', fetch: ['cross-site', 'cors', 'empty'] },
+  { name: 'corsFetch from a sandboxed frame', run: (b) => b.corsFetch(API, { credentials: 'include', page: { sandboxed: true } }), cookies: ['none'], origin: 'null', fetch: ['cross-site', 'cors', 'empty'] },
+  { name: 'corsFetch under no-referrer: a CORS request still carries its Origin', run: (b) => b.corsFetch(API, { page: { referrerPolicy: 'no-referrer' } }), cookies: [], origin: 'http://attacker.test', fetch: ['cross-site', 'cors', 'empty'] },
+];
+
+describe('corsFetch: cookies, Origin and Sec-Fetch', () => {
+  it.each(FETCHES.map((k) => [k.name, k] as const))('%s', (_name, k) => {
+    const v = victim();
+    k.run(v.b);
+    expect(v.seen).toHaveLength(1);
+    expect(sentCookies(v.seen[0]), 'cookies').toEqual(k.cookies);
+    expect(v.seen[0].headers.origin, 'origin').toBe(k.origin);
+    expect(fetchMeta(v.seen[0]), 'sec-fetch-*').toEqual(k.fetch);
+  });
+
+  it('Referer follows the page\'s policy (the origin only, by default); a GET carries no Content-Type', () => {
+    const v = victim();
+    v.b.corsFetch(API, { page: { url: 'http://attacker.test/x?y=1' } });
+    v.b.corsFetch(API, { page: { url: 'http://attacker.test/x?y=1', referrerPolicy: 'unsafe-url' } });
+    v.b.corsFetch(API, { page: { url: 'http://attacker.test/x?y=1', referrerPolicy: 'no-referrer' } });
+    expect(v.seen.map((r) => r.headers.referer)).toEqual(['http://attacker.test/', 'http://attacker.test/x?y=1', undefined]);
+    expect(v.seen[0].headers['content-type']).toBeUndefined();
+  });
+});
+
+describe('corsFetch: may the page read the answer? (the CORS check)', () => {
+  // [Access-Control-Allow-Origin, Access-Control-Allow-Credentials, credentials, verdict], from http://attacker.test
+  type Row = readonly [string | readonly string[] | undefined, string | undefined, 'include' | 'same-origin' | 'omit', string];
+  const ROWS: readonly Row[] = [
+    [undefined, undefined, 'include', 'no-allow-origin'],
+    [undefined, 'true', 'include', 'no-allow-origin'],
+    [undefined, undefined, 'omit', 'no-allow-origin'],
+    ['*', undefined, 'omit', 'readable'],
+    ['*', undefined, 'same-origin', 'readable'],
+    ['*', undefined, 'include', 'wildcard-credentials'],
+    ['*', 'true', 'include', 'wildcard-credentials'], // * is never a credentialed read, whatever ACAC says
+    ['http://attacker.test', undefined, 'omit', 'readable'],
+    ['http://attacker.test', undefined, 'same-origin', 'readable'],
+    ['http://attacker.test', undefined, 'include', 'no-allow-credentials'],
+    ['http://attacker.test', 'true', 'include', 'readable'], // the reflected origin with credentials: total
+    ['http://attacker.test', ' true ', 'include', 'readable'], // values arrive trimmed
+    ['http://attacker.test', 'TRUE', 'include', 'no-allow-credentials'], // exactly `true`
+    ['http://attacker.test', 'false', 'include', 'no-allow-credentials'],
+    [' http://attacker.test\t', 'true', 'include', 'readable'],
+    ['http://evil.test', 'true', 'include', 'origin-mismatch'],
+    ['http://evil.test', undefined, 'omit', 'origin-mismatch'],
+    ['HTTP://ATTACKER.TEST', 'true', 'include', 'origin-mismatch'], // byte for byte
+    ['http://attacker.test/', 'true', 'include', 'origin-mismatch'],
+    ['http://attacker.test:80', 'true', 'include', 'origin-mismatch'],
+    ['https://attacker.test', 'true', 'include', 'origin-mismatch'],
+    [['http://attacker.test', 'http://attacker.test'], 'true', 'include', 'origin-mismatch'], // two headers: two values
+    ['http://attacker.test, http://evil.test', 'true', 'include', 'origin-mismatch'],
+    ['null', 'true', 'include', 'origin-mismatch'], // `null` matches only `Origin: null`
+  ];
+
+  const answer = (acao: Row[0], acac: Row[1]) => (r: SimRequest): SimResponse => {
+    const headers: Record<string, string | readonly string[]> = {};
+    if (acao !== undefined) headers['Access-Control-Allow-Origin'] = acao;
+    if (acac !== undefined) headers['Access-Control-Allow-Credentials'] = acac;
+    return { status: 200, headers, body: JSON.stringify({ user: r.cookies.none === 'n' ? 'citadel_admin' : null, canary: 'CANARY-42' }) };
+  };
+
+  it.each(ROWS.map((row) => [JSON.stringify(row), row] as const))('%s', (_label, [acao, acac, credentials, verdict]) => {
+    const v = victim(answer(acao, acac));
+    const f = v.b.corsFetch(API, { credentials });
+    expect(f.verdict).toBe(verdict);
+    expect(f.sent).toBe(true);
+    expect(v.seen).toHaveLength(1); // sent either way: CORS decides what the page reads, not what the server does
+    expect(f.status).toBe(200);
+    if (verdict === 'readable') expect(JSON.parse(f.body ?? '')).toMatchObject({ canary: 'CANARY-42' });
+    else expect(f.body).toBeUndefined();
+    expect(Object.isFrozen(f)).toBe(true);
+  });
+
+  it('a sandboxed frame\'s fetch is Origin: null: only ACAO `null` (or `*` without credentials) lets it read', () => {
+    for (const [acao, acac, credentials, verdict] of [
+      ['null', 'true', 'include', 'readable'], ['*', undefined, 'omit', 'readable'], ['http://attacker.test', 'true', 'include', 'origin-mismatch'],
+    ] as const) {
+      const v = victim(answer(acao, acac));
+      expect(v.b.corsFetch(API, { credentials, page: { sandboxed: true } }).verdict, `${acao} ${credentials}`).toBe(verdict);
+    }
+  });
+
+  it('a reflected Origin lets any attacker origin read with the admin\'s cookies (only SameSite=None ones go)', () => {
+    const v = victim((r) => ({
+      status: 200, headers: { 'Access-Control-Allow-Origin': r.headers.origin ?? '', 'Access-Control-Allow-Credentials': 'true' },
+      body: `user=${r.cookies.none === 'n' ? 'admin' : 'nobody'}`,
+    }));
+    const f = v.b.corsFetch(API, { credentials: 'include', page: { url: 'http://citadel.test.attacker.test/' } });
+    expect([f.verdict, f.body]).toEqual(['readable', 'user=admin']);
+    expect(v.seen[0].headers.origin).toBe('http://citadel.test.attacker.test');
+  });
+
+  it('every answer is checked, a redirect too: a redirect without ACAO ends the fetch there (a network error)', () => {
+    const allow = { 'Access-Control-Allow-Origin': 'http://attacker.test', 'Access-Control-Allow-Credentials': 'true' };
+    const blocked = victim((r) => (r.path === '/api/me' ? { status: 302, headers: { location: '/api/v2/me' } } : { status: 200, headers: allow, body: 'x' }));
+    const f = blocked.b.corsFetch(API, { credentials: 'include' });
+    expect([f.verdict, f.status, blocked.seen.length]).toEqual(['no-allow-origin', 302, 1]);
+    const passed = victim((r) => (r.path === '/api/me' ? { status: 302, headers: { location: '/api/v2/me', ...allow } } : { status: 200, headers: allow, body: 'x' }));
+    const g = passed.b.corsFetch(API, { credentials: 'include' });
+    expect([g.verdict, g.status, g.body, passed.seen.map((r) => r.path)]).toEqual(['readable', 200, 'x', ['/api/me', '/api/v2/me']]);
+  });
+
+  it('a redirect to another origin taints the request: the next one is Origin: null (and so must its ACAO be)', () => {
+    const v = victim((r) => (r.url === API ? { status: 307, headers: { location: 'https://citadel.test/api/me', 'Access-Control-Allow-Origin': '*' } }
+      : { status: 200, headers: { 'Access-Control-Allow-Origin': r.headers.origin ?? '' }, body: 'y' }));
+    const f = v.b.corsFetch(API);
+    expect(v.seen.map((r) => r.headers.origin)).toEqual(['http://attacker.test', 'null']);
+    expect([f.verdict, f.body]).toEqual(['readable', 'y']);
+  });
+
+  it('an answer that is not a citadel page has nothing to read: your own server, an unreachable host', () => {
+    const v = victim();
+    const own = v.b.corsFetch('http://attacker.test/log', { method: 'POST', body: 'hello' });
+    expect([own.sent, own.verdict, own.visit?.outcome]).toEqual([true, 'no-answer', 'attacker']);
+    expect(v.w.attackerLog.entries().at(-1)).toMatchObject({ method: 'POST', url: 'http://attacker.test/log', body: 'hello' });
+    const lost = v.b.corsFetch('http://127.0.0.1/');
+    expect([lost.sent, lost.verdict, lost.visit?.outcome]).toEqual([true, 'no-answer', 'unreachable']);
+  });
+});
+
+describe('corsFetch: what a page can send without a preflight', () => {
+  // [headers, body (POST when given), sent?]
+  const CASES: readonly (readonly [string, Record<string, string> | undefined, string | undefined, boolean])[] = [
+    ['a GET with no headers', undefined, undefined, true],
+    ['a POST with a string body and no Content-Type (text/plain;charset=UTF-8)', undefined, '{"notify":"all"}', true],
+    ['Content-Type: text/plain', { 'Content-Type': 'text/plain' }, '{"notify":"all"}', true],
+    ['Content-Type: TEXT/Plain;charset=UTF-8', { 'content-type': 'TEXT/Plain;charset=UTF-8' }, 'x', true],
+    ['Content-Type: application/x-www-form-urlencoded', { 'Content-Type': 'application/x-www-form-urlencoded' }, 'a=1', true],
+    ['Content-Type: multipart/form-data; boundary=x', { 'Content-Type': 'multipart/form-data; boundary=x' }, '--x--', true],
+    ['Content-Type: application/json', { 'Content-Type': 'application/json' }, '{"notify":"all"}', false],
+    ['Content-Type: text/plain; charset="utf-8" (a quote is a CORS-unsafe byte)', { 'Content-Type': 'text/plain; charset="utf-8"' }, 'x', false],
+    ['Content-Type: text/plain garbage (not a MIME type)', { 'Content-Type': 'text/plain garbage' }, 'x', false],
+    ['X-Requested-With: XMLHttpRequest (a custom header)', { 'X-Requested-With': 'XMLHttpRequest' }, undefined, false],
+    ['Accept: application/json', { Accept: 'application/json' }, undefined, true],
+    ['Accept with a CORS-unsafe byte', { Accept: 'text/(html)' }, undefined, false],
+    ['Accept over 128 bytes', { Accept: 'a'.repeat(129) }, undefined, false],
+    ['Accept-Language: en-US,en;q=0.9', { 'Accept-Language': 'en-US,en;q=0.9' }, undefined, true],
+    ['Accept-Language with an @', { 'Accept-Language': 'en@x' }, undefined, false],
+    ['Content-Language: id', { 'Content-Language': 'id' }, undefined, true],
+    ['Range (treated as not safelisted)', { Range: 'bytes=0-1' }, undefined, false],
+  ];
+
+  it.each(CASES.map(([name, headers, body, sent]) => [name, headers, body, sent] as const))('%s', (_name, headers, body, sent) => {
+    const v = victim();
+    const f = v.b.corsFetch(API, { credentials: 'include', ...(body === undefined ? {} : { method: 'POST' as const, body }), ...(headers ? { headers } : {}) });
+    expect(f.sent).toBe(sent);
+    expect(v.seen).toHaveLength(sent ? 1 : 0);
+    if (!sent) expect([f.verdict, f.visit]).toEqual(['preflight', undefined]);
+  });
+
+  it('a JSON body sent as text/plain reaches the handler whole in rawBody; the app\'s parsers give no fields', () => {
+    const v = victim();
+    v.b.corsFetch('http://citadel.test/account/prefs', { method: 'POST', credentials: 'include', body: '{"notify":"all"}' });
+    expect(v.seen[0]).toMatchObject({ method: 'POST', rawBody: '{"notify":"all"}', headers: { 'content-type': 'text/plain;charset=UTF-8' } });
+    expect({ ...v.seen[0].body }).toEqual({});
+    v.b.corsFetch('http://citadel.test/account/prefs', { method: 'POST', body: 'notify=all', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+    expect({ ...v.seen[1].body }).toEqual({ notify: 'all' });
+  });
+
+  it('forbidden headers are dropped, as fetch() drops them: the page cannot forge Cookie, Origin, Referer or Sec-*', () => {
+    const v = victim();
+    const f = v.b.corsFetch(API, {
+      credentials: 'include',
+      headers: { Cookie: 'strict=forged', Origin: 'http://citadel.test', Referer: 'http://citadel.test/', 'Sec-Fetch-Site': 'same-origin', 'Proxy-Auth': 'x', Host: 'evil', 'Accept-Encoding': 'x', DNT: '1' },
+    });
+    expect(f.sent).toBe(true); // nothing left that needs a preflight
+    expect(v.seen[0].headers).toEqual({
+      host: 'citadel.test', 'user-agent': expect.any(String), referer: 'http://attacker.test/', cookie: 'none=n', origin: 'http://attacker.test',
+      'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty',
+    });
+  });
+
+  it('safelisted headers the page sets reach the handler, trimmed and lower-cased; a name given twice is combined', () => {
+    const v = victim();
+    v.b.corsFetch(API, { headers: { Accept: ' text/html ', accept: 'application/json', 'Accept-Language': 'id' } });
+    expect(v.seen[0].headers).toMatchObject({ accept: 'text/html, application/json', 'accept-language': 'id' });
+  });
+
+  it('fetch() throws before sending (verdict invalid): a GET with a body, a header name that is no token, a CR, LF or NUL in a value', () => {
+    const v = victim();
+    for (const opts of [
+      { body: 'x' }, { headers: { 'bad name': 'x' } }, { headers: { Accept: 'a\nb' } }, { headers: { Accept: 'a\rb' } }, { headers: { Accept: 'a\0b' } },
+      { headers: { Accept: 5 as never } }, { headers: [['Accept', 'x']] as never },
+    ]) {
+      expect(v.b.corsFetch(API, opts as never), JSON.stringify(opts)).toEqual({ sent: false, verdict: 'invalid' });
+    }
+    expect(v.seen).toEqual([]);
+  });
+
+  it('a request to your own server needs no preflight check here: it is logged as sent', () => {
+    const v = victim();
+    const f = v.b.corsFetch('http://attacker.test/x', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
+    expect([f.sent, f.verdict]).toEqual([true, 'no-answer']);
+    expect(v.w.attackerLog.entries()).toHaveLength(1);
+  });
+
+  it('a lab bug is an error: an unknown method or credentials mode, a body that is not a string', () => {
+    const v = victim();
+    expect(() => v.b.corsFetch(API, { method: 'PUT' as never })).toThrow(/method must be 'GET' or 'POST'/);
+    expect(() => v.b.corsFetch(API, { credentials: 'all' as never })).toThrow(/credentials must be/);
+    expect(() => v.b.corsFetch(API, { method: 'POST', body: 5 as never })).toThrow(/body must be a string/);
+    expect(() => v.b.corsFetch(API, { page: { url: 'http://citadel.test/' } })).toThrow(/attacker page must be on attacker\.test/);
+  });
+});
+
+describe('corsFetch: a fetch is not a navigation', () => {
+  it('a Refresh on the answer is not followed; redirects are, and a 303 drops the body and its Content-Type', () => {
+    const acao = { 'Access-Control-Allow-Origin': '*' }; // the redirect passes the CORS check too
+    const v = victim((r) => (r.path === '/a' ? { status: 303, headers: { location: '/b', ...acao } } : { status: 200, headers: { refresh: '0; url=/c', ...acao } }));
+    const f = v.b.corsFetch('http://citadel.test/a', { method: 'POST', body: 'x=1', headers: { 'Content-Type': 'text/plain', 'Content-Language': 'id', Accept: 'x' } });
+    expect(v.seen.map((r) => [r.path, r.method, r.rawBody, r.headers['content-type'], r.headers['content-language'], r.headers.accept])).toEqual([
+      ['/a', 'POST', 'x=1', 'text/plain', 'id', 'x'], ['/b', 'GET', '', undefined, undefined, 'x'],
+    ]);
+    expect(f.visit?.hops).toHaveLength(2);
+  });
+
+  it('cookies: an answer to a credentialed fetch stores only SameSite=None ones; without credentials it stores none', () => {
+    const lines = ['lax2=1; SameSite=Lax', 'none2=1; SameSite=None; Secure'];
+    const v = victim(() => ({ status: 200, headers: { 'set-cookie': lines } }));
+    v.b.corsFetch(API);
+    expect(v.b.cookies.list().map((c) => c.name)).toEqual(['strict', 'lax', 'none']);
+    v.b.corsFetch(API, { credentials: 'include' });
+    expect(v.b.cookies.list().map((c) => c.name)).toEqual(['strict', 'lax', 'none', 'none2']);
+  });
+
+  it('the visit is recorded like any other; a fetch that is not sent records none', () => {
+    const v = victim();
+    v.b.corsFetch(API);
+    v.b.corsFetch(API, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    expect(v.w.visits.map((x) => [x.outcome, x.hops.length])).toEqual([['page', 1]]);
+  });
+});
+
