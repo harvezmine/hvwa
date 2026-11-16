@@ -181,7 +181,7 @@ export function scriptKind(el: Element): 'classic' | 'module' | undefined {
   if (type === undefined ? language === undefined || language === '' : type === '') kind = 'classic';
   else if (type === undefined) kind = JS_MIME_TYPES.has(`text/${(language ?? '').toLowerCase()}`) ? 'classic' : undefined;
   else {
-    const t = type.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '').toLowerCase();
+    const t = trimAsciiWhitespace(type).toLowerCase();
     kind = JS_MIME_TYPES.has(t) ? 'classic' : t === 'module' ? 'module' : undefined; // importmap, text/plain ...: data
   }
   // A browser that runs modules skips a classic script marked nomodule (every current browser does).
@@ -199,9 +199,27 @@ export function scriptMimeRuns(mime: string, kind: 'classic' | 'module'): boolea
 
 // --- URLs -----------------------------------------------------------------------------------------------------------
 
+// Trims are index loops, never a regex: `/^\s+|\s+$/` backtracks over every run of spaces that is not at the end, so it
+// is quadratic on a long run inside an attacker's attribute (tests/xss.spec.ts, "stays linear").
+
+/** `s` without leading and trailing ASCII whitespace (tab, LF, FF, CR, space), in linear time. */
+export function trimAsciiWhitespace(s: string): string {
+  const ws = (c: number): boolean => c === 0x09 || c === 0x0a || c === 0x0c || c === 0x0d || c === 0x20;
+  let start = 0;
+  let end = s.length;
+  while (start < end && ws(s.charCodeAt(start))) start++;
+  while (end > start && ws(s.charCodeAt(end - 1))) end--;
+  return start === 0 && end === s.length ? s : s.slice(start, end);
+}
+
 /** An attribute's URL as the URL parser reads it: leading and trailing C0 controls and spaces stripped, tabs and newlines removed. */
 export function urlText(value: string): string {
-  return value.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+|[\u0000- ]+$/g, '');
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) <= 0x20) start++;
+  while (end > start && value.charCodeAt(end - 1) <= 0x20) end--;
+  const s = start === 0 && end === value.length ? value : value.slice(start, end);
+  return /[\t\n\r]/.test(s) ? s.replace(/[\t\n\r]/g, '') : s;
 }
 
 /** A URL's scheme, lower case ('javascript', 'data', 'http' ...), or undefined for a relative URL. */

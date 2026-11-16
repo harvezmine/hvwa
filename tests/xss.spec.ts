@@ -359,6 +359,44 @@ describe('xssOracle: bounds (size, tags, depth, srcdoc, budget, time)', () => {
     expect(xssOracle(quotes, M)).toMatchObject({ executes: true, mxss: false, limited: 'budget' });
   });
 
+  /** `<div><a href="x<spaces>y"></div>` then n × `<p>x</p>`, exactly `XSS_LIMITS.htmlLength` long: parse5 rebuilds the
+   * unclosed `<a>` (with its long href) inside every following block, so each copy is trimmed and scanned again. */
+  const reopenedLink = (n: number): string => {
+    const tail = `y"></div>${'<p>x</p>'.repeat(n)}`;
+    return `<div><a href="x${' '.repeat(XSS_LIMITS.htmlLength - '<div><a href="x'.length - tail.length)}${tail}`;
+  };
+  /** A wall-clock bound that is generous for a shared CPU but far below a quadratic blow-up (seconds). */
+  const quick = (label: string, f: () => unknown, ms = 300): void => {
+    const t = performance.now();
+    f();
+    expect(performance.now() - t, label).toBeLessThan(ms);
+  };
+
+  it('stays linear in our own code: a reopened link with a long href (C1), at 16 KiB, n = 20, 100 and 400', { timeout: 60_000 }, () => {
+    for (const n of [20, 100, 400]) {
+      const html = reopenedLink(n);
+      expect(html.length).toBe(XSS_LIMITS.htmlLength);
+      quick(`xssOracle n=${n}`, () => xssOracle(html, M));
+      quick(`xssOracle innerHTML n=${n}`, () => xssOracle(html, M, { insertion: 'innerHTML' }));
+      quick(`linkSinks n=${n}`, () => linkSinks(html));
+      quick(`roundTrip n=${n}`, () => roundTrip(html));
+    }
+  });
+
+  it('stays linear on long whitespace runs wherever an attribute is trimmed or scanned (URL, script type, CSS url(), data:)', { timeout: 60_000 }, () => {
+    const spaces = ' '.repeat(XSS_LIMITS.htmlLength - 64);
+    const inputs = [
+      `<a href="${spaces}x">x</a>`, `<iframe src="${spaces}javascript:x"></iframe>`, `<script type="${spaces}x">1</script>`,
+      `<div style="background:url(${spaces}">x</div>`, `<style>p{background:url(${spaces}</style>`, `<style>@import ${spaces}x</style>`,
+      `<iframe src="data:;${spaces}x,1"></iframe>`, `<p>hvwa(${spaces}x</p>`, `<p>${'url('.repeat(4000)}</p>`,
+    ];
+    for (const html of inputs) {
+      expect(html.length, html.slice(0, 30)).toBeLessThanOrEqual(XSS_LIMITS.htmlLength);
+      quick(`xssOracle ${html.slice(0, 30)}`, () => xssOracle(html, M));
+      quick(`linkSinks ${html.slice(0, 30)}`, () => linkSinks(html));
+    }
+  });
+
   it('the verdict and its sinks are frozen', () => {
     const v = xssOracle(`<img src=x onerror=${M}>`, M);
     expect(Object.isFrozen(v)).toBe(true);

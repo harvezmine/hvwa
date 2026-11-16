@@ -348,7 +348,55 @@ const LINK_HTML: Readonly<Record<string, readonly (readonly [string, 'link' | 'r
   body: [['background', 'resource']], table: [['background', 'resource']], td: [['background', 'resource']], th: [['background', 'resource']],
 });
 const FETCHING_LINK_RELS = /(^|\s)(stylesheet|icon|preload|prefetch|modulepreload|apple-touch-icon|manifest)(\s|$)/i;
-const CSS_URL_RE = /@import\s*(?:"([^"]*)"|'([^']*)')|url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]*))\s*\)/gi;
+/**
+ * The URLs a style sheet fetches, in order: `url(...)` (quoted or not) and `@import "..."` (an `@import url(...)` is
+ * the url() it contains). A hand-written linear scan: the obvious regex (`url\(\s*...\s*\)`) backtracks
+ * quadratically on `url(` followed by a long run of spaces.
+ */
+function cssUrls(text: string): string[] {
+  const out: string[] = [];
+  const ws = (c: number): boolean => c === 0x09 || c === 0x0a || c === 0x0c || c === 0x0d || c === 0x20;
+  const at = (i: number, word: string): boolean => {
+    if (i + word.length > text.length) return false;
+    for (let k = 0; k < word.length; k++) {
+      const c = text.charCodeAt(i + k);
+      if ((c >= 65 && c <= 90 ? c + 32 : c) !== word.charCodeAt(k)) return false;
+    }
+    return true;
+  };
+  const skipWs = (i: number): number => { while (i < text.length && ws(text.charCodeAt(i))) i++; return i; };
+  /** A quoted string from its opening quote at i: [its text, the index after it], or undefined when unterminated. */
+  const quoted = (i: number): readonly [string, number] | undefined => {
+    const end = text.indexOf(text[i], i + 1);
+    return end === -1 ? undefined : [text.slice(i + 1, end), end + 1];
+  };
+  for (let i = 0; i < text.length;) {
+    if (at(i, 'url(')) {
+      let j = skipWs(i + 4);
+      let url: string | undefined;
+      if (text[j] === '"' || text[j] === "'") {
+        const q = quoted(j);
+        if (q === undefined) break; // an unterminated string ends the sheet
+        [url, j] = q;
+      } else {
+        const start = j;
+        while (j < text.length && text[j] !== ')' && text[j] !== '"' && text[j] !== "'" && !ws(text.charCodeAt(j))) j++;
+        url = text.slice(start, j);
+      }
+      j = skipWs(j);
+      if (text[j] === ')') out.push(url); // a url( that does not close is a bad URL: nothing is fetched
+      i = Math.max(j, i + 4);
+    } else if (at(i, '@import')) {
+      const j = skipWs(i + 7);
+      const q = text[j] === '"' || text[j] === "'" ? quoted(j) : undefined;
+      if (q !== undefined) out.push(q[0]);
+      i = q === undefined ? j : q[1]; // `@import url(...)`: the url( is read next
+    } else {
+      i++;
+    }
+  }
+  return out;
+}
 
 /**
  * Every link and resource URL in `html`, in document order (at most XSS_LIMITS.sinks), for a lab whose victim runs
@@ -371,7 +419,7 @@ export function linkSinks(html: string, opts: { readonly scripting?: boolean } =
     }));
   };
   const css = (element: string, attribute: string, text: string): void => {
-    for (const m of text.matchAll(CSS_URL_RE)) add('resource', element, attribute, m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? '');
+    for (const url of cssUrls(text)) add('resource', element, attribute, url);
   };
   const stack: Node[] = [...doc.childNodes].reverse();
   for (let node = stack.pop(); node !== undefined && out.length < XSS_LIMITS.sinks; node = stack.pop()) {
