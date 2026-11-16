@@ -24,6 +24,11 @@ describe('twin: a Reply for the simulated browser', () => {
     ]);
   });
 
+  it('a value is URL-encoded as res.cookie() does, so both browsers read back the same value', () => {
+    const r = toSim({ status: 200, text: '', cookies: [{ name: 'next_acolyte', value: 'http://attacker.test/?a=1;b', path: '/' }] });
+    expect(r.headers?.['Set-Cookie']).toEqual(['next_acolyte=http%3A%2F%2Fattacker.test%2F%3Fa%3D1%3Bb; Path=/; HttpOnly; SameSite=Lax']);
+  });
+
   it('the citadel (base \'\') puts its cookies on /, a real route on the lab path', () => {
     expect(cookiePath('')).toBe('/');
     expect(cookiePath('/d/gatekeeper/x')).toBe('/d/gatekeeper/x');

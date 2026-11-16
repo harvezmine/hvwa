@@ -40,7 +40,7 @@ export function toSim(r: Reply): SimResponse {
   if (r.cookies !== undefined && r.cookies.length > 0) {
     headers['Set-Cookie'] = r.cookies.map((c) => (c.clear
       ? `${c.name}=; Path=${c.path}; Max-Age=0; HttpOnly; SameSite=Lax`
-      : `${c.name}=${c.value}; Path=${c.path}; HttpOnly; SameSite=Lax`));
+      : `${c.name}=${encodeURIComponent(c.value)}; Path=${c.path}; HttpOnly; SameSite=Lax`)); // as res.cookie() encodes
   }
   return { status: r.status, headers, body: r.text };
 }
