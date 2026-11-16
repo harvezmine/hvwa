@@ -7,7 +7,8 @@ import { issueFlag } from '../src/core/flags.js';
 import { field, tryDb, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import {
-  FLAG_RE, DB_ERROR_RE, TEST_SECRET, bare, describeExploitMatrix, describeLabView, exploitMatrixCases, freshSession, type ExploitMatrix,
+  FLAG_RE, DB_ERROR_RE, TEST_SECRET, attackerHits, bare, describeExploitMatrix, describeLabView, exploitMatrixCases, freshSession,
+  panelOf, referers, unescapeHtml, type ExploitMatrix,
 } from './helpers.js';
 
 describe('FLAG_RE', () => {
@@ -429,4 +430,38 @@ describeLabView({
     return agent.post(`/d/helpers-test/view?level=${level}`).type('form').send({ q: 'good' });
   },
   bad: (agent, level) => agent.post(`/d/helpers-test/view?level=${level}`).type('form').send({ q: 'bad' }),
+});
+
+describe('simulated-victim panel helpers (panelOf, attackerHits, referers, unescapeHtml)', () => {
+  // The markup core/views/sim-panel.ejs renders (tests/sim-lab.spec.ts checks the helpers against the real page).
+  const page = `<main><p>lab <code>GET http://attacker.test/not-in-panel</code></p></main>
+    <section class="sim-panel" data-testid="sim-panel" aria-labelledby="sim-panel-heading">
+      <ol class="sim-mail" data-testid="sim-mailbox"><li><code>http://attacker.test/mail-link</code></li></ol>
+      <ol class="sim-log" data-testid="sim-log">
+        <li data-seq="7">
+          <span class="sim-meta">#7 · <time datetime="2026-11-15T12:00:01.000Z">2026-11-15T12:00:01.000Z</time></span><br><code>POST http://attacker.test/collect?a=1&amp;b=&lt;x&gt;</code>
+          <br>Isi: <code>code=abc&amp;x=1</code>
+        </li>
+        <li data-seq="5">
+          <span class="sim-meta">#5 · <time datetime="2026-11-15T12:00:00.000Z">2026-11-15T12:00:00.000Z</time></span><br><code>GET http://attacker.test/x</code>
+          <br>Referer: <code>http://citadel.test/landing?key=k&amp;next=%2F&#39;&#34;</code>
+        </li>
+      </ol>
+    </section>`;
+
+  it('panelOf cuts the panel out of a page; unescapeHtml undoes the escaped output tag', () => {
+    expect(panelOf(page)).toMatch(/^<section class="sim-panel"[\s\S]*<\/section>$/);
+    expect(panelOf(page)).not.toContain('not-in-panel');
+    expect(panelOf('<p>no panel</p>')).toBe('');
+    expect(unescapeHtml('&lt;a href=&#34;x&#34; title=&quot;y&quot;&gt;&#39;&amp;amp;')).toBe(`<a href="x" title="y">'&amp;`);
+  });
+
+  it('attackerHits parses the attacker log by data-seq, oldest first, unescaped; never the mailbox or the lab', () => {
+    expect(attackerHits(page)).toEqual([
+      { seq: 5, at: '2026-11-15T12:00:00.000Z', method: 'GET', url: 'http://attacker.test/x', referer: `http://citadel.test/landing?key=k&next=%2F'"` },
+      { seq: 7, at: '2026-11-15T12:00:01.000Z', method: 'POST', url: 'http://attacker.test/collect?a=1&b=<x>', body: 'code=abc&x=1' },
+    ]);
+    expect(referers(page)).toEqual([`http://citadel.test/landing?key=k&next=%2F'"`]);
+    expect(attackerHits('<section class="sim-panel"><p>No requests yet.</p></section>')).toEqual([]);
+  });
 });

