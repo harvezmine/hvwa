@@ -1,0 +1,12 @@
+<%# GK-09 forgot-password page. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Gate — Forgot your password?</h1>
+  <p class="lab-note">Enter the address of your account and we will mail it a link to choose a new password. Your own mail arrives in your mailbox below the lab. <a href="<%= base %>?level=<%= level %>">Back to sign in</a></p>
+  <form method="post">
+    <label>Email <input name="email" type="text" autocomplete="off" spellcheck="false" value="<%= email %>"></label>
+    <button type="submit">Send reset link</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+</section>
