@@ -263,7 +263,9 @@ rows (FP-10 trims members and activity to 30 registrations each: about 0.2 s wor
 attacker's text (a 64-character name limit leaves room for at most four such joins). What remains is an **accepted
 residual CPU gap of a loopback, single-player lab**, the same as the memory gap above: the only player who can send such a
 query stalls their own app for a moment. A lab that lets the player send SQL longer than a short name should measure the
-worst cross join of its own tables and put the number next to its caps.
+worst cross join of its own tables and put the number next to its caps. In particular `firstRows` bounds the rows
+RETURNED, not the rows computed: an `ORDER BY` (RM-01) materialises and sorts the whole result before the first row comes
+back, so the 50-row cap does not bound that work, and it is part of the same accepted residual CPU gap.
 
 **Lab state: `perLevel` or `perSession`.** Never a bare module-level
 `challengeDb` for a lab that holds a secret or state.
@@ -441,6 +443,11 @@ error text, and the `resisted` text must still match. The other cases ((d)-(f)) 
 for labs with no such errors or no privileged identity. Add challenge-specific
 tests next to the matrix (GK-01: per-level isolation, view escaping, kept
 values, non-string fields). `FLAG_RE` and `DB_ERROR_RE` are exported for them.
+
+**The matrix cannot see a Divine flaw on a channel Divine never reads.** An exploit that travels in a cookie or header
+is replayed at Divine too (cases (c) and (g)), so name that cookie or header after the level the exploit is SENT TO
+(`relic_region_${level}`, as RM-02 does). If the script always sends `relic_region_inquisitor`, Divine ignores it and the
+case passes even when Divine concatenates its own cookie: a mutant that makes Divine as weak as Inquisitor stays green.
 
 Test plumbing for stateful labs (all in `tests/helpers.ts`): `send(..., { sid, app })` for per-session test seams;
 `bare(app, sid, 'name=value')` for requests that carry only the session cookie plus a cookie the lab did not
