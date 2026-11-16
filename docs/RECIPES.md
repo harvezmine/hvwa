@@ -1084,7 +1084,7 @@ every integer (BigInt), and it throws on a fractional, NaN or infinite amount. N
 that names an amount calls `formatMoney`, or `insufficientFunds(total, wallet)` for the usual checkout refusal.
 
 **State.** `newShop({ catalog, wallet })` is a `ShopState`: `catalog`, `startWallet`, `wallet`, `cart`, `discounts`,
-`orders`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
+`orders`, `pinned`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
 in `perShop`:
 
 ```ts
@@ -1110,10 +1110,16 @@ export const resetLab = (req: { sessionId: string; level: Level }): void => { la
   bounds: |qty| ≤ 9 999 999 999 (`Quantity too large for this shop.`) and 20 lines (`Your cart is full (20 lines).`);
   a fractional quantity or an unsafe unit price is a programming error and throws. A lab that adds up (RM-05's
   returns) computes the new quantity itself and sets it.
-- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged })` debits `charged` (a negative charge
+- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged, status? })` places an order (status `paid`
+  unless the lab names another, as RM-13's `confirmed`), debits `charged` (a negative charge
   credits), stamps the order with `state.clock.now()`, empties the cart and the discounts and keeps the newest 30
   orders (`pushOrder`). A charge or wallet outside the safe integers is refused (`OUT_OF_RANGE`) and changes nothing.
   Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...).
+- **Seeded orders** (RM-11's other customers) go through `pinOrder(state, order)` in the lab's factory into
+  `state.pinned` (at most `LIMITS.pinned` = 20, an id seeded twice throws): they are never trimmed by the player's own
+  newest 30. `allOrders(state)` is pinned then own. An `Order.no` is a number (the shop's running number) or a string id.
+  `ordersView` lists only orders with `owner === CUSTOMER.id` (pinned ones included), so a seeded foreign order never
+  shows in "Your orders"; a lab that shows foreign data does it on its own page, by its own level's rule.
 - An `OrderLine` keeps `qty`, `unitPrice` (what was charged) and `listPrice` (the catalog's, then), so a proof never
   reads the current catalog. `exactValue(lines)` is their real worth in BigInt.
 - `exactTotals(state)` (and `cartTotal`) are exact cart totals, `OUT_OF_RANGE` beyond the safe integers. A lab whose
@@ -1151,6 +1157,7 @@ await sendPage(res, view, shopView(req, res, state, {
   challenge: RM05, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves,
   removable: true, endpoints: endpointsOf(INTENTS), curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' }, signIn: false },
   // fields: (p) => level.formFields(p), api: [{ path: '/api/price-lists', description: '...' }], extra: { ... },
+  // an API path with a parameter links to its example: { path: '/api/orders/:id', example: '/api/orders/1001', description }
 }));
 ```
 
@@ -1189,7 +1196,7 @@ Restart restores the start wallet and empties the cart and the orders, and that 
   isolated per player and per level, Restart (and its 429 cooldown) or a 404, the 21st cart line, the newest 30
   orders, money formatting. The default purchase is the cheapest product with its own form, then checkout; a lab
   without a cart passes its own `purchase` and `hasCart: false`.
-- Readers: `walletOf`, `ordersOf`, `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
+- Readers: `walletOf`, `ordersOf` (numeric ids; `orderIdsOf` reads string ids too), `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
   them), `pricesOf`, `endpointsShown`.
 - Exploit scripts end on checkout, and Divine's answer to each is `Insufficient funds: …` (`resisted` is the text, or
   a map keyed by the exploit's level when the totals differ).

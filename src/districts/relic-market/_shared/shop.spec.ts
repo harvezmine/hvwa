@@ -2,8 +2,8 @@
 // the catalog, cart bounds, orders, money, the injectable clock and the race primitives (SQL helpers: districts/_shared/sql.spec.ts).
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
-  CURRENCIES, CUSTOMER, LIMITS, OUT_OF_RANGE, SHOP_MAX_ENTRIES, addDiscount, cartTotal, catalogOf, clipText, exactValue,
-  formatMoney, insufficientFunds, newShop, orderLines, perShop, placeOrder, pushHistory, pushOrder, setLine,
+  CURRENCIES, CUSTOMER, LIMITS, OUT_OF_RANGE, SHOP_MAX_ENTRIES, addDiscount, allOrders, cartTotal, catalogOf, clipText, exactValue,
+  formatMoney, insufficientFunds, newShop, orderLines, perShop, pinOrder, placeOrder, pushHistory, pushOrder, setLine,
   type Currency, type Order, type ShopState,
 } from './shop.js';
 import { MAX_WAIT_MS, realClock, setClockForTests, type LabClock } from './clock.js';
@@ -448,3 +448,47 @@ describe('race primitives', () => {
   });
 });
 
+
+describe('batch D shell support: pinned orders, string ids, order status', () => {
+  const seeded = (no: number | string, owner: string): Order => ({
+    no, owner, lines: [], discounts: [], subtotal: 0, total: 0, charged: 0, status: 'shipped', at: 0,
+  });
+
+  it('a fresh shop has an empty pinned store, and allOrders reads pinned first, then the own ones', () => {
+    const s = shop();
+    expect(s.pinned).toEqual([]);
+    expect(allOrders(s)).toEqual([]);
+    pinOrder(s, seeded('ORD-AAAA', 'C-1043'));
+    setLine(s, { sku: 'CANDLE', qty: 1, unitPrice: 250 });
+    placeOrder(s, { lines: orderLines(s), subtotal: 250, total: 250, charged: 250 });
+    expect(allOrders(s).map((o) => o.no)).toEqual(['ORD-AAAA', 1]);
+  });
+
+  it('pinned orders are never evicted by the newest 30 of the player', () => {
+    const s = shop();
+    pinOrder(s, seeded(1002, 'C-1043'));
+    pinOrder(s, seeded('MTAwNA', 'C-1044'));
+    for (let no = 1; no <= 40; no++) pushOrder(s, order(no));
+    expect(s.orders).toHaveLength(30);
+    expect(s.pinned.map((o) => o.no)).toEqual([1002, 'MTAwNA']);
+  });
+
+  it('order ids may be strings; the pinned store is bounded (platform safety) and refuses a repeated id', () => {
+    const s = shop();
+    for (let i = 0; i < LIMITS.pinned; i++) pinOrder(s, seeded(`ORD-${i}`, 'C-1043'));
+    expect(() => pinOrder(s, seeded('ORD-X', 'C-1043'))).toThrow(/pinned/);
+    const t = shop();
+    pinOrder(t, seeded('A', 'C-1043'));
+    expect(() => pinOrder(t, seeded('A', 'C-1044'))).toThrow(/twice|already/);
+  });
+
+  it('placeOrder takes a status, paid by default', () => {
+    const s = shop();
+    setLine(s, { sku: 'CANDLE', qty: 1, unitPrice: 250 });
+    const created = placeOrder(s, { lines: orderLines(s), subtotal: 250, total: 250, charged: 0, status: 'confirmed' });
+    expect(created).toMatchObject({ no: 1, status: 'confirmed', charged: 0 });
+    expect(s.wallet).toBe(5000);
+    setLine(s, { sku: 'CANDLE', qty: 1, unitPrice: 250 });
+    expect(placeOrder(s, { lines: orderLines(s), subtotal: 250, total: 250, charged: 250 })).toMatchObject({ no: 2, status: 'paid' });
+  });
+});

@@ -8,7 +8,7 @@ import { flagFor } from '../../../core/mount.js';
 import type { Challenge } from '../../../core/registry.js';
 import { curlFor, type CurlSpec } from '../../_shared/curl.js';
 import type { Result } from '../../_shared/result.js';
-import { CUSTOMER, formatMoney, setLine, type CartTotals, type Order, type Product, type ShopState } from './shop.js';
+import { CUSTOMER, allOrders, formatMoney, setLine, type CartTotals, type Order, type Product, type ShopState } from './shop.js';
 
 export type { Result } from '../../_shared/result.js';
 
@@ -126,8 +126,11 @@ export interface BaseViewSpec {
   readonly curl: CurlSpec;
   /** The intents' own doors (endpointsOf, or what mountIntents returned), for the one-line endpoint list. */
   readonly endpoints?: readonly Endpoint[];
-  /** The lab's GET endpoints for the API box, paths below the lab. */
-  readonly api?: readonly { readonly path: string; readonly description: string }[];
+  /**
+   * The lab's GET endpoints for the API box, paths below the lab. A path with a parameter (`/api/orders/:id`) links to
+   * its `example` (a concrete path, with its own query if it has one); without an example it is listed without a link.
+   */
+  readonly api?: readonly { readonly path: string; readonly description: string; readonly example?: string }[];
   /** The wallet (cents) the header shows; omit it and the header shows none. */
   readonly wallet?: number;
   /** The intent that ran (Outcome.intent); absent, the body's `intent` field is used. */
@@ -138,6 +141,13 @@ export interface BaseViewSpec {
 
 /** What the player typed in the form that was posted: the intent that ran, and the `sku` and `qty` fields. */
 const keptOf = (req: Request, intent: string | undefined) => ({ intent: intent ?? field(req, 'intent'), sku: field(req, 'sku'), qty: field(req, 'qty') });
+
+/** An API entry's link: its example (or its path when that has no parameter) with the level; '' for a pattern with no example. */
+function apiHref(base: string, level: string, e: { readonly path: string; readonly example?: string }): string {
+  const target = e.example ?? e.path;
+  if (e.example === undefined && /[:*]/.test(e.path)) return '';
+  return `${base}${target}${target.includes('?') ? '&' : '?'}level=${level}`;
+}
 
 /**
  * The base of every Relic Market page, for views/shop-header, message, endpoints and api and the curl note: `base`
@@ -151,7 +161,7 @@ export function baseView(req: Request, res: Response, spec: BaseViewSpec): Recor
     base, served: req.level, customer: CUSTOMER, wallet: spec.wallet === undefined ? null : money(spec.wallet),
     result: spec.result, kept: keptOf(req, spec.intent),
     endpoints: (spec.endpoints ?? []).map((e) => ({ method: e.method, path: e.path, href: href(e.path), fields: e.fields })),
-    api: (spec.api ?? []).map((e) => ({ method: 'GET', path: e.path, href: href(e.path), description: e.description })),
+    api: (spec.api ?? []).map((e) => ({ method: 'GET', path: e.path, href: apiHref(base, req.level, e), description: e.description })),
     curl: curlFor(req, res, spec.curl),
     ...spec.extra,
   };
@@ -195,13 +205,17 @@ export function cartView(state: ShopState, totals: CartTotals, o: { readonly rem
 
 const isoTime = (ms: number): string => (Number.isFinite(ms) && Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString() : '');
 
-/** The orders part (views/orders): newest first, each order the lab's proof holds for with its flag line (flagLine). */
+/**
+ * The orders part (views/orders): the signed-in customer's own orders only (`owner === CUSTOMER.id`; seeded orders of
+ * other customers are never listed here), pinned ones included, newest first, each order the lab's proof holds for with
+ * its flag line (flagLine). An order id is a number or a string.
+ */
 export function ordersView(
   req: Pick<Request, 'sessionId' | 'level'>, state: ShopState,
   o: { readonly challenge: Pick<Challenge, 'id' | 'levels'>; readonly proves: (order: Order) => boolean },
 ): { orders: unknown[] } {
   return {
-    orders: [...state.orders].reverse().map((order) => ({
+    orders: allOrders(state).filter((order) => order.owner === CUSTOMER.id).reverse().map((order) => ({
       no: order.no, status: order.status, at: isoTime(order.at),
       lines: order.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty, kind: l.kind ?? '', unit: money(l.unitPrice) })),
       total: money(order.total), charged: money(order.charged),
