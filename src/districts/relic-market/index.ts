@@ -6,4 +6,5 @@ import './rm-04-nosql-login/challenge.js';
 import './rm-05-negative-quantity/challenge.js';
 import './rm-09-client-side-price/challenge.js';
 import './rm-11-idor-orders/challenge.js';
+import './rm-12-unbounded-export/challenge.js';
 import './rm-14-cart-total-overflow/challenge.js';
