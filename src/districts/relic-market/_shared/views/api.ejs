@@ -1,0 +1,9 @@
+<%# Relic Market API box: the lab's GET endpoints (absolute links with the served level). Renders nothing for a lab without one. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<% if (api.length > 0) { -%>
+  <h2>API</h2>
+  <ul class="shop-api">
+<% api.forEach(function (e) { -%>
+    <li><code><%= e.method %> <a href="<%= e.href %>"><%= e.path %></a></code>: <%= e.description %></li>
+<% }); -%>
+  </ul>
+<% } -%>

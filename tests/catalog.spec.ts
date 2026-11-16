@@ -71,7 +71,9 @@ describe('docs/CATALOG.md generator', () => {
     const a = renderCatalog();
     expect(renderCatalog()).toBe(a);
     for (const r of CATALOG) expect(a).toContain(`| ${r.id} |`);
-    expect(a).toContain('**Total: 18/122 registered**');
+    // Every registered challenge has a catalog row (above), so the total is the registry's size.
+    expect(a).toContain(`**Total: ${allChallenges().length}/${CATALOG.length} registered**`);
+    expect(allChallenges().length).toBeGreaterThanOrEqual(18);
     expect(a).toContain('## Gatekeeper\n');
     expect(a).not.toContain('\r');
   });

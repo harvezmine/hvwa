@@ -5,12 +5,12 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 18/122 registered**
+**Total: 21/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
-| Relic Market | 0 | 14 |
+| Relic Market | 3 | 11 |
 | Scriptorium | 0 | 20 |
 | Forum of Pilgrims | 0 | 12 |
 | Archive API | 0 | 15 |
@@ -46,7 +46,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Relic Market
 
-0/14 registered
+3/14 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -54,16 +54,16 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | planned |
 | RM-03 | Blind time-based SQLi | A05 | A T I D | 2 | planned |
 | RM-04 | NoSQL injection (`$ne` login) | A05 | A T I D | 2 | planned |
-| RM-05 | Negative quantity logic flaw | A06 | A T I D | 2 | planned |
+| RM-05 | Negative quantity logic flaw | A06 | A T I D | 2 | ✅ registered |
 | RM-06 | Coupon stacking | A06 | A T I D | 2 | planned |
 | RM-07 | Race: coupon reuse | A06 | A I D | 2 | planned |
 | RM-08 | Race: balance underflow (single-packet) | A06 | A I D | 2 | planned |
-| RM-09 | Client-side price manipulation | A06 | A T I D | 2 | planned |
+| RM-09 | Client-side price manipulation | A06 | A T I D | 2 | ✅ registered |
 | RM-10 | Currency rounding abuse | A06 | A T I D | 2 | planned |
 | RM-11 | IDOR order access | A01/API1 | A T I D | 2 | planned |
 | RM-12 | API4 unbounded bulk export | API4 | A T I D | 2 | planned |
 | RM-13 | Workflow skip (pay-step bypass) | A06 | A T I D | 2 | planned |
-| RM-14 | Integer overflow in cart total | A05 | A T I D | 2 | planned |
+| RM-14 | Integer overflow in cart total | A05 | A T I D | 2 | ✅ registered |
 
 ## Scriptorium
 
