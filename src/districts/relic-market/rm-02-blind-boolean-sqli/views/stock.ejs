@@ -3,6 +3,7 @@
   <h1>Relic Market stock checker</h1>
   <p class="lab-note">You are browsing as a guest. Your region: <code><%= region %></code></p>
 <%- include('../../_shared/views/message') %>
+  <p class="lab-note">Staff codes live in the <code>staff_codes</code> table, in its <code>code</code> column; this checker reads the <code>stock</code> table.</p>
   <h2>Check stock</h2>
   <form method="post">
     <input type="hidden" name="intent" value="check">

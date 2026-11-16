@@ -247,3 +247,14 @@ describe('RM-03 blind time-based SQLi', () => {
     expect((await agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(404);
   });
 });
+
+describe('RM-03 names its target', () => {
+  it('the summary (ID and EN) and the lab page name the vault table and its pin column', async () => {
+    const { agent } = await freshSession();
+    for (const p of ['/c/RM-03?lang=en', '/c/RM-03?lang=id', `${LAB}?level=acolyte`]) {
+      const html = (await agent.get(p)).text;
+      expect(html, p).toContain('vault');
+      expect(html, p).toMatch(/vault<\/code>[^<]*<code>pin|vault\.pin|<code>pin<\/code>/);
+    }
+  });
+});

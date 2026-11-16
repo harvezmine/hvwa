@@ -259,3 +259,14 @@ describe('RM-02 blind boolean SQLi', () => {
     expect((await agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(404);
   });
 });
+
+describe('RM-02 names its target', () => {
+  it('the summary (ID and EN) and the lab page name the staff_codes table and its code column', async () => {
+    const { agent } = await freshSession();
+    for (const p of ['/c/RM-02?lang=en', '/c/RM-02?lang=id', `${LAB}?level=acolyte`]) {
+      const html = (await agent.get(p)).text;
+      expect(html, p).toContain('staff_codes');
+      expect(html, p).toMatch(/\bcode\b/);
+    }
+  });
+});

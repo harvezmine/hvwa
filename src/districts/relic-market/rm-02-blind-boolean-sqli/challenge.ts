@@ -74,8 +74,8 @@ export const RM02 = register(defineChallenge({
   id: 'RM-02', district: 'relic-market', slug: 'blind-boolean-sqli', dir,
   title: { id: 'SQLi Buta Boolean', en: 'Blind Boolean SQLi' },
   summary: {
-    id: 'Pemeriksa stok hanya menjawab "tersedia" atau "tidak". Gunakan jawaban itu untuk membaca kode staf, lalu tukarkan kodenya.',
-    en: 'The stock checker only answers "in stock" or "not available". Use that answer to read the staff code, then redeem it.',
+    id: 'Pemeriksa stok hanya menjawab "tersedia" atau "tidak". Gunakan jawaban itu untuk membaca kode staf (kolom code di tabel staff_codes), lalu tukarkan kodenya.',
+    en: 'The stock checker only answers "in stock" or "not available". Use that answer to read the staff code (the code column of the staff_codes table), then redeem it.',
   },
   maps: ['A05:2025', 'CWE-89'],
   levels: impl.levels,

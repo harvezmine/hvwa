@@ -58,8 +58,8 @@ export const RM03 = register(defineChallenge({
   id: 'RM-03', district: 'relic-market', slug: 'blind-time-sqli', dir,
   title: { id: 'SQLi Buta Berbasis Waktu', en: 'Blind Time-Based SQLi' },
   summary: {
-    id: 'Pelacak pesanan selalu memberi jawaban yang sama. Ukur waktu jawabannya untuk membaca PIN brankas, lalu tukarkan PIN itu.',
-    en: 'The order tracker always gives the same answer. Time its replies to read the vault PIN, then redeem it.',
+    id: 'Pelacak pesanan selalu memberi jawaban yang sama. Ukur waktu jawabannya untuk membaca PIN brankas (vault.pin: kolom pin di tabel vault), lalu tukarkan PIN itu.',
+    en: 'The order tracker always gives the same answer. Time its replies to read the vault PIN (vault.pin: the pin column of the vault table), then redeem it.',
   },
   maps: ['A05:2025', 'CWE-89'],
   levels: impl.levels,

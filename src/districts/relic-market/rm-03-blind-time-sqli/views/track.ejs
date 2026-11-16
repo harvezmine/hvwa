@@ -4,6 +4,7 @@
   <p class="lab-note">Your last order: <code><%= lastOrder %></code></p>
   <p class="lab-note">Relic Market runs on SQLite with a MySQL-compatible <code>sleep(seconds)</code> helper; heavy queries do not slow it down.</p>
 <%- include('../../_shared/views/message') %>
+  <p class="lab-note">Vault PINs live in the <code>vault</code> table, in its <code>pin</code> column; this tracker reads the <code>orders</code> table.</p>
   <h2>Track your order</h2>
   <form method="post">
     <input type="hidden" name="intent" value="track">
