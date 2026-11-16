@@ -137,7 +137,10 @@ describe('simInbox: mailboxes keyed by address', () => {
     expect(m).toMatchObject({ from: '', subject: '', body: '', links: [] });
   });
 
-  it(`refuses bad mailbox lists: more than ${SIM_LIMITS.mailboxes}, or an address that is not one`, () => {
+  it(`refuses bad mailbox lists: more than ${SIM_LIMITS.mailboxes} (the player's included), or an address that is not one`, () => {
+    expect(SIM_LIMITS.mailboxes).toBe(3); // the player's, the admin's, and one spare
+    expect(inSession(() => simInbox({ mailboxes: [ADMIN_MAILBOX, 'other@citadel.test'] })).addresses).toHaveLength(3);
+    expect(() => inSession(() => simInbox({ mailboxes: [ADMIN_MAILBOX, 'a@citadel.test', 'b@citadel.test'] }))).toThrow(/at most 3 mailboxes/);
     const many = Array.from({ length: SIM_LIMITS.mailboxes }, (_, i) => `u${i}@citadel.test`);
     expect(() => inSession(() => simInbox({ mailboxes: many }))).toThrow(/mailboxes/);
     expect(() => inSession(() => simInbox({ mailboxes: ['no-at-sign'] }))).toThrow(/address/);

@@ -37,8 +37,8 @@ export const SIM_LIMITS = Object.freeze({
   maxRedirects: 10,
   /** Longest mail address (and From line). */
   addressLength: 254,
-  /** Most mailboxes in one inbox, the player's included. */
-  mailboxes: 8,
+  /** Most mailboxes in one inbox, the player's included (a lab needs the player's and the admin's). */
+  mailboxes: 3,
   /** Mails kept per mailbox; the oldest is dropped. */
   mailsPerMailbox: 10,
   subjectLength: 200,

@@ -443,8 +443,9 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   (`no-referrer-when-downgrade`). The Referer never carries userinfo or a fragment, and nothing ever comes FROM attacker.test.
   So an OAuth code leaks through `Referer` only from a page that forwards (GK-10 Inquisitor: the callback page moves on
   to `next=`), and Divine can stop it (`Referrer-Policy: no-referrer`, no secrets in URLs, no open forward).
-- **Limits** (`SIM_LIMITS`): URL 2048 chars, 10 redirects, 8 mailboxes of 10 mails (subject 200, body 2000, 3 links),
-  30 log entries, 20 cookies of 4096 bytes, 5 visits, notes of 500 chars.
+- **Limits** (`SIM_LIMITS`): URL 2048 chars, 10 redirects, 3 mailboxes (the player's included) of 10 mails (subject 200,
+  body 2000, 3 links), 30 log entries, 20 cookies of 4096 bytes, 5 visits (page bodies kept to 2000 chars), notes of
+  500 chars. Every clipped field is a copy, so an over-long input is never kept alive behind its clip.
 
 ### All victim state goes through `perSession`
 
