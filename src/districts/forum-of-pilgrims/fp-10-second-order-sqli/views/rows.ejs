@@ -1,0 +1,23 @@
+<%# FP-10 result page: a second use of the stored name (activity or report). Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1><%= heading %> <%= name %></h1>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+<% if (columns.length > 0) { -%>
+  <table>
+    <thead><tr><% columns.forEach(function (c) { %><th><%= c %></th><% }); %></tr></thead>
+    <tbody>
+<% rows.forEach(function (r) { -%>
+      <tr data-row><% r.forEach(function (v) { %><td><%= v %></td><% }); %></tr>
+<% }); -%>
+    </tbody>
+  </table>
+<% if (more) { -%>
+  <p class="lab-note">Showing the first 20 rows.</p>
+<% } -%>
+<% } else if (!result || result.ok) { -%>
+  <p class="lab-note">Nothing to show.</p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to registration</a></p>
+</section>

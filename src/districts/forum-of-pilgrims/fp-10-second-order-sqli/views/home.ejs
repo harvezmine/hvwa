@@ -1,0 +1,16 @@
+<%# FP-10 lab view: registration. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Forum of Pilgrims — Join</h1>
+  <p class="lab-note">Choose any username to join the forum. Registration stores it safely; the forum then uses your stored name on two pages: your activity (<code><%= base %>/activity</code>) and your report (<code><%= base %>/report</code>). Target: the forum's vault, which holds a secret in the <code>vault</code> table.</p>
+  <form method="post">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <button type="submit">Register</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+<% if (current !== null) { -%>
+  <p class="lab-note" data-testid="who">Signed in as <code><%= current %></code>. <a href="<%= base %>/activity?level=<%= level %>">Your activity</a> · <a href="<%= base %>/report?level=<%= level %>">Your report</a></p>
+<% } -%>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>
