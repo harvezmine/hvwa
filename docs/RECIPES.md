@@ -570,7 +570,8 @@ the container has 512 MB:
   whose instance it keeps), in every lab and at every level, shares `CAPPED_BUDGET_BYTES` (96 MiB). Each store weighs
   its measured worst case plus ~10% (`SIM_LIMITS`): an inbox 576 KiB, an attacker log 416 KiB, a world's own visits
   288 KiB, a victim browser 224 KiB. So a `simWorld()` (its inbox, log and visits) weighs 1.25 MiB, and with one
-  browser 1.47 MiB; a simulated file system (section 9) weighs 352 KiB. An instance weighs everything its factory built
+  browser 1.47 MiB; a simulated file system (section 9) weighs 352 KiB; an XSS browser (section 13) adds its kept
+  verdicts, 64 KiB (`XSS_LIMITS.verdictsWeight`), to its browser's weight. An instance weighs everything its factory built
   or used. Creating one that does not fit evicts the least recently used capped instances, whichever lab they belong
   to, as many as it takes; the new one is never refused. A reset, an idle-TTL expiry or the holder's own `maxEntries`
   gives the bytes back. No single store may weigh more than `MAX_STORE_WEIGHT` (1/16 of the budget; the built-ins are
@@ -1368,7 +1369,8 @@ A victim action blocks for that long at most: a self-DoS in a single-player loop
 section 4.
 
 Verdicts list at most 16 sinks with 80-char details, and `linkSinks` at most 64 URLs. An XSS browser keeps its last 5
-page verdicts, about 30 KiB at worst; this will count in the sim byte budget once that budget is weighted per store.
+page verdicts. In the shared byte budget (section 8) it weighs `XSS_LIMITS.verdictsWeight` (64 KiB; about 53 KiB measured at
+worst), on top of its world's and its browser's own weights.
 Every string kept is a copy.
 
 ### Player safety

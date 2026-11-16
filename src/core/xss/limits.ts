@@ -53,4 +53,10 @@ export const XSS_LIMITS = Object.freeze({
   links: 64,
   /** Longest sink detail kept ('iframe[srcdoc] > svg:a[xlink:href=javascript:]'). */
   detailLength: 80,
+  /**
+   * What an XSS browser's kept verdicts weigh in the process-wide byte budget (core/lab.ts capPerSessionHolder), on top
+   * of its world's and its browser's own weights: 5 pages x (page + DOM write) x 16 sinks of 80 two-byte chars, plus
+   * the pages' URLs, measured with a full GC (tests/xss-victim.spec.ts "memory", ~53 KiB) plus ~10%, rounded up to 32 KiB.
+   */
+  verdictsWeight: 64 * 1024,
 });

@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Request, Response, Router } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
-import { field, insidePerSessionFactory, labPath } from './lab.js';
+import { capPerSessionHolder, field, insidePerSessionFactory, labPath } from './lab.js';
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 import { sendPage } from './render.js';
 import {
@@ -18,6 +18,7 @@ import type { SimCookieJar } from './sim/cookies.js';
 import { SIM_LIMITS, clip, str } from './sim/limits.js';
 import { ATTACKER_ORIGIN, CITADEL_ORIGIN, classifySimUrl, labHref, type SimUnreachable } from './sim/url.js';
 import { PLAYER_MAILBOX, World, type SimWorld } from './sim/world.js';
+import { XSS_LIMITS } from './xss/limits.js';
 import { markerCall, markerNonce } from './xss/marker.js';
 import { xssOracle, type XssInsertion, type XssOracleOptions, type XssVerdict } from './xss/oracle.js';
 import { DOCUMENT_MIME_TYPES } from './xss/rules.js';
@@ -588,9 +589,8 @@ class XssVictimBrowser implements XssBrowser {
     }
     const fired = page.executes || written?.executes === true;
     if (fired) this.fired++;
-    // Bounded: SIM_LIMITS.visits verdicts of at most XSS_LIMITS.sinks sinks each (page and DOM write), every string a copy.
-    // TODO(E2): when capPerSessionHolder takes per-store byte weights, add an XSS browser's verdicts (at most about
-    // 5 x 2 x 16 x 80 chars, ~30 KiB) to the world's weight.
+    // Bounded: SIM_LIMITS.visits verdicts of at most XSS_LIMITS.sinks sinks each (page and DOM write), every string a
+    // copy; they weigh XSS_LIMITS.verdictsWeight in the shared byte budget (xssBrowser declares it).
     this.recent.push(Object.freeze({
       url: clip(r.url, SIM_LIMITS.urlLength), page, ...(written === undefined ? {} : { dom: written }),
       ...(domFailed ? { domFailed: true as const } : {}), fired,
@@ -616,5 +616,8 @@ export function xssBrowser(world: SimWorld, handler: SimHandler, opts: XssVictim
   if (opts.interact !== undefined && typeof opts.interact !== 'boolean') throw new Error('xssBrowser: interact must be a boolean');
   if (opts.dom !== undefined && typeof opts.dom !== 'function') throw new Error('xssBrowser: dom must be a function (page) => { html } | undefined');
   if (typeof handler !== 'function') throw new Error('xssBrowser: handler must be a function');
+  // Its kept verdicts are capped state too: the holder that keeps this browser weighs them in the shared byte budget,
+  // on top of the world's stores and the browser's jar (which world.browser declares). Throws outside a factory.
+  capPerSessionHolder('xssBrowser', { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute, weight: XSS_LIMITS.verdictsWeight });
   return new XssVictimBrowser(world, handler, Object.freeze({ ...opts }));
 }

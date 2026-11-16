@@ -2,7 +2,7 @@
 // decides whether the page's script would have run the player's marker, and if so the admin's stolen canary lands in
 // the player's attacker log. In process; no HTTP (the fixture lab in tests/xss-lab.spec.ts drives the real app).
 import { describe, expect, it } from 'vitest';
-import { perSession } from '../src/core/lab.js';
+import { cappedBudgetUsage, perSession } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { ADMIN_MAILBOX, SIM_LIMITS, simWorld, type SimRequest, type SimResponse, type SimWorld } from '../src/core/sim.js';
 import {
@@ -322,6 +322,46 @@ describe('xssBrowser: the canary is read once the browser has the page\'s cookie
 });
 
 describe('memory: what xssBrowser keeps is its own copy', () => {
+  it(`an XSS browser weighs ${XSS_LIMITS.verdictsWeight / 1024} KiB more than a plain victim browser in the shared byte budget (M4)`, () => {
+    const make = (xss: boolean) => () => perSession(() => {
+      const world = simWorld();
+      const marker = newMarker();
+      return xss ? xssBrowser(world, () => page(''), { marker: marker.call, canary: 'c' }) : world.browser(() => page(''));
+    }).for({ sessionId: `weigh-${++n}`, level: 'acolyte' });
+    const weigh = (f: () => unknown): number => { const before = cappedBudgetUsage().bytes; f(); return cappedBudgetUsage().bytes - before; };
+    const plain = weigh(make(false));
+    expect(plain).toBe(SIM_LIMITS.inboxWeight + SIM_LIMITS.attackerLogWeight + SIM_LIMITS.visitsWeight + SIM_LIMITS.browserWeight);
+    expect(weigh(make(true))).toBe(plain + XSS_LIMITS.verdictsWeight);
+  });
+
+  it('its verdicts, filled to every cap with two-byte text, retain less than that weight', () => {
+    const gc = fullGc();
+    let round = 0;
+    /** More sinks than a verdict lists, each detail a long two-byte custom element name, on every page and DOM write. */
+    const sinks = (m: string, tag: string) => Array.from({ length: XSS_LIMITS.sinks + 4 }, (_, k) => `<x-${`${tag}${k}`.padEnd(90, '✓')} onclick=${m}>x</x-y>`).join('');
+    const url = (i: number, v: number) => `http://citadel.test/${`p${round}-${i}-${v}`.padEnd(SIM_LIMITS.urlLength - 30, 'a')}`;
+    const measure = (xss: boolean): number => {
+      round++;
+      const browsers = Array.from({ length: 16 }, () => perSession(() => {
+        const world = simWorld();
+        const marker = newMarker();
+        const handler = () => page(sinks(marker.call, `p${round}`));
+        return xss ? xssBrowser(world, handler, { marker: marker.call, canary: 'c', dom: () => ({ html: sinks(marker.call, `d${round}`) }) }) : world.browser(handler);
+      }).for({ sessionId: `fill-${++n}`, level: 'acolyte' }));
+      gc(); gc();
+      const a = process.memoryUsage();
+      browsers.forEach((b, i) => { for (let v = 0; v < SIM_LIMITS.visits; v++) b.follow(url(i, v)); });
+      gc(); gc();
+      const b = process.memoryUsage();
+      return ((b.heapUsed - a.heapUsed) + (b.arrayBuffers - a.arrayBuffers)) / browsers.length;
+    };
+    measure(true); // warm up: the first round also allocates compiled code
+    const verdicts = measure(true) - measure(false);
+    // Measured on this box: ~53 KiB; the weight adds ~10%, rounded up to 32 KiB.
+    expect(verdicts).toBeLessThan(XSS_LIMITS.verdictsWeight);
+    expect(verdicts).toBeGreaterThan(20 * 1024); // the fill really filled them
+  });
+
   it(`keeps at most ${SIM_LIMITS.visits} page verdicts of at most ${XSS_LIMITS.sinks} sinks each (M4)`, () => {
     expect(XSS_LIMITS.sinks).toBeLessThanOrEqual(16);
     expect(XSS_LIMITS.detailLength).toBeLessThanOrEqual(80);
