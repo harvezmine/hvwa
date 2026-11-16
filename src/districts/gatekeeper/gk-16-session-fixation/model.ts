@@ -17,6 +17,8 @@ import * as divine from './levels/divine.js';
 
 /** The portal's session cookie. One name per level: levels share the lab path and must not overwrite each other. */
 export const cookieName = (level: Level): string => `portal_sid_${level}`;
+/** Every cookie this lab's pages read at `level`: what visitOf and simVisitOf keep, so both browsers show the same. */
+export const labCookies = (level: Level): readonly string[] => [cookieName(level)];
 
 /** One portal session: who signed in on it (null: nobody yet). */
 export interface Session { user: string | null }
@@ -130,7 +132,7 @@ export const SIGN_IN_PAGE = 'Citadel portal — Sign in';
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  const v = simVisitOf(level, r);
+  const v = simVisitOf(level, r, labCookies(level));
   if (r.path === '/') {
     const p = r.method === 'POST' ? portalSignIn(v, state, field(r, 'username'), field(r, 'password')) : portalHome(v, state);
     return toSim({ ...p, text: p.text === '' ? SIGN_IN_PAGE : `${SIGN_IN_PAGE}\n${p.text}` });

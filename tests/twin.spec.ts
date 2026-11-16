@@ -377,6 +377,16 @@ describe('twin: Visit', () => {
     expect({ ...v.cookies }).toEqual({});
   });
 
+  it('simVisitOf with the lab\'s cookie names keeps only those, as visitOf does: both browsers show a page the same cookies', () => {
+    const jar = (): Record<string, string> => Object.assign(Object.create(null) as Record<string, string>, { a_divine: 'v', other: 'z', b_acolyte: 'w' });
+    const names = ['a_divine', 'missing_divine'];
+    const sim = simVisitOf('divine', { query: new URLSearchParams(''), cookies: jar() } as unknown as SimRequest, names);
+    expect({ ...sim.cookies }).toEqual({ a_divine: 'v' });
+    expect(Object.getPrototypeOf(sim.cookies)).toBeNull();
+    const real = visitOf({ level: 'divine', originalUrl: '/d/unit/twin', cookies: jar() } as unknown as Request, res, names);
+    expect({ ...sim.cookies }).toEqual({ ...real.cookies });
+  });
+
   it('simVisitOf: the victim\'s request on the citadel, base \'\'', () => {
     const r = { query: new URLSearchParams('x=1'), cookies: { a_divine: 'v' } } as unknown as SimRequest;
     expect(simVisitOf('divine', r)).toEqual({ level: 'divine', query: r.query, cookies: r.cookies, base: '' });

@@ -8,15 +8,15 @@ import { sendLinkAction, sendReply, visitOf, type SimBrowser, type Visit } from 
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, roleOf, welcome, type Result } from '../_shared/lab.js';
 import {
-  LINK_REDIRECT, LOGIN_REDIRECT, authorize, citadelSignIn, clientCookie, idpSignIn, impl, labFor, linkCallback, loginCallback,
-  logout, openHome, pidCookie, startFlow, whoIs,
+  LINK_REDIRECT, LOGIN_REDIRECT, authorize, citadelSignIn, clientCookie, idpSignIn, impl, labCookies, labFor, linkCallback,
+  loginCallback, logout, openHome, startFlow, whoIs,
 } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = (name: string): string => join(dir, 'views', `${name}.ejs`);
 
 /** The real request as a Visit: the raw query and only this level's lab cookies. */
-const visit = (req: Request, res: Response): Visit => visitOf(req, res, [clientCookie(req.level), pidCookie(req.level)]);
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 
 /** The admin starts every action signed in to Citadel, whatever the player's last link did. Never browses. */
 const rearm = (req: Request, admin: SimBrowser): void => { admin.cookies.set(clientCookie(req.level), labFor(req).adminSession); };

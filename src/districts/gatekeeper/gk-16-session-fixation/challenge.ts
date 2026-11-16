@@ -8,14 +8,14 @@ import { classifySimUrl, labHref, sendReply, visitOf, type Visit } from '../../.
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, curlFor, sendAdminPage } from '../_shared/lab.js';
 import {
-  adminOpens, cookieName, impl, labFor, portalHome, portalResume, portalSignIn, portalWho, type Portal,
+  adminOpens, cookieName, impl, labCookies, labFor, portalHome, portalResume, portalSignIn, portalWho, type Portal,
 } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = (name: string): string => join(dir, 'views', `${name}.ejs`);
 
 /** The real request as a portal Visit: the raw query and this level's portal cookie. */
-const visit = (req: Request, res: Response): Visit => visitOf(req, res, [cookieName(req.level)]);
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 
 export const GK16 = register(defineChallenge({
   id: 'GK-16', district: 'gatekeeper', slug: 'session-fixation', dir,

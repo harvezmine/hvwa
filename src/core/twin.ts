@@ -173,19 +173,31 @@ export interface Visit {
  * (pass this level's names, e.g. `[sessionCookie(req.level)]`), with labPath(res) as the base.
  */
 export function visitOf(req: Request, res: Response, cookieNames: readonly string[]): Visit {
-  const raw = (req.cookies ?? {}) as Record<string, unknown>;
+  // Everything after the FIRST '?': a URL in a parameter (next=http://x/a?b=1&level=...) keeps its own '?' and the rest.
+  // The slice keeps that first '?', which URLSearchParams drops (exactly one), so a query starting '??' keeps its second.
+  const q = req.originalUrl.indexOf('?');
+  return {
+    level: req.level, query: new URLSearchParams(q === -1 ? '' : req.originalUrl.slice(q)),
+    cookies: namedCookies(req.cookies, cookieNames), base: labPath(res),
+  };
+}
+
+/**
+ * The victim's request on the citadel as a Visit at `level`: its query as the simulated browser sent it, base ''. Pass
+ * the same `cookieNames` as to visitOf, so a page function sees the same cookies in both browsers; without them every
+ * cookie the simulated browser sent is kept (the behaviour before the filter existed).
+ */
+export function simVisitOf(level: Level, r: SimRequest, cookieNames?: readonly string[]): Visit {
+  return { level, query: r.query, cookies: cookieNames === undefined ? r.cookies : namedCookies(r.cookies, cookieNames), base: '' };
+}
+
+/** Only the named cookies that are strings, in a null-prototype record (no name can reach Object.prototype). */
+function namedCookies(from: unknown, cookieNames: readonly string[]): Record<string, string | undefined> {
+  const raw = (from ?? {}) as Record<string, unknown>;
   const cookies: Record<string, string | undefined> = Object.create(null);
   for (const name of cookieNames) {
     const value = raw[name];
     if (typeof value === 'string') cookies[name] = value;
   }
-  // Everything after the FIRST '?': a URL in a parameter (next=http://x/a?b=1&level=...) keeps its own '?' and the rest.
-  // The slice keeps that first '?', which URLSearchParams drops (exactly one), so a query starting '??' keeps its second.
-  const q = req.originalUrl.indexOf('?');
-  return { level: req.level, query: new URLSearchParams(q === -1 ? '' : req.originalUrl.slice(q)), cookies, base: labPath(res) };
-}
-
-/** The victim's request on the citadel as a Visit at `level`: its query and cookies as the simulated browser sent them, base ''. */
-export function simVisitOf(level: Level, r: SimRequest): Visit {
-  return { level, query: r.query, cookies: r.cookies, base: '' };
+  return cookies;
 }

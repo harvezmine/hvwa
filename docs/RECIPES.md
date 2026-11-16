@@ -147,7 +147,7 @@ case (g)). Divine resists every exploit.
 | `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 | `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
-| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
+| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r, cookieNames?)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
 | `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
@@ -648,12 +648,16 @@ browser's answer:
   keeps a Secure cookie from it in Chromium and Firefox, but maybe not in Safari. `maxAgeSec` is in seconds (Express's
   `maxAge` is milliseconds: `sendReply` converts).
 - **Requests** (`Visit`: `level`, `query` (the raw query string as `URLSearchParams`, never Express's parsed
-  `req.query`), `cookies` (only the lab's own, as strings), `base`): `visitOf(req, res, cookieNames)` on a real route
-  (pass this level's cookie names; `base` is `labPath(res)`), `simVisitOf(level, r)` in the citadel handler (`base` is
-  `''`). The page function takes the `Visit` and never sees Express or the sim.
+  `req.query`; everything after the first `?`), `cookies` (only the lab's own, as strings), `base`):
+  `visitOf(req, res, cookieNames)` on a real route (`base` is `labPath(res)`), `simVisitOf(level, r, cookieNames)` in
+  the citadel handler (`base` is `''`). Give both the same names, one `labCookies(level)` list in `model.ts`, so a
+  page function sees the same cookies in both browsers. (`simVisitOf` without names keeps every cookie the simulated
+  browser sent: the behaviour before the filter, kept so older callers still compile; GK-10, 11 and 16 pass names.)
+  The page function takes the `Visit` and never sees Express or the sim.
 
 ```ts
 // model.ts: one page function, both browsers
+export const labCookies = (level: Level): readonly string[] => [pidCookie(level)];
 export function authorize(v: Visit, state: LabState): Reply {
   const user = state.sessions.get(v.cookies[pidCookie(v.level)] ?? '');
   if (user === undefined) return { status: 200, text: 'Sign in first.' };
@@ -662,12 +666,12 @@ export function authorize(v: Visit, state: LabState): Reply {
   return { status: 302, location: `${to}?code=${issueCode(state, user)}`, text: '' };
 }
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  if (r.path === '/idp/authorize') return toSim(authorize(simVisitOf(level, r), state));
+  if (r.path === '/idp/authorize') return toSim(authorize(simVisitOf(level, r, labCookies(level)), state));
   return { status: 404, body: 'Not found' };
 }
 
 // challenge.ts: the twin of http://citadel.test/idp/authorize, in the player's own browser
-const visit = (req: Request, res: Response): Visit => visitOf(req, res, [pidCookie(req.level)]);
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 router.get('/idp/authorize', (req, res) => {
   const r = authorize(visit(req, res), labFor(req));
   return sendReply(res, r, () => sendPage(res, view('idp'), { base: labPath(res), text: r.text })); // never res.redirect
