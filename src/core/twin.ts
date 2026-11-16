@@ -35,12 +35,13 @@ export interface TwinCookie {
   readonly httpOnly?: boolean;
   /**
    * Default 'Lax', as `hvwa_sid`. A lab whose lesson is SameSite (CSRF) sets it per level, in the level file, so View
-   * Source shows it. Browsers drop `SameSite=None` without Secure.
+   * Source shows it. 'None' needs `secure: true` (it throws otherwise): browsers drop `SameSite=None` without Secure.
    */
   readonly sameSite?: TwinSameSite;
   /**
-   * Default false. A browser keeps a Secure cookie only from a secure origin; the simulated browser on
-   * http://citadel.test refuses one, as a browser does on plain http.
+   * Default false. A browser keeps a Secure cookie only from a secure origin. Today the simulated browser on
+   * http://citadel.test refuses one, as a browser does on plain http (engine task E1 will make it accept them); the
+   * player's own browser treats http://127.0.0.1 as secure in Chromium and Firefox, maybe not in Safari.
    */
   readonly secure?: boolean;
 }
@@ -62,13 +63,20 @@ export interface Reply {
 /** The cookie path a level function uses for its base: '' (the citadel) is '/'. */
 export const cookiePath = (base: string): string => base || '/';
 
-/** A cookie's attributes with the defaults applied (HttpOnly, SameSite=Lax, not Secure). Throws on an unknown SameSite. */
+/**
+ * A cookie's attributes with the defaults applied (HttpOnly, SameSite=Lax, not Secure). Throws on an unknown SameSite,
+ * and on SameSite=None without `secure: true` (set or cleared): browsers drop that cookie, so a lab would test nothing.
+ */
 function attributesOf(c: TwinCookie): { readonly httpOnly: boolean; readonly sameSite: TwinSameSite; readonly secure: boolean } {
   const sameSite: unknown = c.sameSite ?? 'Lax';
   if (typeof sameSite !== 'string' || !SAME_SITES.has(sameSite)) {
     throw new Error(`TwinCookie "${c.name}": sameSite must be 'Strict', 'Lax' or 'None' (got ${JSON.stringify(sameSite)})`);
   }
-  return { httpOnly: c.httpOnly ?? true, sameSite: sameSite as TwinSameSite, secure: c.secure === true };
+  const secure = c.secure === true;
+  if (sameSite === 'None' && !secure) {
+    throw new Error(`TwinCookie "${c.name}": sameSite 'None' needs secure: true (browsers drop a SameSite=None cookie that is not Secure)`);
+  }
+  return { httpOnly: c.httpOnly ?? true, sameSite: sameSite as TwinSameSite, secure };
 }
 
 /** The Set-Cookie line the simulated browser receives for `c`. */
@@ -131,8 +139,9 @@ export function forwardNote(res: Response, target: string): ForwardNote {
  *   (and a flag) included, and the browser is never sent on, so a forward off the lab is never a real redirect.
  */
 export async function sendReply(res: Response, r: Reply, render: (forward?: ForwardNote) => Promise<void>): Promise<void> {
-  for (const c of r.cookies ?? []) {
-    const a = attributesOf(c);
+  // Every cookie is checked before any is set: a refused one fails the whole Reply, never half of it.
+  const checked = (r.cookies ?? []).map((c) => ({ c, a: attributesOf(c) }));
+  for (const { c, a } of checked) {
     const opts = {
       path: c.path, httpOnly: a.httpOnly, sameSite: a.sameSite.toLowerCase() as 'strict' | 'lax' | 'none',
       ...(a.secure ? { secure: true } : {}),

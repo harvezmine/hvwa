@@ -639,11 +639,14 @@ browser's answer:
   `cookiePath(base)` (`base || '/'`). The defaults are HttpOnly and `SameSite=Lax` (as `hvwa_sid`), not Secure; both
   browsers get the same attributes. `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
   `sameSite: 'Strict' | 'Lax' | 'None'`: a lab whose lesson is SameSite (CSRF) sets it per level IN THE LEVEL FILE, so
-  View Source and the Diff show it (Acolyte's `'None'` is the realistic misconfiguration); any other value throws.
-  `secure: true` adds Secure. Mind the open edge: today the simulated browser on `http://citadel.test` refuses a
-  Secure cookie (as a browser does on plain http), and its jar ignores SameSite, while real browsers drop
-  `SameSite=None` without Secure. How the sim treats `None` is engine task E1's SameSite jar; a CSRF lab builds on that.
-  `maxAgeSec` is in seconds (Express's `maxAge` is milliseconds: `sendReply` converts).
+  View Source and the Diff show it (Acolyte's `sameSite: 'None'` with `secure: true` is the realistic
+  misconfiguration). Any other value throws, and so does `'None'` without `secure: true`, set or cleared: browsers
+  drop a `SameSite=None` cookie that is not Secure, so the lab would test nothing. `secure: true` adds Secure. The
+  open edge: today the simulated browser on `http://citadel.test` refuses a Secure cookie (as a browser does on plain
+  http) and its jar ignores SameSite; engine task E1 will make the sim jar accept Secure cookies from
+  `http://citadel.test` and apply SameSite. The player's own browser treats `http://127.0.0.1` as a secure context and
+  keeps a Secure cookie from it in Chromium and Firefox, but maybe not in Safari. `maxAgeSec` is in seconds (Express's
+  `maxAge` is milliseconds: `sendReply` converts).
 - **Requests** (`Visit`: `level`, `query` (the raw query string as `URLSearchParams`, never Express's parsed
   `req.query`), `cookies` (only the lab's own, as strings), `base`): `visitOf(req, res, cookieNames)` on a real route
   (pass this level's cookie names; `base` is `labPath(res)`), `simVisitOf(level, r)` in the citadel handler (`base` is
