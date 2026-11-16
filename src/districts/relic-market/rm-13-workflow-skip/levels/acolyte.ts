@@ -1,5 +1,5 @@
 import { formatMoney, insufficientFunds } from '../../_shared/shop.js';
-import { describeFlow, pspCharge, type CheckoutFlow, type LabState, type PayOutcome } from '../model.js';
+import { flowResult, pspCharge, type CheckoutFlow, type LabState, type PayOutcome } from '../model.js';
 import type { Result } from '../../../_shared/result.js';
 
 // ACOLYTE — no defense. Paying works (the provider charges the wallet and the checkout is marked paid), but nothing
@@ -14,7 +14,7 @@ export function pay(state: LabState, co: CheckoutFlow): PayOutcome {
 }
 
 export function paymentReturn(_state: LabState, co: CheckoutFlow, _status: string): Result {
-  return { ok: true, text: describeFlow(co) };
+  return flowResult(co);
 }
 
 export function confirm(_state: LabState, co: CheckoutFlow, _req: { readonly stepCookie: string | undefined }): Result {

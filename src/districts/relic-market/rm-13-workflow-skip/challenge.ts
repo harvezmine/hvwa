@@ -72,7 +72,7 @@ function shipping(req: Request): Outcome {
 function pay(req: Request, res: Response): Outcome {
   const co = flowOf(req);
   if (co === undefined) return refusal(UNKNOWN);
-  if (co.state === 'paid' || co.state === 'confirmed') return { result: { ok: false, text: ALREADY_PAID }, status: 409 };
+  if (co.state === 'paid' || co.state === 'confirmed' || co.received >= co.total) return { result: { ok: false, text: ALREADY_PAID }, status: 409 };
   const out = impl.for(req.level).pay(labFor(req), co);
   if (out.kind === 'redirect') {
     // A lab-local redirect (labPath, never a simulated URL): the return page the provider's answer is carried to.
@@ -97,13 +97,15 @@ function confirm(req: Request): Outcome {
   if (co.state === 'confirmed') return success(`Order #${co.orderNo ?? 0} was already confirmed.`);
   const r = impl.for(req.level).confirm(state, co, { stepCookie: stepCookieOf(req) });
   if (!r.ok) return { result: r, status: 402 };
+  co.state = 'confirmed'; // the route records the transition itself: one order per checkout, whatever a level did
+  const no = state.nextOrderNo;
   const order: Order = Object.freeze({
-    no: state.nextOrderNo, owner: CUSTOMER.id, lines: co.lines, discounts: Object.freeze([]), subtotal: co.total, total: co.total,
+    no, owner: CUSTOMER.id, lines: co.lines, discounts: Object.freeze([]), subtotal: co.total, total: co.total,
     charged: co.received, status: 'confirmed', at: state.clock.now(),
   });
   state.nextOrderNo += 1;
   pushOrder(state, order);
-  co.orderNo = order.no as number;
+  co.orderNo = no;
   const base = `Order #${order.no} confirmed for shipping.`;
   return success(proves(order) ? `${base} ${flagLine(req, RM13)}` : base);
 }

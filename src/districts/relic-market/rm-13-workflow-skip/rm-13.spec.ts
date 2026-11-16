@@ -8,7 +8,7 @@ import {
   cartOf, describeShopBasics, ordersOf, productForm, shopClient, walletOf, type ShopCtx,
 } from '../_shared/shop-lab.testkit.js';
 import { RM13 } from './challenge.js'; // registers RM-13 before createApp() inside freshSession
-import { START_WALLET, labState, pspKey, signNotify } from './model.js';
+import { START_WALLET, labState, pspCharge, pspKey, signNotify } from './model.js';
 import * as divine from './levels/divine.js';
 
 const LAB = '/d/relic-market/workflow-skip';
@@ -444,5 +444,53 @@ describe('RM-13 odds and ends', () => {
     const res = await confirm(c, id);
     expect(panelsOf(res.text)).toEqual([{ id, state: 'confirmed' }]);
     expect(ordersOf(res.text)[0].flag).toMatch(FLAG_RE);
+  });
+});
+
+describe('RM-13 review fixes', () => {
+  it('two pays in a row WITHOUT following the redirect charge once, at every level', async () => {
+    for (const level of LEVELS) {
+      const c = await ctx(level);
+      const id = await start(c, 'CANDLE');
+      await shipping(c, id);
+      const first = await post(c, '/checkout/pay', { checkout: id });
+      const second = await post(c, '/checkout/pay', { checkout: id });
+      expect(first.status === 303 || first.status === 200, level).toBe(true);
+      expect(second.status, level).toBe(409);
+      expect(labState(c.sid, level).wallet, level).toBe(START_WALLET - 250);
+      expect(stateOf(c, id)?.received, level).toBe(250);
+    }
+  });
+
+  it('the provider never charges a checkout again once it has received the total', async () => {
+    const c = await ctx('inquisitor');
+    const id = await start(c, 'CANDLE');
+    const state = labState(c.sid, 'inquisitor');
+    const co = stateOf(c, id);
+    if (co === undefined) throw new Error('no checkout');
+    expect(pspCharge(state, co)).toBe(true);
+    expect(pspCharge(state, co)).toBe(true); // idempotent: already received, nothing more taken
+    expect(state.wallet).toBe(START_WALLET - 250);
+    expect(co.received).toBe(250);
+  });
+
+  it('a declined payment shows as an error message at divine (lab-error), a received one as success', async () => {
+    const c = await ctx('divine');
+    const id = await start(c, 'RELIQUARY');
+    await shipping(c, id);
+    const failed = await pay(c, id);
+    expect(failed.text).toMatch(/class="lab-message lab-error"[^>]*>Payment failed/);
+    const d = await ctx('divine');
+    const id2 = await start(d, 'CANDLE');
+    await shipping(d, id2);
+    expect((await pay(d, id2)).text).toMatch(/class="lab-message lab-success"[^>]*>Payment received/);
+  });
+
+  it('the checkout panel says "marked paid" for the shop record, not "received"', async () => {
+    const c = await ctx('acolyte');
+    await start(c, 'CANDLE');
+    const html = (await home(c)).text;
+    expect(html).toContain('marked paid');
+    expect(html).not.toMatch(/received \$/);
   });
 });

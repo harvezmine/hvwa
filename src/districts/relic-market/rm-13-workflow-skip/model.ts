@@ -81,6 +81,7 @@ export function addCheckout(state: LabState, co: CheckoutFlow): void {
  * level's decision (`paid`), and the proof compares the two.
  */
 export function pspCharge(state: ShopState, co: CheckoutFlow): boolean {
+  if (co.received >= co.total) return true; // idempotent: a checkout is never charged again once the provider has its total
   if (!Number.isSafeInteger(co.total) || co.total < 0 || state.wallet < co.total) return false;
   state.wallet -= co.total;
   co.received += co.total;
@@ -133,6 +134,11 @@ export function describeFlow(co: CheckoutFlow): string {
     case 'confirmed': return 'Payment received and the order is confirmed.';
     default: return co.declined ? 'Payment failed: the provider declined it.' : 'Payment not received yet.';
   }
+}
+
+/** What a checkout says about itself as a lab message: a declined payment is an error, anything else is not. */
+export function flowResult(co: CheckoutFlow): Result {
+  return { ok: !co.declined || co.state === 'paid' || co.state === 'confirmed', text: describeFlow(co) };
 }
 
 /** The proof (the oracle, not the flaw): an order confirmed for shipping with less actually charged (the provider's ledger) than it is worth. */

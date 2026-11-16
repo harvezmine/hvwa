@@ -12,7 +12,7 @@
 <% checkouts.forEach(function (co) { -%>
   <section class="shop-checkout" data-checkout="<%= co.id %>" data-state="<%= co.state %>">
     <h3>Checkout <code><%= co.id %></code>: <%= co.state %></h3>
-    <p><%= co.items %>. Total <%= co.total %>, received <%= co.paid %>.<% if (co.address) { %> Ships to <%= co.address %>.<% } %></p>
+    <p><%= co.items %>. Total <%= co.total %>, marked paid <%= co.paid %> (ditandai lunas).<% if (co.address) { %> Ships to <%= co.address %>.<% } %></p>
     <ol class="shop-steps">
 <% co.steps.forEach(function (s) { -%>
       <li data-done="<%= s.done ? 'yes' : 'no' %>"><%= s.name %><%= s.done ? ' (done)' : '' %></li>

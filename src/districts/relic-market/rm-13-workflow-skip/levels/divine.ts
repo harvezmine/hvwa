@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { describeFlow, findCheckout, pspCharge, signNotify, type CheckoutFlow, type LabState, type PayOutcome, type PspNotify } from '../model.js';
+import { flowResult, findCheckout, pspCharge, signNotify, type CheckoutFlow, type LabState, type PayOutcome, type PspNotify } from '../model.js';
 import type { Result } from '../../../_shared/result.js';
 
 // DIVINE — secure reference: the steps run in order (shipping, then pay, then confirm), each transition is one-way and
@@ -44,7 +44,7 @@ export function pay(state: LabState, co: CheckoutFlow): PayOutcome {
 }
 
 export function paymentReturn(_state: LabState, co: CheckoutFlow, _status: string): Result {
-  return { ok: true, text: describeFlow(co) };
+  return flowResult(co);
 }
 
 export function confirm(_state: LabState, co: CheckoutFlow, _req: { readonly stepCookie: string | undefined }): Result {
