@@ -242,3 +242,12 @@ describe('FP-08 page', () => {
     for (const level of LEVELS) expectNoWayOut(await home(agent, level), level);
   });
 });
+
+describe('FP-08 thread page', () => {
+  it('does not replace the page title with the thread title (the lab bar default stays)', async () => {
+    const { agent } = await freshSession();
+    const res = await agent.get(`${LAB}/thread/1?level=acolyte`);
+    expect(res.text).toMatch(/<title>FP-08/);
+    expect(res.text).toContain('Welcome to the Forum of Pilgrims');
+  });
+});

@@ -79,7 +79,7 @@ export const FP08 = register(defineChallenge({
     // The twin of http://citadel.test/thread/<id>: where a local `next` lands.
     router.get('/thread/:id', (req, res) => {
       const r = thread(typeof req.params.id === 'string' ? req.params.id : '');
-      return sendReply(res, r, () => sendPage(res, view('thread'), { base: labPath(res), id: req.params.id, title: r.title ?? '', text: r.text, found: r.title !== undefined }));
+      return sendReply(res, r, () => sendPage(res, view('thread'), { base: labPath(res), id: req.params.id, heading: r.title ?? '', text: r.text, found: r.title !== undefined }));
     });
   },
 }));

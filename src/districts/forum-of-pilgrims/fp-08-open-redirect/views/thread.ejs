@@ -1,7 +1,7 @@
 <%# FP-08 thread page: where a local share link lands. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <section class="lab">
 <% if (found) { -%>
-  <h1><%= title %></h1>
+  <h1><%= heading %></h1>
   <p class="lab-message lab-success" role="status" data-testid="lab-message"><%= text %></p>
   <p class="lab-note">Share this thread: <code>http://citadel.test/go?next=%2Fthread%2F<%= id %></code></p>
 <% } else { -%>
