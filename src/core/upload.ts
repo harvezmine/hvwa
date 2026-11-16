@@ -273,6 +273,28 @@ export function looksLikeImage(bytes: Uint8Array): boolean {
 }
 
 /**
+ * What a safe level serves instead of an uploaded image (SC-09 Divine "transcode, don't validate"): a fresh GIF the
+ * server writes itself from the sniffed size alone, so no byte the player sent survives. Always 35 bytes, whatever
+ * the size: a GIF89a whose logical screen is the width and height clamped to 65535 (a GIF's 16-bit fields; sniffImage
+ * accepts PNG sizes up to 2^31 - 1), a two-colour table, and a single 1x1 image. Nothing is decoded or allocated per
+ * pixel. Throws for a width or height that is not a positive integer (a lab bug).
+ */
+export function placeholderImage(size: Pick<ImageSniff, 'width' | 'height'>): Buffer {
+  const { width, height } = size;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+    throw new Error(`placeholderImage: width and height must be positive integers (got ${String(width)} x ${String(height)})`);
+  }
+  const gif = Buffer.alloc(35); // unpooled, zero-filled: its own memory
+  gif.write('GIF89a', 0, 'latin1');
+  gif.writeUInt16LE(Math.min(width, 0xffff), 6); // logical screen width
+  gif.writeUInt16LE(Math.min(height, 0xffff), 8); // logical screen height
+  gif.set([0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff], 10); // a 2-colour global table (black, white), background 0
+  gif.set([0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00], 19); // image descriptor: a 1x1 image at 0,0
+  gif.set([0x02, 0x02, 0x44, 0x01, 0x00, 0x3b], 29); // LZW minimum code size 2, one data block for one pixel, trailer
+  return gif;
+}
+
+/**
  * Most uploads being received or parsed at once, process-wide. Each one holds its body (up to 2 MiB) and the
  * parser's copies while it lasts, so this bounds the transient memory of all upload routes together.
  */

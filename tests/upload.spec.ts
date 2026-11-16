@@ -5,7 +5,8 @@ import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
 import { DIVINE_DB_ERROR, field, tryDb } from '../src/core/lab.js';
 import {
-  UPLOADS_IN_FLIGHT, UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, settle, sniffImage, uploadGate, uploadsInFlight, type ParsedUpload,
+  UPLOADS_IN_FLIGHT, UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, placeholderImage, settle, sniffImage, uploadGate, uploadsInFlight,
+  type ImageSniff, type ParsedUpload,
 } from '../src/core/upload.js';
 import { multipart, uploadReq, type Part } from './support/uploads.js';
 
@@ -380,6 +381,8 @@ describe('looksLikeImage / sniffImage: magic bytes and dimensions from the heade
   it('a right signature with a broken or zero-size header is not an image', () => {
     const bad: Record<string, Buffer> = {
       'PNG without IHDR first': bytes([0x89], 'PNG\r\n\x1a\n', u32be(13), 'tEXt', u32be(1), u32be(1)),
+      'PNG IHDR of length 12': bytes([0x89], 'PNG\r\n\x1a\n', u32be(12), 'IHDR', u32be(1), u32be(1)),
+      'PNG IHDR of length 14': bytes([0x89], 'PNG\r\n\x1a\n', u32be(14), 'IHDR', u32be(1), u32be(1)),
       'PNG 0 wide': IMG.png(0, 5),
       'PNG over 2^31-1 high': IMG.png(5, 0x80000000),
       'GIF 0 high': IMG.gif(5, 0),
@@ -406,6 +409,18 @@ describe('looksLikeImage / sniffImage: magic bytes and dimensions from the heade
     }
     // The shortest prefix each format is accepted with: just the bytes up to its size fields.
     expect(makers.map((make) => shortestAccepted(make(9, 9)))).toEqual([24, 10, 29, 30, 25, 30]);
+  });
+
+  it('sizes of 256 and more read every byte of their fields, and their truncations are refused too', () => {
+    const makers = [IMG.png, IMG.gif, IMG.jpeg, IMG.webpVp8, IMG.webpVp8l, IMG.webpVp8x];
+    for (const make of makers) {
+      const img = make(300, 4100);
+      expect(sniffImage(img)).toMatchObject({ width: 300, height: 4100 });
+      const need = shortestAccepted(img) as number;
+      for (let n = 0; n < need; n++) expect(sniffImage(img.subarray(0, n))).toBeNull();
+    }
+    expect(sniffImage(IMG.png(0x01020304, 0x7fffffff))).toMatchObject({ width: 0x01020304, height: 0x7fffffff });
+    expect(sniffImage(IMG.webpVp8x(0x123456, 0x10000))).toMatchObject({ width: 0x123456, height: 0x10000 });
   });
 
   it("SC-09's lesson: only the header is checked, so a valid header followed by a script passes (a polyglot)", () => {
@@ -473,5 +488,34 @@ describe('uploadGate: at most UPLOADS_IN_FLIGHT uploads at once, process-wide', 
     e.req.emit('error', new Error('aborted'));
     e.res.emit('close');
     expect(uploadsInFlight()).toBe(0);
+  });
+});
+
+describe("placeholderImage: what SC-09 Divine serves instead of the upload (a fixed-size GIF, never the player's bytes)", () => {
+  it('is 35 bytes whatever the sniffed size, a GIF whose logical screen is that size clamped to 65535, with a 1x1 image', () => {
+    const sizes: Array<[number, number]> = [[1, 1], [640, 480], [65535, 65535], [65536, 2], [2 ** 31 - 1, 2 ** 31 - 1]];
+    for (const [width, height] of sizes) {
+      const gif = placeholderImage({ width, height });
+      expect(gif.length, `${width}x${height}`).toBe(35);
+      expect(sniffImage(gif)).toEqual({ type: 'gif', mime: 'image/gif', width: Math.min(width, 65535), height: Math.min(height, 65535) });
+      expect([gif[19], gif.readUInt16LE(24), gif.readUInt16LE(26), gif[gif.length - 1]]).toEqual([0x2c, 1, 1, 0x3b]); // a 1x1 image, the trailer
+      expect([gif.byteOffset, gif.buffer.byteLength]).toEqual([0, 35]); // its own memory
+    }
+    // At 1x1 it is byte for byte the well-known minimal GIF every browser renders.
+    expect(placeholderImage({ width: 1, height: 1 }).toString('base64')).toBe('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAkQBADs=');
+  });
+
+  it("takes only a size: from a polyglot's sniff it holds none of the polyglot", () => {
+    const polyglot = Buffer.concat([IMG.gif(48, 48), Buffer.from('<?hvwa CANARY ?><svg onload=x>')]);
+    const sniff = sniffImage(polyglot);
+    expect(sniff).not.toBeNull();
+    const gif = placeholderImage(sniff as ImageSniff);
+    expect([gif.includes('hvwa'), gif.includes('<')]).toEqual([false, false]);
+  });
+
+  it('refuses a size that is not a positive integer (a lab bug)', () => {
+    for (const [width, height] of [[0, 1], [1, -1], [1.5, 2], [Number.NaN, 1], [Infinity, 1]]) {
+      expect(() => placeholderImage({ width, height }), `${width}x${height}`).toThrow(/positive integer/);
+    }
   });
 });

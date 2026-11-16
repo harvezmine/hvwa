@@ -113,7 +113,7 @@ case (g)). Divine resists every exploit.
 | `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 | `parseMultipart(req, limits?)`, `settle(p)`, `UPLOAD_LIMITS`, `UploadError` | `core/upload` | upload labs: the raw multipart body `express.raw` read on the upload route, parsed and capped; `tryDb(req, await settle(parseMultipart(req)), 'Upload error')` (section 9) |
-| `looksLikeImage(bytes)`, `sniffImage(bytes)` | `core/upload` | PNG/JPEG/GIF/WebP magic bytes and size, from the header ONLY (SC-09's polyglot lesson; never a safety check) (section 9) |
+| `looksLikeImage(bytes)`, `sniffImage(bytes)`, `placeholderImage(sniff)` | `core/upload` | PNG/JPEG/GIF/WebP magic bytes and size, from the header ONLY (SC-09's polyglot lesson; never a safety check); the constant-size GIF a safe level serves instead (section 9) |
 | `readZip(bytes, limits?)`, `ZIP_LIMITS` | `core/upload-zip` | an archive's entries (names exactly as written, bytes), with a zip-bomb guard; synchronous, inside `tryDb` (section 9) |
 | `simFs(opts?)`, `resolveSimPath(path, separators?)`, `SIMFS_LIMITS` | `core/simfs` | one player's simulated file system per level, made in the `perSession` factory; paths resolved by the simulated OS's rules (section 9) |
 | `simInterpret(bytes, canary)` | `core/simfs` | the "webshell": nothing executes; prints the canary if the file holds `<?hvwa CANARY ?>` (section 9) |
@@ -800,14 +800,16 @@ number, never by its name. The level "extracts": it builds the path with its own
 `fs.write`. Note for the lab page: Python's `zipfile` on Windows turns `\` into `/` in `ZipInfo(name)`, so a
 backslash name has to be set on `.filename` afterwards (see `tests/upload-zip.spec.ts`).
 
-### Images: `looksLikeImage(bytes)` / `sniffImage(bytes)` (SC-09)
+### Images: `looksLikeImage(bytes)` / `sniffImage(bytes)` / `placeholderImage(sniff)` (SC-09)
 
 They check the magic bytes and the declared size of PNG, JPEG, GIF and WebP, and **only the header, on purpose**.
 Whatever follows the header is never read, so `GIF89a` + a size + `<?hvwa CANARY ?>` passes. That is the Inquisitor
 lesson (a correct header proves the file's start, not the whole of it). Never use either as a safety check. Divine
-does not validate, it re-encodes: the engine has no image decoder, so Divine builds a fresh image of its own (for
-example a blank GIF of the sniffed size) and keeps no byte the player sent. SVG is not a raster: `looksLikeImage(svg)`
-is false.
+does not validate, it re-encodes. The engine has no image decoder, so Divine serves `placeholderImage(sniff)`: a fresh
+GIF the server writes from the sniffed size alone. It keeps no byte the player sent and is always 35 bytes: its
+logical screen is the size clamped to 65535, and its image is 1x1. **Never allocate pixels from a sniffed size**:
+`sniffImage` accepts PNG sizes up to 2^31 - 1 on each side, so "a blank image of that size" would exhaust the 512 MB
+container. SVG is not a raster: `looksLikeImage(svg)` is false.
 
 ### "Execution": `simInterpret(bytes, canary)`, and why nothing runs
 
