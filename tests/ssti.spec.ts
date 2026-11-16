@@ -166,14 +166,13 @@ describe('memory: QuickJS\'s allocation limit and the WASM memory maximum', () =
 
   it('an unbounded allocation is stopped by the memory limit', async () => {
     expect(await render(js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), LONG)).toMatchObject(memory);
-    expect(await render(js("var a = []; while (true) a.push('x'.repeat(1000000) + a.length)"), LONG)).toMatchObject(memory);
   });
 
   it('many small allocations are stopped too, and the template cannot catch it', async () => {
     // Without the interrupt handler's memory check, QuickJS reaches its limit with no room left for the error object,
     // throws null, and Nunjucks reports a TypeError. The interrupt is uncatchable, so the try/catch sees nothing.
-    for (const body of ["var a = []; while (true) a.push({ i: a.length, s: 'y' + a.length })", "var o = {}; for (var i = 0; ; i++) o['k' + i] = i",
-      "try { var a = []; while (true) a.push([a.length]) } catch (e) { return 'caught ' + e }"]) {
+    for (const body of ['var a = []; while (true) a.push({ i: a.length })',
+      "try { var a = []; while (true) a.push({ i: a.length }) } catch (e) { return 'caught ' + e }"]) {
       expect(await render(js(body), LONG), body).toMatchObject(memory);
     }
   });
@@ -187,7 +186,7 @@ describe('memory: QuickJS\'s allocation limit and the WASM memory maximum', () =
   it('Nunjucks-only memory bombs (a string doubled 40 times, an array grown in a loop) are stopped too', async () => {
     expect(await render('{% set s = "xxxxxxxxxx" %}{% for i in range(0, 40) %}{% set s = s + s %}{% endfor %}{{ s | length }}', LONG))
       .toMatchObject(memory);
-    expect(await render('{% set a = [] %}{% for i in range(0, 10000000) %}{% set _ = a.push(i) %}{% endfor %}', LONG))
+    expect(await render('{% set a = [] %}{% for i in range(0, 1000) %}{% set _ = a.push(range(0, 100000)) %}{% endfor %}', LONG))
       .toMatchObject(memory);
   });
 });

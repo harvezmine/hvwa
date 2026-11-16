@@ -59,11 +59,11 @@ describe('both transports agree', () => {
     { template: js("var a = []; while (true) a.push({ i: a.length })"), timeoutMs: LONG },
     { template: js('(function f() { f() })()') },
     { template: '{% macro m(n) %}{{ m(n + 1) }}{% endmacro %}{{ m(0) }}' },
-    // JSON.stringify over a deep value runs ~0.2 s with no interrupt check: in the worker it reaches QuickJS's stack
-    // limit, on this thread (a 1 MB native stack) a native stack overflow first. Both are 'stack' once the deadline
-    // cannot pass first; with the default deadline a loaded machine may make the worker's answer a timeout instead.
-    { template: js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a).length'), timeoutMs: LONG },
     { template: '{% for i in range(0, 2000) %}0123456789{% endfor %}' },
+    // Not here: JSON.stringify over a deep value. It runs ~0.2 s with no interrupt check, then the worker reaches
+    // QuickJS's stack limit while this thread (a 1 MB native stack) overflows natively first: both 'stack', unless a
+    // loaded machine lets the worker's deadline pass first. Each side is checked on its own (ssti.spec.ts, the
+    // watchdog case below).
   ];
 
   it('the worker and the in-thread transport give the same result for every case', async () => {
@@ -118,11 +118,14 @@ describe('one long-lived worker, healthy after every bound', () => {
 
 describe('the watchdog: what the interrupt handler cannot stop', () => {
   it('a native operation that overruns the watchdog gets its worker terminated; the next render gets a fresh one', async () => {
-    const t = open(workerTransport({ watchdogMs: () => 60 }));
+    // A 60 ms watchdog for the one uninterruptible job only (about 0.2 s inside JSON.stringify's cycle check, where
+    // QuickJS never polls the interrupt handler); the ordinary renders around it keep a generous one, so a loaded
+    // machine cannot turn them into timeouts.
+    const deep = js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a).length');
+    const t = open(workerTransport({ watchdogMs: (j) => (j.template === deep ? 60 : 10_000) }));
     expect(await t.render(job({ template: '{{ 1 }}' }))).toMatchObject({ ok: true, output: '1' });
     const first = (await t.stats()).threadId;
-    // About 0.2 s inside JSON.stringify's cycle check, where QuickJS never polls the interrupt handler.
-    const r = await t.render(job({ template: js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a).length') }));
+    const r = await t.render(job({ template: deep }));
     expect(r).toEqual({ ok: false, limit: 'timeout', error: `The template took too long to render (over ${SSTI_LIMITS.defaultTimeoutMs} ms).`, shellCalls: [] });
     expect(await t.render(job({ template: '{{ 6 * 7 }}' }))).toEqual(ok42);
     const s = await t.stats();
