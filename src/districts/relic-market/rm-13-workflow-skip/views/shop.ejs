@@ -1,0 +1,43 @@
+<%# RM-13 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views; the checkout panels show each checkout's state and its four steps (start, shipping, pay, confirm), each with its own form. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market' }) %>
+  <p class="lab-note">Checking out takes four steps: start (from your cart), shipping, pay with Pilgrim Pay, and confirm. Each step has its own button below.</p>
+<%- include('../../_shared/views/message') %>
+<%- include('../../_shared/views/catalog') %>
+<%- include('../../_shared/views/cart') %>
+  <h2>Your checkouts</h2>
+<% if (checkouts.length === 0) { -%>
+  <p class="lab-note">No checkouts yet: add something to your cart and start one.</p>
+<% } else { -%>
+<% checkouts.forEach(function (co) { -%>
+  <section class="shop-checkout" data-checkout="<%= co.id %>" data-state="<%= co.state %>">
+    <h3>Checkout <code><%= co.id %></code>: <%= co.state %></h3>
+    <p><%= co.items %>. Total <%= co.total %>, received <%= co.paid %>.<% if (co.address) { %> Ships to <%= co.address %>.<% } %></p>
+    <ol class="shop-steps">
+<% co.steps.forEach(function (s) { -%>
+      <li data-done="<%= s.done ? 'yes' : 'no' %>"><%= s.name %><%= s.done ? ' (done)' : '' %></li>
+<% }); -%>
+    </ol>
+    <form method="post">
+      <input type="hidden" name="intent" value="shipping">
+      <input type="hidden" name="checkout" value="<%= co.id %>">
+      <label>Shipping address <input name="address" type="text" autocomplete="off" spellcheck="false" value=""></label>
+      <button type="submit">Save shipping</button>
+    </form>
+    <form method="post">
+      <input type="hidden" name="intent" value="pay">
+      <input type="hidden" name="checkout" value="<%= co.id %>">
+      <button type="submit">Pay with Pilgrim Pay</button>
+    </form>
+    <form method="post">
+      <input type="hidden" name="intent" value="confirm">
+      <input type="hidden" name="checkout" value="<%= co.id %>">
+      <button type="submit">Confirm order</button>
+    </form>
+  </section>
+<% }); -%>
+<% } -%>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>

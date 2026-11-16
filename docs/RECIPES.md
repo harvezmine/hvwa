@@ -1164,6 +1164,8 @@ await sendPage(res, view, shopView(req, res, state, {
 - `shopView` is `baseView` (header data, message, `kept`, curl, endpoint list, API box) plus `catalogView`,
   `cartView` and `ordersView`. A page without a cart (store credit, an exchange, an API landing page) uses
   `baseView(req, res, { result, curl, endpoints?, api?, wallet?, intent?, extra? })` and the parts it has.
+- A lab whose checkout has several steps (RM-13) names the cart button's intent with `checkoutIntent: 'start'` (`shopView`
+  spec or `cartView` option; default `checkout`), so the cart partial's form posts that intent.
 - `kept` is what was posted (`intent`, `sku`, `qty`): a product's quantity field keeps it only after an `add` of
   that product, and a lab's own form keeps its value only after its own intent.
 - Views compose the partials in `relic-market/_shared/views/` (`shop-header`, `message`, `catalog`, `cart`, `orders`,

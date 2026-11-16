@@ -186,13 +186,16 @@ export function catalogView(
 
 /**
  * The cart part (views/cart): each line with the lab's line total (or its note), and the total (or its note).
- * `removable` adds a Remove button per line (for a lab that mounts removeLineIntent as `remove`).
+ * `removable` adds a Remove button per line (for a lab that mounts removeLineIntent as `remove`). `checkoutIntent` is the
+ * intent the Check out button posts (default `checkout`; a multi-step checkout such as RM-13 names its first step).
  */
-export function cartView(state: ShopState, totals: CartTotals, o: { readonly removable?: boolean } = {}): { cart: unknown } {
+export function cartView(
+  state: ShopState, totals: CartTotals, o: { readonly removable?: boolean; readonly checkoutIntent?: string } = {},
+): { cart: unknown } {
   const nameOf = (sku: string): string => state.catalog.get(sku)?.name ?? sku;
   return {
     cart: {
-      removable: o.removable === true,
+      removable: o.removable === true, checkoutIntent: o.checkoutIntent ?? 'checkout',
       rows: totals.lines.map(({ line, total }) => ({
         sku: line.sku, name: nameOf(line.sku), qty: line.qty, kind: line.kind ?? '', unit: money(line.unitPrice),
         line: typeof total === 'number' ? money(total) : null, note: typeof total === 'string' ? total : '',
@@ -235,6 +238,8 @@ export interface ShopViewSpec extends Omit<BaseViewSpec, 'wallet'> {
   readonly fields?: (p: Product) => Readonly<Record<string, string>>;
   /** A Remove button per cart line (the lab mounts removeLineIntent as `remove`). */
   readonly removable?: boolean;
+  /** The intent the cart's Check out button posts (default `checkout`). */
+  readonly checkoutIntent?: string;
 }
 
 /**
@@ -247,7 +252,7 @@ export function shopView(req: Request, res: Response, state: ShopState, spec: Sh
   return {
     ...baseView(req, res, { ...base, wallet: state.wallet }),
     ...catalogView(req, state, { fields: spec.fields, intent: spec.intent }),
-    ...cartView(state, spec.totals, { removable: spec.removable }),
+    ...cartView(state, spec.totals, { removable: spec.removable, checkoutIntent: spec.checkoutIntent }),
     ...ordersView(req, state, { challenge: spec.challenge, proves: spec.proves }),
     ...extra,
   };

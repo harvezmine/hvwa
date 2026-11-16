@@ -5,12 +5,12 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 34/122 registered**
+**Total: 35/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
-| Relic Market | 9 | 5 |
+| Relic Market | 10 | 4 |
 | Scriptorium | 4 | 16 |
 | Forum of Pilgrims | 3 | 9 |
 | Archive API | 0 | 15 |
@@ -46,7 +46,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Relic Market
 
-9/14 registered
+10/14 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -62,7 +62,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | RM-10 | Currency rounding abuse | A06 | A T I D | 2 | planned |
 | RM-11 | IDOR order access | A01/API1 | A T I D | 2 | ✅ registered |
 | RM-12 | API4 unbounded bulk export | API4 | A T I D | 2 | ✅ registered |
-| RM-13 | Workflow skip (pay-step bypass) | A06 | A T I D | 2 | planned |
+| RM-13 | Workflow skip (pay-step bypass) | A06 | A T I D | 2 | ✅ registered |
 | RM-14 | Integer overflow in cart total | A05 | A T I D | 2 | ✅ registered |
 
 ## Scriptorium
