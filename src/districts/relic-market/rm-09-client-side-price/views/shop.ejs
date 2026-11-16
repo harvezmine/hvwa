@@ -1,0 +1,12 @@
+<%# RM-09 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views; the catalog renders each level's hidden form fields verbatim, so devtools shows them. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market' }) %>
+  <p class="lab-note">Your account is on the <code><%= account.priceList %></code> price list. Registered resellers and staff have price lists of their own.</p>
+<%- include('../../_shared/views/message') %>
+<%- include('../../_shared/views/catalog') %>
+<%- include('../../_shared/views/cart') %>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../_shared/views/api') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>

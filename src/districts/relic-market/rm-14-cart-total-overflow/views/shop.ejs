@@ -1,0 +1,12 @@
+<%# RM-14 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views; the cart shows line totals and the total exactly as the level computed them. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market' }) %>
+  <p class="lab-note">Adding a product sets its quantity in your cart. Checkout charges the cart total to your wallet.</p>
+<%- include('../../_shared/views/message') %>
+<%- include('../../_shared/views/catalog') %>
+<%- include('../../_shared/views/cart') %>
+  <p class="lab-note">Our order service stores amounts in cents as a signed 32-bit integer (INT32 range: -2,147,483,648 … 2,147,483,647 cents).</p>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>
