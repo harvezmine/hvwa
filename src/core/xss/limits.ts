@@ -1,0 +1,34 @@
+// src/core/xss/limits.ts — the oracle's bounds. Every page it reads is attacker-influenced, and parse5 is synchronous:
+// these keep one oracle call to a bounded amount of work (measured in tests/xss.spec.ts, "bounds").
+
+/**
+ * Bounds on what the XSS oracle parses. Measured with parse5 8.0.1 (Node 22): its worst inputs are superlinear (one
+ * tag with thousands of distinct attributes: the tokenizer's duplicate check is quadratic; deep or misnested trees:
+ * the tree builder's scope checks are O(depth) per token), so the page size and the tag count are capped BEFORE
+ * parsing, and every further parse (framed documents, the mXSS round trip) draws on one budget.
+ */
+export const XSS_LIMITS = Object.freeze({
+  /** Longest page (UTF-16 code units) the oracle parses; a longer one is refused unparsed (`limited: 'size'`). */
+  htmlLength: 16_384,
+  /**
+   * Most `<` that can open a tag, comment or doctype (`<` followed by a letter, `!`, `/` or `?`), counted before
+   * parsing: an upper bound on tokens and tree depth, which keeps parse5's per-token scope checks linear-ish and its
+   * EOF-in-template recursion shallow. A page with more is refused unparsed (`limited: 'tags'`).
+   */
+  tags: 1024,
+  /**
+   * Deepest tree the mXSS round trip serializes (parse5's serializer recurses once per level; Chromium caps a parsed
+   * DOM at the same depth). A deeper tree is still checked for sinks; only the round trip is skipped (`'depth'`).
+   */
+  depth: 512,
+  /** How deep `<iframe srcdoc>` documents are read (a frame in a frame is 2); deeper ones are not (`'srcdoc'`). */
+  srcdocDepth: 2,
+  /** Characters parsed in all by one call: the page, its framed documents, and the round trip's re-parses (`'budget'`). */
+  parseBudget: 4 * 16_384,
+  /** Wall time after which no further parse starts (`'time'`): a backstop only, the bounds above keep a call far under it. */
+  timeMs: 250,
+  /** Most sinks a verdict lists (and most URLs linkSinks returns). `executes` and `mxss` still consider all of them. */
+  sinks: 64,
+  /** Longest sink detail kept ('iframe[srcdoc] > svg:a[xlink:href=javascript:]'). */
+  detailLength: 120,
+});
