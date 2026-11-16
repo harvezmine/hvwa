@@ -38,7 +38,7 @@ export interface Sink {
 }
 
 /** Which bound stopped part of the analysis (see XSS_LIMITS). */
-export type XssLimit = 'size' | 'tags' | 'nodes' | 'depth' | 'srcdoc' | 'budget' | 'time';
+export type XssLimit = 'size' | 'tags' | 'nodes' | 'dtd' | 'depth' | 'srcdoc' | 'budget' | 'time';
 
 /**
  * How the HTML reaches the DOM.
@@ -85,7 +85,8 @@ export interface XssVerdict {
   readonly mxss: boolean;
   /**
    * A bound stopped part of the analysis. 'size', 'tags' or 'nodes' with no sinks: the page was refused whole
-   * (executes false, deterministically). Otherwise what was skipped: a framed document ('srcdoc', 'nodes', 'budget')
+   * (executes false, deterministically); 'dtd' (syntax 'xml'): refused whole for a DOCTYPE whose internal subset
+   * declares an entity or an attribute list, which Chrome expands or applies (a level must refuse such XML itself). Otherwise what was skipped: a framed document ('srcdoc', 'nodes', 'budget')
    * or the mXSS round trip ('depth', 'budget', 'time': mxss is then false, not proven).
    */
   readonly limited?: XssLimit;

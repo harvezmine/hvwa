@@ -149,6 +149,11 @@ describe('xssBrowser: the admin views a page; the oracle decides whether the pay
       l.admin.follow('http://citadel.test/sigil');
       expect(steals(l).length, `${JSON.stringify(headers)} ${body}`).toBe(fires ? 1 : 0);
     }
+    // A DOCTYPE that declares entities or attribute defaults is refused, not judged: the verdict says so.
+    const dtd = lab((m) => ({ '/sigil': page(`<!DOCTYPE svg [<!ATTLIST svg onload CDATA "${m}">]><svg xmlns="http://www.w3.org/2000/svg"/>`, { 'Content-Type': 'image/svg+xml' }) }));
+    dtd.admin.follow('http://citadel.test/sigil');
+    expect(steals(dtd)).toEqual([]);
+    expect(dtd.admin.verdicts[0].page).toMatchObject({ executes: false, limited: 'dtd' });
   });
 
   it('a CSP sandbox on the response applies (no allow-scripts: nothing runs; no allow-same-origin: nothing reaches the admin\'s cookie)', () => {

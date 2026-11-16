@@ -269,7 +269,7 @@ describe('xssOracle syntax: xml (FP2)', () => {
       `<svg xmlns="${SVG}" onload="${M}"/>`, svg(`<script>${M}</script>`), svg(`<script><![CDATA[${M}]]></script>`),
       svg(`<script>hvwa(&apos;${N}&apos;)</script>`), `<svg xmlns="${SVG}" onload="hvwa(&apos;${N}&apos;)"/>`,
       svg(`<foreignObject><img xmlns="${XHTML}" src="x" onerror="${M}"/></foreignObject>`), svg(`<script href="data:,${encodeURIComponent(M)}"/>`),
-      `<?xml version="1.0"?><!DOCTYPE svg><svg xmlns="${SVG}" onload="${M}"/>`, `<!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="${SVG}" onload="${M}"/>`,
+      `<?xml version="1.0"?><!DOCTYPE svg><svg xmlns="${SVG}" onload="${M}"/>`, `<!DOCTYPE svg [<!ELEMENT svg ANY><!-- a note -->]><svg xmlns="${SVG}" onload="${M}"/>`,
       `<s:svg xmlns:s="${SVG}" onload="${M}"/>`, `<root><svg xmlns="${SVG}" onload="${M}"/></root>`, `<root><x:script xmlns:x="${XHTML}">${M}</x:script></root>`,
       `<html xmlns="${XHTML}"><body><img src="x" onerror="${M}"/></body></html>`, `<html xmlns="${XHTML}"><body onload="${M}"></body></html>`,
       svg(`<svg onload="${M}"/>`), svg(`<iframe xmlns="${XHTML}" srcdoc="&lt;script&gt;${M}&lt;/script&gt;"></iframe>`),
@@ -303,10 +303,33 @@ describe('xssOracle syntax: xml (FP2)', () => {
       svg(`<text>&nbsp;</text><script>${M}</script>`), svg(`<script>${M}<g a=1/></script>`), // the script never ended
       `<svg xmlns="${SVG}" onload="${M}"><g a=1/></svg>`, `<svg xmlns="${SVG}" onload="${M}">`, `<svg xmlns="${SVG}" onload="${M}"/><extra/>`, // the root's load
       svg(`<g a=1/><script>${M}</script>`), svg(`<script>${M}</script>`).replace('xmlns', 'xmlns:p="x" p:q="1" xmlns:p'), `<p:svg xmlns="${SVG}" onload="${M}"/>`,
-      svg(`<script>&x;${M}</script>`), `<!DOCTYPE svg [<!ENTITY x "y">]>${svg(`<script>&x;${M}</script>`)}`, // entities other than the five: not read
+      svg(`<script>&x;${M}</script>`), // an undeclared entity: an error
       svg(`<script>${M}</script>`.replace('script', 'script\u0001')),
     ];
     for (const doc of stops) expect(xml(doc).executes, doc).toBe(false);
+  });
+
+  it("refuses a DOCTYPE whose internal subset declares an entity or an attribute default (limited: 'dtd'): Chrome runs them", () => {
+    // Every one of these RAN in Chrome 157: entity text is markup or code; an ATTLIST default adds a handler.
+    const runInChrome = [
+      `<!DOCTYPE svg [<!ENTITY x "<script>${M}</script>">]><svg xmlns="${SVG}">&x;</svg>`,
+      `<!DOCTYPE svg [<!ENTITY x "${M}">]><svg xmlns="${SVG}"><script>&x;</script></svg>`,
+      `<!DOCTYPE svg [<!ENTITY x "${M}">]><svg xmlns="${SVG}" onload="&x;"/>`,
+      `<!DOCTYPE svg [<!ENTITY x "<image href='x' onerror='${M.replace(/'/g, '`')}'/>">]><svg xmlns="${SVG}">&x;</svg>`,
+      `<!DOCTYPE svg [<!ATTLIST svg onload CDATA "${M}">]><svg xmlns="${SVG}"/>`,
+      `<!DOCTYPE svg [<!ATTLIST image onerror CDATA "${M}">]><svg xmlns="${SVG}"><image href="x"/></svg>`,
+      `<!DOCTYPE html [<!ENTITY x "<img src='x' onerror='${M.replace(/'/g, '`')}'/>">]><html xmlns="${XHTML}"><body>&x;</body></html>`,
+      `<!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="${SVG}" onload="${M}"/>`, // an entity declared, never used
+      `<!DOCTYPE svg [ <!ATTLIST g id ID #IMPLIED> ]><svg xmlns="${SVG}" onload="${M}"/>`,
+    ];
+    for (const doc of runInChrome) expect(xml(doc), doc).toEqual({ executes: false, sinks: [], reachedMarker: false, mxss: false, limited: 'dtd' });
+    // A DOCTYPE with no internal subset, or one with only element declarations and comments, is read as usual.
+    expect(xml(`<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg xmlns="${SVG}" onload="${M}"/>`).executes).toBe(true);
+    expect(xml(`<!DOCTYPE svg [<!ELEMENT svg ANY><!-- <!ENTITY in a comment is still refused? no: a comment -->]><svg xmlns="${SVG}" onload="${M}"/>`).limited).toBe('dtd');
+    // A data: SVG image with such a DTD is not judged: neither its load nor its error event counts.
+    const img = (ev: string) => `<img src="data:image/svg+xml,${encodeURIComponent(`<!DOCTYPE svg [<!ENTITY x \"y\">]><svg xmlns='${SVG}'/>`)}" ${ev}=${M}>`;
+    expect(xssOracle(img('onload'), M).executes).toBe(false);
+    expect(xssOracle(img('onerror'), M).executes).toBe(false);
   });
 
   it('is bounded like HTML: size, tags, elements and attribute text; it never round-trips', () => {

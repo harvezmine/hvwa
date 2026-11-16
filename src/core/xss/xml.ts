@@ -4,6 +4,9 @@
 // and names are case-sensitive. It builds the same node shapes parse5's tree adapter does, so the oracle's walk and rules
 // apply unchanged. One index scanner, linear, no regex on attacker text.
 //
+// A DOCTYPE whose internal subset declares an entity or an attribute list is refused whole ('dtd'): Chrome expands the
+// entities (markup or code) and applies ATTLIST defaults (a handler), which this reader does not model.
+//
 // Errors behave as in Chrome 157 (measured): parsing stops at the first well-formedness error and what was read before
 // stays. An element whose start tag was read keeps its handlers; a script runs only if its end tag was read; an <svg>'s
 // load event fires only if it closed, and the document element's only if the whole document is well-formed.
@@ -23,8 +26,11 @@ const childrenOf = (el: Element): ParentNode =>
 export interface XmlRead {
   readonly document: DefaultTreeAdapterTypes.Document;
   readonly wellFormed: boolean;
-  /** The tree outgrew XSS_LIMITS.elements or XSS_LIMITS.attributeText: nothing is judged. */
-  readonly limited?: 'nodes';
+  /**
+   * Nothing is judged: 'nodes', the tree outgrew XSS_LIMITS.elements or XSS_LIMITS.attributeText; 'dtd', the DOCTYPE's
+   * internal subset declares an entity or an attribute list (Chrome would expand or apply them).
+   */
+  readonly limited?: 'nodes' | 'dtd';
 }
 
 const PREDEFINED: Readonly<Record<string, string>> = Object.freeze({ lt: '<', gt: '>', amp: '&', apos: "'", quot: '"' });
@@ -40,6 +46,7 @@ class XmlError {
   constructor(readonly why: string) {}
 }
 class TooBig {}
+class DtdDeclarations {}
 
 interface Open {
   readonly el: Element;
@@ -132,15 +139,21 @@ class Reader {
     if (!isSpace(this.s.charCodeAt(this.i))) this.fail('a doctype without a name');
     this.skipSpace();
     this.name();
+    let start = -1;
+    let end = -1;
     for (let quote = 0, subset = false; ; this.i++) {
       if (this.i >= this.s.length) this.fail('an unterminated doctype');
       const c = this.s.charCodeAt(this.i);
       if (quote !== 0) { if (c === quote) quote = 0; continue; }
       if (c === 0x22 || c === 0x27) quote = c;
-      else if (c === 0x5b) subset = true; // [
-      else if (c === 0x5d) subset = false; // ]
-      else if (c === 0x3e && !subset) { this.i++; return; } // >
+      else if (c === 0x5b) { subset = true; if (start === -1) start = this.i; } // [
+      else if (c === 0x5d) { subset = false; end = this.i; } // ]
+      else if (c === 0x3e && !subset) { this.i++; break; } // >
     }
+    // Entities and attribute defaults in the internal subset change the document (Chrome expands and applies them):
+    // refuse it rather than judge a different tree. Element declarations and comments change nothing here.
+    const internal = start === -1 ? '' : this.s.slice(start, end === -1 ? this.i : end);
+    if (internal.includes('<!ENTITY') || internal.includes('<!ATTLIST')) throw new DtdDeclarations();
   }
 
   private count(attrs: readonly { readonly name: string; readonly value: string }[]): void {
@@ -332,6 +345,7 @@ export function readXml(text: string): XmlRead {
     return { document: r.document, wellFormed: true };
   } catch (e) {
     if (e instanceof TooBig) return { document: A.createDocument(), wellFormed: false, limited: 'nodes' };
+    if (e instanceof DtdDeclarations) return { document: A.createDocument(), wellFormed: false, limited: 'dtd' };
     if (!(e instanceof XmlError)) throw e;
     afterError(r);
     return { document: r.document, wellFormed: false };
