@@ -75,6 +75,17 @@ export interface ParsedUpload {
   readonly files: readonly UploadedFile[];
 }
 
+/**
+ * A copy of `bytes` in memory of its own: never a view of something larger (a request body, an archive, zlib's
+ * output buffer) and never a slice of Node's shared 8 KiB pool (`Buffer.from(x)` of a small x is one), so keeping it
+ * keeps only its own bytes alive. Every Buffer the upload engine stores goes through it.
+ */
+export function ownBytes(bytes: Uint8Array): Buffer {
+  const out = Buffer.allocUnsafeSlow(bytes.length); // unpooled: its own ArrayBuffer of exactly this length
+  out.set(bytes);
+  return out;
+}
+
 /** What parseMultipart reads from a request: an Express request after express.raw() fits. */
 export interface UploadRequest {
   readonly headers: Readonly<Record<string, string | string[] | undefined>>;
