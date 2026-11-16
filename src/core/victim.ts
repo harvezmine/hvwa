@@ -508,13 +508,15 @@ class XssVictimBrowser implements XssBrowser {
   private recent: XssPageVerdict[] = [];
   /**
    * Pages whose payload ran and whose steal is not logged yet: the canary is read once the browser has stored that
-   * page's Set-Cookie, at the visit's next request or when the visit ends (a script reads document.cookie after the
-   * response's cookies are set). A Refresh hop to attacker.test is logged by the browser first.
+   * page's Set-Cookie (a script reads document.cookie after the response's cookies are set) and before the visit's next
+   * request is answered, or when the visit ends. A Refresh hop to attacker.test is logged by the browser first.
    */
   private fired = 0;
 
   constructor(readonly world: SimWorld, handler: SimHandler, private readonly opts: XssVictimOptions) {
-    this.inner = world.browser((r) => this.render(r, handler(r)));
+    // A page that fired earlier in this visit steals first: its cookies are stored by now, and the next page has not
+    // answered yet (its handler may change what the payload could read).
+    this.inner = world.browser((r) => { this.steal(); return this.render(r, handler(r)); });
   }
 
   get cookies(): SimCookieJar { return this.inner.cookies; }
@@ -549,7 +551,6 @@ class XssVictimBrowser implements XssBrowser {
 
   /** Every citadel answer passes here on its way to the browser, unchanged. A rendered page is judged first. */
   private render(r: SimRequest, res: SimResponse): SimResponse {
-    this.steal(); // a page that fired earlier in this visit: its cookies are stored by now
     if (res === null || typeof res !== 'object' || isThenable(res)) return res; // the browser reports it
     const h = headerLists(res);
     const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;

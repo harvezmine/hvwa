@@ -309,7 +309,7 @@ describe('xssBrowser: the canary is read once the browser has the page\'s cookie
     expect(stolen(l)).toEqual([`${XSS_STEAL_URL}?c=fresh`]);
   });
 
-  it('a page that moves on (Refresh) to a sign-out: the value the page had, read before the next page answers', () => {
+  it('a page that moves on (Refresh) to a sign-out: the value the page had, as its cookies left it', () => {
     const l = cookieLab((m) => ({
       '/p': page(`<img src=x onerror=${m}>`, { 'Set-Cookie': 'session=fresh; Path=/', Refresh: '0; url=/logout' }),
       '/logout': page('bye', { 'Set-Cookie': 'session=; Max-Age=0; Path=/' }),
@@ -317,6 +317,22 @@ describe('xssBrowser: the canary is read once the browser has the page\'s cookie
     l.admin.follow('http://citadel.test/p');
     expect(stolen(l)).toEqual([`${XSS_STEAL_URL}?c=fresh`]);
     expect(l.admin.cookies.get('session')).toBeUndefined();
+  });
+
+  it('the canary is read before the next page answers (a server-state canary the next page rotates)', () => {
+    const l = perSession(() => {
+      const world = simWorld();
+      const marker = newMarker();
+      const state = { token: 'T1' };
+      const admin = xssBrowser(world, (r) => {
+        if (r.path === '/p') return page(`<img src=x onerror=${marker.call}>`, { Refresh: '0; url=/rotate' });
+        if (r.path === '/rotate') { state.token = 'T2'; return page('rotated'); }
+        return { status: 404 };
+      }, { marker: marker.call, canary: () => state.token });
+      return { world, admin };
+    }).for({ sessionId: `rotate-${++n}`, level: 'acolyte' });
+    l.admin.follow('http://citadel.test/p');
+    expect(stolen(l)).toEqual([`${XSS_STEAL_URL}?c=T1`]); // what the payload could read while /p was the page
   });
 
   it('a form post that fires steals once, after the visit', () => {
