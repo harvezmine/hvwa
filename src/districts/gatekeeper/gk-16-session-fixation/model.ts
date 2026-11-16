@@ -1,11 +1,11 @@
 // model.ts — GK-16's lab state, the portal pages both browsers open, and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts. The level modules are gathered here (not in challenge.ts) because
 // the admin's simulated browser needs them too; they import only types from this file, so there is no import cycle.
-import { randomBytes } from 'node:crypto';
 import { byLevel, field, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import type { Text } from '../../../core/registry.js';
 import { CITADEL_ORIGIN, simWorld, type SimBrowser, type SimRequest, type SimResponse, type SimWorld } from '../../../core/sim.js';
+import { newId, trimBounded } from '../../_shared/collections.js';
 import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
 import { cookiePath, toSim, type Reply, type TwinCookie } from '../_shared/twin.js';
 import * as acolyte from './levels/acolyte.js';
@@ -54,13 +54,11 @@ export const impl = byLevel<FixationLevel>({ acolyte, templar, inquisitor, divin
 
 const MAX_ENTRIES = 100;
 
+/** Platform safety, not the lesson: anonymous sessions go before signed-in ones; aliases and resume links oldest first. */
 function bound(state: LabState): void {
-  while (state.sessions.size > MAX_ENTRIES) {
-    const anonymous = [...state.sessions].find(([, s]) => s.user === null)?.[0];
-    state.sessions.delete(anonymous ?? (state.sessions.keys().next().value as string));
-  }
-  while (state.aliases.size > MAX_ENTRIES) state.aliases.delete(state.aliases.keys().next().value as string);
-  while (state.resumes.size > MAX_ENTRIES) state.resumes.delete(state.resumes.keys().next().value as string);
+  trimBounded(state.sessions, { max: MAX_ENTRIES, spare: (_id, s) => s.user !== null });
+  trimBounded(state.aliases, { max: MAX_ENTRIES });
+  trimBounded(state.resumes, { max: MAX_ENTRIES });
 }
 
 /** What a portal page needs from a browser's request. `base`: labPath(res) for real routes, '' on the citadel. */
@@ -181,12 +179,12 @@ const labs = perSession((level: Level): LabState => {
   const state: LabState = {
     world,
     admin: world.browser((r) => citadel(level, state, r)),
-    adminPassword: randomBytes(16).toString('hex'),
+    adminPassword: newId(),
     sessions,
     aliases: new Map(),
     resumes: new Map(),
     openSession(user: string | null): string {
-      const id = randomBytes(16).toString('hex');
+      const id = newId();
       sessions.set(id, { user });
       return id;
     },

@@ -1,13 +1,12 @@
-// _shared/oauth.ts — small plumbing the Pilgrim-ID labs (GK-10, GK-11) share: ids, PKCE's S256, the code record and
-// bounded maps. No policy lives here: which redirect_uri Pilgrim-ID accepts, which state Citadel honours, whether a code
-// is single-use or bound to a verifier is each lab's level decision (levels/*.ts, where View Source and the Diff show it).
+// _shared/oauth.ts — small plumbing the Pilgrim-ID labs (GK-10, GK-11) share: PKCE's verifier and S256, the code record
+// and withParams (random ids and bounded maps live in districts/_shared/collections.ts). No policy lives here: which
+// redirect_uri Pilgrim-ID accepts, which state Citadel honours, whether a code is single-use or bound to a verifier is
+// each lab's level decision (levels/*.ts, where View Source and the Diff show it).
 import { createHash, randomBytes } from 'node:crypto';
 
 /** Citadel's client id at Pilgrim-ID. */
 export const CLIENT_ID = 'citadel';
 
-/** A fresh random id: 16 CSPRNG bytes as 32 hex characters (sessions, codes, states). */
-export const newId = (): string => randomBytes(16).toString('hex');
 /** A fresh PKCE code_verifier (32 CSPRNG bytes, base64url). */
 export const newVerifier = (): string => randomBytes(32).toString('base64url');
 /** PKCE's S256: base64url(SHA-256(verifier)). */
@@ -42,15 +41,4 @@ export function withParams(uri: string, params: Readonly<Record<string, string>>
   const before = hash === -1 ? uri : uri.slice(0, hash);
   const fragment = hash === -1 ? '' : uri.slice(hash);
   return `${before}${before.includes('?') ? '&' : '?'}${new URLSearchParams(params).toString()}${fragment}`;
-}
-
-/** Store under `key`, newest last; beyond `max` entries the oldest key that `keep` does not pin goes. */
-export function putBounded<V>(m: Map<string, V>, key: string, value: V, max: number, keep: (k: string) => boolean = () => false): void {
-  m.delete(key);
-  m.set(key, value);
-  while (m.size > max) {
-    const oldest = [...m.keys()].find((k) => !keep(k));
-    if (oldest === undefined) break;
-    m.delete(oldest);
-  }
 }
