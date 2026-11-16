@@ -5,11 +5,13 @@
 // The level modules are gathered here because the admin's browser needs them too; they import only types from this file.
 import { byLevel, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
-import { CITADEL_ORIGIN, simWorld, type SimBrowser, type SimRequest, type SimResponse, type SimWorld } from '../../../core/sim.js';
+import {
+  CITADEL_ORIGIN, cookiePath, simVisitOf, simWorld, toSim,
+  type Reply, type SimBrowser, type SimRequest, type SimResponse, type SimWorld, type TwinCookie, type Visit,
+} from '../../../core/sim.js';
 import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
 import { newId, putBounded } from '../../_shared/collections.js';
 import { CLIENT_ID, newVerifier, s256, withParams, type IssuedCode } from '../_shared/oauth.js';
-import { cookiePath, toSim, type Reply, type TwinCookie } from '../_shared/twin.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -69,14 +71,6 @@ export interface LabState {
 const MAX_ENTRIES = 50;
 const CODE_TTL_MS = 10 * 60 * 1000;
 const put = <V>(m: Map<string, V>, key: string, value: V, keep?: (k: string) => boolean): void => putBounded(m, key, value, MAX_ENTRIES, keep);
-
-/** What a page needs from a browser's request. `base`: labPath(res) for real routes, '' on the citadel. */
-export interface Visit {
-  readonly level: Level;
-  readonly query: URLSearchParams;
-  readonly cookies: Readonly<Record<string, string | undefined>>;
-  readonly base: string;
-}
 
 const pickAccount = (username: string, password: string, adminPassword: string): string | undefined =>
   username === ADMIN_NAME && password === adminPassword ? ADMIN_NAME
@@ -206,7 +200,7 @@ export function loginCallback(v: Visit, state: LabState): Reply & { readonly use
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  const v: Visit = { level, query: r.query, cookies: r.cookies, base: '' };
+  const v = simVisitOf(level, r);
   switch (r.path) {
     case '/': return toSim({ ...openHome(v, state), text: 'Citadel — Home' });
     case '/logout': return toSim(logout(v, state));

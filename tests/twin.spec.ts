@@ -1,12 +1,14 @@
-// _shared/twin.spec.ts — the Reply adapter of the victim-driven labs: what each browser receives from one Reply.
+// tests/twin.spec.ts — the Reply adapter of the victim-driven labs (core/twin.ts): what each browser receives from one Reply.
 import { fileURLToPath } from 'node:url';
 import { renderFile } from 'ejs';
+import type { Request, Response } from 'express';
 import { describe, it, expect } from 'vitest';
-import { freshSession } from '../../../../tests/helpers.js';
-import { perSession } from '../../../core/lab.js';
-import { defineChallenge, register } from '../../../core/registry.js';
-import { simWorld } from '../../../core/sim.js';
-import { cookiePath, sendReply, toSim, type Reply } from './twin.js';
+import { freshSession } from './helpers.js';
+import { perSession } from '../src/core/lab.js';
+import { defineChallenge, register } from '../src/core/registry.js';
+import {
+  REDIRECT_STATUSES, cookiePath, sendReply, simVisitOf, simWorld, toSim, visitOf, type ForwardNote, type Reply, type SimRequest,
+} from '../src/core/sim.js';
 
 describe('twin: a Reply for the simulated browser', () => {
   it('a page: status and body, no headers it did not ask for', () => {
@@ -39,6 +41,37 @@ describe('twin: a Reply for the simulated browser', () => {
     expect(cookiePath('')).toBe('/');
     expect(cookiePath('/d/gatekeeper/x')).toBe('/d/gatekeeper/x');
   });
+
+  it('cookie attributes per cookie: HttpOnly can be dropped, SameSite chosen, Secure added; the default stays HttpOnly + Lax', () => {
+    const r = toSim({
+      status: 200, text: '',
+      cookies: [
+        { name: 'js_acolyte', value: '1', path: '/', httpOnly: false },
+        { name: 'strict_acolyte', value: '2', path: '/', sameSite: 'Strict' },
+        { name: 'none_acolyte', value: '3', path: '/', sameSite: 'None', secure: true, maxAgeSec: 60 },
+        { name: 'lax_acolyte', value: '4', path: '/', httpOnly: true, sameSite: 'Lax', secure: false },
+        { name: 'gone_acolyte', value: '', path: '/', clear: true, httpOnly: false, sameSite: 'None', secure: true },
+      ],
+    });
+    expect(r.headers?.['Set-Cookie']).toEqual([
+      'js_acolyte=1; Path=/; SameSite=Lax',
+      'strict_acolyte=2; Path=/; HttpOnly; SameSite=Strict',
+      'none_acolyte=3; Path=/; Max-Age=60; HttpOnly; SameSite=None; Secure',
+      'lax_acolyte=4; Path=/; HttpOnly; SameSite=Lax',
+      'gone_acolyte=; Path=/; Max-Age=0; SameSite=None; Secure',
+    ]);
+  });
+
+  it('a SameSite other than Strict, Lax or None is a programming error', () => {
+    for (const sameSite of ['lax', 'strict', 'none', '', 'Lax; Secure']) {
+      expect(() => toSim({ status: 200, text: '', cookies: [{ name: 'a', value: '', path: '/', sameSite: sameSite as never }] }), sameSite)
+        .toThrow(/sameSite must be 'Strict', 'Lax' or 'None'/);
+    }
+  });
+
+  it('the engine\'s redirect statuses are the only ones a Reply redirects on', () => {
+    expect([...REDIRECT_STATUSES]).toEqual([301, 302, 303, 307, 308]);
+  });
 });
 
 // --- sendReply: the same Replies for the player's real browser, through a fixture lab -------------------------------
@@ -55,6 +88,16 @@ const REPLIES: Readonly<Record<string, Reply>> = {
     cookies: [{ name: 'tw_acolyte', value: 'a;b c', path: LAB }, { name: 'gone_acolyte', value: '', path: LAB, clear: true }],
   },
   shortLived: { status: 200, text: '', cookies: [{ name: 'short_acolyte', value: 'x', path: LAB, maxAgeSec: 600 }] },
+  attributes: {
+    status: 200, text: '',
+    cookies: [
+      { name: 'js_acolyte', value: 'x', path: LAB, httpOnly: false },
+      { name: 'strict_acolyte', value: 'y', path: LAB, sameSite: 'Strict' },
+      { name: 'none_acolyte', value: 'z', path: LAB, sameSite: 'None', secure: true, maxAgeSec: 60 },
+      { name: 'gone_acolyte', value: '', path: LAB, clear: true, httpOnly: false, sameSite: 'Strict' },
+    ],
+  },
+  secureOnly: { status: 200, text: '', cookies: [{ name: 'sec_acolyte', value: 's', path: '/', secure: true }, { name: 'plain_acolyte', value: 'p', path: '/' }] },
   forwardCitadel: { status: 200, forward: '/home?x=1', text: 'Signed in.' },
   forwardLab: { status: 200, forward: `${LAB}/inner?y=2`, text: 'Signed in.' },
   forwardAttacker: { status: 200, forward: 'http://attacker.test/x?code=1', text: 'Signed in.' },
@@ -130,6 +173,23 @@ describe('twin: sendReply for the real browser', () => {
     expect(line).toMatch(new RegExp(`^short_acolyte=x; Max-Age=600; Path=${LAB}; Expires=[^;]+; HttpOnly; SameSite=Lax$`));
     expect(toSim(replyNamed('shortLived')).headers?.['Set-Cookie']).toEqual([`short_acolyte=x; Path=${LAB}; Max-Age=600; HttpOnly; SameSite=Lax`]);
   });
+
+  it('cookie attributes reach the real browser too: no HttpOnly when asked, SameSite per cookie, Secure', async () => {
+    const { agent } = await freshSession();
+    const lines = [(await agent.get(`${LAB}/reply/attributes?level=acolyte`)).headers['set-cookie'] ?? []].flat();
+    const line = (name: string) => lines.find((l) => l.startsWith(`${name}=`));
+    expect(line('js_acolyte')).toBe(`js_acolyte=x; Path=${LAB}; SameSite=Lax`);
+    expect(line('strict_acolyte')).toBe(`strict_acolyte=y; Path=${LAB}; HttpOnly; SameSite=Strict`);
+    expect(line('none_acolyte')).toMatch(new RegExp(`^none_acolyte=z; Max-Age=60; Path=${LAB}; Expires=[^;]+; HttpOnly; Secure; SameSite=None$`));
+    expect(line('gone_acolyte')).toBe(`gone_acolyte=; Path=${LAB}; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict`);
+  });
+
+  it('the simulated browser on http://citadel.test refuses a Secure cookie, as a browser does on plain http', () => {
+    const browser = sims.for({ sessionId: 'sim-secure', level: 'acolyte' });
+    browser.follow('http://citadel.test/start/secureOnly');
+    expect(browser.cookies.get('sec_acolyte')).toBeUndefined();
+    expect(browser.cookies.get('plain_acolyte')).toBe('p');
+  });
 });
 
 describe('twin: a page that moves on by itself, in the real browser', () => {
@@ -177,7 +237,7 @@ describe('twin: a page that moves on by itself, in the real browser', () => {
   });
 
   it('the shared note escapes the URL and links only a lab target', async () => {
-    const partial = fileURLToPath(new URL('./views/forward-note.ejs', import.meta.url));
+    const partial = fileURLToPath(new URL('../src/core/views/forward-note.ejs', import.meta.url));
     const render = (forward: unknown) => renderFile(partial, { forward }, { async: false }) as unknown as Promise<string>;
     const away = await render({ url: 'http://attacker.test/"><b>x</b>', lead: 'L', action: 'A' });
     expect(away).toContain('<code>http://attacker.test/&#34;&gt;&lt;b&gt;x&lt;/b&gt;</code>');
@@ -185,5 +245,108 @@ describe('twin: a page that moves on by itself, in the real browser', () => {
     const inLab = await render({ url: 'http://citadel.test/', href: `${LAB}?level=acolyte`, lead: 'L', action: 'Go' });
     expect(inLab).toContain(`<a href="${LAB}?level=acolyte">Go</a>`);
     expect((await render(null)).trim()).toBe('');
+  });
+});
+
+// --- sendReply on its own: a fake Response records what it is asked to do ------------------------------------------
+
+describe('twin: sendReply, unit (a fake Response)', () => {
+  type Call = readonly unknown[];
+  const fake = (level = 'templar') => {
+    const calls: Call[] = [];
+    const res = {
+      locals: { labPath: '/d/unit/twin', lang: 'en' }, req: { path: '/cb', level },
+      cookie: (...a: unknown[]) => { calls.push(['cookie', ...a]); return res; },
+      clearCookie: (...a: unknown[]) => { calls.push(['clearCookie', ...a]); return res; },
+      status: (n: number) => { calls.push(['status', n]); return res; },
+      redirect: (...a: unknown[]) => { calls.push(['redirect', ...a]); },
+    };
+    return { res: res as unknown as Response, calls };
+  };
+  const renderer = () => {
+    const seen: (ForwardNote | undefined)[] = [];
+    return { seen, render: async (forward?: ForwardNote) => { seen.push(forward); } };
+  };
+
+  it('sets every cookie with its attributes (default HttpOnly + Lax), then renders the page at its status', async () => {
+    const { res, calls } = fake();
+    const { seen, render } = renderer();
+    await sendReply(res, {
+      status: 201, text: 'Made.',
+      cookies: [
+        { name: 'a', value: 'v', path: '/d/unit/twin' },
+        { name: 'b', value: 'w', path: '/d/unit/twin', httpOnly: false, sameSite: 'None', secure: true, maxAgeSec: 5 },
+        { name: 'c', value: '', path: '/d/unit/twin', clear: true, sameSite: 'Strict' },
+      ],
+    }, render);
+    expect(calls).toEqual([
+      ['cookie', 'a', 'v', { path: '/d/unit/twin', httpOnly: true, sameSite: 'lax' }],
+      ['cookie', 'b', 'w', { path: '/d/unit/twin', httpOnly: false, sameSite: 'none', secure: true, maxAge: 5000 }],
+      ['clearCookie', 'c', { path: '/d/unit/twin', httpOnly: true, sameSite: 'strict' }],
+      ['status', 201],
+    ]);
+    expect(seen).toEqual([undefined]);
+  });
+
+  it('a redirect status with a Location goes through sendSimRedirect into the lab, and nothing is rendered', async () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+      const { res, calls } = fake();
+      const { seen, render } = renderer();
+      await sendReply(res, { status, location: '/next?a=1', text: '' }, render);
+      expect(calls, String(status)).toEqual([['redirect', status, '/d/unit/twin/next?a=1&level=templar']]);
+      expect(seen, String(status)).toEqual([]);
+    }
+  });
+
+  it('a Location on any other status is ignored: the page is rendered at that status', async () => {
+    for (const status of [200, 300, 304, 400]) {
+      const { res, calls } = fake();
+      const { seen, render } = renderer();
+      await sendReply(res, { status, location: 'http://attacker.test/', text: 'Page.' }, render);
+      expect(calls, String(status)).toEqual([['status', status]]);
+      expect(seen, String(status)).toEqual([undefined]);
+    }
+  });
+
+  it('a forward is handed to the view as a ForwardNote; the browser is never sent on', async () => {
+    const { res, calls } = fake('inquisitor');
+    const { seen, render } = renderer();
+    await sendReply(res, { status: 200, forward: 'http://citadel.test/home', text: 'Signed in.' }, render);
+    expect(calls).toEqual([['status', 200]]);
+    expect(seen).toEqual([{
+      url: 'http://citadel.test/home', href: '/d/unit/twin/home?level=inquisitor',
+      lead: 'This page moves the browser on by itself to:', action: 'Continue there in the lab',
+    }]);
+  });
+});
+
+// --- Visit: what a lab page needs from either browser's request ----------------------------------------------------
+
+describe('twin: Visit', () => {
+  const res = { locals: { labPath: '/d/unit/twin' } } as unknown as Response;
+
+  it('visitOf: the raw query, only the named lab cookies that are strings, and labPath(res) as the base', () => {
+    const req = {
+      level: 'inquisitor', originalUrl: '/D/UNIT/TWIN/cb?code=a&code=b&next=%2F&level=inquisitor',
+      cookies: { a_inquisitor: 'v1', b_inquisitor: { j: 1 }, other: 'z', hvwa_sid: 's' },
+    } as unknown as Request;
+    const v = visitOf(req, res, ['a_inquisitor', 'b_inquisitor', 'missing_inquisitor']);
+    expect(v.level).toBe('inquisitor');
+    expect(v.base).toBe('/d/unit/twin');
+    expect(v.query.getAll('code')).toEqual(['a', 'b']);
+    expect(v.query.get('next')).toBe('/');
+    expect({ ...v.cookies }).toEqual({ a_inquisitor: 'v1' });
+    expect(Object.getPrototypeOf(v.cookies)).toBeNull();
+  });
+
+  it('visitOf: no query string and no parsed cookies are an empty query and no cookies', () => {
+    const v = visitOf({ level: 'acolyte', originalUrl: '/d/unit/twin' } as unknown as Request, res, ['a_acolyte']);
+    expect([...v.query]).toEqual([]);
+    expect({ ...v.cookies }).toEqual({});
+  });
+
+  it('simVisitOf: the victim\'s request on the citadel, base \'\'', () => {
+    const r = { query: new URLSearchParams('x=1'), cookies: { a_divine: 'v' } } as unknown as SimRequest;
+    expect(simVisitOf('divine', r)).toEqual({ level: 'divine', query: r.query, cookies: r.cookies, base: '' });
   });
 });
