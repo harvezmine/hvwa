@@ -4,6 +4,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { newId, putBounded } from '../../_shared/collections.js';
 import {
   ADMIN_MAILBOX, CITADEL_ORIGIN, PLAYER_MAILBOX, simWorld,
   type SimBrowser, type SimRequest, type SimResponse, type SimWorld,
@@ -53,8 +54,7 @@ export function memberByEmail(state: LabState, email: string): Member | undefine
 /** A new reset token for `member` (32 CSPRNG bytes); only its hash is kept. */
 export function issueReset(state: LabState, member: Member): string {
   const token = randomBytes(32).toString('base64url');
-  state.resets.set(hash(token), { email: member.email, expiresAt: state.world.now() + FIFTEEN_MINUTES });
-  while (state.resets.size > MAX_RESETS) state.resets.delete(state.resets.keys().next().value as string);
+  putBounded(state.resets, hash(token), { email: member.email, expiresAt: state.world.now() + FIFTEEN_MINUTES }, MAX_RESETS);
   return token;
 }
 
@@ -92,7 +92,7 @@ function citadel(state: LabState, r: SimRequest): SimResponse {
 const labs = perSession((_level: Level): LabState => {
   const world = simWorld({ mailboxes: [ADMIN_MAILBOX] });
   const members: Member[] = [
-    { username: ADMIN_NAME, email: ADMIN_MAILBOX, password: randomBytes(16).toString('hex'), role: 'admin' },
+    { username: ADMIN_NAME, email: ADMIN_MAILBOX, password: newId(), role: 'admin' },
     { username: PLAYER.username, email: PLAYER_MAILBOX, password: PLAYER.password, role: 'user' },
   ];
   // The handler reads `state` only when the admin browses, after it is assigned.

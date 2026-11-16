@@ -102,6 +102,13 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
     id: 'Di lab ini, peramban korban tersimulasi yang pergi ke sana, bukan peramban Anda: pantau log server Anda (attacker.test).',
     en: 'In this lab the simulated victim\'s browser goes there, not yours: watch your server\'s log (attacker.test).',
   },
+  // core/twin.ts forwardNote: a page that moves the browser on by itself, shown to the player's real browser instead.
+  'sim.forward.lead': { id: 'Halaman ini memindahkan peramban dengan sendirinya ke:', en: 'This page moves the browser on by itself to:' },
+  'sim.forward.in_lab': { id: 'Lanjutkan ke sana di lab', en: 'Continue there in the lab' },
+  'sim.forward.away': {
+    id: 'Peramban Anda tetap di lab; hanya peramban korban tersimulasi yang benar-benar pergi ke sana.',
+    en: 'Your browser stays in the lab; only the simulated victim\'s browser really goes there.',
+  },
   'diff.vulnerable': { id: 'Rentan', en: 'Vulnerable' },
   'diff.secure': { id: 'Aman (Divine)', en: 'Secure (Divine)' },
   'safety.warning': {

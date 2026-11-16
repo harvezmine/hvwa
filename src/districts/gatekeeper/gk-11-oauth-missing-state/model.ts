@@ -5,10 +5,16 @@
 // The level modules are gathered here because the admin's browser needs them too; they import only types from this file.
 import { byLevel, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
-import { CITADEL_ORIGIN, simWorld, type SimBrowser, type SimRequest, type SimResponse, type SimWorld } from '../../../core/sim.js';
-import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
-import { CLIENT_ID, newId, newVerifier, putBounded, s256, withParams, type IssuedCode } from '../_shared/oauth.js';
-import { cookiePath, toSim, type Reply, type TwinCookie } from '../_shared/twin.js';
+import {
+  CITADEL_ORIGIN, cookiePath, simVisitOf, simWorld, toSim,
+  type Reply, type SimBrowser, type SimRequest, type SimResponse, type SimWorld, type TwinCookie, type Visit,
+} from '../../../core/sim.js';
+import { ADMIN_NAME, accountOf } from '../_shared/lab.js';
+import { newId, putBounded } from '../../_shared/collections.js';
+import {
+  CLIENT_ID, newVerifier, pilgrimIdAuthorize, pilgrimIdSignIn, pilgrimIdUser, s256,
+  type IssuedCode, type PilgrimId, type PilgrimIdPolicy,
+} from '../_shared/oauth.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -21,6 +27,8 @@ export const LOGIN_REDIRECT = `${CITADEL_ORIGIN}/callback`;
 /** One cookie name per level (levels share the lab path). */
 export const clientCookie = (level: Level): string => `citadel_session_${level}`;
 export const pidCookie = (level: Level): string => `pid_session_${level}`;
+/** Every cookie this lab's pages read at `level`: what visitOf and simVisitOf keep, so both browsers show the same. */
+export const labCookies = (level: Level): readonly string[] => [clientCookie(level), pidCookie(level)];
 
 export type Purpose = 'link' | 'login';
 /** A flow Citadel started: which Citadel session started it, what for, and (with PKCE) its verifier. */
@@ -66,20 +74,18 @@ export interface LabState {
 }
 
 const MAX_ENTRIES = 50;
-const CODE_TTL_MS = 10 * 60 * 1000;
 const put = <V>(m: Map<string, V>, key: string, value: V, keep?: (k: string) => boolean): void => putBounded(m, key, value, MAX_ENTRIES, keep);
 
-/** What a page needs from a browser's request. `base`: labPath(res) for real routes, '' on the citadel. */
-export interface Visit {
-  readonly level: Level;
-  readonly query: URLSearchParams;
-  readonly cookies: Readonly<Record<string, string | undefined>>;
-  readonly base: string;
-}
+/** Pilgrim-ID is sound in this lab at every level: only Citadel's two registered redirect URIs, and PKCE only as S256. */
+const SOUND_IDP: PilgrimIdPolicy = {
+  allowRedirect: (redirectUri) => redirectUri === LINK_REDIRECT || redirectUri === LOGIN_REDIRECT,
+  checkPkce: (challenge, method) => (challenge !== undefined && method !== 'S256' ? 'only S256 is supported.' : undefined),
+};
 
-const pickAccount = (username: string, password: string, adminPassword: string): string | undefined =>
-  username === ADMIN_NAME && password === adminPassword ? ADMIN_NAME
-    : username === PLAYER.username && password === PLAYER.password ? PLAYER.username : undefined;
+/** Pilgrim-ID in this lab (gatekeeper/_shared/oauth.ts), with its own admin password and the sound policy. */
+const PILGRIM_ID: PilgrimId<LabState> = {
+  cookie: pidCookie, adminPassword: (s) => s.adminPidPassword, maxEntries: MAX_ENTRIES, policy: () => SOUND_IDP,
+};
 
 /** The browser's Citadel session (an anonymous one is opened if it has none and `open` is set). */
 function sessionOf(v: Visit, state: LabState, open: boolean): { sid: string; user: string | null; cookies: TwinCookie[] } {
@@ -101,7 +107,7 @@ function signInAs(v: Visit, state: LabState, user: string | null): TwinCookie {
 /** Who the browser is at Citadel and at Pilgrim-ID, and which Pilgrim-IDs are linked to its Citadel account. */
 export function whoIs(v: Visit, state: LabState): { readonly client?: string; readonly idp?: string; readonly linked: readonly string[] } {
   const client = state.clientSessions.get(v.cookies[clientCookie(v.level)] ?? '') ?? undefined;
-  const idp = state.idpSessions.get(v.cookies[pidCookie(v.level)] ?? '');
+  const idp = pilgrimIdUser(PILGRIM_ID, v, state);
   const linked = client === undefined ? [] : [...state.links].filter(([, c]) => c === client).map(([p]) => p);
   return { ...(client === undefined ? {} : { client }), ...(idp === undefined ? {} : { idp }), linked };
 }
@@ -113,7 +119,7 @@ export function openHome(v: Visit, state: LabState): Reply {
 
 /** POST / : sign in to Citadel with a password. */
 export function citadelSignIn(v: Visit, state: LabState, username: string, password: string): Reply & { readonly ok: boolean; readonly user?: string } {
-  const user = pickAccount(username, password, state.adminPassword);
+  const user = accountOf(username, password, state.adminPassword);
   if (user === undefined) return { status: 200, ok: false, text: 'Invalid username or password.' };
   return { status: 200, ok: true, user, text: `Signed in to Citadel as ${user}.`, cookies: [signInAs(v, state, user)] };
 }
@@ -125,11 +131,7 @@ export function logout(v: Visit, state: LabState): Reply {
 
 /** POST /idp: sign in to Pilgrim-ID. */
 export function idpSignIn(v: Visit, state: LabState, username: string, password: string): Reply & { readonly ok: boolean } {
-  const user = pickAccount(username, password, state.adminPidPassword);
-  if (user === undefined) return { status: 200, ok: false, text: 'Invalid username or password.' };
-  const sid = newId();
-  put(state.idpSessions, sid, user);
-  return { status: 200, ok: true, text: `Signed in to Pilgrim-ID as ${user}.`, cookies: [{ name: pidCookie(v.level), value: sid, path: cookiePath(v.base) }] };
+  return pilgrimIdSignIn(PILGRIM_ID, v, state, username, password);
 }
 
 /** GET /link and GET /login: start a flow at Pilgrim-ID with the level's state (and PKCE). */
@@ -149,22 +151,7 @@ export function startFlow(v: Visit, state: LabState, purpose: Purpose): Reply {
 
 /** GET /idp/authorize (Pilgrim-ID, sound): a signed-in user's code goes to a registered redirect URI only. */
 export function authorize(v: Visit, state: LabState): Reply {
-  const user = state.idpSessions.get(v.cookies[pidCookie(v.level)] ?? '');
-  if (user === undefined) return { status: 200, text: 'Pilgrim-ID: sign in first, then open this link again.' };
-  if (v.query.get('client_id') !== CLIENT_ID) return { status: 400, text: 'Pilgrim-ID: unknown client.' };
-  if (v.query.get('response_type') !== 'code') return { status: 400, text: 'Pilgrim-ID: unsupported response_type.' };
-  const redirectUri = v.query.get('redirect_uri') ?? '';
-  if (redirectUri !== LINK_REDIRECT && redirectUri !== LOGIN_REDIRECT) {
-    return { status: 400, text: 'Pilgrim-ID: this redirect_uri is not registered for the client.' };
-  }
-  const challenge = v.query.get('code_challenge');
-  if (challenge !== null && v.query.get('code_challenge_method') !== 'S256') return { status: 400, text: 'Pilgrim-ID: only S256 is supported.' };
-  const code = newId();
-  put(state.codes, code, {
-    user, clientId: CLIENT_ID, redirectUri, ...(challenge === null ? {} : { challenge }), expiresAt: state.world.now() + CODE_TTL_MS, used: false,
-  });
-  const st = v.query.get('state');
-  return { status: 302, location: withParams(redirectUri, { code, ...(st === null ? {} : { state: st }) }), text: '' };
+  return pilgrimIdAuthorize(PILGRIM_ID, v, state);
 }
 
 /** Pilgrim-ID's token endpoint (sound): once, for this client and redirect URI, with the verifier iff a challenge was sent. */
@@ -205,7 +192,7 @@ export function loginCallback(v: Visit, state: LabState): Reply & { readonly use
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  const v: Visit = { level, query: r.query, cookies: r.cookies, base: '' };
+  const v = simVisitOf(level, r, labCookies(level));
   switch (r.path) {
     case '/': return toSim({ ...openHome(v, state), text: 'Citadel — Home' });
     case '/logout': return toSim(logout(v, state));

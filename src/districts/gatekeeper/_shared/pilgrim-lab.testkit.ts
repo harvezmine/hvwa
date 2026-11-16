@@ -1,16 +1,14 @@
 // _shared/pilgrim-lab.testkit.ts — the tests and set-up every pilgrim lab (GK-12, 13, 14, 17, 18) shares, for their specs.
 // A test kit (see jwt-lab.testkit.ts): `*.testkit.ts` is never collected as a spec and never reaches dist/.
-import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
 import type { Express } from 'express';
 import { freshSession, describeLabView, setCookieValue, type Agent } from '../../../../tests/helpers.js';
-import { LEVELS, type Level } from '../../../core/levels.js';
-import { renderFile } from 'ejs';
-import { fileURLToPath } from 'node:url';
-import { PLAYER, shellQuote, type CurlView } from './lab.js';
+import type { Level } from '../../../core/levels.js';
+import { describeCurlExample, type CurlExampleSpec } from '../../_shared/curl.testkit.js';
+import { PLAYER } from './lab.js';
 
-/** EJS's own escaping of an output value. */
-const escapeXML = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&#34;').replace(/'/g, '&#39;');
+// The curl-example check is district-agnostic (districts/_shared/curl.testkit.ts); re-exported for the Gatekeeper specs.
+export { describeCurlExample, type ExpectedCurl } from '../../_shared/curl.testkit.js';
 
 /** One player's session on a fresh app, at one level. */
 export interface PilgrimCtx { readonly agent: Agent; readonly level: Level; readonly sid: string; readonly app: Express }
@@ -33,24 +31,8 @@ export function pilgrimClient(path: string) {
   };
 }
 
-/** The curl example a lab page must show at one level. */
-export interface ExpectedCurl {
-  readonly path: string;
-  readonly method?: string;
-  readonly headers?: readonly string[];
-  readonly cookies?: readonly string[];
-  readonly data?: string;
-  /** Form fields as 'name=value'. */
-  readonly form?: readonly string[];
-}
-
-export interface PilgrimLabSpec {
-  readonly challenge: { readonly id: string; readonly levels: readonly Level[] };
-  /** The lab's base path, e.g. '/d/gatekeeper/idor-profile'. */
-  readonly path: string;
-  /** The curl line the front page must show at `level`. */
-  readonly curl: (level: Level) => ExpectedCurl;
-}
+/** A pilgrim lab: the challenge, its base path (e.g. '/d/gatekeeper/idor-profile') and the curl line its front page shows. */
+export type PilgrimLabSpec = CurlExampleSpec;
 
 /**
  * The shared lab-view checks (account told, no password inputs, forms without action, escaped echo, odd bodies,
@@ -66,50 +48,4 @@ export function describePilgrimLab(o: PilgrimLabSpec): void {
   });
 
   describeCurlExample(o);
-}
-
-/** The curl-example check alone, for a lab with its own view checks. */
-export function describeCurlExample(o: PilgrimLabSpec): void {
-  describe(`${o.challenge.id} curl example`, () => {
-    it('the front page gives a curl line that can work: full quoted URL, the headers it needs, the session cookie to copy, never its value', async () => {
-      for (const level of LEVELS.filter((l) => o.challenge.levels.includes(l))) {
-        const { agent, sid } = await freshSession();
-        const res = await agent.get(`${o.path}?level=${level}`);
-        const e = o.curl(level);
-        const headers = (e.headers ?? []).map((h) => ` -H "${escapeXML(h)}"`).join('');
-        const cookies = (e.cookies ?? []).map((c) => `; ${escapeXML(c)}`).join('');
-        const data = (e.data ? ` -d '${escapeXML(shellQuote(e.data))}'` : '')
-          + (e.form ?? []).map((f) => ` --data-urlencode '${escapeXML(shellQuote(f))}'`).join('');
-        const want = `curl${e.method ? ` -X ${e.method}` : ''} "http://127.0.0.1${o.path}${escapeXML(e.path)}?level=${level}"${headers} -b "hvwa_sid=&lt;copy from devtools&gt;${cookies}"${data}`;
-        expect(res.text.replace(/curl "http:\/\/[^/"\s]+/, 'curl "http://127.0.0.1'), level).toContain(want);
-        expect(res.text, level).toMatch(/hvwa_sid<\/code> cookie from the devtools storage/);
-        expect(res.text, level).toContain('<code>curl.exe</code>');
-        expect(res.text, level).not.toContain(sid);
-      }
-    });
-  });
-}
-
-const curlPartial = fileURLToPath(new URL('./views/curl-note.ejs', import.meta.url));
-
-/** The curl partial itself: method, JSON data, form fields, quoting, the PowerShell note, and no session id. */
-export function describeCurlPartial(): void {
-  describe('curl-note partial', () => {
-    const view = (c: Partial<CurlView>): CurlView => ({ url: 'http://127.0.0.1:3000/d/gatekeeper/x/p?level=acolyte', method: '', headers: [], cookies: [], data: '', form: [], ...c });
-    const render = (c: CurlView) => renderFile(curlPartial, { curl: c }, { async: false });
-
-    it('emits -X for a method, -d for JSON and --data-urlencode for form fields, in that order', async () => {
-      const text = await render(view({ method: 'PUT', headers: ['Content-Type: application/json'], data: '{"a":"b"}', form: ['name=Brother Lamp', "bio=it'\''s"] }));
-      expect(text).toContain(`curl -X PUT "http://127.0.0.1:3000/d/gatekeeper/x/p?level=acolyte" -H "Content-Type: application/json"`);
-      expect(text).toContain(`-b "hvwa_sid=&lt;copy from devtools&gt;" -d '{&#34;a&#34;:&#34;b&#34;}' --data-urlencode 'name=Brother Lamp' --data-urlencode 'bio=it&#39;\&#39;&#39;s'`);
-    });
-
-    it('no method, no body: a plain GET line; always the session placeholder and the PowerShell note', async () => {
-      const text = await render(view({}));
-      expect(text).toContain('curl "http://127.0.0.1:3000/d/gatekeeper/x/p?level=acolyte" -b "hvwa_sid=&lt;copy from devtools&gt;"');
-      expect(text).not.toContain('-X');
-      expect(text).not.toContain('-d ');
-      expect(text).toMatch(/bash syntax[\s\S]*PowerShell[\s\S]*<code>curl\.exe<\/code>[\s\S]*Invoke-WebRequest/);
-    });
-  });
 }

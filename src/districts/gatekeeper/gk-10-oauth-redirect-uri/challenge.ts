@@ -4,30 +4,18 @@ import type { Request, Response } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
 import { field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
-import { sendLinkAction, type SimBrowser } from '../../../core/sim.js';
+import { sendLinkAction, sendReply, visitOf, type SimBrowser, type Visit } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
-import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
-import { sendReply } from '../_shared/twin.js';
+import { ADMIN_NAME, PLAYER, roleOf, welcome, type Result } from '../_shared/lab.js';
 import {
-  REGISTERED_REDIRECT, authorize, callback, clientCookie, idpSignIn, impl, labFor, loginCookie, nextCookie, pidCookie,
-  startLogin, whoIs, type Visit,
+  REGISTERED_REDIRECT, authorize, callback, idpSignIn, impl, labCookies, labFor, pidCookie, startLogin, whoIs,
 } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = (name: string): string => join(dir, 'views', `${name}.ejs`);
 
-/** The real request as a Visit: the raw query (first value per name) and only this level's lab cookies. */
-function visitOf(req: Request, res: Response): Visit {
-  const raw = (req.cookies ?? {}) as Record<string, unknown>;
-  const cookies: Record<string, string | undefined> = Object.create(null);
-  for (const name of [pidCookie, clientCookie, nextCookie, loginCookie].map((f) => f(req.level))) {
-    const value = raw[name];
-    if (typeof value === 'string') cookies[name] = value;
-  }
-  return { level: req.level, query: new URLSearchParams(req.originalUrl.split('?')[1] ?? ''), cookies, base: labPath(res) };
-}
-
-const roleOf = (user: string): 'admin' | 'user' => (user === ADMIN_NAME ? 'admin' : 'user');
+/** The real request as a Visit: the raw query and only this level's lab cookies. */
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 
 /** The admin starts every action signed in to Pilgrim-ID, whatever the player's last link did. Never browses. */
 const rearm = (req: Request, admin: SimBrowser): void => { admin.cookies.set(pidCookie(req.level), labFor(req).adminPid); };
@@ -58,7 +46,7 @@ export const GK10 = register(defineChallenge({
   },
   mount: (router) => {
     const home = (req: Request, res: Response, result: Result | null, username: string, password: string, idpNow?: string) => {
-      const who = whoIs(visitOf(req, res), labFor(req));
+      const who = whoIs(visit(req, res), labFor(req));
       // Signed in to Citadel as the admin: welcome() shows the flag (never at Divine).
       const client = who.client === undefined ? '' : welcome(req, GK10, { username: who.client, role: roleOf(who.client) }).text;
       return sendPage(res, view('home'), {
@@ -72,21 +60,21 @@ export const GK10 = register(defineChallenge({
     router.post('/', async (req, res) => {
       const username = field(req, 'username');
       const password = field(req, 'password');
-      const r = idpSignIn(visitOf(req, res), labFor(req), username, password);
+      const r = idpSignIn(visit(req, res), labFor(req), username, password);
       await sendReply(res, r, () => home(req, res, { ok: r.ok, text: r.text }, username, password, r.ok ? username : undefined));
     });
 
     // The twins of http://citadel.test/login, /idp/authorize and /callback. Every Location or forward a level made
     // goes through sendReply, i.e. sendSimRedirect: never res.redirect() to a redirect_uri or a next.
-    router.get('/login', (req, res) => sendReply(res, startLogin(visitOf(req, res), labFor(req)), () => home(req, res, null, '', '')));
+    router.get('/login', (req, res) => sendReply(res, startLogin(visit(req, res), labFor(req)), () => home(req, res, null, '', '')));
 
     router.get('/idp/authorize', (req, res) => {
-      const r = authorize(visitOf(req, res), labFor(req));
+      const r = authorize(visit(req, res), labFor(req));
       return sendReply(res, r, () => sendPage(res, view('idp'), { base: labPath(res), text: r.text, failed: r.status >= 400 }));
     });
 
     router.get('/callback', (req, res) => {
-      const r = callback(visitOf(req, res), labFor(req));
+      const r = callback(visit(req, res), labFor(req));
       const result = r.user === undefined ? { ok: false, text: r.text } : welcome(req, GK10, { username: r.user, role: roleOf(r.user) });
       // A forward (Inquisitor's next=) is rendered with a note, the welcome and its flag included: never followed here.
       return sendReply(res, r, (forward) => sendPage(res, view('callback'), { base: labPath(res), result, forward: forward ?? null }));

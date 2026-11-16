@@ -2,10 +2,13 @@
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
 import {
-  FLAG_RE, attackerHits, bare, describeExploitMatrix, describeLabView, freshSession, panelOf, unescapeHtml, type Agent,
+  FLAG_RE, attackerHits, bare, describeExploitMatrix, freshSession, panelOf, unescapeHtml, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { ADMIN_MAILBOX, PLAYER_MAILBOX } from '../../../core/sim.js';
+import {
+  describeOddBodies, describeSignInView, describeVictimAction, expectAwayPage, expectInLab, victimClient,
+} from '../../_shared/victim-lab.testkit.js';
 import { describeCurlExample } from '../_shared/pilgrim-lab.testkit.js';
 import { GK09 } from './challenge.js'; // registers GK-09 before createApp() inside freshSession
 import { labState } from './model.js';
@@ -24,7 +27,7 @@ const signIn = (a: Agent, l: Level, username: string, password: string) =>
 /** "Forgot your password?" for `email`, with extra request headers (what curl -H adds). */
 const forgot = (a: Agent, l: Level, email: string, headers: Headers = {}) =>
   a.post(`${LAB}/forgot?level=${l}`).set({ ...headers }).type('form').send({ email });
-const checkMail = (a: Agent, l: Level) => a.post(`${LAB}/victim/check-mail?level=${l}`);
+const { checkMail } = victimClient(LAB);
 const resetWith = (a: Agent, l: Level, token: string, password: string) =>
   a.post(`${LAB}/reset?level=${l}`).type('form').send({ token, password });
 const tokenOf = (url: string | undefined): string => (url === undefined ? '' : new URL(url).searchParams.get('token') ?? '');
@@ -81,15 +84,11 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK09,
-  path: LAB,
-  account: /pilgrim<\/code> \/ <code>pilgrim/,
-  echoField: 'username',
-  extra: { password: 'x' },
-  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
-  ok: (agent, level) => signIn(agent, level, 'pilgrim', 'pilgrim'),
-  bad: (agent, level) => signIn(agent, level, 'pilgrim', 'nope'),
+describeSignInView({ challenge: GK09, path: LAB });
+describeOddBodies({ challenge: GK09, path: LAB, forms: ['/forgot', '/reset'], statuses: [200, 303] });
+describeVictimAction({
+  challenge: GK09, path: LAB,
+  description: { en: 'opens the newest mail and clicks its first link', id: 'membuka surat terbaru dan mengklik tautan pertamanya' },
 });
 
 describeCurlExample({
@@ -252,7 +251,7 @@ describe('GK-09 your real browser never leaves the lab (sendSimRedirect)', () =>
       const { agent } = await freshSession();
       const res = await forgot(agent, level, PLAYER_MAILBOX);
       expect(res.status, level).toBe(303);
-      expect(res.headers.location, level).toBe(`${LAB}/forgot/sent?level=${level}`);
+      expect(expectInLab(res, LAB, level, level), level).toBe(`${LAB}/forgot/sent?level=${level}`);
     }
   });
 
@@ -271,20 +270,12 @@ describe('GK-09 your real browser never leaves the lab (sendSimRedirect)', () =>
       const { agent } = await freshSession();
       const res = await forgot(agent, level, ADMIN_MAILBOX, headers);
       const where = `${level} ${JSON.stringify(headers)}`;
-      if (res.status >= 300 && res.status < 400) {
-        expect(String(res.headers.location), where).toMatch(new RegExp(`^${LAB}[/?]`));
-      } else {
-        expect(res.status, where).toBe(200);
-        expect(res.headers.location, where).toBeUndefined();
-        const away = /<section class="sim-away"[\s\S]*?<\/section>/.exec(res.text)?.[0] ?? '';
-        expect(away, where).toContain('<code>http://');
-        expect(away, where).not.toMatch(/href=/);
-      }
+      if (res.status >= 300 && res.status < 400) expectInLab(res, LAB, level, where);
+      else expect(expectAwayPage(res, where), where).toContain('<code>http://');
     }
     const { agent } = await freshSession();
     const away = await forgot(agent, 'acolyte', ADMIN_MAILBOX, { 'X-Forwarded-Host': 'attacker.test' });
-    expect(away.status).toBe(200);
-    expect(away.text).toContain('<code>http://attacker.test/forgot/sent</code>');
+    expect(expectAwayPage(away)).toContain('<code>http://attacker.test/forgot/sent</code>');
   });
 });
 
@@ -315,24 +306,5 @@ describe('GK-09 lab view specifics', () => {
     const panel = panelOf((await home(agent, 'acolyte')).text);
     expect(panel).not.toMatch(/<img/);
     expect(panel).toContain('http://attacker.test/&#34;&gt;&lt;img src=x onerror=alert(1)&gt;/reset?token=');
-  });
-
-  it('the victim action says what the admin does, in both languages', async () => {
-    const { agent } = await freshSession();
-    expect(panelOf((await home(agent, 'acolyte')).text)).toContain('opens the newest mail and clicks its first link');
-    expect(panelOf((await home(agent, 'acolyte', 'id')).text)).toContain('membuka surat terbaru dan mengklik tautan pertamanya');
-  });
-
-  it('odd bodies on the forgot and reset forms are a failed request, never a 500 or a flag', async () => {
-    const { agent } = await freshSession();
-    for (const level of LEVELS) {
-      for (const path of ['/forgot', '/reset']) {
-        for (const body of [{ email: { toString: 1 }, token: ['a'], password: { a: 1 } }, [1, 2], {}]) {
-          const res = await agent.post(`${LAB}${path}?level=${level}`).send(body as object);
-          expect([200, 303], `${level} ${path}`).toContain(res.status);
-          expect(res.text ?? '', `${level} ${path}`).not.toMatch(FLAG_RE);
-        }
-      }
-    }
   });
 });

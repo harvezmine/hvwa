@@ -3,6 +3,6 @@
   <h1>Citadel Gate — Account recovery</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>, mail <code><%= playerEmail %></code>. Target: <code><%= target %></code>, mail <code><%= targetEmail %></code>. Lost a password? <a href="<%= base %>/forgot?level=<%= level %>">Forgot your password?</a> The citadel mails a reset link to the account's address; the admin reads the newest mail and clicks its link (the buttons below the lab).</p>
   <p class="lab-note">A browser form cannot add request headers. To send the forgot-password form with one of your choosing, use a terminal:</p>
-  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+  <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
 <%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
 </section>

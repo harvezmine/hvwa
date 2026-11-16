@@ -3,9 +3,13 @@ import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
 import {
-  FLAG_RE, attackerHits, describeExploitMatrix, describeLabView, freshSession, panelOf, setCookieHeader, type Agent,
+  FLAG_RE, attackerHits, describeExploitMatrix, freshSession, panelOf, setCookieHeader, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import {
+  browse, describeLabCookies, describeSignInView, describeVictimAction, expectAwayPage, expectInLab, expectNoWayOut, forwardNoteOf,
+  victimClient,
+} from '../../_shared/victim-lab.testkit.js';
 import { s256, type Exchange, type IssuedCode } from '../_shared/oauth.js';
 import { GK10 } from './challenge.js'; // registers GK-10 before createApp() inside freshSession
 import * as divine from './levels/divine.js';
@@ -21,22 +25,15 @@ type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Respo
 const home = (a: Agent, l: Level, lang = 'en') => a.get(`${LAB}?level=${l}&lang=${lang}`);
 const pidSignIn = (a: Agent, l: Level, username: string, password: string) =>
   a.post(`${LAB}?level=${l}`).type('form').send({ username, password });
-const sendLink = (a: Agent, l: Level, url: string) => a.post(`${LAB}/victim/send-link?level=${l}`).type('form').send({ url });
+const { sendLink } = victimClient(LAB);
 /** An authorize request for client citadel, as a citadel.test link. */
 const authorizeUrl = (redirectUri: string, extra = ''): string =>
   `http://citadel.test/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(redirectUri)}${extra}`;
-/** Your real browser: follow redirects (sendSimRedirect keeps every one of them in the lab). */
-async function browse(a: Agent, url: string): Promise<request.Response> {
-  let res = await a.get(url);
-  for (let i = 0; i < 6 && res.status >= 300 && res.status < 400; i++) res = await a.get(String(res.headers.location));
-  return res;
-}
 const codeIn = (url: string | undefined): string => (url === undefined ? '' : new URL(url).searchParams.get('code') ?? '');
-/** The forward note a callback page shows your real browser instead of moving on ('' when it does not forward). */
-const forwardNoteOf = (html: string): string => /<p class="lab-note" data-testid="forward-note">[\s\S]*?<\/p>/.exec(html)?.[0] ?? '';
 /** Present a code at the lab's real callback, as the browser would after Pilgrim-ID sent it there. */
 const replay = (a: Agent, l: Level, code: string) => a.get(`${LAB}/callback?code=${encodeURIComponent(code || 'none')}&level=${l}`);
-const signInWithPilgrimId = (a: Agent, l: Level) => browse(a, `${LAB}/login?level=${l}`);
+/** Your real browser follows "Sign in with Pilgrim-ID" to its last page. */
+const signInWithPilgrimId = async (a: Agent, l: Level) => (await browse(a, `${LAB}/login?level=${l}`)).res;
 
 // --- The exploits ----------------------------------------------------------------------------------------------------
 /** Send the admin an authorize link whose redirect_uri is yours, read the code off your log, use it yourself. */
@@ -85,15 +82,14 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK10,
-  path: LAB,
-  account: /pilgrim<\/code> \/ <code>pilgrim/,
-  echoField: 'username',
-  extra: { password: 'x' },
-  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
-  ok: (agent, level) => pidSignIn(agent, level, 'pilgrim', 'pilgrim'),
-  bad: (agent, level) => pidSignIn(agent, level, 'pilgrim', 'nope'),
+describeSignInView({ challenge: GK10, path: LAB });
+describeVictimAction({
+  challenge: GK10, path: LAB,
+  description: { en: 'opens any link you send, while signed in to Pilgrim-ID', id: 'membuka tautan apa pun yang Anda kirim, saat masuk ke Pilgrim-ID' },
+});
+describeLabCookies({
+  challenge: GK10, path: LAB,
+  cookies: [{ name: pidCookie, set: (agent, level, base) => agent.post(`${base}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }) }],
 });
 
 describe('GK-10 where Pilgrim-ID sends the admin\'s code', () => {
@@ -297,10 +293,10 @@ describe('GK-10 your real browser never leaves the lab (sendSimRedirect)', () =>
       await pidSignIn(agent, level, 'pilgrim', 'pilgrim');
       const start = await agent.get(`${LAB}/login?level=${level}`);
       expect(start.status, level).toBe(302);
-      expect(String(start.headers.location), level).toMatch(new RegExp(`^${LAB}/idp/authorize\\?.*&level=${level}$`));
+      expect(expectInLab(start, LAB, level, level), level).toMatch(new RegExp(`^${LAB}/idp/authorize\\?.*&level=${level}$`));
       const back = await agent.get(String(start.headers.location));
       expect(back.status, level).toBe(302);
-      expect(String(back.headers.location), level).toMatch(new RegExp(`^${LAB}/callback\\?code=[0-9a-f]{32}.*&level=${level}$`));
+      expect(expectInLab(back, LAB, level, level), level).toMatch(new RegExp(`^${LAB}/callback\\?code=[0-9a-f]{32}.*&level=${level}$`));
     }
   });
 
@@ -309,19 +305,15 @@ describe('GK-10 your real browser never leaves the lab (sendSimRedirect)', () =>
     await pidSignIn(agent, 'acolyte', 'pilgrim', 'pilgrim');
     for (const redirect of ['http://attacker.test/cb', 'https://evil.example/', '//attacker.test/x', 'javascript:alert(1)']) {
       const res = await agent.get(`${LAB}/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(redirect)}&level=acolyte`);
-      expect(res.status, redirect).toBe(200);
-      expect(res.headers.location, redirect).toBeUndefined();
-      expect(/<section class="sim-away"[\s\S]*?<\/section>/.exec(res.text)?.[0] ?? '', redirect).not.toMatch(/href=/);
+      expectAwayPage(res, redirect);
     }
   });
 
   it('inquisitor: a forward to another host in your own browser is the callback page with a note, never a Refresh or Location', async () => {
     const { agent } = await freshSession();
     await pidSignIn(agent, 'inquisitor', 'pilgrim', 'pilgrim');
-    const res = await browse(agent, `${LAB}/login?level=inquisitor&lang=en&next=${encodeURIComponent('http://attacker.test/x')}`);
-    expect(res.status).toBe(200);
-    expect(res.headers.location).toBeUndefined();
-    expect(res.headers.refresh).toBeUndefined();
+    const { res } = await browse(agent, `${LAB}/login?level=inquisitor&lang=en&next=${encodeURIComponent('http://attacker.test/x')}`);
+    expectNoWayOut(res);
     expect(res.text).toContain('Welcome, pilgrim'); // the page itself, not only where it would go
     const note = forwardNoteOf(res.text);
     expect(note).toContain('This page moves the browser on by itself to: <code>http://attacker.test/x</code>.');
@@ -331,9 +323,8 @@ describe('GK-10 your real browser never leaves the lab (sendSimRedirect)', () =>
   it('inquisitor: a forward to a citadel page is shown with a link into the lab', async () => {
     const { agent } = await freshSession();
     await pidSignIn(agent, 'inquisitor', 'pilgrim', 'pilgrim');
-    const res = await browse(agent, `${LAB}/login?next=%2F&level=inquisitor&lang=en`); // the home page's own link
-    expect(res.status).toBe(200);
-    expect(res.headers.location).toBeUndefined();
+    const { res } = await browse(agent, `${LAB}/login?next=%2F&level=inquisitor&lang=en`); // the home page's own link
+    expectNoWayOut(res);
     expect(res.text).toContain('Welcome, pilgrim');
     expect(forwardNoteOf(res.text)).toContain(`<code>http://citadel.test/</code>. <a href="${LAB}?level=inquisitor">Continue there in the lab</a>`);
   });
@@ -342,7 +333,7 @@ describe('GK-10 your real browser never leaves the lab (sendSimRedirect)', () =>
     for (const level of ['acolyte', 'templar', 'divine'] as const) {
       const { agent } = await freshSession();
       await pidSignIn(agent, level, 'pilgrim', 'pilgrim');
-      const res = await browse(agent, `${LAB}/login?level=${level}&next=${encodeURIComponent('http://attacker.test/x')}`);
+      const { res } = await browse(agent, `${LAB}/login?level=${level}&next=${encodeURIComponent('http://attacker.test/x')}`);
       expect(res.text, level).toContain('Welcome, pilgrim');
       expect(forwardNoteOf(res.text), level).toBe('');
     }
@@ -359,11 +350,10 @@ describe('GK-10 inquisitor: a stale next never swallows the flag', () => {
 
   it('a stolen code replayed after a sign-in left a next behind: the flag, and the forward as a note', async () => {
     const { agent } = await freshSession();
-    const left = await browse(agent, `${LAB}/login?level=inquisitor&next=${encodeURIComponent('http://attacker.test/')}`);
+    const { res: left } = await browse(agent, `${LAB}/login?level=inquisitor&next=${encodeURIComponent('http://attacker.test/')}`);
     expect(left.text).toContain('Pilgrim-ID: sign in first'); // signed out of Pilgrim-ID: the flow stopped there
     const res = await replay(agent, 'inquisitor', await stealAtInquisitor(agent));
-    expect(res.status).toBe(200);
-    expect(res.headers.location).toBeUndefined();
+    expectNoWayOut(res);
     expect(res.text).toContain('Welcome, citadel_admin (role: admin).');
     expect(res.text).toMatch(FLAG_RE);
     expect(forwardNoteOf(res.text)).toContain('<code>http://attacker.test/</code>');
@@ -393,12 +383,11 @@ describe('GK-10 inquisitor: a stale next never swallows the flag', () => {
 });
 
 describe('GK-10 the lab state', () => {
-  it('cookies are named per level, on the canonical lab path, HttpOnly', async () => {
+  // The cookie names, paths and HttpOnly: describeLabCookies above.
+  it('after a sign-in on an upper-case URL, Sign in with Pilgrim-ID works at every level; a failed callback sets no Citadel cookie', async () => {
     const { agent } = await freshSession();
     for (const level of LEVELS) {
-      const pid = setCookieHeader(await agent.post(`${LAB.toUpperCase()}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }), pidCookie(level));
-      expect(pid, level).toContain(`Path=${LAB}`);
-      expect(pid, level).toMatch(/HttpOnly/i);
+      await agent.post(`${LAB.toUpperCase()}?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' });
       const done = await signInWithPilgrimId(agent, level);
       expect(done.text, level).toContain('Welcome, pilgrim');
     }
@@ -441,11 +430,5 @@ describe('GK-10 lab view specifics', () => {
     const page = await home(agent, 'templar');
     expect(page.text).toContain(`<code>${REGISTERED}</code>`);
     expect(page.text).toContain(`href="${LAB}/login?next=%2F&amp;level=templar"`);
-  });
-
-  it('the victim action says what the admin does, in both languages', async () => {
-    const { agent } = await freshSession();
-    expect(panelOf((await home(agent, 'acolyte')).text)).toContain('opens any link you send, while signed in to Pilgrim-ID');
-    expect(panelOf((await home(agent, 'acolyte', 'id')).text)).toContain('membuka tautan apa pun yang Anda kirim, saat masuk ke Pilgrim-ID');
   });
 });

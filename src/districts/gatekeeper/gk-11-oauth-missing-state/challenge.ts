@@ -4,30 +4,19 @@ import type { Request, Response } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
 import { field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
-import { sendLinkAction, type SimBrowser } from '../../../core/sim.js';
+import { sendLinkAction, sendReply, visitOf, type SimBrowser, type Visit } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
-import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
-import { sendReply } from '../_shared/twin.js';
+import { ADMIN_NAME, PLAYER, roleOf, welcome, type Result } from '../_shared/lab.js';
 import {
-  LINK_REDIRECT, LOGIN_REDIRECT, authorize, citadelSignIn, clientCookie, idpSignIn, impl, labFor, linkCallback, loginCallback,
-  logout, openHome, pidCookie, startFlow, whoIs, type Visit,
+  LINK_REDIRECT, LOGIN_REDIRECT, authorize, citadelSignIn, clientCookie, idpSignIn, impl, labCookies, labFor, linkCallback,
+  loginCallback, logout, openHome, startFlow, whoIs,
 } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = (name: string): string => join(dir, 'views', `${name}.ejs`);
 
-/** The real request as a Visit: the raw query (first value per name) and only this level's lab cookies. */
-function visitOf(req: Request, res: Response): Visit {
-  const raw = (req.cookies ?? {}) as Record<string, unknown>;
-  const cookies: Record<string, string | undefined> = Object.create(null);
-  for (const name of [clientCookie(req.level), pidCookie(req.level)]) {
-    const value = raw[name];
-    if (typeof value === 'string') cookies[name] = value;
-  }
-  return { level: req.level, query: new URLSearchParams(req.originalUrl.split('?')[1] ?? ''), cookies, base: labPath(res) };
-}
-
-const roleOf = (user: string): 'admin' | 'user' => (user === ADMIN_NAME ? 'admin' : 'user');
+/** The real request as a Visit: the raw query and only this level's lab cookies. */
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 
 /** The admin starts every action signed in to Citadel, whatever the player's last link did. Never browses. */
 const rearm = (req: Request, admin: SimBrowser): void => { admin.cookies.set(clientCookie(req.level), labFor(req).adminSession); };
@@ -60,7 +49,7 @@ export const GK11 = register(defineChallenge({
     /** Citadel's home. `client` overrides who is signed in (a sign-in in this very response). */
     const homePage = (req: Request, res: Response, result: Result | null, username: string, password: string, client?: string) => {
       const state = labFor(req);
-      const who = whoIs(visitOf(req, res), state);
+      const who = whoIs(visit(req, res), state);
       const user = client ?? who.client;
       const linked = user === undefined ? [] : [...state.links].filter(([, c]) => c === user).map(([p]) => p);
       return sendPage(res, view('home'), {
@@ -71,12 +60,12 @@ export const GK11 = register(defineChallenge({
       });
     };
 
-    router.get('/', (req, res) => sendReply(res, openHome(visitOf(req, res), labFor(req)), () => homePage(req, res, null, '', '')));
+    router.get('/', (req, res) => sendReply(res, openHome(visit(req, res), labFor(req)), () => homePage(req, res, null, '', '')));
 
     router.post('/', async (req, res) => {
       const username = field(req, 'username');
       const password = field(req, 'password');
-      const r = citadelSignIn(visitOf(req, res), labFor(req), username, password);
+      const r = citadelSignIn(visit(req, res), labFor(req), username, password);
       await sendReply(res, r, () => homePage(req, res, { ok: r.ok, text: r.text }, username, password, r.user));
     });
 
@@ -86,25 +75,25 @@ export const GK11 = register(defineChallenge({
     router.post('/idp', async (req, res) => {
       const username = field(req, 'username');
       const password = field(req, 'password');
-      const r = idpSignIn(visitOf(req, res), labFor(req), username, password);
+      const r = idpSignIn(visit(req, res), labFor(req), username, password);
       await sendReply(res, r, () => idpPage(res, { ok: r.ok, text: r.text }, username, password));
     });
 
     // The twins of the citadel.test pages. Every Location a page made goes through sendReply, i.e. sendSimRedirect.
     const message = (res: Response, result: Result) => sendPage(res, view('message'), { base: labPath(res), result });
-    router.get('/logout', (req, res) => sendReply(res, logout(visitOf(req, res), labFor(req)), () => message(res, { ok: true, text: '' })));
-    router.get('/link', (req, res) => sendReply(res, startFlow(visitOf(req, res), labFor(req), 'link'), () => message(res, { ok: true, text: '' })));
-    router.get('/login', (req, res) => sendReply(res, startFlow(visitOf(req, res), labFor(req), 'login'), () => message(res, { ok: true, text: '' })));
+    router.get('/logout', (req, res) => sendReply(res, logout(visit(req, res), labFor(req)), () => message(res, { ok: true, text: '' })));
+    router.get('/link', (req, res) => sendReply(res, startFlow(visit(req, res), labFor(req), 'link'), () => message(res, { ok: true, text: '' })));
+    router.get('/login', (req, res) => sendReply(res, startFlow(visit(req, res), labFor(req), 'login'), () => message(res, { ok: true, text: '' })));
     router.get('/idp/authorize', (req, res) => {
-      const r = authorize(visitOf(req, res), labFor(req));
+      const r = authorize(visit(req, res), labFor(req));
       return sendReply(res, r, () => message(res, { ok: r.status < 400, text: r.text }));
     });
     router.get('/link/callback', (req, res) => {
-      const r = linkCallback(visitOf(req, res), labFor(req));
+      const r = linkCallback(visit(req, res), labFor(req));
       return sendReply(res, r, () => message(res, { ok: r.ok, text: r.text }));
     });
     router.get('/callback', (req, res) => {
-      const r = loginCallback(visitOf(req, res), labFor(req));
+      const r = loginCallback(visit(req, res), labFor(req));
       const result = r.user === undefined ? { ok: false, text: r.text } : welcome(req, GK11, { username: r.user, role: roleOf(r.user) });
       return sendReply(res, r, () => message(res, result));
     });
