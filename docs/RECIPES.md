@@ -226,11 +226,16 @@ fully attacker-chosen SQL must also cap result size.
 `zeroblob(n)` make blobs of up to 1 GB in one call: one injected `randomblob(900000000)` allocates 900 MB, and the app
 container has 512 MB. `challengeDb` therefore registers capped overrides of both on EVERY challenge DB, before the schema
 and seed run (an application-defined function takes precedence over the built-in): they return at most
-`CHALLENGE_BLOB_CAP` (64 KiB) and behave like the built-ins below it. Labs need do nothing, and must not depend on
-bigger blobs. **Accepted residual gap:** growth that takes a width or several steps (`printf`/`format` widths such as
-`printf('%.*c', n, 'x')`, `replace()`, a recursive CTE that doubles a string) can still exhaust memory. In a loopback,
-single-player lab that is a self-DoS (the player stops their own app), so it is documented, not mitigated. Rule (g)
-still applies on top: a lab that runs fully attacker-chosen SQL caps what it returns (rows read, text shown).
+`CHALLENGE_BLOB_CAP` (64 KiB) and behave like the built-ins below it. Labs need do nothing, must not depend on bigger
+blobs, and a seed must never re-register either function uncapped. **What the cap does and does not do:** it removes
+the textbook payload (`randomblob(900000000)`) and the heavy-query timing trick built on it (a big `randomblob` as a
+delay in blind SQLi). It does NOT make a single injected call memory-safe in general. Measured on Node 22.22 / SQLite
+3.50.4, each of these is ONE statement: `printf('%0900000000d', 1)` adds about 1.7 GB, `replace(hex(zeroblob(65536)),
+'0', hex(zeroblob(4000)))` about 1 GB (one `replace()` call), and `group_concat` over a 4000-row recursive CTE about
+1 GB. `PRAGMA hard_heap_limit` does nothing in Node's bundled SQLite (and `prepare()` refuses PRAGMA anyway). These
+remain an **accepted self-DoS gap of a loopback, single-player lab**: the only player who can send them stops their
+own app (restart the container), so they are documented, not mitigated. Rule (g) still applies on top: a lab that runs
+fully attacker-chosen SQL caps what it returns (rows read, text shown).
 
 **Lab state: `perLevel` or `perSession`.** Never a bare module-level
 `challengeDb` for a lab that holds a secret or state.

@@ -203,7 +203,9 @@ describe('challengeDb rejects CREATE VIRTUAL TABLE (shadow-table corruption clas
   });
 });
 
-describe('challengeDb caps randomblob() and zeroblob() (one-call memory bombs)', () => {
+// The cap removes the textbook randomblob payload and the heavy-query timing trick. It does not make every single call
+// memory-safe (printf widths, replace(), group_concat over a recursive CTE): an accepted self-DoS gap, RECIPES section 4.
+describe('challengeDb caps randomblob() and zeroblob() (the textbook payload and the heavy-query timing trick)', () => {
   const one = (sql: string): unknown => (challengeDb(SCHEMA).prepare(sql).get() as { n?: unknown } | undefined)?.n;
 
   it('an injected length(randomblob(900000000)) returns at most the cap, and does not allocate it', () => {
