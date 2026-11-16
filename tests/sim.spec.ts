@@ -6,7 +6,7 @@ import v8 from 'node:v8';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
-import { NewSessionLimitError, insidePerSessionFactory, perSession, setPerSessionDefaults } from '../src/core/lab.js';
+import { NewSessionLimitError, insidePerSessionFactory, perSession, setCappedBudget, setPerSessionDefaults } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import type { Request } from 'express';
 import {
@@ -119,19 +119,32 @@ describe('sim state lives in perSession (per player and level)', () => {
     expect(() => labs.for({ sessionId: '3', level: 'acolyte' })).toThrow(NewSessionLimitError);
   });
 
-  it(`a holder that keeps sim state keeps at most ${SIM_LIMITS.worldsPerLab} instances (oldest evicted); a lab may set fewer`, () => {
-    expect(SIM_LIMITS.worldsPerLab).toBe(250);
-    const labs = perSession(() => ({ world: simWorld() }));
-    for (let i = 0; i < SIM_LIMITS.worldsPerLab + 10; i++) labs.for({ sessionId: `w${i}`, level: 'acolyte' });
-    expect(labs.size).toBe(SIM_LIMITS.worldsPerLab);
-    const fewer = perSession(() => simWorld(), { maxEntries: 7 });
-    for (let i = 0; i < 20; i++) fewer.for({ sessionId: `f${i}`, level: 'acolyte' });
+  it(`every holder that keeps sim state shares ONE budget of ${SIM_LIMITS.worldsTotal} instances, process-wide`, () => {
+    expect(SIM_LIMITS.worldsTotal).toBe(150);
+    const r = (sessionId: string) => ({ sessionId, level: 'acolyte' as Level });
+    const worlds = perSession(() => ({ world: simWorld() })); // two labs' holders...
+    const inboxes = perSession(() => simInbox()); // ...every sim store counts, not only the world
+    const plain = perSession((_l, sid) => ({ sid }));
+    for (let i = 0; i < 100; i++) worlds.for(r(`w${i}`));
+    for (let i = 0; i < 100; i++) { inboxes.for(r(`i${i}`)); plain.for(r(`p${i}`)); }
+    expect(worlds.size + inboxes.size).toBe(SIM_LIMITS.worldsTotal);
+    expect(inboxes.size).toBe(100); // the least recently used went: the other holder's oldest
+    expect(plain.size).toBe(100); // uncapped holders are unaffected
+    const fewer = perSession(() => simWorld(), { maxEntries: 7 }); // a lab may still keep fewer
+    for (let i = 0; i < 20; i++) fewer.for(r(`f${i}`));
     expect(fewer.size).toBe(7);
-    for (const make of [(): unknown => simInbox(), (): unknown => attackerLog()]) { // every sim store counts, not only the world
-      const h = perSession(make);
-      for (let i = 0; i < SIM_LIMITS.worldsPerLab + 1; i++) h.for({ sessionId: `s${i}`, level: 'acolyte' });
-      expect(h.size).toBe(SIM_LIMITS.worldsPerLab);
-    }
+  });
+
+  it('an instance evicted by the budget comes back fresh on its next use (eviction is a reset)', () => {
+    const prev = setCappedBudget(2);
+    onTestFinished(() => { setCappedBudget(prev); });
+    const labs = perSession(() => simWorld());
+    const a = { sessionId: 'A', level: 'acolyte' as Level };
+    labs.for(a).inbox.deliver({ from: 'x@citadel.test', to: PLAYER_MAILBOX, subject: 'kept?', body: '' });
+    labs.for({ sessionId: 'B', level: 'acolyte' });
+    labs.for({ sessionId: 'C', level: 'acolyte' }); // evicts A, the least recently used
+    expect(labs.size).toBe(2);
+    expect(labs.for(a).inbox.list(PLAYER_MAILBOX)).toEqual([]);
   });
 
   it(`creates at most ${SIM_LIMITS.newWorldsPerMinute} new instances a minute by default; a lab may set fewer`, () => {
@@ -146,16 +159,16 @@ describe('sim state lives in perSession (per player and level)', () => {
     expect(() => labs.for({ sessionId: 'one-more', level: 'acolyte' })).not.toThrow();
   });
 
-  it('fails fast, at the first factory run, when the lab asks for more entries or a faster rate', () => {
+  it('fails fast, at the first factory run, when the lab asks for a faster rate (entries: the shared budget bounds them)', () => {
     const req = { sessionId: 'x', level: 'acolyte' as Level };
-    const big = perSession(() => ({ world: simWorld() }), { maxEntries: SIM_LIMITS.worldsPerLab + 1 });
-    expect(() => big.for(req)).toThrow(/simWorld: .*at most 250 entries.*maxEntries: 251/);
-    expect(big.size).toBe(0);
-    expect(() => perSession(() => simWorld(), { maxNewPerMinute: 31 }).for(req)).toThrow(/simWorld: .*at most 30 new/);
+    const fast = perSession(() => ({ world: simWorld() }), { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute + 1 });
+    expect(() => fast.for(req)).toThrow(/simWorld: .*at most 30 new.*maxNewPerMinute: 31/);
+    expect(fast.size).toBe(0);
     expect(() => perSession(() => simWorld(), { maxNewPerMinute: Infinity }).for(req)).toThrow(/simWorld: .*at most 30 new/);
-    expect(() => perSession(() => simInbox(), { maxEntries: 5000 }).for(req)).toThrow(/simInbox: .*at most 250 entries/);
-    expect(perSession(() => simWorld(), { maxEntries: 250, maxNewPerMinute: 30 }).for(req)).toBeDefined();
+    expect(() => perSession(() => simInbox(), { maxNewPerMinute: 1000 }).for(req)).toThrow(/simInbox: .*at most 30 new/);
+    expect(perSession(() => simWorld(), { maxEntries: 5000, maxNewPerMinute: 30 }).for(req)).toBeDefined();
   });
+
 });
 
 describe('simInbox: mailboxes keyed by address', () => {

@@ -30,8 +30,9 @@ export function perLevel<T>(factory: (level: Level) => T): PerLevel<T> {
 
 export interface PerSessionOptions<T = unknown> {
   /**
-   * Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000, or the cap
-   * of what the factory builds (capPerSessionHolder: 250 for simulated-victim state, core/sim/world.ts).
+   * Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000. A holder
+   * capped by what it keeps (capPerSessionHolder: simulated-victim state, core/sim/world.ts) also shares one
+   * process-wide budget with every other capped holder.
    */
   readonly maxEntries?: number;
   /**
@@ -84,18 +85,40 @@ export function setPerSessionDefaults(d: { readonly maxNewPerMinute?: number }):
   return prev;
 }
 
-/** What a kind of instance allows the perSession holder that keeps it (see capPerSessionHolder). */
+/** What a kind of instance asks of the perSession holder that keeps it (see capPerSessionHolder). */
 export interface HolderCaps {
-  /** Most instances kept: the holder's default, and the most it may ask for. */
-  readonly maxEntries: number;
   /** Most new instances a rolling minute: the holder's default, and the most it may ask for. */
   readonly maxNewPerMinute: number;
+  /**
+   * Most such instances kept process-wide, by ALL capped holders together (every lab's victim worlds share it).
+   * Creating one at the budget evicts the least recently used capped instance, whichever holder keeps it.
+   */
+  readonly budget: number;
 }
 
 /** One running perSession factory: its holder's own options, and the caps what it built put on that holder. */
 interface FactoryFrame {
-  readonly asked: { readonly maxEntries?: number; readonly maxNewPerMinute?: number };
+  readonly asked: { readonly maxNewPerMinute?: number };
   caps?: HolderCaps;
+}
+
+// The process-wide budget of capped holders: every instance they keep, least recently used first, each with the
+// function that drops it from its holder (an eviction is a reset of that instance, as for a holder's own LRU).
+const cappedEntries = new Map<object, () => void>();
+let declaredBudget = Infinity; // the smallest budget a capped holder has declared (core/sim: SIM_LIMITS.worldsTotal)
+let budgetOverride: number | undefined;
+
+/**
+ * Test seam: set the process-wide budget of capped holders (a positive integer), or undefined for the budget they
+ * declare. It applies from the next instance created. Returns the previous setting, so a test can restore it.
+ */
+export function setCappedBudget(total: number | undefined): number | undefined {
+  if (total !== undefined && (!Number.isInteger(total) || total < 1)) {
+    throw new Error(`setCappedBudget: the budget must be a positive integer or undefined (got ${String(total)})`);
+  }
+  const prev = budgetOverride;
+  budgetOverride = total;
+  return prev;
 }
 
 // The perSession factories running right now, innermost last (factories are synchronous; nesting is allowed).
@@ -110,23 +133,26 @@ export function insidePerSessionFactory(): boolean {
 }
 
 const tighter = (a: HolderCaps | undefined, b: HolderCaps): HolderCaps => (a === undefined ? b : {
-  maxEntries: Math.min(a.maxEntries, b.maxEntries), maxNewPerMinute: Math.min(a.maxNewPerMinute, b.maxNewPerMinute),
+  maxNewPerMinute: Math.min(a.maxNewPerMinute, b.maxNewPerMinute), budget: Math.min(a.budget, b.budget),
 });
 
 /**
- * For stores whose instances are large (core/sim/world.ts: a filled simulated world is about a megabyte): called while a
- * perSession factory builds one, it caps the holder running that factory (the innermost). From then on the holder
- * keeps at most `caps.maxEntries` instances and creates at most `caps.maxNewPerMinute` a minute, by default and as a
- * ceiling: a holder whose own options ask for more fails right here, at its first factory run, with an error naming
- * `what`, and keeps nothing. Throws outside a factory.
+ * For stores whose instances are large (core/sim/world.ts: a filled simulated world is up to about a megabyte):
+ * called while a perSession factory builds one, it caps the holder running that factory (the innermost).
+ *
+ * - The holder joins ONE process-wide budget shared by every capped holder (`caps.budget` instances in all, every
+ *   lab and level together): creating an instance at the budget evicts the least recently used capped instance,
+ *   whichever holder keeps it (a reset of that instance; the new one is never refused). Memory stays bounded however
+ *   many labs keep such state. The holder's own `maxEntries` still applies within it.
+ * - It creates at most `caps.maxNewPerMinute` instances a minute, by default and as a ceiling: a holder whose own
+ *   options ask for more fails right here, at its first factory run, with an error naming `what`, and keeps nothing.
+ *
+ * Throws outside a factory.
  */
 export function capPerSessionHolder(what: string, caps: HolderCaps): void {
   const frame = frames.at(-1);
   if (frame === undefined) throw new Error(`${what}: create it inside a perSession() factory`);
-  const { maxEntries, maxNewPerMinute } = frame.asked;
-  if (maxEntries !== undefined && maxEntries > caps.maxEntries) {
-    throw new Error(`${what}: a perSession holder that keeps it may keep at most ${caps.maxEntries} entries (this one asks for maxEntries: ${maxEntries})`);
-  }
+  const { maxNewPerMinute } = frame.asked;
   if (maxNewPerMinute !== undefined && maxNewPerMinute > caps.maxNewPerMinute) {
     throw new Error(`${what}: a perSession holder that keeps it may create at most ${caps.maxNewPerMinute} new instances a minute (this one asks for maxNewPerMinute: ${maxNewPerMinute})`);
   }
@@ -168,23 +194,24 @@ export function perSession<T>(
   }
   const created: number[] = []; // creation times within the last minute
   // Map order = least recently used first (every use re-inserts at the end).
-  const entries = new Map<string, { value: T; usedAt: number }>();
-  const asked = { maxEntries: opts.maxEntries, maxNewPerMinute: maxNewOpt };
+  type Entry = { value: T; usedAt: number };
+  const entries = new Map<string, Entry>();
+  const asked = { maxNewPerMinute: maxNewOpt };
   let caps: HolderCaps | undefined; // set by the first factory run that builds a capped instance (capPerSessionHolder)
-  const entryLimit = (): number => (caps === undefined ? maxEntries : Math.min(maxEntries, caps.maxEntries));
   const rateLimit = (): number => {
     if (maxNewOpt !== undefined) return maxNewOpt; // never above a cap: capPerSessionHolder refused it
     const d = perSessionDefaults.maxNewPerMinute;
     return caps === undefined || d === Infinity ? d : Math.min(d, caps.maxNewPerMinute);
   };
-  const drop = (key: string, value: T) => {
-    entries.delete(key);
-    try { dispose?.(value); } catch { /* a failing dispose never breaks a request */ }
+  const drop = (key: string, e: Entry) => {
+    if (entries.get(key) === e) entries.delete(key);
+    cappedEntries.delete(e);
+    try { dispose?.(e.value); } catch { /* a failing dispose never breaks a request */ }
   };
   const sweep = (t: number) => {
     for (const [key, e] of entries) {
       if (t - e.usedAt <= idleTtlMs) break;
-      drop(key, e.value);
+      drop(key, e);
     }
   };
   const check = ({ sessionId, level }: Pick<Request, 'sessionId' | 'level'>) => {
@@ -196,7 +223,7 @@ export function perSession<T>(
       check(req);
       const key = `${req.level}|${req.sessionId}`;
       const hit = entries.get(key);
-      if (hit) drop(key, hit.value);
+      if (hit) drop(key, hit);
     },
     for(req: Pick<Request, 'sessionId' | 'level'>): T {
       const { sessionId, level } = req;
@@ -210,6 +237,8 @@ export function perSession<T>(
         entries.delete(key);
         hit.usedAt = t;
         entries.set(key, hit);
+        const evict = cappedEntries.get(hit);
+        if (evict !== undefined) { cappedEntries.delete(hit); cappedEntries.set(hit, evict); } // the newest in the budget too
         return hit.value;
       }
       while (created.length > 0 && t - created[0] >= 60_000) created.shift();
@@ -218,12 +247,23 @@ export function perSession<T>(
       const frame: FactoryFrame = { asked };
       frames.push(frame);
       try { value = factory(level, sessionId); } finally { frames.pop(); }
-      if (frame.caps !== undefined) caps = tighter(caps, frame.caps);
+      if (frame.caps !== undefined) {
+        caps = tighter(caps, frame.caps);
+        declaredBudget = Math.min(declaredBudget, frame.caps.budget);
+      }
       created.push(t);
-      entries.set(key, { value, usedAt: t });
-      while (entries.size > entryLimit()) {
-        const [oldKey, old] = entries.entries().next().value as [string, { value: T }];
-        drop(oldKey, old.value);
+      const e: Entry = { value, usedAt: t };
+      if (caps !== undefined) {
+        // At the shared budget the least recently used capped instance goes (in any holder), never this new one.
+        while (cappedEntries.size > 0 && cappedEntries.size >= (budgetOverride ?? declaredBudget)) {
+          (cappedEntries.values().next().value as () => void)();
+        }
+        cappedEntries.set(e, () => drop(key, e));
+      }
+      entries.set(key, e);
+      while (entries.size > maxEntries) {
+        const [oldKey, old] = entries.entries().next().value as [string, Entry];
+        drop(oldKey, old);
       }
       return value;
     },

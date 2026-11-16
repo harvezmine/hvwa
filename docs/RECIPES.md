@@ -199,7 +199,8 @@ fully attacker-chosen SQL must also cap result size.
   An optional `dispose(value)` runs when an instance is evicted or expires (to
   release a resource; its errors are swallowed). The bound is per `perSession`
   holder, so the worst case is `maxEntries` x the number of stateful labs: fine
-  for a loopback single-player lab. A holder that keeps simulated-victim state is capped lower (section 8).
+  for a loopback single-player lab. Holders that keep simulated-victim state share one smaller, process-wide
+  budget instead (section 8).
   **Eviction and TTL expiry are a reset** (counters, locks and secrets are rebuilt), so a lab with limiters must
   survive neither: (a) `idleTtlMs` must exceed the longest lock or lockout the lab uses (the default 26 h is
   longer than the 24 h cap of the Divine escalating locks; never lower it for such a lab); (b) creating
@@ -462,12 +463,21 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 
 `simWorld()`, `simInbox()`, `attackerLog()` and `world.browser()` throw unless called inside a `perSession` factory, so
 victim state is always per player and level, bounded, and inherits the new-instance limits. They also cap the holder
-whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is about a megabyte:
-at most `SIM_LIMITS.worldsPerLab` (250) instances and `SIM_LIMITS.newWorldsPerMinute` (30) new ones a minute, by default
-and as a ceiling. A lab may pass lower `maxEntries` / `maxNewPerMinute`, never higher: asking for more fails at the first
-factory run. Keep the world and the
-victim's browser in the lab's own per-session state, next to whatever else the lab tracks (accounts, tokens, codes),
-so one eviction or one `reset` drops all of it together:
+whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is up to about a megabyte
+and the container has 512 MB:
+
+- **One budget for the whole process.** Every holder that keeps sim state, in every lab and at every level, shares
+  `SIM_LIMITS.worldsTotal` (150) instances in all (about 100-170 MB at worst). Creating one at the budget evicts the
+  least recently used of them, whichever lab it belongs to; the new one is never refused. Adding a victim-driven lab
+  does not raise the bound. A lab's own `maxEntries` still applies within it.
+- **Eviction is a reset** of that player's instance at that level (section 4), and a shared budget turns over in
+  minutes: keep no limiter, lockout or attempt budget in victim-driven state.
+- At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
+  pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
+- Tests may shrink the budget with `setCappedBudget(n)` from `core/lab.ts` (restore the value it returns).
+
+Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
+(accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
 
 ```ts
 // model.ts

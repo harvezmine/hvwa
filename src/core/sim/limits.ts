@@ -27,10 +27,11 @@ export const SIM_LIMITS = Object.freeze({
   /** Longest note a victim action may leave for the panel. */
   noteLength: 500,
   /**
-   * Most instances a perSession holder that keeps sim state may keep (a filled world is about a megabyte): its
-   * default, and the most it may ask for (capPerSessionHolder in core/lab.ts).
+   * Most instances that keep sim state, process-wide: every lab's and level's holders share this one budget (a
+   * filled world is up to about a megabyte). At the budget a new one evicts the least recently used, whichever lab
+   * it belongs to (capPerSessionHolder in core/lab.ts).
    */
-  worldsPerLab: 250,
+  worldsTotal: 150,
   /** Most new instances such a holder creates a rolling minute: its default, and the most it may ask for. */
   newWorldsPerMinute: 30,
 });

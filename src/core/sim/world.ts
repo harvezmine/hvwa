@@ -17,7 +17,7 @@ function requireSession(what: string): void {
   if (!insidePerSessionFactory()) {
     throw new Error(`${what}: create it inside a perSession() factory (simulated state belongs to one player at one level)`);
   }
-  capPerSessionHolder(what, { maxEntries: SIM_LIMITS.worldsPerLab, maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute });
+  capPerSessionHolder(what, { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute, budget: SIM_LIMITS.worldsTotal });
 }
 
 // ---------------------------------------------------------------------------------------------------------------
