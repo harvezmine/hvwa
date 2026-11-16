@@ -5,14 +5,14 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 23/122 registered**
+**Total: 24/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
 | Relic Market | 3 | 11 |
 | Scriptorium | 0 | 20 |
-| Forum of Pilgrims | 2 | 10 |
+| Forum of Pilgrims | 3 | 9 |
 | Archive API | 0 | 15 |
 | Oracle | 0 | 21 |
 | Forge | 0 | 10 |
@@ -94,7 +94,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Forum of Pilgrims
 
-2/12 registered
+3/12 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -107,7 +107,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | FP-07 | SSTI → RCE | A05 | A I D | 2 | planned |
 | FP-08 | Open redirect (share link) | A01 | A T I D | 2 | ✅ registered |
 | FP-09 | IDOR private message (BOLA) | A01/API1 | A T I D | 2 | ✅ registered |
-| FP-10 | Second-order SQLi via username | A05 | A I D | 2 | planned |
+| FP-10 | Second-order SQLi via username | A05 | A I D | 2 | ✅ registered |
 | FP-11 | Client-side prototype pollution → XSS | A05 | A I D | 2 | planned |
 | FP-12 | HTML injection in email notification | A05 | A T I D | 2 | planned |
 
