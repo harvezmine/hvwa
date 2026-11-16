@@ -10,7 +10,7 @@ import { NewSessionLimitError, insidePerSessionFactory, perSession, setCappedBud
 import type { Level } from '../src/core/levels.js';
 import type { Request } from 'express';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, SIM_USER_AGENT, VICTIM_LABELS, attackerLog, checkMailAction, sendLinkAction, simInbox, simWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, SIM_USER_AGENT, VICTIM_LABELS, attackerLog, checkMailAction, classifySimUrl, sendLinkAction, simInbox, simWorld,
   type SimHandler, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 
@@ -832,6 +832,41 @@ describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
     // As slices: 4 logs x 30 entries x 3 fields x 100 KB = 36 MB, plus 4 jars x 20 lines x 100 KB = 8 MB. As copies: < 1 MB.
     expect(retained).toBeLessThan(4 * 1024 * 1024);
     expect(browsers.every((b) => b.cookies.size === SIM_LIMITS.cookies)).toBe(true);
+  });
+
+  it('a mail keeps the mailbox\'s own address as `to`: a padded address (from a form) is not kept alive', () => {
+    v8.setFlagsFromString('--expose-gc');
+    const gc = vm.runInNewContext('gc') as () => void;
+    const worlds = Array.from({ length: 4 }, () => world());
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    worlds.forEach((w, i) => {
+      for (let m = 0; m < SIM_LIMITS.mailsPerMailbox; m++) {
+        const mail = w.inbox.deliver({ from: 'x@citadel.test', to: `${' '.repeat(200_000 + i * 10 + m)}${ADMIN_MAILBOX}`, subject: 's', body: 'b' });
+        expect(mail?.to).toBe(ADMIN_MAILBOX);
+      }
+    });
+    gc(); gc();
+    // As trim()/toLowerCase() views: 4 x 10 x 200 KB = 8 MB. As the mailbox's own address: nothing new.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(1024 * 1024);
+    expect(worlds[0].inbox.addresses).toEqual([PLAYER_MAILBOX, ADMIN_MAILBOX]);
+  });
+
+  it('a URL the sim keeps (classifySimUrl fields, hops, pages) is its own text: a long fragment does not pin the href', () => {
+    v8.setFlagsFromString('--expose-gc');
+    const gc = vm.runInNewContext('gc') as () => void;
+    // Each URL is short, but its href carries a fragment that percent-encodes to ~16 KB (1800 x 9 chars).
+    const long = (i: number) => `http://citadel.test/p${i}/a-long-path-segment?q=${i}-a-long-query-value#${'✓'.repeat(1800)}`;
+    const worlds = Array.from({ length: 40 }, () => { const w = world(); return { w, b: inSession(() => w.browser(() => ({ status: 200 }))) }; });
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    const fields = Array.from({ length: 300 }, (_, i) => { const u = classifySimUrl(long(i)); return [u.url, u.origin, u.host, u.path, u.search]; });
+    worlds.forEach(({ b }, j) => { for (let v = 0; v < SIM_LIMITS.visits; v++) b.follow(long(j * 10 + v)); });
+    gc(); gc();
+    // Pinned hrefs: 300 + 40 x 5 URLs x ~16 KB = ~8 MB. As copies of their own text: well under 1 MB.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(1024 * 1024);
+    expect(fields[0]).toEqual(['http://citadel.test/p0/a-long-path-segment?q=0-a-long-query-value', 'http://citadel.test', 'citadel.test', '/p0/a-long-path-segment', '?q=0-a-long-query-value']);
+    expect(worlds[0].w.visits[0].page?.url).toBe('http://citadel.test/p0/a-long-path-segment?q=0-a-long-query-value');
   });
 
   it('clipping keeps every UTF-16 code unit exactly, lone surrogates included', () => {

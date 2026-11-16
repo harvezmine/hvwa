@@ -457,7 +457,10 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   to `next=`), and Divine can stop it (`Referrer-Policy: no-referrer`, no secrets in URLs, no open forward).
 - **Limits** (`SIM_LIMITS`): URL 2048 chars, 10 redirects, 3 mailboxes (the player's included) of 10 mails (subject 200,
   body 2000, 3 links), 30 log entries, 20 cookies of 4096 bytes, 5 visits (page bodies kept to 2000 chars), notes of
-  500 chars. Every clipped field is a copy, so an over-long input is never kept alive behind its clip.
+  500 chars. **Every stored field is a copy** (or a constant): a clipped field, a mail's `to` (the mailbox's own
+  address, never the padded input), every URL the browser keeps, cookie names, values and paths, Referers. A trimmed,
+  lower-cased, split or matched string, a URL getter or a query value can be a view that keeps its whole parent (a
+  100 KB form field, a long fragment) alive, so the sim never stores one.
 
 ### All victim state goes through `perSession`
 

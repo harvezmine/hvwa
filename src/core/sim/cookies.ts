@@ -136,7 +136,8 @@ export class Jar implements SimCookieJar {
     }
     if (secure && !at.url.startsWith('https:')) return; // only a secure origin may set a Secure cookie
     const expiresAt = maxAge !== undefined ? this.now() + maxAge * 1000 : expires;
-    this.put({ name, value, path: path ?? defaultPath(at.path), secure, ...(expiresAt === undefined ? {} : { expiresAt }) });
+    const ownPath = path ?? clip(defaultPath(at.path), SIM_LIMITS.urlLength); // a copy, as every stored field
+    this.put({ name, value, path: ownPath, secure, ...(expiresAt === undefined ? {} : { expiresAt }) });
   }
 
   /** The Cookie header for a citadel request ('' when none): longest paths first, then oldest first. */

@@ -232,7 +232,8 @@ export class Browser implements SimBrowser {
       const key = `${method} ${target.url}\n${encoded ?? ''}\n${this.jar.version}`;
       if (seen.has(key)) return finish('loop');
       seen.add(key);
-      const referer = referrer === undefined ? undefined : refererFor(referrer, target, policy);
+      const sent = referrer === undefined ? undefined : refererFor(referrer, target, policy);
+      const referer = sent === undefined ? undefined : clip(sent, SIM_LIMITS.urlLength); // kept in the hop: a copy
       const withReferer: { referer?: string } = referer === undefined ? {} : { referer };
       if (target.site === 'attacker') {
         // The player's server: the request is logged and the visit ends (nothing is served back).

@@ -2,7 +2,7 @@
 // victim's browser goes (WHATWG parsing, no DNS). Labs that TEACH URL-parsing flaws do their own (flawed) checks in
 // their level files.
 import type { Level } from '../levels.js';
-import { SIM_LIMITS } from './limits.js';
+import { SIM_LIMITS, clip } from './limits.js';
 
 /** The lab itself, as the victim's browser sees it: http://citadel.test/<path> is the lab route <labPath>/<path>. */
 export const CITADEL_HOST = 'citadel.test';
@@ -39,15 +39,20 @@ export interface SimUrl {
 
 const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/; // WHATWG always serializes an IPv4 host as four decimal parts
 
+// Every field is a copy: the URL's getters and the template literal can keep the whole href alive (a long fragment
+// or userinfo, percent-encoded to many times its length) for as long as a hop, a page or a cookie path keeps them.
+const own = (s: string): string => clip(s, SIM_LIMITS.urlLength);
+
 function result(site: SimSite, u: URL | undefined, host: string, reason?: SimUnreachable): SimUrl {
+  const search = u ? own(u.search) : '';
   return Object.freeze({
     site,
-    url: u ? `${u.protocol}//${u.host}${u.pathname}${u.search}` : '',
-    origin: u ? u.origin : '',
-    host,
-    path: u ? u.pathname : '',
-    search: u ? u.search : '',
-    query: new URLSearchParams(u ? u.search : ''),
+    url: u ? own(`${u.protocol}//${u.host}${u.pathname}${u.search}`) : '',
+    origin: u ? own(u.origin) : '',
+    host: own(host),
+    path: u ? own(u.pathname) : '',
+    search,
+    query: new URLSearchParams(search), // its values are views of this copy at most, never of the href
     userinfo: u ? u.username !== '' || u.password !== '' : false,
     ...(reason === undefined ? {} : { reason }),
   });

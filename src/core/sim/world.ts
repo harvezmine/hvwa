@@ -77,38 +77,42 @@ const ADDRESS_RE = /^[^@\s]+@[^@\s]+$/;
 export function simInbox(opts: SimInboxOptions = {}): SimInbox {
   requireSession('simInbox');
   const now = opts.now ?? Date.now;
-  const boxes = new Map<string, SimMail[]>();
+  // Each mailbox keeps its own canonical address (a copy made here): a mail's `to` is that string, never the input,
+  // which may be a trimmed view of a long, padded form field.
+  const boxes = new Map<string, { readonly address: string; readonly mails: SimMail[] }>();
   for (const raw of [PLAYER_MAILBOX, ...(opts.mailboxes ?? [])]) {
     const a = normalizeAddress(raw);
     if (a.length > SIM_LIMITS.addressLength || !ADDRESS_RE.test(a)) {
       throw new Error(`simInbox: "${clip(String(raw), 60)}" is not a mail address`);
     }
-    if (!boxes.has(a)) boxes.set(a, []);
+    if (!boxes.has(a)) {
+      const address = clip(a, SIM_LIMITS.addressLength);
+      boxes.set(address, { address, mails: [] });
+    }
   }
   if (boxes.size > SIM_LIMITS.mailboxes) throw new Error(`simInbox: at most ${SIM_LIMITS.mailboxes} mailboxes`);
-  const addresses = Object.freeze([...boxes.keys()]);
+  const addresses = Object.freeze([...boxes.values()].map((b) => b.address));
   let nextId = 1;
   return Object.freeze({
     addresses,
     deliver(mail: NewMail): SimMail | undefined {
-      const to = normalizeAddress(mail?.to);
-      const box = boxes.get(to);
+      const box = boxes.get(normalizeAddress(mail?.to)); // the input is only a lookup key
       if (box === undefined) return undefined;
       const links = Array.isArray(mail.links)
         ? mail.links.filter((l): l is string => typeof l === 'string').slice(0, SIM_LIMITS.linksPerMail)
           .map((l) => clip(l, SIM_LIMITS.urlLength + 1)) // one past the cap: an over-long link stays too long to follow
         : [];
       const m: SimMail = Object.freeze({
-        id: nextId++, at: now(), from: clip(str(mail.from), SIM_LIMITS.addressLength), to,
+        id: nextId++, at: now(), from: clip(str(mail.from), SIM_LIMITS.addressLength), to: box.address,
         subject: clip(str(mail.subject), SIM_LIMITS.subjectLength), body: clip(str(mail.body), SIM_LIMITS.bodyLength),
         links: Object.freeze(links),
       });
-      box.unshift(m);
-      if (box.length > SIM_LIMITS.mailsPerMailbox) box.length = SIM_LIMITS.mailsPerMailbox;
+      box.mails.unshift(m);
+      if (box.mails.length > SIM_LIMITS.mailsPerMailbox) box.mails.length = SIM_LIMITS.mailsPerMailbox;
       return m;
     },
-    list: (address: string): readonly SimMail[] => Object.freeze([...(boxes.get(normalizeAddress(address)) ?? [])]),
-    newest: (address: string): SimMail | undefined => boxes.get(normalizeAddress(address))?.[0],
+    list: (address: string): readonly SimMail[] => Object.freeze([...(boxes.get(normalizeAddress(address))?.mails ?? [])]),
+    newest: (address: string): SimMail | undefined => boxes.get(normalizeAddress(address))?.mails[0],
     has: (address: string): boolean => boxes.has(normalizeAddress(address)),
   });
 }
