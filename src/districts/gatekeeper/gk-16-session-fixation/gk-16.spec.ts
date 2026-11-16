@@ -133,9 +133,15 @@ describe('GK-16 how each level picks the session', () => {
 
   it('inquisitor and divine ignore ?sid= and rotate the id at login', async () => {
     for (const level of ['inquisitor', 'divine'] as const) {
-      const { agent } = await freshSession();
+      const { agent, app, sid } = await freshSession();
       const before = sessionOn((await home(agent, level)).text)!;
       expect(sessionOn((await home(agent, level, `&sid=${CHOSEN}`)).text), level).toBe(before);
+      // Even an id the server really issued is ignored in a URL: another browser of yours (no lab cookie) opening it
+      // gets a session of its own.
+      const other = await bare(app, sid).get(`${LAB}?level=${level}&lang=en&sid=${before}`);
+      expect(sessionOn(other.text), level).toMatch(/^[0-9a-f]{32}$/);
+      expect(sessionOn(other.text), level).not.toBe(before);
+      expect(setCookieValue(other, cookieName(level)), level).not.toBe(before);
       const res = await signIn(agent, level, 'pilgrim', 'pilgrim');
       const after = setCookieValue(res, cookieName(level));
       expect(after, level).toMatch(/^[0-9a-f]{32}$/);
