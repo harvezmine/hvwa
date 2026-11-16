@@ -1,0 +1,6 @@
+<%# GK-10 Pilgrim-ID page: what /idp/authorize shows when it does not send the code on. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Pilgrim-ID</h1>
+  <p class="lab-message <%= failed ? 'lab-error' : 'lab-success' %>" role="status" data-testid="lab-message"><%= text %></p>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to Citadel (the Pilgrim-ID sign-in is there)</a></p>
+</section>

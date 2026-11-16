@@ -8,6 +8,7 @@ import './gk-06-jwt-kid-injection/challenge.js';
 import './gk-07-jwt-weak-secret/challenge.js';
 import './gk-08-predictable-reset-token/challenge.js';
 import './gk-09-reset-host-poisoning/challenge.js';
+import './gk-10-oauth-redirect-uri/challenge.js';
 import './gk-12-idor-profile/challenge.js';
 import './gk-13-hidden-admin-function/challenge.js';
 import './gk-14-mass-assignment/challenge.js';
@@ -15,4 +16,4 @@ import './gk-15-otp-brute-force/challenge.js';
 import './gk-16-session-fixation/challenge.js';
 import './gk-17-weak-session-id/challenge.js';
 import './gk-18-role-cookie/challenge.js';
-// GK-10 and GK-11 are added here, in id order, as they are implemented
+// GK-11 is added here, in id order, once it is implemented
