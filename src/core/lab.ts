@@ -31,7 +31,7 @@ export function perLevel<T>(factory: (level: Level) => T): PerLevel<T> {
 export interface PerSessionOptions<T = unknown> {
   /**
    * Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000, or the cap
-   * of what the factory builds (capPerSessionHolder: 250 for simulated-victim state, core/sim.ts).
+   * of what the factory builds (capPerSessionHolder: 250 for simulated-victim state, core/sim/world.ts).
    */
   readonly maxEntries?: number;
   /**
@@ -102,7 +102,7 @@ interface FactoryFrame {
 const frames: FactoryFrame[] = [];
 
 /**
- * Whether code is running inside a perSession() factory. Per-player stores (core/sim.ts: inbox, attacker log,
+ * Whether code is running inside a perSession() factory. Per-player stores (core/sim/world.ts: inbox, attacker log,
  * the victim's browser) check it, so they can only be made as part of one player's lab state, never at module level.
  */
 export function insidePerSessionFactory(): boolean {
@@ -114,7 +114,7 @@ const tighter = (a: HolderCaps | undefined, b: HolderCaps): HolderCaps => (a ===
 });
 
 /**
- * For stores whose instances are large (core/sim.ts: a filled simulated world is about a megabyte): called while a
+ * For stores whose instances are large (core/sim/world.ts: a filled simulated world is about a megabyte): called while a
  * perSession factory builds one, it caps the holder running that factory (the innermost). From then on the holder
  * keeps at most `caps.maxEntries` instances and creates at most `caps.maxNewPerMinute` a minute, by default and as a
  * ceiling: a holder whose own options ask for more fails right here, at its first factory run, with an error naming

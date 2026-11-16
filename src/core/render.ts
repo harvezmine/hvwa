@@ -98,7 +98,7 @@ function assertNoReservedKeys(data: Record<string, unknown>): void {
  * the HTML. Context = res.locals (lang, t, and on challenge routes level and
  * challenge) overlaid with `data`; reserved keys are rejected. On challenge
  * routes the layout also shows the lab bar, and for a challenge with a
- * simulated victim (core/sim.ts) the inbox / attacker-log panel below the view.
+ * simulated victim (core/victim.ts) the inbox / attacker-log panel below the view.
  */
 export async function page(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<string> {
   assertViewFile(viewFile);

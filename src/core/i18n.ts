@@ -55,7 +55,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'lab.switch_level': { id: 'Ganti level', en: 'Switch level' },
   'lab.restart': { id: 'Mulai ulang lab', en: 'Restart lab' },
   'lab.restart_cooldown': { id: 'Mulai ulang sedang jeda. Coba lagi sebentar lagi.', en: 'Restart is cooling down. Try again in a moment.' },
-  // The simulated-victim panel (core/sim.ts, core/views/sim-panel.ejs). {name} placeholders are filled by sim.ts.
+  // The simulated-victim panel (core/victim.ts, core/views/sim-panel.ejs). {name} placeholders are filled by victim.ts.
   'sim.heading': { id: 'Korban tersimulasi', en: 'Simulated victim' },
   'sim.hosts': {
     id: 'Peramban korban hanya mengenal dua situs: {citadel} (lab ini: {citadel}/<path> adalah {lab}/<path>) dan {attacker} (server Anda, termasuk subdomainnya). Tidak ada jaringan sungguhan.',

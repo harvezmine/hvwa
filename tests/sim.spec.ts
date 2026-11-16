@@ -1,5 +1,5 @@
-// The simulated victim's stores and browser (src/core/sim.ts): inbox, attacker log, cookie jar, SimBrowser.
-import { readFileSync } from 'node:fs';
+// The simulated victim's stores and browser (src/core/sim/): inbox, attacker log, cookie jar, SimBrowser.
+import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import net from 'node:net';
 import v8 from 'node:v8';
@@ -45,8 +45,11 @@ afterAll(() => {
   expect(calls, 'a socket was opened while the sim specs ran').toBe(0);
 });
 
-/** Runtime imports the simulation may have; type-only imports are erased. Anything else fails the guard. */
-const SIM_ALLOWED_IMPORTS: ReadonlySet<string> = new Set(['node:buffer', 'node:path', 'node:url', './i18n.js', './lab.js', './render.js']);
+/** The pure simulation: every module in src/core/sim/ (the engine side, core/victim.ts, is Express integration). */
+const SIM_DIR = new URL('../src/core/sim/', import.meta.url);
+const SIM_FILES = readdirSync(SIM_DIR).filter((f) => f.endsWith('.ts')).sort();
+/** Runtime imports those modules may have; type-only imports are erased. Anything else fails the guard. */
+const SIM_ALLOWED_IMPORTS: ReadonlySet<string> = new Set(['node:buffer', '../lab.js', ...SIM_FILES.map((f) => `./${f.replace(/\.ts$/, '.js')}`)]);
 /** Globals that reach the network or load code, however the call site spells the rest. */
 const SIM_DENIED_GLOBALS: ReadonlySet<string> = new Set([
   'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'globalThis', 'global', 'window', 'self', 'process', 'require',
@@ -844,10 +847,30 @@ describe('no real network', () => {
     expect(simSourceCheck("import type { Request } from 'express'; import { t } from './i18n.js';")).toEqual({ runtime: ['./i18n.js'], problems: [] });
   });
 
-  it('src/core/sim.ts imports only what the allow-list names, never loads code dynamically, and names no network global', () => {
-    const { runtime, problems } = simSourceCheck(readFileSync(new URL('../src/core/sim.ts', import.meta.url), 'utf8'));
-    expect(runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m))).toEqual([]);
-    expect(problems).toEqual([]);
+  it('src/core/sim/ imports only what the allow-list names, never loads code dynamically, and names no network global', () => {
+    expect(SIM_FILES).toEqual(['browser.ts', 'cookies.ts', 'limits.ts', 'url.ts', 'world.ts']);
+    for (const file of SIM_FILES) {
+      const { runtime, problems } = simSourceCheck(readFileSync(new URL(file, SIM_DIR), 'utf8'));
+      expect(runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m)), file).toEqual([]);
+      expect(problems, file).toEqual([]);
+    }
+  });
+
+  it('everything src/core/sim/ loads at runtime, transitively, reaches only node:buffer and node:fs (no Express, no network)', () => {
+    const seen = new Set<string>();
+    const outside = new Set<string>();
+    const walk = (file: URL): void => {
+      if (seen.has(file.href)) return;
+      seen.add(file.href);
+      for (const m of simSourceCheck(readFileSync(file, 'utf8')).runtime) {
+        if (m.startsWith('.')) walk(new URL(m.replace(/\.js$/, '.ts'), file));
+        else outside.add(m);
+      }
+    };
+    for (const file of SIM_FILES) walk(new URL(file, SIM_DIR));
+    expect([...outside].sort()).toEqual(['node:buffer', 'node:fs']);
+    const core = new URL('../src/core/', import.meta.url).href;
+    expect([...seen].map((h) => h.slice(core.length)).sort()).toEqual(['lab.ts', 'levels.ts', ...SIM_FILES.map((f) => `sim/${f}`)]);
   });
 
   it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {

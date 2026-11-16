@@ -397,12 +397,17 @@ If a mutation stays green, the matrix is missing a case.
 
 Some flaws need someone else to click: the admin opens a reset mail whose link host came from a header (GK-09),
 follows an OAuth authorize link while signed in (GK-10, GK-11), signs in through a session link (GK-16). The engine
-simulates that victim deterministically and with **no real network**: nothing in `core/sim.ts` opens a socket,
-resolves a name or fetches. A guard in `tests/sim.spec.ts` parses the module with the TypeScript compiler and allows
-only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as `fetch` or
-`globalThis`), spies on fetch, http(s), http2, tls, net, dgram and dns during a visit, and spies on
-`net.Socket.prototype.connect` for the whole spec file. The worked example is the fixture lab SV-01 in
-`tests/sim-lab.spec.ts`.
+simulates that victim deterministically and with **no real network**: nothing in `core/sim/` opens a socket,
+resolves a name or fetches. A guard in `tests/sim.spec.ts` parses every module in `core/sim/` with the TypeScript
+compiler and allows only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as
+`fetch` or `globalThis`; transitively they reach only `node:buffer` and `node:fs`), spies on fetch, http(s), http2,
+tls, net, dgram and dns during a visit, and spies on `net.Socket.prototype.connect` for the whole spec file. The worked
+example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
+
+Import everything from `core/sim.ts`, a barrel over the pure simulation in `core/sim/` (`limits.ts`: `SIM_LIMITS` and
+the copying clip; `url.ts`: the hosts and `classifySimUrl`; `cookies.ts`: the jar; `browser.ts`: `SimBrowser`;
+`world.ts`: `simWorld`, `simInbox`, `attackerLog`; no Express at runtime) and the engine side in `core/victim.ts`
+(`VictimConfig`, the presets, the panel, `mountVictim`, `sendSimRedirect`).
 
 ### The two hosts
 

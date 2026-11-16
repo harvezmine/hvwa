@@ -1,4 +1,4 @@
-// classifySimUrl: the ground truth for "where did the simulated victim's browser actually go" (src/core/sim.ts).
+// classifySimUrl: the ground truth for "where did the simulated victim's browser actually go" (src/core/sim/url.ts).
 // Parsing is the WHATWG URL parser (what browsers use), so every trick below resolves exactly as in a browser.
 import { describe, it, expect } from 'vitest';
 import { classifySimUrl, labHref, SIM_LIMITS, type SimSite } from '../src/core/sim.js';

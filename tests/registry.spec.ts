@@ -96,7 +96,7 @@ describe('defineChallenge', () => {
   });
 });
 
-describe('defineChallenge: victim (core/sim.ts)', () => {
+describe('defineChallenge: victim (core/victim.ts)', () => {
   const action = { name: 'send-link', label: { id: 'Kirim', en: 'Send' }, input: 'url' as const, run: () => {} };
   const sim = () => { throw new Error('not called at definition'); };
 
