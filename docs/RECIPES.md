@@ -1115,10 +1115,12 @@ export const resetLab = (req: { sessionId: string; level: Level }): void => { la
   a fractional quantity or an unsafe unit price is a programming error and throws. A lab that adds up (RM-05's
   returns) computes the new quantity itself and sets it.
 - `placeOrder(state, { lines: orderLines(state), subtotal, total, charged, status? })` places an order (status `paid`
-  unless the lab names another, as RM-13's `confirmed`), debits `charged` (a negative charge
+  unless the lab names another), debits `charged` (a negative charge
   credits), stamps the order with `state.clock.now()`, empties the cart and the discounts and keeps the newest 30
   orders (`pushOrder`). A charge or wallet outside the safe integers is refused (`OUT_OF_RANGE`) and changes nothing.
-  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...).
+  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...). RM-13 does not call
+  `placeOrder`: its payment provider has already debited the wallet at the pay step, so it builds its `confirmed` order by
+  hand (`pushOrder`, no debit) with `charged` set to the provider's ledger (`received`), avoiding a double debit.
 - **Seeded orders** (RM-11's other customers) go through `pinOrder(state, order)` in the lab's factory into
   `state.pinned` (at most `LIMITS.pinned` = 20, an id seeded twice throws): they are never trimmed by the player's own
   newest 30. `allOrders(state)` is pinned then own. An `Order.no` is a number (the shop's running number) or a string id.
