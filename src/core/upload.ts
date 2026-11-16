@@ -93,9 +93,21 @@ export interface UploadRequest {
 }
 
 const MULTIPART = /^[\t ]*multipart\/form-data[\t ]*(;|$)/i;
-// The boundary parameter as the WHATWG MIME type parser reads it (first one wins), for the part-count scan only:
-// the parse itself is undici's, so a boundary this misreads can only make the scan count less, never refuse more.
-const BOUNDARY = /;[\t ]*boundary=(?:"((?:[^"\\]|\\.)*)"|([^;]*))/i;
+// The boundary parameter, read strictly for the part-count scan: a plain token or a closed quoted string, ending at
+// `;` or the end of the header. The header must hold exactly one `boundary=` (any case), so the scan always looks
+// for the boundary undici parses with: `x="; boundary=fake"; boundary=real` cannot steer it to a decoy.
+const BOUNDARY = /;[\t ]*boundary=(?:"((?:[^"\\\r\n]|\\.)*)"|([^";\t ]+))[\t ]*(?:;|$)/i;
+const BOUNDARY_PARAM = /boundary=/gi;
+
+/** The one boundary of a multipart/form-data content type, or an UploadError (before anything is parsed). */
+function boundaryOf(contentType: string): string {
+  const bad = (why: string) => new UploadError(`malformed multipart/form-data content type (${why})`);
+  if ((contentType.match(BOUNDARY_PARAM) ?? []).length !== 1) throw bad('it needs exactly one boundary parameter');
+  const b = BOUNDARY.exec(contentType);
+  const boundary = b === null ? '' : b[1] !== undefined ? b[1].replace(/\\(.)/g, '$1') : b[2];
+  if (boundary === '') throw bad('the boundary must be a token or a quoted string');
+  return boundary;
+}
 
 function limitsFrom(asked: Partial<UploadLimits>): UploadLimits {
   const out: Record<string, number> = { ...UPLOAD_LIMITS };
@@ -136,10 +148,10 @@ export async function parseMultipart(req: UploadRequest, limits: Partial<UploadL
     throw new UploadError('no raw request body: an upload route reads it with express.raw({ type: \'multipart/form-data\' })');
   }
   if (body.length > lim.maxBytes) throw new UploadError(`the upload is too large (${body.length} bytes; at most ${lim.maxBytes})`);
-  const b = BOUNDARY.exec(contentType);
-  const boundary = b === null ? undefined : b[1] !== undefined ? b[1].replace(/\\(.)/g, '$1') : b[2].trim();
+  const boundary = boundaryOf(contentType);
   // Each part follows one delimiter and one more closes the body: refuse a flood before undici builds its entries.
-  if (boundary && delimiters(body, boundary, lim.maxParts + 2) > lim.maxParts + 1) throw new UploadError(`too many parts (at most ${lim.maxParts})`);
+  // (The per-entry count below stays as the backstop.)
+  if (delimiters(body, boundary, lim.maxParts + 2) > lim.maxParts + 1) throw new UploadError(`too many parts (at most ${lim.maxParts})`);
 
   let form: FormData;
   try {

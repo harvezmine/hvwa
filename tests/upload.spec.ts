@@ -236,6 +236,44 @@ describe('parseMultipart: malformed or non-multipart requests are UploadError (4
     }
   });
 
+  it('a content type with more than one boundary, or one that is not a plain token or closed quoted string, is refused before parsing', async () => {
+    const formData = vi.spyOn(Response.prototype, 'formData');
+    try {
+      // The flood is delimited by "real"; a scan steered to "fake" would count nothing and let undici build it all.
+      const flood = multipart(Array.from({ length: 2000 }, () => ({ name: 'a', value: '' })), 'real');
+      const headers = [
+        'multipart/form-data; x="; boundary=fake"; boundary=real', 'multipart/form-data; boundary=real; BOUNDARY=fake',
+        'multipart/form-data; boundary=real; xboundary=fake', 'multipart/form-data; boundary="real', 'multipart/form-data; boundary= real',
+        'multipart/form-data; boundary=real x', 'multipart/form-data; boundary=""', 'multipart/form-data; boundary=',
+      ];
+      for (const ct of headers) {
+        expect((await uploadError(parseMultipart(uploadReq(flood, ct)))).message, ct).toMatch(/content type .*boundary/);
+      }
+      expect(formData).not.toHaveBeenCalled();
+    } finally {
+      formData.mockRestore();
+    }
+  });
+
+  it('the per-entry part cap still holds if the body scan ever misses (here: its first search finds nothing)', async () => {
+    const formData = vi.spyOn(Response.prototype, 'formData');
+    const indexOf = vi.spyOn(Buffer.prototype, 'indexOf').mockImplementationOnce(() => -1); // the scan's search, then real again
+    try {
+      const err = await uploadError(parse(Array.from({ length: 40 }, (_, i) => ({ name: `f${i}`, value: 'v' }))));
+      expect(err.message).toBe('too many parts (at most 32)');
+      expect(formData).toHaveBeenCalledTimes(1); // the scan was fooled; the parse ran; the loop refused at part 33
+    } finally {
+      indexOf.mockRestore();
+      formData.mockRestore();
+    }
+  });
+
+  it('the media type is matched at the start only: another type with multipart/form-data in a parameter is refused', async () => {
+    for (const ct of ['application/x-www-form-urlencoded; a=multipart/form-data', 'text/plain; multipart/form-data; boundary=hvwa-test-boundary']) {
+      expect((await uploadError(parseMultipart(uploadReq(good, ct)))).message, ct).toBe('expected a multipart/form-data request');
+    }
+  });
+
   it('the media type is matched case-insensitively, with a quoted boundary too', async () => {
     expect((await parseMultipart(uploadReq(good, `Multipart/Form-Data; boundary="${B}"`))).fields).toEqual({ a: 'v' });
   });
