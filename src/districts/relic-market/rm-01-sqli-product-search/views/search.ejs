@@ -1,0 +1,24 @@
+<%# RM-01 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Relic Market catalog search</h1>
+  <p class="lab-note">You are browsing as a guest.</p>
+  <form method="post">
+    <label>Search relics <input name="q" type="text" autocomplete="off" spellcheck="false" value="<%= q %>"></label>
+    <label>Max price (whole dollars) <input name="max" type="text" autocomplete="off" spellcheck="false" value="<%= max %>"></label>
+    <button type="submit">Search</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+<% if (rows.length > 0) { -%>
+  <table data-testid="results">
+    <thead><tr><th>Name</th><th>Category</th><th>Price</th><th>Description</th></tr></thead>
+    <tbody>
+<% rows.forEach(function (r) { -%>
+      <tr data-row><% r.forEach(function (cell) { %><td><%= cell %></td><% }); %></tr>
+<% }); -%>
+    </tbody>
+  </table>
+<% } -%>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>

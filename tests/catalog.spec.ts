@@ -81,7 +81,7 @@ describe('docs/CATALOG.md generator', () => {
   it('marks registered rows and leaves the rest planned', () => {
     const md = renderCatalog();
     expect(md).toMatch(/\| GK-01 \|.*\| ✅ registered \|/);
-    expect(md).toMatch(/\| RM-01 \|.*\| planned \|/);
+    expect(md).toMatch(/\| WT-07 \|.*\| planned \|/); // the last district to land, so a stable "planned" row
   });
 
   it('committed docs/CATALOG.md is current (run `npm run gen:catalog`)', () => {
