@@ -13,6 +13,7 @@ import type { Level } from '../src/core/levels.js';
 import { flagFor } from '../src/core/mount.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import { sendPage } from '../src/core/render.js';
+import { isBlankLocation } from '../src/core/victim.js';
 import {
   ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, checkMailAction, sendLinkAction, sendSimRedirect, simWorld,
   type SimBrowser, type SimRedirectStatus, type SimRequest, type SimResponse, type SimWorld,
@@ -519,6 +520,14 @@ describe('sendSimRedirect: exact mapping', () => {
 });
 
 describe('sendSimRedirect: no target', () => {
+  it('the blank check is linear: a long run of spaces inside a Location costs no more than its length', () => {
+    const t = performance.now();
+    expect(isBlankLocation(`x${' '.repeat(40_000)}y`)).toBe(false); // a trim regex is quadratic here (seconds)
+    expect(performance.now() - t).toBeLessThan(100);
+    for (const blank of ['', ' ', '\t\n ', '\u0000 \r', '\u001f']) expect(isBlankLocation(blank), JSON.stringify(blank)).toBe(true);
+    for (const target of ['x', ' x ', '\t/\n', ' ']) expect(isBlankLocation(target), JSON.stringify(target)).toBe(false);
+  });
+
   it('an empty, blank or non-string Location never redirects (it would loop to this route): a page says there is no target', async () => {
     const { agent } = await freshSession();
     const urls = [

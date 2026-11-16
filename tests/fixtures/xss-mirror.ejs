@@ -1,0 +1,21 @@
+<%# XV-01 fixture lab (tests/xss-lab.spec.ts), a reflected XSS lab in miniature. Lab content is English. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. %>
+<section class="lab">
+  <h1>Scriptorium Mirror — Search</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. The librarian (admin) is signed in at http://citadel.test/ and opens the search links you send. Where a real payload would send the librarian's cookie home, call your marker: <code data-marker><%= marker %></code>. Then sign in with the session key your server received.</p>
+  <form method="get">
+    <input type="hidden" name="level" value="<%= level %>">
+    <label>Search the scrolls <input name="q" type="text" autocomplete="off" spellcheck="false" value="<%= q %>"></label>
+    <button type="submit">Search</button>
+  </form>
+<% if (q !== '') { -%>
+  <p class="lab-note">Results for <code><%= q %></code>, live in a sandboxed frame (http://citadel.test/search?q=... shows the librarian the same):</p>
+  <%- preview %>
+<% } -%>
+  <form method="post">
+    <label>Librarian's session key <input name="key" type="text" autocomplete="off" spellcheck="false" value="<%= key %>"></label>
+    <button type="submit">Sign in as the librarian</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status"><%= result.text %></p>
+<% } -%>
+</section>
