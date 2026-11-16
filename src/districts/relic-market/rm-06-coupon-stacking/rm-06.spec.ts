@@ -61,7 +61,7 @@ describeLabView({
   extra: { intent: 'coupon' },
   oddBodies: [
     { intent: 'coupon', code: { a: 1 } }, { intent: 'coupon', code: [{ a: [1] }, 'WELCOME10'] }, { intent: ['coupon'], code: 'WELCOME10' },
-    { intent: 'coupon', code: null }, { intent: 'coupon', code: [] }, { intent: 'uncoupon', extra: { deep: [1] } }, [],
+    { intent: 'coupon', code: null }, { intent: 'coupon', code: { toString: 1 } }, { intent: 'coupon', code: [{ toString: 1 }] }, { intent: 'coupon', code: [] }, { intent: 'uncoupon', extra: { deep: [1] } }, [],
   ],
   ok: async (agent, level, sid) => {
     await form({ agent, level, sid }, { intent: 'add', sku: 'CANDLE', qty: '1' });
@@ -151,6 +151,24 @@ describe('RM-06 coupon stacking', () => {
       expect((await couponJson(c, { code: { a: 1 } })).text, level).toContain('Unknown promotion code.');
       expect((await couponJson(c, [1, 2])).text, level).toContain('Unknown promotion code.');
       expect(appliedCodes((await home(c)).text), level).toEqual([]);
+    }
+  });
+
+  it('every level: a code object with its own toString is no code, never a 500', async () => {
+    for (const level of LEVELS) {
+      const c = await ctx(level);
+      await add(c, 'CANDLE', '1');
+      const bodies: [string, () => Promise<request.Response>][] = [
+        ['json object', () => couponJson(c, { code: { toString: 1 } })],
+        ['json array', () => couponJson(c, { code: [{ toString: 1 }] })],
+        ['form code[toString]', () => c.agent.post(`${LAB}/cart/coupon?level=${level}`).type('form').send('code[toString]=1')],
+        ['page form', () => c.agent.post(`${LAB}?level=${level}`).type('form').send('intent=coupon&code[toString]=1')],
+      ];
+      for (const [name, send] of bodies) {
+        const res = await send();
+        expect(res.status, `${level} ${name}`).toBe(200);
+        expect(res.text, `${level} ${name}`).toContain('Unknown promotion code.');
+      }
     }
   });
 

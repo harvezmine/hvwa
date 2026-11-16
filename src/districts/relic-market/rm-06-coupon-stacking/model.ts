@@ -87,6 +87,14 @@ export function rawField(body: unknown, name: string): unknown {
   return value;
 }
 
+/**
+ * A parsed value as text, the way a level reads a code: String(), so an array becomes "A,B". A value whose own
+ * toString breaks (`{ toString: 1 }`, from JSON or `code[toString]=1`) is no text at all, never a 500.
+ */
+export function textOf(v: unknown): string {
+  try { return String(v ?? ''); } catch { return ''; }
+}
+
 /** What every levels/<level>.ts exports (checked by byLevel<CouponLevel> in challenge.ts). */
 export interface CouponLevel {
   /** The promotion form's request body (parsed form or JSON, whatever shape): apply code(s), or say why not. */
