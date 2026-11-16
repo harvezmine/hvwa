@@ -1,0 +1,18 @@
+<%# RM-03 lab view. Lab content is English by design. The partials live in relic-market/_shared/views. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Relic Market order tracker</h1>
+  <p class="lab-note">Your last order: <code><%= lastOrder %></code></p>
+  <p class="lab-note">Relic Market runs on SQLite with a MySQL-compatible <code>sleep(seconds)</code> helper; heavy queries do not slow it down.</p>
+<%- include('../../_shared/views/message') %>
+  <p class="lab-note">Vault PINs live in the <code>vault</code> table, in its <code>pin</code> column; this tracker reads the <code>orders</code> table.</p>
+  <h2>Track your order</h2>
+  <form method="post">
+    <input type="hidden" name="intent" value="track">
+    <label>Order number <input name="order_no" type="text" autocomplete="off" spellcheck="false" value="<%= orderNo %>"></label>
+    <button type="submit">Track</button>
+  </form>
+<%- include('../../_shared/views/staff-code', { noun: 'vault PIN', length: 6, code: code }) %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+  <p class="lab-note">To time a reply, ask curl for the total time: <code>curl -o /dev/null -s -w '%{time_total}\n' "<%= curl.url %>" -b "hvwa_sid=&lt;copy from devtools&gt;"<% curl.form.forEach(function (f) { %> --data-urlencode '<%= f %>'<% }); %></code>.</p>
+<%- include('../../_shared/views/endpoints') %>
+</section>
