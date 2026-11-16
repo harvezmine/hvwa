@@ -6,7 +6,8 @@
 // where View Source and the Diff show it).
 import { createHash, randomBytes } from 'node:crypto';
 import type { Level } from '../../../core/levels.js';
-import { cookiePath, type Reply, type Visit } from '../../../core/sim.js';
+import { SIM_LIMITS, cookiePath, type Reply, type Visit } from '../../../core/sim.js';
+import { clip } from '../../../core/sim/limits.js';
 import { newId, putBounded } from '../../_shared/collections.js';
 import { withParams } from '../../_shared/url.js';
 import { accountOf } from './lab.js';
@@ -114,8 +115,11 @@ export function pilgrimIdAuthorize<S extends PilgrimIdState>(id: PilgrimId<S>, v
   const pkceError = policy.checkPkce(challenge, v.query.get('code_challenge_method') ?? undefined);
   if (pkceError !== undefined) return { status: 400, text: `Pilgrim-ID: ${pkceError}` };
   const code = newId();
+  // The player's strings are kept as copies one past the URL cap: bounded memory, and an over-long value still never
+  // equals the short registered URI or an S256 challenge it is compared with.
+  const keep = (s: string): string => clip(s, SIM_LIMITS.urlLength + 1);
   putBounded(state.codes, code, {
-    user, clientId: CLIENT_ID, redirectUri, ...(challenge === undefined ? {} : { challenge }),
+    user, clientId: CLIENT_ID, redirectUri: keep(redirectUri), ...(challenge === undefined ? {} : { challenge: keep(challenge) }),
     expiresAt: state.world.now() + CODE_TTL_MS, used: false,
   }, id.maxEntries);
   const st = v.query.get('state');

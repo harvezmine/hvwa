@@ -1,6 +1,6 @@
 // challenge.ts — GK-07 metadata and routes. The vulnerable code is in levels/*.ts (served by View Source).
 import { defineChallenge, register } from '../../../core/registry.js';
-import { sendLines } from '../../../core/lab.js';
+import { sendLines } from '../../../core/fixtures.js';
 import { challengeDir } from '../../../core/source.js';
 import { mountJwtPortal } from '../_shared/jwt-lab.js';
 import { impl, issueToken, labFor, wordlist } from './model.js';

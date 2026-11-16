@@ -1,0 +1,18 @@
+<%# UP-01 fixture lab (tests/upload-lab.spec.ts), an upload lab in miniature. Lab content is English. Every value goes through the escaped output tag. %>
+<section class="lab">
+  <h1>Scroll Desk</h1>
+  <p class="lab-note">Submit a scroll for the archive. Stored scrolls are listed below and can be fetched at uploads?name=...</p>
+  <form method="post" action="<%= action %>" enctype="multipart/form-data">
+    <label>Scroll <input name="scroll" type="file"></label>
+    <label>Caption <input name="caption" type="text" autocomplete="off"></label>
+    <button type="submit">Upload</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status"><%= result.text %></p>
+<% } -%>
+  <ul class="desk-files">
+<% for (const f of files) { -%>
+    <li data-path="<%= f %>"><%= f %></li>
+<% } -%>
+  </ul>
+</section>

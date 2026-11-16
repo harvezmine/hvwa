@@ -1,7 +1,8 @@
 // model.ts — GK-03's lab state and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
 import { createHash, randomInt } from 'node:crypto';
-import { fixtureLines, perSession } from '../../../core/lab.js';
+import { fixtureLines } from '../../../core/fixtures.js';
+import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { accountsFor, type Account, type Counter } from '../_shared/lab.js';
 

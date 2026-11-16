@@ -1,10 +1,12 @@
 // The simulated victim's stores and browser (src/core/sim/): inbox, attacker log, cookie jar, SimBrowser.
 import { readFileSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import net from 'node:net';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import net, { createConnection } from 'node:net';
 import ts from 'typescript';
 import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
-import { NewSessionLimitError, insidePerSessionFactory, perSession, setCappedBudget, setPerSessionDefaults } from '../src/core/lab.js';
+import {
+  CAPPED_BUDGET_BYTES, NewSessionLimitError, cappedBudgetUsage, insidePerSessionFactory, perSession, setCappedBudget, setPerSessionDefaults,
+} from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import type { Request } from 'express';
 import {
@@ -23,6 +25,9 @@ function fullGc(): () => void {
   if (typeof gc !== 'function') throw new Error('globalThis.gc is missing: run the specs with --expose-gc (vitest.config.ts)');
   return gc;
 }
+
+/** What one simWorld() weighs in the shared budget: its inbox, its attacker log and its own visits. */
+const WORLD = SIM_LIMITS.inboxWeight + SIM_LIMITS.attackerLogWeight + SIM_LIMITS.visitsWeight;
 
 /** A world whose clock tests can move (world.now = ...). */
 const world = (mailboxes: readonly string[] = [ADMIN_MAILBOX]): SimWorld => inSession(() => simWorld({ mailboxes }));
@@ -124,24 +129,39 @@ describe('sim state lives in perSession (per player and level)', () => {
     expect(() => labs.for({ sessionId: '3', level: 'acolyte' })).toThrow(NewSessionLimitError);
   });
 
-  it(`every holder that keeps sim state shares ONE budget of ${SIM_LIMITS.worldsTotal} instances, process-wide`, () => {
-    expect(SIM_LIMITS.worldsTotal).toBe(150);
+  it('every sim store weighs its measured worst case: a world is its inbox + attacker log + visits, a browser its jar', () => {
+    const KiB = 1024;
+    expect([SIM_LIMITS.inboxWeight, SIM_LIMITS.attackerLogWeight, SIM_LIMITS.visitsWeight, SIM_LIMITS.browserWeight])
+      .toEqual([576 * KiB, 416 * KiB, 288 * KiB, 224 * KiB]);
+    const before = cappedBudgetUsage().bytes;
+    const lab = perSession(() => { const w = simWorld(); return { w, b: w.browser(() => ({ status: 200 })) }; });
+    lab.for({ sessionId: 'weigh', level: 'acolyte' });
+    expect(cappedBudgetUsage().bytes - before).toBe(WORLD + SIM_LIMITS.browserWeight); // 1.25 MiB + 224 KiB
+    lab.reset({ sessionId: 'weigh', level: 'acolyte' });
+    expect(cappedBudgetUsage().bytes).toBe(before);
+  });
+
+  it('every holder that keeps sim state shares ONE byte budget, process-wide (CAPPED_BUDGET_BYTES, 96 MiB)', () => {
+    expect(cappedBudgetUsage().budget).toBe(CAPPED_BUDGET_BYTES);
+    const prev = setCappedBudget(10 * WORLD); // ten worlds' worth, for a short test
+    onTestFinished(() => { setCappedBudget(prev); });
     const r = (sessionId: string) => ({ sessionId, level: 'acolyte' as Level });
     const worlds = perSession(() => ({ world: simWorld() })); // two labs' holders...
     const inboxes = perSession(() => simInbox()); // ...every sim store counts, not only the world
     const plain = perSession((_l, sid) => ({ sid }));
-    for (let i = 0; i < 100; i++) worlds.for(r(`w${i}`));
-    for (let i = 0; i < 100; i++) { inboxes.for(r(`i${i}`)); plain.for(r(`p${i}`)); }
-    expect(worlds.size + inboxes.size).toBe(SIM_LIMITS.worldsTotal);
-    expect(inboxes.size).toBe(100); // the least recently used went: the other holder's oldest
-    expect(plain.size).toBe(100); // uncapped holders are unaffected
-    const fewer = perSession(() => simWorld(), { maxEntries: 7 }); // a lab may still keep fewer
-    for (let i = 0; i < 20; i++) fewer.for(r(`f${i}`));
-    expect(fewer.size).toBe(7);
+    for (let i = 0; i < 12; i++) worlds.for(r(`w${i}`));
+    expect(worlds.size).toBe(10);
+    for (let i = 0; i < 5; i++) { inboxes.for(r(`i${i}`)); plain.for(r(`p${i}`)); }
+    // 5 inboxes need 5 x 576 KiB: the three least recently used worlds (1.25 MiB each) make room, in the other holder.
+    expect([worlds.size, inboxes.size, plain.size]).toEqual([7, 5, 5]);
+    expect(cappedBudgetUsage().bytes).toBeLessThanOrEqual(10 * WORLD);
+    const fewer = perSession(() => simWorld(), { maxEntries: 3 }); // a lab may still keep fewer
+    for (let i = 0; i < 6; i++) fewer.for(r(`f${i}`));
+    expect(fewer.size).toBe(3);
   });
 
   it('an instance evicted by the budget comes back fresh on its next use (eviction is a reset)', () => {
-    const prev = setCappedBudget(2);
+    const prev = setCappedBudget(2 * WORLD);
     onTestFinished(() => { setCappedBudget(prev); });
     const labs = perSession(() => simWorld());
     const a = { sessionId: 'A', level: 'acolyte' as Level };
@@ -871,6 +891,54 @@ describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
     expect(worlds[0].w.visits[0].page?.url).toBe('http://citadel.test/p0/a-long-path-segment?q=0-a-long-query-value');
   });
 
+  it('each sim store, filled to every cap with two-byte text, retains less than its declared weight', () => {
+    const gc = fullGc();
+    const two = (n: number, tag: string) => `${tag}`.padEnd(n, '✓');
+    const long = (n: number, tag: string) => `http://citadel.test/${tag}/`.padEnd(n, 'a');
+    const measure = <T>(make: () => T, fill: (x: T, i: number) => void): number => {
+      const xs = Array.from({ length: 8 }, () => inSession(make));
+      gc(); gc();
+      const a = process.memoryUsage();
+      xs.forEach(fill);
+      gc(); gc();
+      const b = process.memoryUsage();
+      return ((b.heapUsed - a.heapUsed) + (b.arrayBuffers - a.arrayBuffers)) / xs.length;
+    };
+    const inbox = measure(() => simInbox({ mailboxes: [ADMIN_MAILBOX, 'third@citadel.test'] }), (box, i) => {
+      for (const to of box.addresses) {
+        for (let m = 0; m < SIM_LIMITS.mailsPerMailbox; m++) {
+          box.deliver({ from: two(SIM_LIMITS.addressLength, `f${i}${m}`), to, subject: two(SIM_LIMITS.subjectLength, `s${i}${m}`),
+            body: two(SIM_LIMITS.bodyLength, `b${i}${m}`), links: [0, 1, 2].map((k) => two(SIM_LIMITS.urlLength + 1, `l${i}${m}${k}`)) });
+        }
+      }
+    });
+    const log = measure(() => attackerLog(), (l, i) => {
+      for (let e = 0; e < SIM_LIMITS.logEntries; e++) {
+        l.record({ method: 'PROPFINDXX', url: two(SIM_LIMITS.urlLength, `u${i}${e}`), referer: two(SIM_LIMITS.urlLength, `r${i}${e}`), body: two(SIM_LIMITS.urlLength, `b${i}${e}`) });
+      }
+    });
+    // Visits: each follows 10 redirects with long URLs and a long Referer on every hop, then ends on a page.
+    const visits = measure(() => {
+      const w = simWorld();
+      return w.browser((r) => {
+        const n = Number(r.query.get('n') ?? '0');
+        if (n < SIM_LIMITS.maxRedirects) return { status: 302, headers: { location: `${long(SIM_LIMITS.urlLength - 10, `p${n}`)}?n=${n + 1}` } };
+        return { status: 200, body: two(SIM_LIMITS.bodyLength, 'page') };
+      });
+    }, (b, i) => {
+      for (let v = 0; v < SIM_LIMITS.visits; v++) b.follow(`${long(SIM_LIMITS.urlLength - 10, `s${i}${v}`)}?n=0`, { referrer: long(SIM_LIMITS.urlLength, `r${i}${v}`) });
+    });
+    const jar = measure(() => simWorld().browser(() => ({ status: 200 })), (b, i) => {
+      for (let c = 0; c < SIM_LIMITS.cookies; c++) b.cookies.set(`c${i}_${c}`, two(SIM_LIMITS.cookieBytes - 12, `v${i}${c}`), { path: `/${'p'.repeat(1023)}` });
+    });
+    // Measured on this box: ~515, ~366, ~252 and ~183 KiB; the weights add ~10%, rounded up to 32 KiB.
+    expect(inbox).toBeLessThan(SIM_LIMITS.inboxWeight);
+    expect(log).toBeLessThan(SIM_LIMITS.attackerLogWeight);
+    expect(visits).toBeLessThan(SIM_LIMITS.visitsWeight);
+    expect(jar).toBeLessThan(SIM_LIMITS.browserWeight);
+    expect(Math.min(inbox, log, visits, jar)).toBeGreaterThan(100 * 1024); // the fill really filled them
+  });
+
   it('clipping keeps every UTF-16 code unit exactly, lone surrogates included', () => {
     const log = inSession(() => attackerLog());
     const odd = `a\uD800b\uDFFFc􏰀é✓${'\uD800'.repeat(SIM_LIMITS.urlLength)}`;
@@ -915,7 +983,7 @@ describe('no real network', () => {
     }
   });
 
-  it('everything src/core/sim/ loads at runtime, transitively, reaches only node:buffer and node:fs (no Express, no network)', () => {
+  it('everything src/core/sim/ loads at runtime, transitively, reaches only node:buffer (no fs, no Express, no network)', () => {
     const seen = new Set<string>();
     const outside = new Set<string>();
     const walk = (file: URL): void => {
@@ -927,22 +995,54 @@ describe('no real network', () => {
       }
     };
     for (const file of SIM_FILES) walk(new URL(file, SIM_DIR));
-    expect([...outside].sort()).toEqual(['node:buffer', 'node:fs']);
+    expect([...outside].sort()).toEqual(['node:buffer']);
     const core = new URL('../src/core/', import.meta.url).href;
     expect([...seen].map((h) => h.slice(core.length)).sort()).toEqual(['lab.ts', 'levels.ts', ...SIM_FILES.map((f) => `sim/${f}`)]);
   });
 
-  it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {
+  /**
+   * Trap every network function: each becomes a spy that THROWS `guard: <name>` and never calls the real function, so
+   * a regression fails the test instead of opening a connection. The spies sit on the CommonJS export objects;
+   * syncBuiltinESMExports() points the builtins' ES-module bindings at them too, so `import { request } from
+   * 'node:http'` callers are trapped as well (the self-test checks the binding before any call).
+   */
+  const installNetSpies = () => {
     const require = createRequire(import.meta.url);
-    const on = (id: string, fns: readonly string[]) => fns.map((f) => vi.spyOn(require(id) as Record<string, () => unknown>, f));
-    const dns = require('node:dns') as { promises: Record<string, () => unknown> };
+    const trap = (mod: object, name: string) =>
+      vi.spyOn(mod as Record<string, () => unknown>, name).mockImplementation(() => { throw new Error(`guard: ${name}`); });
+    const on = (id: string, fns: readonly string[]) => fns.map((f) => trap(require(id) as object, f));
+    const dns = require('node:dns') as { promises: object };
     const spies = [
-      vi.spyOn(globalThis, 'fetch'),
+      trap(globalThis, 'fetch'),
       ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
       ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
       ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
-      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
+      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => trap(dns.promises, f)),
     ];
+    syncBuiltinESMExports();
+    return spies;
+  };
+  const releaseSpies = (spies: ReturnType<typeof installNetSpies>): void => {
+    for (const spy of spies) spy.mockRestore();
+    syncBuiltinESMExports();
+  };
+
+  it('the network spies throw instead of passing through, and reach ES-module imports (self-test, nothing real is called)', () => {
+    const spies = installNetSpies();
+    try {
+      // Every spy has a throwing implementation: a call can never reach the real function.
+      for (const spy of spies) expect(spy.getMockImplementation(), spy.getMockName()).toBeDefined();
+      // The ESM binding IS the spy, checked before any call (without syncBuiltinESMExports it is the real function).
+      expect(vi.isMockFunction(createConnection)).toBe(true);
+      expect(() => createConnection({ port: 9 })).toThrow('guard: createConnection');
+    } finally {
+      releaseSpies(spies);
+    }
+    expect(vi.isMockFunction(createConnection)).toBe(false);
+  });
+
+  it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {
+    const spies = installNetSpies();
     try {
       const w = world();
       const s = site({ '/a': { status: 200, headers: { refresh: '0;url=http://attacker.test/x' } } });
@@ -951,7 +1051,7 @@ describe('no real network', () => {
       inSession(() => w.browser(s.handler)).follow('http://example.com/');
       for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     } finally {
-      for (const spy of spies) spy.mockRestore();
+      releaseSpies(spies);
     }
   });
 });
