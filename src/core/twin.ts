@@ -179,7 +179,10 @@ export function visitOf(req: Request, res: Response, cookieNames: readonly strin
     const value = raw[name];
     if (typeof value === 'string') cookies[name] = value;
   }
-  return { level: req.level, query: new URLSearchParams(req.originalUrl.split('?')[1] ?? ''), cookies, base: labPath(res) };
+  // Everything after the FIRST '?': a URL in a parameter (next=http://x/a?b=1&level=...) keeps its own '?' and the rest.
+  // The slice keeps that first '?', which URLSearchParams drops (exactly one), so a query starting '??' keeps its second.
+  const q = req.originalUrl.indexOf('?');
+  return { level: req.level, query: new URLSearchParams(q === -1 ? '' : req.originalUrl.slice(q)), cookies, base: labPath(res) };
 }
 
 /** The victim's request on the citadel as a Visit at `level`: its query and cookies as the simulated browser sent them, base ''. */

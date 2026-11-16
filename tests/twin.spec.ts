@@ -363,6 +363,14 @@ describe('twin: Visit', () => {
     expect(Object.getPrototypeOf(v.cookies)).toBeNull();
   });
 
+  it('visitOf: the query is everything after the FIRST ?, so a URL in a parameter keeps its own ? and what follows', () => {
+    const req = { level: 'inquisitor', originalUrl: '/d/unit/twin/login?next=http://attacker.test/a?b=1&level=inquisitor' } as unknown as Request;
+    const v = visitOf(req, res, []);
+    expect([...v.query]).toEqual([['next', 'http://attacker.test/a?b=1'], ['level', 'inquisitor']]);
+    const bare = visitOf({ level: 'acolyte', originalUrl: '/d/unit/twin/x??a=1' } as unknown as Request, res, []);
+    expect([...bare.query]).toEqual([['?a', '1']]);
+  });
+
   it('visitOf: no query string and no parsed cookies are an empty query and no cookies', () => {
     const v = visitOf({ level: 'acolyte', originalUrl: '/d/unit/twin' } as unknown as Request, res, ['a_acolyte']);
     expect([...v.query]).toEqual([]);
