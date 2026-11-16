@@ -5,13 +5,13 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 34/122 registered**
+**Total: 35/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
 | Relic Market | 7 | 7 |
-| Scriptorium | 6 | 14 |
+| Scriptorium | 7 | 13 |
 | Forum of Pilgrims | 3 | 9 |
 | Archive API | 0 | 15 |
 | Oracle | 0 | 21 |
@@ -67,14 +67,14 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Scriptorium
 
-6/20 registered
+7/20 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
 | SC-01 | Reflected XSS (search) | A05 | A T I D | 2 | ✅ registered |
 | SC-02 | Stored XSS (review) | A05 | A T I D | 2 | ✅ registered |
 | SC-03 | DOM XSS (hash router) | A05 | A T I D | 2 | planned |
-| SC-04 | Markdown renderer XSS | A05 | A T I D | 2 | planned |
+| SC-04 | Markdown renderer XSS | A05 | A T I D | 2 | ✅ registered |
 | SC-05 | SVG upload XSS | A05 | A T I D | 2 | planned |
 | SC-06 | mXSS sanitizer bypass | A05 | A I D | 2 | planned |
 | SC-07 | Upload webshell (ext bypass) | A05 | A T I D | 2 | ✅ registered |
