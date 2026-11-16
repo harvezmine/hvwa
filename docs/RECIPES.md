@@ -565,8 +565,9 @@ The engine mounts `POST <lab>/victim/<name>?level=<level>` per action **before**
 500), and answers 303 back to `<lab>?level=<level>`, so the forms work without JavaScript. Under every lab page
 rendered with `sendPage` the layout adds the panel: the two hosts, one form per action (the link field keeps the last
 link sent), "What the victim's browser did" (the note, and per visit its outcome and request count, **never its
-URLs**: they can carry the very secret the lab is about), **the player's mailbox only**, and "Your server
-(attacker.test) received…". Platform strings are bilingual; everything else is escaped. The only way a victim-side
+URLs**: they can carry the very secret the lab is about; only the visits made during the last action, numbered within
+it, the last 5 shown; a `run` that throws is shown as failed and its error goes to the error handler), **the player's
+mailbox only**, and "Your server (attacker.test) received…". Platform strings are bilingual; everything else is escaped. The only way a victim-side
 secret may reach the player is the lab's flaw (the attacker log, or a stolen session): never echo the victim's pages
 or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLink`, or a lab `Text`.
 

@@ -16,12 +16,20 @@
 <% if (simPanel.report) { -%>
       <div class="sim-report" data-testid="sim-report" role="status">
         <h3><%= t('sim.report') %></h3>
+<% if (simPanel.report.failed) { -%>
+        <p class="sim-note sim-failed"><%= simPanel.report.failed %></p>
+<% } -%>
 <% if (simPanel.report.note) { -%>
         <p class="sim-note"><%= simPanel.report.note %></p>
 <% } -%>
 <% if (simPanel.report.visits.length === 0) { -%>
+<% if (!simPanel.report.failed) { -%>
         <p class="sim-meta"><%= t('sim.opened_nothing') %></p>
+<% } -%>
 <% } else { -%>
+<% if (simPanel.report.dropped) { -%>
+        <p class="sim-meta"><%= simPanel.report.dropped %></p>
+<% } -%>
         <ul class="sim-visits">
 <% simPanel.report.visits.forEach(function (line) { -%>
           <li><%= line %></li>

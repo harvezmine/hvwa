@@ -113,13 +113,23 @@ register(defineChallenge({
 }));
 
 // A lab whose victim misbehaves: an async action (a programming error) and an over-long note.
-const misbehaving = perSession(() => simWorld());
+const misbehaving = perSession(() => {
+  const world = simWorld();
+  return { world, victim: world.browser((r) => ({ status: 200, body: r.path })) };
+});
+const visitAll = (req: Request, n: number): void => {
+  for (let i = 1; i <= n; i++) misbehaving.for(req).victim.follow(`http://citadel.test/v${i}`);
+};
 register(defineChallenge({
   id: 'SV-03', district: 'sim-test', slug: 'misbehaving', dir: process.cwd(),
   title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte', 'divine'], hints: [],
   victim: {
-    sim: (req) => misbehaving.for(req),
+    sim: (req) => misbehaving.for(req).world,
     actions: [
+      { name: 'seven', label: { id: '7', en: '7' }, run: (req) => { visitAll(req, 7); } },
+      { name: 'one', label: { id: '1', en: '1' }, run: (req) => { visitAll(req, 1); } },
+      { name: 'throws', label: { id: 't', en: 't' }, run: (req) => { visitAll(req, 1); throw new Error('lab bug'); } },
+      { name: 'throws-early', label: { id: 'e', en: 'e' }, run: () => { throw new Error('lab bug'); } },
       { name: 'async', label: { id: 'a', en: 'a' }, run: (() => Promise.resolve('late')) as never },
       { name: 'chatty', label: { id: 'c', en: 'c' }, run: () => `${'n'.repeat(5000)}END` },
       {
@@ -130,7 +140,11 @@ register(defineChallenge({
       { name: 'odd-note', label: { id: 'o', en: 'o' }, run: (() => ({ en: 'only English' })) as never },
     ],
   },
-  mount: (router) => { router.get('/', (_req, res) => sendPage(res, hello, { name: 'misbehaving' })); },
+  mount: (router) => {
+    router.get('/', (_req, res) => sendPage(res, hello, { name: 'misbehaving' }));
+    // A lab route that makes the victim browse outside any victim action (e.g. "the admin reviews your profile").
+    router.post('/browse', (req, res) => { visitAll(req, 2); res.redirect(303, `/d/sim-test/misbehaving?level=${req.level}`); });
+  },
 }));
 
 // --- Player helpers --------------------------------------------------------------------------------------------
@@ -492,6 +506,55 @@ describe('victim plumbing', () => {
     const res = await agent.post('/d/sim-test/misbehaving/victim/odd-note?level=acolyte');
     expect(res.status).toBe(500);
     expect(res.text).not.toMatch(/at |sim\.ts/);
+  });
+
+  it('the report numbers an action\'s visits stably: beyond the last 5 it says how many earlier ones are not shown', async () => {
+    const { agent } = await freshSession();
+    expect((await agent.post('/d/sim-test/misbehaving/victim/seven?level=acolyte')).status).toBe(303);
+    const panel = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text);
+    for (let n = 3; n <= 7; n++) expect(panel).toContain(`Visit ${n}: 1 request(s); ended on a citadel.test page (HTTP 200).`);
+    expect(panel).not.toMatch(/Visit [12]:/);
+    expect(panel).toContain('2 earlier visit(s) not shown.');
+    const id = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=id')).text);
+    expect(id).toContain('2 kunjungan sebelumnya tidak ditampilkan.');
+  });
+
+  it('the report shows only the visits made during the action, not ones a lab route made afterwards', async () => {
+    const { agent, sid } = await freshSession();
+    await agent.post('/d/sim-test/misbehaving/victim/one?level=acolyte');
+    expect((await agent.post('/d/sim-test/misbehaving/browse?level=acolyte')).status).toBe(303);
+    const panel = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text);
+    expect(panel).toContain('Visit 1: 1 request(s)');
+    expect(panel).not.toContain('Visit 2:');
+    expect(misbehaving.for({ sessionId: sid, level: 'acolyte' }).world.visits.map((v) => v.page?.body)).toEqual(['/v1', '/v1', '/v2']);
+  });
+
+  it('a run that throws is a stack-free 500, and the report says the action failed (not "opened nothing")', async () => {
+    const { agent } = await freshSession();
+    for (const [action, visits] of [['throws', 1], ['throws-early', 0]] as const) {
+      const res = await agent.post(`/d/sim-test/misbehaving/victim/${action}?level=acolyte`);
+      expect(res.status, action).toBe(500);
+      expect(res.text, action).not.toMatch(/lab bug|at |sim\.ts/);
+      const panel = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text);
+      expect(panel, action).toContain('The victim&#39;s action failed (an error in the lab).');
+      expect(panel, action).not.toContain('opened nothing');
+      expect(panel.includes('Visit 1: 1 request(s)'), action).toBe(visits === 1);
+      const id = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=id')).text);
+      expect(id, action).toContain('Aksi korban gagal (galat di lab).');
+    }
+    await agent.post('/d/sim-test/misbehaving/victim/one?level=acolyte'); // the next action that works clears it
+    expect(panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text)).not.toContain('action failed');
+  });
+
+  it('an over-long link stays over-long in the field, so sending it again is still refused', async () => {
+    const { agent } = await freshSession();
+    await sendLink(agent, 'acolyte', `http://attacker.test/${'a'.repeat(3000)}`);
+    const value = /<input name="url" type="text"[^>]*value="([^"]*)"/.exec(panelOf((await labPage(agent, 'acolyte')).text))?.[1] ?? '';
+    expect(value.length).toBe(SIM_LIMITS.urlLength + 1);
+    await sendLink(agent, 'acolyte', value);
+    const panel = panelOf((await labPage(agent, 'acolyte')).text);
+    expect(panel).toContain('Visit 1: 0 request(s); stopped: the URL is too long.');
+    expect(panel).toContain('No requests yet.');
   });
 
   it('an async victim action is a programming error (stack-free 500); a long note is clipped', async () => {

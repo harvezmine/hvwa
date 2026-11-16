@@ -833,9 +833,15 @@ class World implements SimWorld {
   readonly inbox: SimInbox;
   readonly attackerLog: AttackerLog;
   private recent: SimVisit[] = [];
-  /** Set by the victim routes (mountVictim). */
+  /** The visits made during the current (or last) victim action, numbered from 1: the newest SIM_LIMITS.visits. */
+  private reported: { readonly n: number; readonly visit: SimVisit }[] = [];
+  private actionVisits = 0;
+  // Set by the victim routes (mountVictim).
   noteText: Text | string = '';
   acted = false;
+  /** The last action threw (its error went to the error handler). */
+  failed = false;
+  inAction = false;
   lastLink = '';
 
   constructor(opts: SimWorldOptions) {
@@ -858,14 +864,29 @@ class World implements SimWorld {
   recordVisit(v: SimVisit): void {
     this.recent.push(v);
     if (this.recent.length > SIM_LIMITS.visits) this.recent.shift();
+    if (!this.inAction) return; // a lab route's own visit is not part of the last action's report
+    this.reported.push(Object.freeze({ n: ++this.actionVisits, visit: v }));
+    if (this.reported.length > SIM_LIMITS.visits) this.reported.shift();
   }
 
-  /** A victim action starts: a fresh report, and the link the player sent if the action takes one (to pre-fill the field). */
+  /** The last action's visits (stable numbers) and how many earlier ones were dropped. */
+  get report(): { readonly visits: readonly { readonly n: number; readonly visit: SimVisit }[]; readonly dropped: number } {
+    return { visits: [...this.reported], dropped: this.actionVisits - this.reported.length };
+  }
+
+  /**
+   * A victim action starts: a fresh report (failed until it returns), and the link the player sent if the action
+   * takes one, to pre-fill the field: clipped one past the cap like mail links, so an over-long link stays too long.
+   */
   beginAction(link?: string): void {
     this.recent = [];
+    this.reported = [];
+    this.actionVisits = 0;
     this.noteText = '';
     this.acted = true;
-    if (link !== undefined) this.lastLink = clip(link, SIM_LIMITS.urlLength);
+    this.failed = true;
+    this.inAction = true;
+    if (link !== undefined) this.lastLink = clip(link, SIM_LIMITS.urlLength + 1);
   }
 }
 
@@ -1056,8 +1077,11 @@ export interface SimPanel {
   }[];
   /** The link the player last sent (pre-fills the link field). */
   readonly lastLink: string;
-  /** After a victim action: its note and one summary line per visit (outcome and request count, never URLs). */
-  readonly report?: { readonly note: string; readonly visits: readonly string[] };
+  /**
+   * After a victim action: its note, whether it failed (threw), how many of its earlier visits are not shown, and
+   * one summary line per visit, numbered stably (outcome and request count, never URLs).
+   */
+  readonly report?: { readonly note: string; readonly failed?: string; readonly dropped?: string; readonly visits: readonly string[] };
   readonly mailboxHeading: string;
   readonly mails: readonly {
     readonly from: string; readonly subject: string; readonly at: string; readonly body: string;
@@ -1099,12 +1123,22 @@ const REASON_KEYS: Readonly<Record<SimUnreachable, string>> = Object.freeze({
 });
 
 /** "Visit 2: 3 request(s); reached your server (attacker.test)." Requests actually sent; no URL. */
-function visitLine(visit: SimVisit, i: number, lang: Lang): string {
+function visitLine(visit: SimVisit, n: number, lang: Lang): string {
   const tr = (key: string, vars: Readonly<Record<string, string | number>> = {}): string => fmt(t(key, lang), vars);
   const outcome = tr(OUTCOME_KEYS[visit.outcome], {
     status: visit.page?.status ?? '', n: SIM_LIMITS.maxRedirects, reason: tr(REASON_KEYS[visit.hops.at(-1)?.reason ?? 'invalid']),
   });
-  return tr('sim.visit', { n: i + 1, requests: visit.hops.filter((h) => h.site !== 'other').length, outcome });
+  return tr('sim.visit', { n, requests: visit.hops.filter((h) => h.site !== 'other').length, outcome });
+}
+
+function reportOf(world: World, lang: Lang): NonNullable<SimPanel['report']> {
+  const { visits, dropped } = world.report;
+  return {
+    note: typeof world.noteText === 'string' ? world.noteText : world.noteText[lang],
+    ...(world.failed ? { failed: t('sim.failed', lang) } : {}),
+    ...(dropped > 0 ? { dropped: fmt(t('sim.visits_dropped', lang), { n: dropped }) } : {}),
+    visits: visits.map((x) => visitLine(x.visit, x.n, lang)),
+  };
 }
 
 function panelModel(v: VictimConfig, req: Request, res: Response): SimPanel {
@@ -1119,12 +1153,7 @@ function panelModel(v: VictimConfig, req: Request, res: Response): SimPanel {
       ...(a.description === undefined ? {} : { description: a.description[lang] }),
     })),
     lastLink: world.lastLink,
-    ...(world.acted ? {
-      report: {
-        note: typeof world.noteText === 'string' ? world.noteText : world.noteText[lang],
-        visits: world.visits.map((x, i) => visitLine(x, i, lang)),
-      },
-    } : {}),
+    ...(world.acted ? { report: reportOf(world, lang) } : {}),
     mailboxHeading: fmt(t('sim.mailbox', lang), { address: PLAYER_MAILBOX }),
     mails: world.inbox.list(PLAYER_MAILBOX).map((m) => ({
       from: m.from, subject: m.subject, at: iso(m.at), body: m.body,
@@ -1193,12 +1222,17 @@ export function mountVictim(router: Router, v: VictimConfig): void {
       const world = worldOf(v, req);
       const url = a.input === 'url' ? field(req, 'url') : '';
       world.beginAction(a.input === 'url' ? url : undefined);
-      const note: unknown = a.run(req, Object.freeze({ url }));
-      if (isThenable(note)) {
-        note.then(undefined, () => {}); // never leave its rejection unhandled
-        throw new Error(`victim action "${a.name}" must be synchronous (it returned a Promise)`);
+      try {
+        const note: unknown = a.run(req, Object.freeze({ url }));
+        if (isThenable(note)) {
+          note.then(undefined, () => {}); // never leave its rejection unhandled
+          throw new Error(`victim action "${a.name}" must be synchronous (it returned a Promise)`);
+        }
+        world.noteText = noteOf(note, a.name);
+        world.failed = false; // a throw leaves the report marked failed; the error goes to the error handler
+      } finally {
+        world.inAction = false;
       }
-      world.noteText = noteOf(note, a.name);
       res.redirect(303, `${labPath(res)}?level=${req.level}`);
     });
   }

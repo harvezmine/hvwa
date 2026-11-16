@@ -71,6 +71,8 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'sim.note.no_link': { id: 'Surat terbaru korban tidak punya tautan ke-{n}.', en: "The victim's newest mail has no link {n}." },
   'sim.report': { id: 'Yang dilakukan peramban korban', en: 'What the victim\'s browser did' },
   'sim.opened_nothing': { id: 'Peramban korban tidak membuka apa pun.', en: 'The victim\'s browser opened nothing.' },
+  'sim.failed': { id: 'Aksi korban gagal (galat di lab).', en: "The victim's action failed (an error in the lab)." },
+  'sim.visits_dropped': { id: '{n} kunjungan sebelumnya tidak ditampilkan.', en: '{n} earlier visit(s) not shown.' },
   'sim.visit': { id: 'Kunjungan {n}: {requests} permintaan; {outcome}.', en: 'Visit {n}: {requests} request(s); {outcome}.' },
   'sim.outcome.page': { id: 'berakhir di halaman citadel.test (HTTP {status})', en: 'ended on a citadel.test page (HTTP {status})' },
   'sim.outcome.attacker': { id: 'sampai di server Anda (attacker.test)', en: 'reached your server (attacker.test)' },
