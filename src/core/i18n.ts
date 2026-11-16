@@ -93,6 +93,10 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'sim.log_empty': { id: 'Belum ada permintaan.', en: 'No requests yet.' },
   'sim.body': { id: 'Isi', en: 'Body' },
   'sim.away.heading': { id: 'Peramban Anda tetap di lab', en: 'Your browser stays in the lab' },
+  'sim.away.none': {
+    id: 'Pengalihan ini tidak punya tujuan (Location kosong), jadi peramban Anda tetap di halaman ini.',
+    en: 'This redirect has no target (an empty Location), so your browser stays on this page.',
+  },
   'sim.away.lead': { id: 'Peramban Anda sekarang akan menuju:', en: 'Your browser would now go to:' },
   'sim.away.why': {
     id: 'Di lab ini, peramban korban tersimulasi yang pergi ke sana, bukan peramban Anda: pantau log server Anda (attacker.test).',

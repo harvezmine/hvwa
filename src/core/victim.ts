@@ -292,13 +292,14 @@ export type SimRedirectStatus = 301 | 302 | 303 | 307 | 308;
 const awayView = join(dirname(fileURLToPath(import.meta.url)), 'views', 'sim-away.ejs');
 
 /**
- * Answer the player's REAL browser with a Location a level function made, never sending it off the lab (a lab route
- * that answered `res.redirect(redirect_uri)` would be a real open redirect). `location` is resolved as the victim's
- * browser would resolve it on the citadel twin of this route (`http://citadel.test<req.path>`); a path under
- * labPath(res) (a level function given base labPath(res)) is that path on the citadel.
+ * Answer the player's REAL browser with a Location a level function made, never sending it off the lab (a lab
+ * route that answered `res.redirect(redirect_uri)` would be a real open redirect) nor back to itself. `location` is
+ * resolved as the victim's browser would resolve it on the citadel twin of this route (`http://citadel.test<req.path>`);
+ * a path under labPath(res) (a level function given base labPath(res)) is that path on the citadel.
  *
  * - A citadel URL: `status` (default 302) to the same place in the lab (labHref: `<labPath>/<path>?<query>` at the
  *   served level), e.g. the IdP's `302 http://citadel.test/callback?code=..` lands on `<lab>/callback?code=..`.
+ * - No target (empty, blank or not a string): a 200 page saying the redirect has no target (never a loop to itself).
  * - Anything else (attacker.test, another host, `javascript:` ...): a 200 page (sendPage) that shows the URL as
  *   escaped text and says the simulated victim's browser goes there in this lab. It never links to it or follows it.
  */
@@ -306,6 +307,13 @@ export async function sendSimRedirect(res: Response, location: string, status: S
   if (!REDIRECT_STATUSES.has(status)) throw new Error(`sendSimRedirect: status must be 301, 302, 303, 307 or 308 (got ${String(status)})`);
   const base = labPath(res);
   const raw = str(location);
+  // No target (an empty, blank or non-string Location, e.g. an empty redirect_uri) would resolve to this very route
+  // and redirect the browser to itself forever: say so instead. Blank as a browser sees it: WHATWG drops tabs and
+  // newlines, and leading or trailing C0 controls and spaces.
+  if (raw.replace(/[\t\n\r]/g, '').replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '') === '') {
+    await sendPage(res, awayView, { away: '' });
+    return;
+  }
   const local = raw === base || ['/', '?', '#'].some((c) => raw.startsWith(`${base}${c}`));
   const u = local
     ? classifySimUrl(`${CITADEL_ORIGIN}${raw.slice(base.length)}`)

@@ -93,9 +93,12 @@ const COURIER = register(defineChallenge({
       sendPage(res, view, { account: { username: 'pilgrim', password: 'pilgrim' }, result, key });
     router.get('/', (_req, res) => show(res, null, ''));
     // A real route answering with a Location a level function made (a sim URL): sendSimRedirect, never res.redirect.
-    router.get('/go', (req, res) => sendSimRedirect(
+    const go = (req: Request, res: Response) => sendSimRedirect(
       res, typeof req.query.to === 'string' ? req.query.to : '', (Number(req.query.status) || 302) as SimRedirectStatus,
-    ));
+    );
+    router.get('/go', go);
+    router.get('/idp/go', go); // a nested route: a relative Location resolves against /idp/go
+    router.get('/go-odd', (_req, res) => sendSimRedirect(res, 42 as never)); // a level that answered a non-string
     router.post('/', async (req: Request, res) => {
       const key = field(req, 'key');
       const ok = key !== '' && key === labFor(req).key;
@@ -459,7 +462,7 @@ describe('sendSimRedirect: the player\'s real browser never leaves the lab', () 
       'http://citadel.test@attacker.test/', 'http://attacker.test\\@citadel.test/', ' http://attacker.test/', 'http:\t//attacker.test/',
       'javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'http://localhost:3000/', 'http://127.0.0.1/',
       'http://[::1]/', 'http://citadel.test:8080/', 'http://citadel.test.attacker.test/', 'https://example.com/', `http://attacker.test/${'a'.repeat(5000)}`,
-      `${LAB}@attacker.test/`, `${LAB}.attacker.test/`, '/d/sim-test/courierx/x', '',
+      `${LAB}@attacker.test/`, `${LAB}.attacker.test/`, '/d/sim-test/courierx/x', '', ' ', '\t\n',
     ];
     for (const to of tricks) {
       const res = await go(agent, 'acolyte', to);
@@ -473,6 +476,26 @@ describe('sendSimRedirect: the player\'s real browser never leaves the lab', () 
         expect(awayOf(res.text), to).not.toMatch(/href=/);
       }
     }
+  });
+});
+
+describe('sendSimRedirect: no target', () => {
+  it('an empty, blank or non-string Location never redirects (it would loop to this route): a page says there is no target', async () => {
+    const { agent } = await freshSession();
+    const urls = [
+      ...['', ' ', '\t\n ', '\u0000 '].map((to) => `${LAB}/go?level=acolyte&lang=en&to=${encodeURIComponent(to)}`),
+      `${LAB}/go?level=acolyte&lang=en`, `${LAB}/go-odd?level=acolyte&lang=en`,
+    ];
+    for (const url of urls) {
+      const res = await agent.get(url);
+      expect(res.status, url).toBe(200);
+      expect(res.headers.location, url).toBeUndefined();
+      const away = /<section class="sim-away"[\s\S]*?<\/section>/.exec(res.text)?.[0] ?? '';
+      expect(away, url).toContain('This redirect has no target');
+      expect(away, url).not.toMatch(/href=|<code>/);
+    }
+    const id = await agent.get(`${LAB}/go?level=acolyte&lang=id&to=`);
+    expect(id.text).toContain('Pengalihan ini tidak punya tujuan');
   });
 });
 

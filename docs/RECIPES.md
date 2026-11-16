@@ -529,6 +529,8 @@ Answer a level's 3xx with `sendSimRedirect(res, location, status?)`: a citadel U
 goes to the same place in the lab at the served level (the IdP's `302 http://citadel.test/callback?code=...` becomes
 `302 <lab>/callback?code=...&level=<level>`); anything else (attacker.test, another host, `javascript:`) gets a page
 that shows the URL as text and says that in this lab the simulated victim's browser goes there. It never links to it.
+An empty or blank Location (an empty `redirect_uri`) gets a "this redirect has no target" page, never a redirect to
+the route itself.
 
 ```ts
 router.get('/idp/authorize', async (req, res) => { // the player authorizes in their own browser
