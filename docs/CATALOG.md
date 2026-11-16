@@ -5,12 +5,12 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 32/122 registered**
+**Total: 36/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
-| Relic Market | 7 | 7 |
+| Relic Market | 11 | 3 |
 | Scriptorium | 4 | 16 |
 | Forum of Pilgrims | 3 | 9 |
 | Archive API | 0 | 15 |
@@ -46,7 +46,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Relic Market
 
-7/14 registered
+11/14 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
