@@ -1,6 +1,8 @@
 // The simulated victim's stores and browser (src/core/sim.ts): inbox, attacker log, cookie jar, SimBrowser.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { describe, it, expect, vi } from 'vitest';
 import { NewSessionLimitError, insidePerSessionFactory, perSession } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
@@ -579,6 +581,61 @@ describe('SimWorld: the victim\'s recent visits', () => {
     for (let i = 0; i < SIM_LIMITS.visits + 3; i++) b.follow(`http://citadel.test/p?i=${i}`);
     expect(w.visits).toHaveLength(SIM_LIMITS.visits);
     expect(w.visits.at(-1)?.hops[0].url).toBe(`http://citadel.test/p?i=${SIM_LIMITS.visits + 2}`);
+  });
+
+  it(`keeps a page body clipped to ${SIM_LIMITS.bodyLength} chars`, () => {
+    const w = world();
+    const b = inSession(() => w.browser(site({ '/big': { status: 200, body: `${'b'.repeat(100_000)}END` } }).handler));
+    const v = b.follow('http://citadel.test/big');
+    expect(v.page?.body).toBe('b'.repeat(SIM_LIMITS.bodyLength));
+    expect(w.visits[0].page?.body).toBe('b'.repeat(SIM_LIMITS.bodyLength));
+  });
+});
+
+describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
+  it('a clipped field is a real copy: an attacker-sized parent string is not kept alive', () => {
+    // V8's slice() of a long string may be a view that keeps the WHOLE parent alive; measured with a full GC
+    // (exposed at runtime), the margin is about 50x either way, so this is not timing- or GC-noise-sensitive.
+    v8.setFlagsFromString('--expose-gc');
+    const gc = vm.runInNewContext('gc') as () => void;
+    const big = (tag: string) => `${tag}`.padEnd(100_000, 'x');
+    const logs = Array.from({ length: 4 }, () => inSession(() => attackerLog()));
+    // Cookies parsed from Set-Cookie lines with a long (ignored) attribute: a stored value must not pin its line.
+    const browsers = Array.from({ length: 4 }, (_, j) => inSession(() => world().browser(site({
+      '/set': () => ({ status: 200, headers: { 'set-cookie': Array.from({ length: SIM_LIMITS.cookies }, (_, i) => `c${i}=${`v${j}-${i}`.padEnd(40, 'v')}; Expires=${big(`e${j}-${i}`)}`) } }),
+    }).handler)));
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    logs.forEach((log, l) => {
+      for (let i = 0; i < SIM_LIMITS.logEntries; i++) {
+        log.record({ method: 'GET', url: big(`u${l}-${i}`), referer: big(`r${l}-${i}`), body: big(`b${l}-${i}`) });
+      }
+    });
+    for (const b of browsers) b.follow('http://citadel.test/set');
+    gc(); gc();
+    const retained = process.memoryUsage().heapUsed - before;
+    // As slices: 4 logs x 30 entries x 3 fields x 100 KB = 36 MB, plus 4 jars x 20 lines x 100 KB = 8 MB. As copies: < 1 MB.
+    expect(retained).toBeLessThan(4 * 1024 * 1024);
+    expect(browsers.every((b) => b.cookies.size === SIM_LIMITS.cookies)).toBe(true);
+  });
+
+  it('clipping keeps every UTF-16 code unit exactly, lone surrogates included', () => {
+    const log = inSession(() => attackerLog());
+    const odd = `a\uD800b\uDFFFc􏰀é✓${'\uD800'.repeat(SIM_LIMITS.urlLength)}`;
+    expect(log.record({ method: 'GET', url: odd.slice(0, 20) }).url).toBe(odd.slice(0, 20));
+    expect(log.record({ method: 'GET', url: odd }).url).toBe(odd.slice(0, SIM_LIMITS.urlLength));
+    expect(log.record({ method: 'GET', url: '' }).url).toBe('');
+  });
+
+  it('a cookie Path attribute over 1024 chars is ignored (RFC 6265bis): the default path applies', () => {
+    const w = world();
+    const s = site({ '/x/login': { status: 200, headers: { 'set-cookie': `a=1; Path=/${'p'.repeat(1024)}` } } });
+    const b = inSession(() => w.browser(s.handler));
+    b.follow('http://citadel.test/x/login');
+    expect(b.cookies.list().map((c) => c.path)).toEqual(['/x']);
+    expect(() => b.cookies.set('b', '1', { path: `/${'p'.repeat(1024)}` })).toThrow(/path/);
+    b.cookies.set('c', '1', { path: `/${'p'.repeat(1023)}` });
+    expect(b.cookies.size).toBe(2);
   });
 });
 

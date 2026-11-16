@@ -9,6 +9,7 @@
 //
 // All state is per player AND level: every store below must be created inside a perSession() factory (they
 // check), as part of the lab's own per-session state, so it is bounded and inherits the new-instance limits.
+import { Buffer } from 'node:buffer';
 import type { Request, Response, Router } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
 import { field, insidePerSessionFactory, labPath } from './lab.js';
@@ -62,7 +63,15 @@ function requireSession(what: string): void {
 }
 
 const str = (x: unknown): string => (typeof x === 'string' ? x : '');
-const clip = (s: string, n: number): string => (s.length > n ? s.slice(0, n) : s);
+/**
+ * The first n UTF-16 code units of s (all of s when shorter), as a NEW string. Never just slice(): V8 may answer a
+ * slice with a view into s that keeps the WHOLE parent alive for as long as the clip lives, so a 100 KB field
+ * clipped to 2 KB would still hold 100 KB (measured: ~200 KB kept per 2 KB clip of a 200 KB string). A string
+ * that is already short may itself be such a view (of a request body, of a Set-Cookie line), so it is copied too.
+ * The round trip through the code units' bytes always builds a new string, keeps every code unit (lone surrogates
+ * included) and keeps a one-byte string one-byte. tests/sim.spec.ts ("memory") measures it with a full GC.
+ */
+const clip = (s: string, n: number): string => Buffer.from(s.length > n ? s.slice(0, n) : s, 'utf16le').toString('utf16le');
 
 function isThenable(x: unknown): x is PromiseLike<unknown> {
   return (typeof x === 'object' || typeof x === 'function') && x !== null
@@ -359,6 +368,8 @@ export interface SimCookieJar {
 
 const TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const CONTROL_RE = /[\x00-\x1f\x7f]/;
+/** Longest cookie attribute value (Path ...) a browser accepts; a longer one is ignored (RFC 6265bis). */
+const ATTRIBUTE_LENGTH = 1024;
 
 function defaultPath(requestPath: string): string {
   if (!requestPath.startsWith('/')) return '/';
@@ -415,8 +426,13 @@ class Jar implements SimCookieJar {
       throw new Error(`SimCookieJar.set: bad cookie "${clip(String(name), 40)}"`);
     }
     const path = opts.path ?? '/';
-    if (!path.startsWith('/')) throw new Error(`SimCookieJar.set: cookie path must start with "/" (got "${clip(path, 40)}")`);
-    this.put({ name, value, path, secure: opts.secure === true, ...(opts.expiresAt === undefined ? {} : { expiresAt: opts.expiresAt }) });
+    if (typeof path !== 'string' || !path.startsWith('/') || path.length > ATTRIBUTE_LENGTH) {
+      throw new Error(`SimCookieJar.set: cookie path must start with "/" and be at most ${ATTRIBUTE_LENGTH} chars (got "${clip(String(path), 40)}")`);
+    }
+    this.put({
+      name: clip(name, SIM_LIMITS.cookieBytes), value: clip(value, SIM_LIMITS.cookieBytes), path: clip(path, ATTRIBUTE_LENGTH),
+      secure: opts.secure === true, ...(opts.expiresAt === undefined ? {} : { expiresAt: opts.expiresAt }),
+    });
   }
 
   /** Apply one Set-Cookie line from a citadel response to `at`. Malformed or foreign cookies are ignored. */
@@ -424,8 +440,9 @@ class Jar implements SimCookieJar {
     const parts = line.split(';');
     const eq = parts[0].indexOf('=');
     if (eq <= 0) return;
-    const name = parts[0].slice(0, eq).trim();
-    const value = parts[0].slice(eq + 1).trim();
+    // Copies: a slice of the line would keep the whole line (with every attribute) alive in the jar.
+    const name = clip(parts[0].slice(0, eq).trim(), SIM_LIMITS.cookieBytes);
+    const value = clip(parts[0].slice(eq + 1).trim(), SIM_LIMITS.cookieBytes);
     if (!Jar.valid(name, value)) return;
     let path: string | undefined;
     let maxAge: number | undefined;
@@ -435,7 +452,8 @@ class Jar implements SimCookieJar {
       const i = attr.indexOf('=');
       const key = (i === -1 ? attr : attr.slice(0, i)).trim().toLowerCase();
       const v = i === -1 ? '' : attr.slice(i + 1).trim();
-      if (key === 'path') path = v.startsWith('/') ? v : undefined;
+      if (v.length > ATTRIBUTE_LENGTH) continue; // an over-long attribute is ignored, as browsers do (RFC 6265bis)
+      if (key === 'path') path = v.startsWith('/') ? clip(v, ATTRIBUTE_LENGTH) : undefined;
       else if (key === 'max-age') { if (/^-?\d+$/.test(v)) maxAge = Number(v); }
       else if (key === 'expires') { const d = Date.parse(v); if (!Number.isNaN(d)) expires = d; }
       else if (key === 'domain') {
@@ -561,7 +579,7 @@ export interface SimVisit {
    */
   readonly outcome: SimOutcome;
   readonly hops: readonly SimHop[];
-  /** The citadel page the visit ended on (outcome 'page'). */
+  /** The citadel page the visit ended on (outcome 'page'); its body clipped to SIM_LIMITS.bodyLength. */
   readonly page?: { readonly url: string; readonly status: number; readonly body: string };
 }
 
@@ -743,7 +761,7 @@ class Browser implements SimBrowser {
       const location = res.status >= 300 && res.status < 400 ? h.get('location')?.[0] : undefined;
       const refresh = location === undefined ? refreshTarget(h.get('refresh')?.[0]) : undefined;
       if (location === undefined && refresh === undefined) {
-        return finish('page', { url: target.url, status: res.status, body: res.body ?? '' });
+        return finish('page', { url: target.url, status: res.status, body: clip(res.body ?? '', SIM_LIMITS.bodyLength) });
       }
       if (redirects >= SIM_LIMITS.maxRedirects) return finish('too-many-redirects');
       redirects++;
