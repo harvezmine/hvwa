@@ -10,6 +10,7 @@
 //     const up = tryDb(req, await settle(parseMultipart(req)), 'Upload error');
 // docs/RECIPES.md section 9 has the whole recipe.
 import { Buffer } from 'node:buffer';
+import type { RequestHandler } from 'express';
 import { clip } from './sim/limits.js';
 
 /**
@@ -269,6 +270,46 @@ export function sniffImage(bytes: Uint8Array): ImageSniff | null {
 /** Whether the bytes START like a PNG, JPEG, GIF or WebP image with a non-zero size (see sniffImage: header only). */
 export function looksLikeImage(bytes: Uint8Array): boolean {
   return sniffImage(bytes) !== null;
+}
+
+/**
+ * Most uploads being received or parsed at once, process-wide. Each one holds its body (up to 2 MiB) and the
+ * parser's copies while it lasts, so this bounds the transient memory of all upload routes together.
+ */
+export const UPLOADS_IN_FLIGHT = 4;
+let inFlight = 0;
+const BUSY = `Too many uploads in progress (at most ${UPLOADS_IN_FLIGHT} at once): try again in a moment.`;
+
+/** Test seam: the uploads holding a slot right now. */
+export function uploadsInFlight(): number {
+  return inFlight;
+}
+
+/**
+ * Middleware for an upload route, mounted BEFORE express.raw so a slot is held while the body streams in:
+ *
+ *   router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), handler)
+ *
+ * At most UPLOADS_IN_FLIGHT uploads pass at once, across every upload route of every lab. Beyond that it answers
+ * 503 (Retry-After: 2, Connection: close) with a plain message, without reading the body. A slot is freed exactly
+ * once, when the response finishes or closes (the client hung up) or the request fails.
+ */
+export function uploadGate(): RequestHandler {
+  return (req, res, next) => {
+    if (inFlight >= UPLOADS_IN_FLIGHT) {
+      res.status(503).set('Retry-After', '2').set('Connection', 'close').type('text/plain').send(BUSY);
+      return;
+    }
+    inFlight++;
+    let held = true;
+    const release = (): void => {
+      if (held) { held = false; inFlight--; }
+    };
+    res.once('finish', release);
+    res.once('close', release);
+    req.once('error', release);
+    next();
+  };
 }
 
 /**

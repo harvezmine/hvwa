@@ -7,17 +7,20 @@
 import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { request as httpRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { gzipSync } from 'node:zlib';
 import express, { type Request, type Response } from 'express';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished, vi } from 'vitest';
+import { createApp } from '../src/app.js';
 import { byLevel, labPath, perSession, tryDb } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { flagFor } from '../src/core/mount.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import { sendPage } from '../src/core/render.js';
 import { simFs, simInterpret, type SimFs } from '../src/core/simfs.js';
-import { UPLOAD_LIMITS, parseMultipart, settle, type UploadedFile } from '../src/core/upload.js';
-import { FLAG_RE, freshSession, type Agent } from './helpers.js';
+import { UPLOADS_IN_FLIGHT, UPLOAD_LIMITS, parseMultipart, settle, uploadGate, uploadsInFlight, type UploadedFile } from '../src/core/upload.js';
+import { FLAG_RE, TEST_SECRET, freshSession, serve, type Agent } from './helpers.js';
 import { multipart, type Part } from './support/uploads.js';
 
 const view = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'upload-desk.ejs');
@@ -59,8 +62,9 @@ const DESK = register(defineChallenge({
   maps: [], levels: impl.levels, hints: [],
   mount: (router) => {
     router.get('/', (req, res) => show(req, res, null));
-    // The raw multipart body is read on THIS route only (owner decision Q6), with the engine's body cap.
-    router.post('/upload', express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
+    // At most UPLOADS_IN_FLIGHT uploads at once (before the body is read), then the raw multipart body on THIS route
+    // only (owner decision Q6), with the engine's body cap.
+    router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
       const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1 })), 'Upload error'); // async parse, sync rule
       if (!up.ok) return show(req, res, { ok: false, text: up.message });
       const file = up.value.files.find((f) => f.field === 'scroll');
@@ -182,6 +186,32 @@ describe('UP-01: the upload recipe through the real app', () => {
     }
     // A lab cap: this route takes one file.
     expect((await upload(agent, 'acolyte', [scroll('a.php', 'a'), scroll('b.php', 'b')])).text).toContain('Upload error: too many files (at most 1)');
+  });
+
+  it('uploadGate: four uploads still streaming hold every slot; a fifth gets 503; hanging up frees the slots', async () => {
+    const app = createApp({ flagSecret: TEST_SECRET });
+    onTestFinished(() => { app.locals.db.close(); });
+    const server = await serve(app);
+    const { port } = server.address() as AddressInfo;
+    const m = multipart([scroll('slow.php', Buffer.alloc(256 * 1024, 0x61))]);
+    // Four clients send their headers and half the body, then stall: each holds a slot while express.raw waits.
+    const slow = Array.from({ length: UPLOADS_IN_FLIGHT }, () => {
+      const r = httpRequest({ host: '127.0.0.1', port, method: 'POST', path: `${LAB}/upload?level=acolyte`,
+        headers: { 'content-type': m.contentType, 'content-length': String(m.body.length) } });
+      r.on('error', () => {}); // destroyed below
+      r.write(m.body.subarray(0, m.body.length / 2));
+      return r;
+    });
+    await vi.waitFor(() => { expect(uploadsInFlight()).toBe(UPLOADS_IN_FLIGHT); });
+    const { agent } = await freshSession(app);
+    const busy = await upload(agent, 'acolyte', [scroll('fifth.php', 'x')]);
+    expect(busy.status).toBe(503);
+    expect(busy.text).toBe('Too many uploads in progress (at most 4 at once): try again in a moment.');
+    for (const r of slow) r.destroy(); // the clients hang up: their responses close, their slots are freed
+    await vi.waitFor(() => { expect(uploadsInFlight()).toBe(0); });
+    const ok = await upload(agent, 'acolyte', [scroll('after.php', 'x')]);
+    expect([ok.status, ok.text.includes('Stored as /srv/uploads/after.php.')]).toEqual([200, true]);
+    expect(uploadsInFlight()).toBe(0); // a finished upload gives its slot back
   });
 
   it('names and messages are escaped on the page', async () => {

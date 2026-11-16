@@ -1,9 +1,12 @@
 // core/upload.ts: multipart/form-data uploads over Node's built-in Response.formData() (no dependency), its caps
 // and UploadError, and settle() for the Divine error rule.
 import { Buffer } from 'node:buffer';
+import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
 import { DIVINE_DB_ERROR, field, tryDb } from '../src/core/lab.js';
-import { UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, settle, sniffImage, type ParsedUpload } from '../src/core/upload.js';
+import {
+  UPLOADS_IN_FLIGHT, UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, settle, sniffImage, uploadGate, uploadsInFlight, type ParsedUpload,
+} from '../src/core/upload.js';
 import { multipart, uploadReq, type Part } from './support/uploads.js';
 
 const parse = (parts: readonly Part[], limits = {}): Promise<ParsedUpload> => parseMultipart(uploadReq(multipart(parts)), limits);
@@ -413,5 +416,62 @@ describe('looksLikeImage / sniffImage: magic bytes and dimensions from the heade
     expect(looksLikeImage(Buffer.from(tail))).toBe(false);
     // The bytes after the header are never looked at: a megabyte of anything changes nothing.
     expect(sniffImage(Buffer.concat([IMG.gif(2, 3), Buffer.alloc(1024 * 1024, 0x3c)]))).toEqual({ type: 'gif', mime: 'image/gif', width: 2, height: 3 });
+  });
+});
+
+// --- uploadGate ---------------------------------------------------------------------------------------------------
+
+/** A response as the gate uses it: an emitter with Express's status/set/type/send chain, recording what was sent. */
+class FakeRes extends EventEmitter {
+  statusCode = 200;
+  readonly headers: Record<string, string> = {};
+  body: string | undefined;
+  status(code: number): this { this.statusCode = code; return this; }
+  set(name: string, value: string): this { this.headers[name.toLowerCase()] = value; return this; }
+  type(t: string): this { this.headers['content-type'] = t; return this; }
+  send(body: string): this { this.body = body; this.emit('finish'); return this; }
+}
+const through = (gate: ReturnType<typeof uploadGate>) => {
+  const req = new EventEmitter();
+  const res = new FakeRes();
+  let passed = false;
+  gate(req as never, res as never, () => { passed = true; });
+  return { req, res, passed };
+};
+
+describe('uploadGate: at most UPLOADS_IN_FLIGHT uploads at once, process-wide', () => {
+  it(`lets ${UPLOADS_IN_FLIGHT} through, answers 503 to the next with a clear message, and frees a slot when one finishes`, () => {
+    expect(UPLOADS_IN_FLIGHT).toBe(4);
+    const a = uploadGate();
+    const b = uploadGate(); // another lab's route: the same process-wide slots
+    const open = [through(a), through(b), through(a), through(b)];
+    expect(open.every((o) => o.passed)).toBe(true);
+    expect(uploadsInFlight()).toBe(4);
+    const busy = through(a);
+    expect(busy.passed).toBe(false);
+    expect(busy.res.statusCode).toBe(503);
+    expect(busy.res.body).toBe('Too many uploads in progress (at most 4 at once): try again in a moment.');
+    expect(busy.res.headers).toMatchObject({ 'retry-after': '2', connection: 'close', 'content-type': 'text/plain' });
+    expect(uploadsInFlight()).toBe(4); // a refused upload takes no slot, and its own finish frees none
+    open[0].res.emit('finish');
+    expect(uploadsInFlight()).toBe(3);
+    const next = through(b);
+    expect(next.passed).toBe(true);
+    for (const o of [...open.slice(1), next]) o.res.emit('finish');
+    expect(uploadsInFlight()).toBe(0);
+  });
+
+  it('a slot is freed on finish, on close (a client that hangs up) and on a request error, and only once', () => {
+    const gate = uploadGate();
+    const [f, c, e] = [through(gate), through(gate), through(gate)];
+    expect(uploadsInFlight()).toBe(3);
+    f.res.emit('finish');
+    f.res.emit('close'); // a finished response closes too: still one slot
+    expect(uploadsInFlight()).toBe(2);
+    c.res.emit('close');
+    expect(uploadsInFlight()).toBe(1);
+    e.req.emit('error', new Error('aborted'));
+    e.res.emit('close');
+    expect(uploadsInFlight()).toBe(0);
   });
 });

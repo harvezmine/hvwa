@@ -705,9 +705,9 @@ The worked example is the fixture lab UP-01 in `tests/upload-lab.spec.ts`.
 ```ts
 // challenge.ts
 import express from 'express';
-import { UPLOAD_LIMITS, parseMultipart, settle } from '../../../core/upload.js';
+import { UPLOAD_LIMITS, parseMultipart, settle, uploadGate } from '../../../core/upload.js';
 
-router.post('/upload', express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
+router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
   const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1 })), 'Upload error'); // await OUTSIDE tryDb
   if (!up.ok) return show(res, { ok: false, text: up.message });
   const file = up.value.files.find((f) => f.field === 'scroll');
@@ -717,6 +717,10 @@ router.post('/upload', express.raw({ type: 'multipart/form-data', limit: UPLOAD_
 });
 ```
 
+- **`uploadGate()` first**, before the body is read: at most `UPLOADS_IN_FLIGHT` (4) uploads at once, across every
+  upload route of every lab, so their bodies and parses stay bounded together (about 16 MiB with four near-2 MiB
+  uploads alive, measured). The fifth gets a 503 (`Retry-After: 2`, `Connection: close`) with a plain message; a slot is
+  freed when the response finishes or closes (a client that hangs up) or the request fails.
 - **`express.raw` on the upload route only** (owner decision Q6), with `limit: UPLOAD_LIMITS.maxBytes` (2 MiB). The
   app-wide `express.json()`/`urlencoded()` ignore multipart. A bigger body gets 413 from the error handler before the
   lab runs, and the limit counts the *inflated* body, so a small gzip of a large one gets 413 too. A form posted without
