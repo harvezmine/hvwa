@@ -189,6 +189,20 @@ describe('readZip: malformed archives are UploadError, never a crash or a read p
     expect(zipError(zipOf([{ name: 'a', data: 'hello', method: 'stored', size: 3 }])).message).toMatch(/stored entry/);
   });
 
+  it('bytes after the end record (after the comment, if any) are refused: the record must end the file', () => {
+    for (const comment of ['', 'a comment']) {
+      const archive = zipOf([{ name: 'a.txt', data: 'x' }], { comment });
+      expect(names(readZip(archive))).toEqual(['a.txt']);
+      expect(zipError(Buffer.concat([archive, Buffer.from('trailing')])).message).toMatch(/not a zip archive/);
+      expect(zipError(Buffer.concat([archive, Buffer.alloc(1)])).message).toMatch(/not a zip archive/);
+    }
+  });
+
+  it('a deflate entry that inflates to LESS than it declares is refused too, naming both sizes', () => {
+    expect(zipError(zipOf([{ name: 'a', data: 'hello', size: 6 }])).message).toBe('entry 1 inflates to 5 bytes, not its declared size of 6');
+    expect(zipError(zipOf([{ name: 'a', data: '', size: 3 }])).message).toBe('entry 1 inflates to 0 bytes, not its declared size of 3');
+  });
+
   it('an entry with an empty name', () => {
     expect(zipError(zipOf([{ name: '', data: 'x' }])).message).toMatch(/empty name/);
   });
