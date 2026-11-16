@@ -1,0 +1,16 @@
+<%# GK-08 partial: the player's own mailbox. Include it with mailbox (a list of mails with at, subject, body, link). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <h2>Your mailbox (<%= playerEmail %>)</h2>
+<% if (mailbox.length === 0) { -%>
+  <p class="lab-note" data-testid="mailbox-empty">No mail yet.</p>
+<% } else { -%>
+  <ol class="lab-mailbox" data-testid="mailbox">
+<% mailbox.forEach(function (m) { -%>
+    <li>
+      <p class="lab-note">From <code>no-reply@citadel.test</code> · <time datetime="<%= m.at %>"><%= m.at %></time></p>
+      <p><strong><%= m.subject %></strong></p>
+      <p><%= m.body %></p>
+      <p><a class="mail-link" href="<%= m.link %>"><%= m.link %></a></p>
+    </li>
+<% }); -%>
+  </ol>
+<% } -%>

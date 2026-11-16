@@ -1,0 +1,7 @@
+<%# GK-08 lab view: sign in, the forgot-password link and the player's mailbox. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Gate — Account recovery</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>, mail <code><%= playerEmail %></code>. Target: <code><%= target %></code>, mail <code><%= targetEmail %></code>. Lost a password? <a href="<%= base %>/forgot?level=<%= level %>">Forgot your password?</a></p>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+<%- include('mailbox', { mailbox: mailbox, playerEmail: playerEmail }) %>
+</section>
