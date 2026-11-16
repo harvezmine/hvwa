@@ -812,3 +812,10 @@ The only cross-cutting change is optional and districts-level, not engine: see Q
 - **Q8 Restart:** enabled on RM-05, 06, 07, 08, 09, 10, 13, 14 only.
 - **Q9 implicit `pilgrim` shopper:** accepted; RM-04 keeps its staff login.
 - **Q10 RM-13 Divine notify:** internal call + test seams, no public route.
+
+## Amendments after the RM-A review (2026-11-16, binding)
+
+- **§1 `sql.ts`:** no `hardenSeed` — the engine's `challengeDb` caps `randomblob`/`zeroblob` (Q3). Stored text uses the shell's copying `clipText`; the slicing `clip` is for display cells only.
+- **Shell (landing with RM-A fixes):** `KeyedMutex` lives on `ShopState.locks` (per player+level; never module-level); `formatMoney(cents, currency)` throws on non-integers; `addDiscount` / bounded history enforce `LIMITS`; `shopView` splits into base + optional cart/orders parts; shop holders default to `maxEntries: 1000` (~25 KB/instance).
+- **Batch D prerequisites (RM-11 / RM-13), to do in batch D's first commit:** `shopView` lists only orders with `owner === CUSTOMER.id`; seeded orders of other customers live in a PINNED store (never evicted by the player's own 30); `Order` ids may be strings (RM-11 UUID-like ids); the API listing supports example paths with parameters (`/api/orders/:id`) without a broken link; `placeOrder` takes a status (RM-13 needs states other than `paid`).
+- **Race labs (batch C):** install `barrierGate` right before the race (set-up requests through a racy route count as arrivals); reinstall it after Restart.
