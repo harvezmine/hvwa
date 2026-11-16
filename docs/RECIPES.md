@@ -1145,6 +1145,12 @@ await sendPage(res, view, shopView(req, res, state, {
   `baseView(req, res, { result, curl, endpoints?, api?, wallet?, intent?, extra? })` and the parts it has.
 - `kept` is what was posted (`intent`, `sku`, `qty`): a product's quantity field keeps it only after an `add` of
   that product, and a lab's own form keeps its value only after its own intent.
+- A lab without a cart (RM-08 store credit, RM-10 money changer) renders `{ ...baseView(...), ...ordersView(...) }` (or
+  only `baseView`) with its own view. Its history keeps the shell's hooks, so `describeShopBasics({ hasCart: false,
+  purchase })` reads it: RM-08's purchases are real orders (`pushOrder`), RM-10's exchanges are `<li data-order
+  data-total data-charged data-status="exchanged">` numbered with `nextOrderNo` and kept to the newest 30 with
+  `pushHistory`. The flag of a lab whose proof is a balance sits in the page's own line (`flagLine(req, challenge)`),
+  and a proof that a later action could undo (RM-10's net worth) is recorded once, in the state, when it first holds.
 - Views compose the partials in `relic-market/_shared/views/` (`shop-header`, `message`, `catalog`, `cart`, `orders`,
   `api`, `endpoints`, `staff-code`) with the curl note, e.g. `<%- include('../../_shared/views/cart') %>`. `served`
   is the level (`level` is a reserved view key); `heading` goes to `shop-header` only (a page-level `title` would
