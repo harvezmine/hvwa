@@ -105,10 +105,12 @@ describe('lab bar (layout, challenge routes only)', () => {
     expect(b).toMatch(/aria-label="Ganti level"/);
   });
 
-  it('default <title> is "<id> — <title>"; a view title still wins', async () => {
+  it('default <title> is "<id> — <title>"; a view cannot set it (title is reserved)', async () => {
     expect((await get(`${LAB}?lang=en`)).html).toContain('<title>LB-01 — Lab &lt;b&gt;Title&lt;/b&gt;</title>');
     expect((await get(`${LAB}?lang=id`)).html).toContain('<title>LB-01 — Judul &lt;b&gt;Lab&lt;/b&gt;</title>');
-    expect((await get(`${LAB}/titled`)).html).toContain('<title>Own Title</title>');
+    const titled = await get(`${LAB}/titled`);
+    expect(titled.status).toBe(500);
+    expect(titled.html).not.toContain('Own Title');
   });
 
   it('is absent from portal pages', async () => {

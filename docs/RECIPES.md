@@ -62,10 +62,10 @@ src/districts/index.ts              imports each district index
 - **Plumbing for every district: `src/districts/_shared/`.** A district never imports another district's `_shared/`;
   what two districts need lives here. Like any `_shared/`, it never holds a flaw.
   - `result.ts`: `Result` (`{ ok, text }`), the lab message a view shows as `lab-message lab-success|lab-error`.
-  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form?, signIn? })` → `CurlView`, `shellQuote(text)`,
+  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form?, files?, signIn? })` → `CurlView`, `shellQuote(text)`,
     with the partial `views/curl-note.ejs`: a curl line that can work. It carries the full quoted URL, `-X <method>`
     (PUT, PATCH ...), the headers it needs, `-d '<json>'` and/or `--data-urlencode 'name=value'` (values are
-    shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. Never print the sid: a lab belongs to the browser session,
+    shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. With `files: [{ field, filename, sendAs?, type? }]` the example is multipart: `-F 'field=@filename;filename=sendAs;type=type'` per file, then each `form` field as `-F 'name=value'` (files and fields in the order given; `CurlView.multipart`), after the `-b` cookie. Scriptorium's `uploadCurl` is this call. Never print the sid: a lab belongs to the browser session,
     so curl without that cookie plays in another session whose flags `/api/submit` from the browser would reject. The
     partial also says the line is bash syntax and that Windows PowerShell needs `curl.exe` (plain `curl` there is
     `Invoke-WebRequest`). A lab view at `src/districts/<district>/<lab>/views/` (or `<district>/_shared/views/`)
@@ -214,7 +214,9 @@ For a shape with a shell, a lab's `challenge.ts` shrinks to metadata, the shell 
 **(a) Render only with `page()` / `sendPage()`** from `core/render.ts`, never
 `res.render()` or a two-argument `ejs.renderFile` with request data (EJS option
 injection would reach the host process). View data may not use the reserved
-keys: `escapeFn include rethrow __append __output locals body t lang challenge level labBar labPath simPanel`.
+keys: `escapeFn include rethrow __append __output locals body t lang challenge level labBar labPath simPanel title`. `title` is reserved because the
+layout's `<title>` was once clobbered by a lab view's own `title` (use `heading`); the layout reads the platform-only
+`pageTitle` (the portal sets it), else `labBar.pageTitle`, else the app name.
 
 **(b) The vulnerability lives only in the challenge's own surface**: its level
 files, its `challengeDb`, its simulated sandbox. Never in shared platform code.
@@ -263,7 +265,9 @@ rows (FP-10 trims members and activity to 30 registrations each: about 0.2 s wor
 attacker's text (a 64-character name limit leaves room for at most four such joins). What remains is an **accepted
 residual CPU gap of a loopback, single-player lab**, the same as the memory gap above: the only player who can send such a
 query stalls their own app for a moment. A lab that lets the player send SQL longer than a short name should measure the
-worst cross join of its own tables and put the number next to its caps.
+worst cross join of its own tables and put the number next to its caps. In particular `firstRows` bounds the rows
+RETURNED, not the rows computed: an `ORDER BY` (RM-01) materialises and sorts the whole result before the first row comes
+back, so the 50-row cap does not bound that work, and it is part of the same accepted residual CPU gap.
 
 **Lab state: `perLevel` or `perSession`.** Never a bare module-level
 `challengeDb` for a lab that holds a secret or state.
@@ -322,7 +326,9 @@ generic message. Parser labs (XXE, YAML) pass a label:
 `tryDb(req, () => parse(xml), 'Parser error')`. `fn` must be synchronous
 (`node:sqlite` is); `tryDb` throws if it returns a Promise. Read body fields
 with `field()`, so a JSON object or extended-urlencoded nesting is an empty
-string, not a 500.
+string, not a 500. **One exception: blind labs** (RM-02, RM-03) show no database text at ANY level, because an echoed
+error would make them error-based; a database error is rendered as the level's ordinary negative answer, `divine.ts`
+says so, and the spec uses `malformed: []` plus an explicit "no database text at any level" case (section 12).
 
 **Lab links and cookies.**
 
@@ -366,7 +372,8 @@ string, not a 500.
   values; platform strings go in `core/i18n.ts`.
 - **The lab bar is automatic.** The layout shows the id, title, summary, served
   level, a level switcher and a link back to `/c/<id>` on every challenge route,
-  and defaults `<title>` to `<id> — <title>`. Do not repeat these in the view.
+  and sets `<title>` to `<id> — <title>`. Do not repeat these in the view. A view cannot pass `title`: it is a
+  reserved key (sendPage throws), so the platform owns the document `<title>`; name a heading `heading`.
 - **Lab views** (see `gk-01-sqli-login/views/login.ejs`): wrap the app in
   `<section class="lab">`; show messages in `<p class="lab-message lab-success|lab-error">`;
   tell the player their own account if the lab has one; use text inputs so
@@ -439,6 +446,11 @@ error text, and the `resisted` text must still match. The other cases ((d)-(f)) 
 for labs with no such errors or no privileged identity. Add challenge-specific
 tests next to the matrix (GK-01: per-level isolation, view escaping, kept
 values, non-string fields). `FLAG_RE` and `DB_ERROR_RE` are exported for them.
+
+**The matrix cannot see a Divine flaw on a channel Divine never reads.** An exploit that travels in a cookie or header
+is replayed at Divine too (cases (c) and (g)), so name that cookie or header after the level the exploit is SENT TO
+(`relic_region_${level}`, as RM-02 does). If the script always sends `relic_region_inquisitor`, Divine ignores it and the
+case passes even when Divine concatenates its own cookie: a mutant that makes Divine as weak as Inquisitor stays green.
 
 The matrix scans every response for a flag in its page text, and, when a response has no text (an `application/octet-stream` download: supertest keeps only `res.body`, a Buffer), in its bytes as Latin-1 too. So a flag leaked in a download body goes red like one in a page (`tests/helpers.spec.ts` proves both ways).
 
@@ -556,7 +568,9 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   (URLSearchParams), lower-case `headers`, `cookies` and form `body` (null prototypes; `field()` and `header()` work on
   it); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
   any other status, a 300 or 304 with a Location included, is a page), `Set-Cookie`, `Refresh` and `Referrer-Policy`
-  are honoured. At most 10 redirects; the same request again with the jar unchanged is a loop.
+  are honoured. A `Location` or `Refresh` value containing CR or LF is a malformed response (real HTTP cannot carry
+  one, and URL parsing would silently drop it): the visit ends `unreachable` with an `other` hop whose reason is
+  `invalid`, so a lab cannot pass in the sim on a header a real browser would never receive. At most 10 redirects; the same request again with the jar unchanged is a loop.
 - **Referer, as real browsers send it**: a link opened from mail has none; `follow(url, { referrer })` is a click on a
   citadel page. **A redirect keeps the referrer of the page that started the navigation** (an open redirect does not leak
   its own URL). **A citadel page that moves the browser on by itself sends its own URL**: answer
@@ -1230,3 +1244,26 @@ Real in production, deterministic in tests (`relic-market/_shared/race.ts` and t
   request: the delay is exact and the test instant (decide with `dt >= 1000`). `useInstantWaits()` makes waits instant
   without moving time.
 - Players measure real time with `curl -o /dev/null -s -w '%{time_total}\n' …`.
+- **What RM-03 (`rm-03-blind-time-sqli`) uses, the worked example:**
+  - **A provided `sleep(seconds)` SQL function** (the MySQL-style helper the page announces), registered in the seed on
+    the raw handle: `raw.function('sleep', { directOnly: true }, fn)`. It never blocks: it adds
+    `clamp(seconds, 0, 5) * 1000` ms to the lab's accumulator (`delay.ms`, capped at `MAX_WAIT_MS`) and returns 0. It
+    takes a number or numeric text only (a blob, NULL or junk is 0), and a negative never cancels another sleep.
+    The seed registers nothing else: `randomblob()`/`zeroblob()` are capped by the engine (section 4).
+  - **`measured(level, run)`** in `model.ts` resets the accumulator, runs the query, reads it, and resets it again in a
+    `finally`. `node:sqlite` is synchronous, so no other request runs between the reset and the read: the accumulator
+    can live on a `perLevel` instance, and the function that wraps the query must not `await` inside it.
+  - **The route** wraps `tryDb` in `measured`, so a query that sleeps and then fails still reports its delay, then
+    `await realClock.wait(delayMs)` and answers. The answer is the same bytes for a hit, a miss and an error; only a
+    refused input says so. A database error is that uniform answer, never its message: blind labs (RM-02, RM-03) hide
+    DB text at EVERY level (decision Q4), say so in `divine.ts`, use `malformed: []` and add an explicit "no database
+    text at any level" case.
+  - **The tests** call `useFakeClock()` once at the top of the spec file (it uses `beforeAll`/`afterAll`) and wrap each
+    probe: `t0 = clock.now()`, the request, `dt = clock.now() - t0`. A true condition is exactly 2000 ms and a false one
+    0, so the oracle is `dt >= 1000` and the exploit script binary-searches the hex alphabet (4 requests a character)
+    and then redeems. Lab-specific cases to copy: true costs 2000 and false 0 at every exploitable level, Divine never
+    delays, the 5000 ms cap, odd `sleep()` arguments, a failing query leaves no stale delay, `sleep()` itself never
+    blocks (a direct call takes no real time), and the answer's bytes do not depend on the data.
+  - **Pitfalls.** Use the `UNION SELECT sleep(...)` form: it runs `sleep` exactly once. An `AND`/`OR` form runs it once per
+    scanned row, or never when a literal has a trailing newline, so neither the hints nor the tests may depend on row
+    counts. Never `setTimeout` in a level and never rely on a genuinely slow query (rule (g)).

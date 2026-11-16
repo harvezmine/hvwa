@@ -11,7 +11,7 @@
   <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
 <% } -%>
   <%- include('statement-note') %>
-  <%- include('upload-curl', { upload: upload }) %>
+  <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
   <h2>Stored scrolls</h2>
   <ul class="desk-files" data-testid="desk-files">
 <% for (const f of files) { -%>

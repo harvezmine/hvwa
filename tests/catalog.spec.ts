@@ -81,7 +81,11 @@ describe('docs/CATALOG.md generator', () => {
   it('marks registered rows and leaves the rest planned', () => {
     const md = renderCatalog();
     expect(md).toMatch(/\| GK-01 \|.*\| ✅ registered \|/);
-    expect(md).toMatch(/\| RM-01 \|.*\| planned \|/);
+    // The first catalog row that is not registered at runtime must read planned (none left: nothing may).
+    const registered = new Set(allChallenges().map((c) => c.id));
+    const first = CATALOG.find((r) => !registered.has(r.id));
+    expect(md.includes('| planned |')).toBe(first !== undefined);
+    expect(md).toMatch(first === undefined ? /\| GK-01 \|/ : new RegExp(`\\| ${first.id} \\|.*\\| planned \\|`));
   });
 
   it('committed docs/CATALOG.md is current (run `npm run gen:catalog`)', () => {

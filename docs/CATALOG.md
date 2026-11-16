@@ -50,10 +50,10 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
-| RM-01 | SQLi product search (UNION) | A05 | A T I D | 2 | planned |
-| RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | planned |
-| RM-03 | Blind time-based SQLi | A05 | A T I D | 2 | planned |
-| RM-04 | NoSQL injection (`$ne` login) | A05 | A T I D | 2 | planned |
+| RM-01 | SQLi product search (UNION) | A05 | A T I D | 2 | ✅ registered |
+| RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | ✅ registered |
+| RM-03 | Blind time-based SQLi | A05 | A T I D | 2 | ✅ registered |
+| RM-04 | NoSQL injection (`$ne` login) | A05 | A T I D | 2 | ✅ registered |
 | RM-05 | Negative quantity logic flaw | A06 | A T I D | 2 | ✅ registered |
 | RM-06 | Coupon stacking | A06 | A T I D | 2 | ✅ registered |
 | RM-07 | Race: coupon reuse | A06 | A I D | 2 | ✅ registered |
