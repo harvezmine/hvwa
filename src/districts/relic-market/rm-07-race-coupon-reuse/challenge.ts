@@ -9,7 +9,7 @@ import { exactTotals, formatMoney, insufficientFunds, orderLines, placeOrder, se
 import {
   endpointsOf, mountIntents, refusal, removeLineIntent, shopView, success, type Intent, type Outcome,
 } from '../_shared/shop-lab.js';
-import { CATALOG, labFor, listSubtotal, proves, resetLab, type VoucherLevel } from './model.js';
+import { CATALOG, VOUCHER, labFor, listSubtotal, proves, resetLab, type VoucherLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as inquisitor from './levels/inquisitor.js';
 import * as divine from './levels/divine.js';
@@ -46,6 +46,10 @@ function checkout(req: Request): Outcome {
   const state = labFor(req);
   if (state.cart.length === 0) return refusal('Your cart is empty.');
   const subtotal = listSubtotal(state);
+  // Platform rule at every level: a cart that no longer meets the voucher's minimum cannot keep its discount.
+  if (state.discounts.some((d) => d.code === VOUCHER.code) && subtotal < VOUCHER.min) {
+    return refusal(`This voucher needs a subtotal of at least ${formatMoney(VOUCHER.min)}.`);
+  }
   const total = Math.max(0, subtotal - state.discounts.reduce((sum, d) => sum + d.amount, 0));
   if (total > state.wallet) return refusal(insufficientFunds(total, state.wallet));
   const order = placeOrder(state, { lines: orderLines(state), subtotal, total, charged: total });

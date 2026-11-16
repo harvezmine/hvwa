@@ -9,6 +9,7 @@ import {
 } from '../_shared/shop-lab.testkit.js';
 import { RM07 } from './challenge.js'; // registers RM-07 before createApp() inside freshSession
 import { VOUCHER, labState } from './model.js';
+import * as divineLevel from './levels/divine.js';
 
 const LAB = '/d/relic-market/race-coupon-reuse';
 type Ctx = ShopCtx;
@@ -252,6 +253,30 @@ describe('RM-07 race: coupon reuse', () => {
       await voucher(c, 'NOPE');
       expect(seen, level).toEqual(['arrive']);
     }
+  });
+
+  it('every level: the minimum is checked again at checkout (apply on a lantern, swap it for one candle: refused)', async () => {
+    for (const level of RM07.levels) {
+      const c = await ctx(level);
+      await add(c, 'LANTERN', '1');
+      await voucher(c, 'FIRSTRELIC');
+      await form(c, { intent: 'remove', sku: 'LANTERN', kind: '' });
+      await add(c, 'CANDLE', '1');
+      const res = await checkout(c);
+      expect(res.text, level).toContain('This voucher needs a subtotal of at least $20.00.');
+      expect(ordersOf(res.text), level).toEqual([]);
+      expect(walletOf(res.text), level).toBe(2500);
+      await add(c, 'CANDLE', '8'); // 8 candles: exactly $20.00, so the voucher holds
+      expect((await checkout(c)).text, level).toContain('Order #1 placed. Charged $5.00');
+    }
+  });
+
+  it('divine: the voucher reserved in the synchronous step of the level module itself (no await)', async () => {
+    const c = await ctx('divine');
+    await add(c, 'LANTERN', '1');
+    const s = labState(c.sid, 'divine');
+    void divineLevel.applyVoucher(s, 'FIRSTRELIC');
+    expect(s.voucherUsed).toBe(true);
   });
 
   it('every level: checkout needs the wallet to cover what the voucher leaves, and an empty cart is no order', async () => {
