@@ -6,7 +6,9 @@ import {
   FLAG_RE, attackerHits, describeExploitMatrix, describeLabView, freshSession, panelOf, setCookieHeader, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { s256, type Exchange, type IssuedCode } from '../_shared/oauth.js';
 import { GK10 } from './challenge.js'; // registers GK-10 before createApp() inside freshSession
+import * as divine from './levels/divine.js';
 import { clientCookie, labState, pidCookie } from './model.js';
 
 const LAB = '/d/gatekeeper/oauth-redirect-uri';
@@ -93,31 +95,40 @@ describeLabView({
 });
 
 describe('GK-10 where Pilgrim-ID sends the admin\'s code', () => {
-  const cases: [Level, string, 'attacker' | 'refused' | 'citadel'][] = [
+  const UNREGISTERED = 'Pilgrim-ID: this redirect_uri is not registered for the client.';
+  // Divine rows carry a PKCE challenge, so a refusal there is about the redirect_uri itself, never PKCE masking it.
+  const PKCE = '&code_challenge=abc&code_challenge_method=S256';
+  const cases: [Level, string, 'attacker' | 'unregistered' | 'no-pkce' | 'citadel'][] = [
     ['acolyte', 'http://attacker.test/cb', 'attacker'],
     ['acolyte', REGISTERED, 'citadel'],
-    ['templar', 'http://attacker.test/cb', 'refused'],
+    ['templar', 'http://attacker.test/cb', 'unregistered'],
     ['templar', 'http://citadel.test.attacker.test/cb', 'attacker'],
     ['templar', 'http://citadel.test@attacker.test/cb', 'attacker'],
     ['templar', REGISTERED, 'citadel'],
-    ['inquisitor', 'http://citadel.test.attacker.test/cb', 'refused'],
-    ['inquisitor', `${REGISTERED}?next=http://attacker.test/`, 'refused'],
-    ['inquisitor', `${REGISTERED}/../x`, 'refused'],
-    ['inquisitor', 'HTTP://CITADEL.TEST/callback', 'refused'],
+    ['inquisitor', 'http://citadel.test.attacker.test/cb', 'unregistered'],
+    ['inquisitor', `${REGISTERED}?next=http://attacker.test/`, 'unregistered'],
+    ['inquisitor', `${REGISTERED}/../x`, 'unregistered'],
+    ['inquisitor', 'HTTP://CITADEL.TEST/callback', 'unregistered'],
     ['inquisitor', REGISTERED, 'citadel'],
-    ['divine', 'http://attacker.test/cb', 'refused'],
-    ['divine', REGISTERED, 'refused'], // no PKCE challenge
+    ['divine', 'http://attacker.test/cb', 'unregistered'],
+    ['divine', 'http://citadel.test.attacker.test/cb', 'unregistered'],
+    ['divine', `${REGISTERED}?x=1`, 'unregistered'],
+    ['divine', `${REGISTERED}x`, 'unregistered'],
+    ['divine', `${REGISTERED}/`, 'unregistered'],
+    ['divine', 'HTTP://CITADEL.TEST/callback', 'unregistered'],
+    ['divine', REGISTERED, 'no-pkce'],
   ];
   it.each(cases)('%s, redirect_uri %s: %s', async (level, redirectUri, where) => {
     const { agent, sid } = await freshSession();
-    await sendLink(agent, level, authorizeUrl(redirectUri));
+    await sendLink(agent, level, authorizeUrl(redirectUri, level === 'divine' && where !== 'no-pkce' ? PKCE : ''));
     const visit = labState(sid, level).world.visits.at(-1)!;
     if (where === 'attacker') {
       expect(visit.outcome).toBe('attacker');
       expect(codeIn(attackerHits((await home(agent, level)).text)[0]?.url)).toMatch(/^[0-9a-f]{32}$/);
-    } else if (where === 'refused') {
-      expect(visit.page?.status).toBe(400);
-      expect(visit.page?.body).toMatch(/^Pilgrim-ID: /);
+    } else if (where === 'unregistered' || where === 'no-pkce') {
+      expect(visit.page).toMatchObject({ status: 400, body: where === 'no-pkce' ? 'Pilgrim-ID: PKCE (S256) is required.' : UNREGISTERED });
+      expect(visit.hops).toHaveLength(1); // the code never left Pilgrim-ID
+      expect(labState(sid, level).codes.size).toBe(0);
       expect(attackerHits((await home(agent, level)).text)).toEqual([]);
     } else {
       expect(visit.page).toMatchObject({ url: expect.stringMatching(/^http:\/\/citadel\.test\/callback\?code=/), status: 200 });
@@ -141,6 +152,48 @@ describe('GK-10 where Pilgrim-ID sends the admin\'s code', () => {
     expect(hops[1]).toMatchObject({ site: 'citadel', via: 'redirect' });
     expect(new URL(hops[1].url).searchParams.get('state')).toBe('xyz');
     expect(hops[1].url.startsWith(`${REGISTERED}?code=`)).toBe(true);
+  });
+});
+
+describe('GK-10 divine: the token endpoint (levels/divine.ts redeem, called directly)', () => {
+  // Directly on the level function: over HTTP the single-use login cookie stops a replay first and would mask these.
+  const T0 = Date.UTC(2026, 10, 16, 12, 0, 0);
+  const verifier = 'v'.repeat(43);
+  const codeFor = (over: Partial<IssuedCode> = {}): IssuedCode => ({
+    user: ADMIN, clientId: 'citadel', redirectUri: REGISTERED, challenge: s256(verifier), expiresAt: T0 + 600_000, used: false, ...over,
+  });
+  const honest: Exchange = { clientId: 'citadel', redirectUri: REGISTERED, verifier };
+
+  it('redeems an honest exchange once: the same code a second time fails', () => {
+    const code = codeFor();
+    expect(divine.redeem(code, honest, T0)).toBe(true);
+    expect(divine.redeem(code, honest, T0)).toBe(false);
+  });
+
+  it('a wrong verifier fails, and uses the code up', () => {
+    const code = codeFor();
+    expect(divine.redeem(code, { ...honest, verifier: 'w'.repeat(43) }, T0)).toBe(false);
+    expect(divine.redeem(code, honest, T0)).toBe(false);
+  });
+
+  it('a redirect_uri other than the one the code was sent to fails', () => {
+    expect(divine.redeem(codeFor(), { ...honest, redirectUri: `${REGISTERED}/` }, T0)).toBe(false);
+    expect(divine.redeem(codeFor({ redirectUri: 'http://attacker.test/cb' }), honest, T0)).toBe(false);
+  });
+
+  it('another client fails', () => {
+    expect(divine.redeem(codeFor(), { ...honest, clientId: 'other' }, T0)).toBe(false);
+  });
+
+  it('an expired code fails (expiresAt itself is too late)', () => {
+    expect(divine.redeem(codeFor(), honest, T0 + 600_000 - 1)).toBe(true);
+    expect(divine.redeem(codeFor(), honest, T0 + 600_000)).toBe(false);
+  });
+
+  it('PKCE both ways: a code without a challenge, or an exchange without a verifier, fails', () => {
+    expect(divine.redeem(codeFor({ challenge: undefined }), honest, T0)).toBe(false);
+    expect(divine.redeem(codeFor(), { clientId: 'citadel', redirectUri: REGISTERED }, T0)).toBe(false);
+    expect(divine.redeem(undefined, honest, T0)).toBe(false);
   });
 });
 
