@@ -8,7 +8,7 @@ import { flagFor } from '../../../core/mount.js';
 import type { Challenge } from '../../../core/registry.js';
 import { curlFor, type CurlSpec } from '../../_shared/curl.js';
 import type { Result } from '../../_shared/result.js';
-import { CUSTOMER, formatMoney, type CartTotals, type Order, type Product, type ShopState } from './shop.js';
+import { CUSTOMER, formatMoney, setLine, type CartTotals, type Order, type Product, type ShopState } from './shop.js';
 
 export type { Result } from '../../_shared/result.js';
 
@@ -74,6 +74,25 @@ export function mountIntents(router: Router, intents: Readonly<Record<string, In
     router.post(intent.path, async (req, res) => { await answer(req, res, name); });
   }
   return endpointsOf(intents);
+}
+
+/**
+ * The cart's Remove button (plumbing, the same at every level): `POST <lab>/cart/remove` with `sku` (and
+ * `kind=return` for a return line) removes that one line, so a mistaken line, a pending return included, can be taken
+ * back even where the level refuses a quantity of 0. Removing a line only takes it out of the next checkout.
+ */
+export function removeLineIntent(stateOf: (req: Request) => ShopState): Intent {
+  return {
+    path: '/cart/remove', fields: ['sku', 'kind'],
+    run: (req) => {
+      const state = stateOf(req);
+      const sku = field(req, 'sku');
+      const kind = field(req, 'kind') === 'return' ? 'return' : undefined;
+      const line = state.cart.find((l) => l.sku === sku && l.kind === kind);
+      if (line === undefined) return refusal('That line is not in your cart.');
+      return { result: setLine(state, { ...line, qty: 0 }) };
+    },
+  };
 }
 
 /**
@@ -155,11 +174,15 @@ export function catalogView(
   };
 }
 
-/** The cart part (views/cart): each line with the lab's line total (or its note), and the total (or its note). */
-export function cartView(state: ShopState, totals: CartTotals): { cart: unknown } {
+/**
+ * The cart part (views/cart): each line with the lab's line total (or its note), and the total (or its note).
+ * `removable` adds a Remove button per line (for a lab that mounts removeLineIntent as `remove`).
+ */
+export function cartView(state: ShopState, totals: CartTotals, o: { readonly removable?: boolean } = {}): { cart: unknown } {
   const nameOf = (sku: string): string => state.catalog.get(sku)?.name ?? sku;
   return {
     cart: {
+      removable: o.removable === true,
       rows: totals.lines.map(({ line, total }) => ({
         sku: line.sku, name: nameOf(line.sku), qty: line.qty, kind: line.kind ?? '', unit: money(line.unitPrice),
         line: typeof total === 'number' ? money(total) : null, note: typeof total === 'string' ? total : '',
@@ -196,6 +219,8 @@ export interface ShopViewSpec extends Omit<BaseViewSpec, 'wallet'> {
   readonly proves: (order: Order) => boolean;
   /** The level's hidden fields of a product's add-to-cart form, rendered verbatim (default none). */
   readonly fields?: (p: Product) => Readonly<Record<string, string>>;
+  /** A Remove button per cart line (the lab mounts removeLineIntent as `remove`). */
+  readonly removable?: boolean;
 }
 
 /**
@@ -208,7 +233,7 @@ export function shopView(req: Request, res: Response, state: ShopState, spec: Sh
   return {
     ...baseView(req, res, { ...base, wallet: state.wallet }),
     ...catalogView(req, state, { fields: spec.fields, intent: spec.intent }),
-    ...cartView(state, spec.totals),
+    ...cartView(state, spec.totals, { removable: spec.removable }),
     ...ordersView(req, state, { challenge: spec.challenge, proves: spec.proves }),
     ...extra,
   };

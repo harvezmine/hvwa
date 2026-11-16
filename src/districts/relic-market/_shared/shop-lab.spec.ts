@@ -10,7 +10,8 @@ import { flagFor } from '../../../core/mount.js';
 import type { Level } from '../../../core/levels.js';
 import { catalogOf, exactTotals, newShop, placeOrder, orderLines, setLine, type Order, type ShopState } from './shop.js';
 import {
-  baseView, cartView, catalogView, endpointsOf, flagLine, mountIntents, ordersView, shopView, welcome, type Intent, type Outcome,
+  baseView, cartView, catalogView, endpointsOf, flagLine, mountIntents, ordersView, removeLineIntent, shopView, welcome,
+  type Intent, type Outcome,
 } from './shop-lab.js';
 import { redeemCode } from './staff-code.js';
 import { cartOf, ordersOf, productForm, walletOf } from './shop-lab.testkit.js';
@@ -186,7 +187,7 @@ describe('shopView', () => {
         { sku: 'CANDLE', name: 'Votive Candle', qty: 3, kind: '', unit: { cents: 250, text: '$2.50' }, line: { cents: 750, text: '$7.50' }, note: '' },
         { sku: 'RELIQUARY', name: 'Reliquary <of> "Saints"', qty: -25, kind: 'return', unit: { cents: 100000, text: '$1,000.00' }, line: { cents: -2500000, text: '-$25,000.00' }, note: '' },
       ],
-      total: { cents: -2499250, text: '-$24,992.50' }, note: '',
+      total: { cents: -2499250, text: '-$24,992.50' }, note: '', removable: false,
     });
     expect(d.curl).toMatchObject({ url: `http://127.0.0.1:3000${LAB}/cart?level=acolyte`, form: ['sku=CANDLE', 'qty=1'] });
   });
@@ -222,7 +223,7 @@ describe('shopView', () => {
     const d = (await request(app).get('/')).body as { cart: unknown };
     expect(d.cart).toEqual({
       rows: [{ sku: 'CANDLE', name: 'Votive Candle', qty: 1, kind: '', unit: { cents: 250, text: '$2.50' }, line: null, note: 'Line total too large.' }],
-      total: null, note: 'out of range',
+      total: null, note: 'out of range', removable: false,
     });
   });
 });
@@ -300,6 +301,40 @@ describe('the view parts', () => {
     expect(list.trim().split('\n')).toHaveLength(1);
     const none = await built('acolyte', {}, (req, res) => baseView(req, res, { result: null, curl: { path: '/' } }));
     expect((await renderFile(views('endpoints'), none, opts)).trim()).toBe('');
+  });
+});
+
+describe('removeLineIntent', () => {
+  it('removes the one line named by sku and kind (a return line is its own), and refuses a line not in the cart', async () => {
+    const state = fixtureShop(); // CANDLE x3, RELIQUARY return x -25
+    setLine(state, { sku: 'RELIQUARY', qty: 1, unitPrice: 100000 });
+    const app = express();
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+    const r = Router();
+    const intent = removeLineIntent(() => state);
+    expect(intent).toMatchObject({ path: '/cart/remove', fields: ['sku', 'kind'] });
+    mountIntents(r, { remove: intent }, async (_req, res, o) => { res.json(o.result); });
+    app.use('/lab', r);
+    const send = async (body: object) => (await request(app).post('/lab/cart/remove').send(body)).body as unknown;
+    expect(await send({ sku: 'RELIQUARY', kind: 'return' })).toEqual({ ok: true, text: 'Removed Reliquary <of> "Saints" (return) from your cart.' });
+    expect(state.cart.map((l) => [l.sku, l.kind ?? ''])).toEqual([['CANDLE', ''], ['RELIQUARY', '']]);
+    for (const body of [{ sku: 'RELIQUARY', kind: 'return' }, { sku: 'GRAIL' }, { sku: ['CANDLE'] }, {}]) {
+      expect(await send(body), JSON.stringify(body)).toEqual({ ok: false, text: 'That line is not in your cart.' });
+    }
+    expect(await send({ sku: 'CANDLE', kind: ['return'] })).toEqual({ ok: true, text: 'Removed Votive Candle from your cart.' });
+    expect(state.cart.map((l) => l.sku)).toEqual(['RELIQUARY']);
+  });
+
+  it('a removable cart renders one Remove form per line, posting back with intent=remove, its sku and kind', async () => {
+    const d = await built('acolyte', {}, () => cartView(fixtureShop(), exactTotals(fixtureShop()), { removable: true }));
+    const html = await renderFile(views('cart'), d, opts);
+    const forms = [...html.matchAll(/<form method="post">([\s\S]*?)<\/form>/g)].map((m) => m[1]).filter((f) => f.includes('value="remove"'));
+    expect(forms).toHaveLength(2);
+    expect(forms[1]).toContain('<input type="hidden" name="sku" value="RELIQUARY">');
+    expect(forms[1]).toContain('<input type="hidden" name="kind" value="return">');
+    const fixed = await renderFile(views('cart'), await built('acolyte', {}, () => cartView(fixtureShop(), exactTotals(fixtureShop()))), opts);
+    expect(fixed).not.toContain('value="remove"');
   });
 });
 
