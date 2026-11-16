@@ -1,0 +1,6 @@
+<%# GK-16 notice page (an invalid resume link). Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Portal</h1>
+  <p class="lab-message lab-error" role="status" data-testid="lab-message"><%= text %></p>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to the portal</a></p>
+</section>
