@@ -10,6 +10,7 @@ import {
 } from '../_shared/shop-lab.testkit.js';
 import { RM08 } from './challenge.js'; // registers RM-08 before createApp() inside freshSession
 import { SPEND, labState } from './model.js';
+import * as divineLevel from './levels/divine.js';
 
 const LAB = '/d/relic-market/race-balance-underflow';
 type Ctx = ShopCtx;
@@ -189,6 +190,17 @@ describe('RM-08 race: balance underflow', () => {
       await door(c);
       expect(during).toBe(500);
     }
+  });
+
+  it('divine: the level module reserves the credit in its own synchronous step (no await)', async () => {
+    const c = await ctx('divine');
+    const s = labState(c.sid, 'divine');
+    void divineLevel.buy(s);
+    expect(s.wallet).toBe(500);
+    const d = await ctx('divine');
+    const t = labState(d.sid, 'divine');
+    void divineLevel.gift(t, 'friend');
+    expect(t.wallet).toBe(500);
   });
 
   it('divine: a ledger write that fails refunds the reservation and records nothing', async () => {
