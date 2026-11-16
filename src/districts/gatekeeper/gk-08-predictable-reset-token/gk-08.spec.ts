@@ -12,6 +12,8 @@ import { ADMIN_EMAIL, PLAYER_EMAIL, labState } from './model.js';
 const LAB = '/d/gatekeeper/predictable-reset-token';
 const ADMIN = 'citadel_admin';
 const TAKEN = 'taken-over-1';
+/** The lab clock the matrix pins (noon UTC: far from the midnight Templar's per-day token turns over at). */
+const PINNED = Date.UTC(2026, 10, 16, 12, 0, 0);
 
 type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Response>;
 
@@ -79,7 +81,8 @@ const honestReset: Script = async (a, l) => {
 describeExploitMatrix<Script>({
   challenge: GK08,
   path: LAB,
-  send: (agent, level, script, _url, { sid }) => script(agent, level, sid),
+  // The lab clock is pinned: Templar's token is per UTC day, and a run across midnight would split it.
+  send: (agent, level, script, _url, { sid }) => { labState(sid, level).now = () => PINNED; return script(agent, level, sid); },
   exploits: { acolyte: acolyteExploit, templar: templarExploit, inquisitor: inquisitorExploit },
   resisted: 'Invalid username or password.',
   legit: [
@@ -208,7 +211,8 @@ describe('GK-08 flows', () => {
   it('acolyte and templar: a forged token works only once a reset was requested for that account', async () => {
     for (const level of ['acolyte', 'templar'] as const) {
       const { agent, sid } = await freshSession();
-      const day = new Date(labState(sid, level).now()).toISOString().slice(0, 10);
+      labState(sid, level).now = () => PINNED; // the test and the server must agree on the day
+      const day = new Date(PINNED).toISOString().slice(0, 10);
       const token = level === 'acolyte' ? b64url(ADMIN_EMAIL) : md5(`${ADMIN_EMAIL}${day}`);
       expect((await resetWith(agent, level, { token, password: TAKEN })).text, level).toContain('This reset link is invalid or has expired.');
       await forgot(agent, level, ADMIN_EMAIL);
