@@ -8,6 +8,7 @@ import { exactValue } from '../_shared/shop.js';
 import { cartOf, describeShopBasics, endpointsShown, ordersOf, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM14 } from './challenge.js'; // registers RM-14 before createApp() inside freshSession
 import { labState } from './model.js';
+import * as divine from './levels/divine.js';
 
 const LAB = '/d/relic-market/cart-total-overflow';
 const INT32_MAX = 2_147_483_647;
@@ -167,6 +168,26 @@ describe('RM-14 integer overflow in cart total', () => {
     expect((await checkout(c)).text).toContain('Orders above $1,000,000.00 need a quote.');
     await add(c, 'ALTAR', '5'); // $999,999.95: under the cap, so the wallet decides
     expect((await checkout(c)).text).toContain('Insufficient funds: the total is $999,999.95 and your wallet holds $50.00.');
+  });
+
+  it('divine.lineTotal multiplies exactly, past INT32 too (no Divine cart reaches that far, so it is checked directly)', () => {
+    expect(divine.lineTotal(999_900, 3000)).toBe(2_999_700_000);
+    expect(divine.lineTotal(19_999_999, 1000)).toBe(19_999_999_000);
+    expect(divine.lineTotal(2 ** 31, 2)).toBe(2 ** 32);
+    expect(divine.lineTotal(Number.MAX_SAFE_INTEGER, 2)).toBe('Line total too large.');
+    expect(divine.addToTotal(INT32_MAX, 1)).toBe(INT32_MAX + 1);
+  });
+
+  it('inquisitor: lines that fit but wrap the sum negative are refused at checkout (Invalid order total.)', async () => {
+    const c = await ctx('inquisitor');
+    await add(c, 'ALTAR', '107');
+    await add(c, 'THRONE', '1');
+    const res = await add(c, 'RELIQUARY', '1');
+    expect(cartTotal(res.text)).toBe(2_155_999_792 - 2 ** 32); // 2 155 999 792 wraps to -2 138 967 504
+    const paid = await checkout(c);
+    expect(paid.text).toContain('Invalid order total.');
+    expect(ordersOf(paid.text)).toEqual([]);
+    expect(paid.text).not.toMatch(FLAG_RE);
   });
 
   it('the proof needs the reliquary: an overflowed order without one is paid, but shows no flag', async () => {

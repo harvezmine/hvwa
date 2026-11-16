@@ -239,6 +239,37 @@ describe('RM-05 negative quantity', () => {
     expect([returnQty(viaForm), rosaryQty(viaForm)]).toEqual(['3', '1']);
   });
 
+  it('every level: a total of exactly the wallet ($50.00, 20 candles) is affordable', async () => {
+    for (const level of LEVELS) {
+      const c = await ctx(level);
+      await add(c, 'CANDLE', '20');
+      const res = await checkout(c);
+      expect(res.text, level).toContain('Order #1 placed');
+      expect(walletOf(res.text), level).toBe(0);
+    }
+  });
+
+  it('a return line alone never proves: a reliquary "return" paid for with negative rosaries shows no flag', async () => {
+    const c = await ctx('acolyte');
+    await giveBack(c, 'RELIQUARY', '-1'); // acolyte: a return line of +1 reliquary (+$1,000.00)
+    await add(c, 'ROSARY', '-25'); // -$1,000.00
+    const res = await checkout(c);
+    const [order] = ordersOf(res.text);
+    expect(order).toMatchObject({ no: 1, charged: 0, status: 'paid' });
+    expect(order.flag).toBeUndefined();
+    expect(res.text).not.toMatch(FLAG_RE);
+  });
+
+  it('every level: a return is priced from the server catalog, whatever price the client sends', async () => {
+    for (const level of LEVELS) {
+      const c = await ctx(level);
+      await add(c, 'ROSARY', '1');
+      await checkout(c);
+      const res = await shop.post(c, '/cart/return', { sku: 'ROSARY', qty: '1', price: '1', unitPrice: '1' });
+      expect(cartOf(res.text), level).toEqual([{ sku: 'ROSARY', qty: -1, line: -4000, kind: 'return' }]);
+    }
+  });
+
   it('acolyte: the shell bound still applies to what the level accepts', async () => {
     const c = await ctx('acolyte');
     expect((await add(c, 'ROSARY', '-10000000000')).text).toContain('Quantity too large for this shop.');
