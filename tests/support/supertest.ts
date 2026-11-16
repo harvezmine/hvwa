@@ -56,6 +56,12 @@ function target(x: unknown): { server: http.Server; agent: http.Agent } {
     const s = serveWithAgent(x as http.RequestListener);
     return { server: s.server, agent: s.agent };
   }
+  // A server with no address would make real supertest listen(0) itself and close it after EVERY request: a new
+  // port and connection each time, slow under load. listen(port, host) gets its address only a tick later.
+  if (x instanceof http.Server && x.address() === null) {
+    throw new Error('request(server): the server is not listening yet (listen(port, host) binds a tick later). '
+      + 'Pass the app instead (request(app) keeps one listener per app), or await once(server, \'listening\') first.');
+  }
   return { server: x as http.Server, agent: sharedAgent };
 }
 const sharedAgent = new http.Agent({ keepAlive: true });
