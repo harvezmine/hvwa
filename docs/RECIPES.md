@@ -1264,7 +1264,7 @@ every integer (BigInt), and it throws on a fractional, NaN or infinite amount. N
 that names an amount calls `formatMoney`, or `insufficientFunds(total, wallet)` for the usual checkout refusal.
 
 **State.** `newShop({ catalog, wallet })` is a `ShopState`: `catalog`, `startWallet`, `wallet`, `cart`, `discounts`,
-`orders`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
+`orders`, `pinned`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
 in `perShop`:
 
 ```ts
@@ -1290,10 +1290,18 @@ export const resetLab = (req: { sessionId: string; level: Level }): void => { la
   bounds: |qty| ≤ 9 999 999 999 (`Quantity too large for this shop.`) and 20 lines (`Your cart is full (20 lines).`);
   a fractional quantity or an unsafe unit price is a programming error and throws. A lab that adds up (RM-05's
   returns) computes the new quantity itself and sets it.
-- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged })` debits `charged` (a negative charge
+- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged, status? })` places an order (status `paid`
+  unless the lab names another), debits `charged` (a negative charge
   credits), stamps the order with `state.clock.now()`, empties the cart and the discounts and keeps the newest 30
   orders (`pushOrder`). A charge or wallet outside the safe integers is refused (`OUT_OF_RANGE`) and changes nothing.
-  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...).
+  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...). RM-13 does not call
+  `placeOrder`: its payment provider has already debited the wallet at the pay step, so it builds its `confirmed` order by
+  hand (`pushOrder`, no debit) with `charged` set to the provider's ledger (`received`), avoiding a double debit.
+- **Seeded orders** (RM-11's other customers) go through `pinOrder(state, order)` in the lab's factory into
+  `state.pinned` (at most `LIMITS.pinned` = 20, an id seeded twice throws): they are never trimmed by the player's own
+  newest 30. `allOrders(state)` is pinned then own. An `Order.no` is a number (the shop's running number) or a string id.
+  `ordersView` lists only orders with `owner === CUSTOMER.id` (pinned ones included), so a seeded foreign order never
+  shows in "Your orders"; a lab that shows foreign data does it on its own page, by its own level's rule.
 - An `OrderLine` keeps `qty`, `unitPrice` (what was charged) and `listPrice` (the catalog's, then), so a proof never
   reads the current catalog. `exactValue(lines)` is their real worth in BigInt.
 - `exactTotals(state)` (and `cartTotal`) are exact cart totals, `OUT_OF_RANGE` beyond the safe integers. A lab whose
@@ -1331,14 +1339,23 @@ await sendPage(res, view, shopView(req, res, state, {
   challenge: RM05, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves,
   removable: true, endpoints: endpointsOf(INTENTS), curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' }, signIn: false },
   // fields: (p) => level.formFields(p), api: [{ path: '/api/price-lists', description: '...' }], extra: { ... },
+  // an API path with a parameter links to its example: { path: '/api/orders/:id', example: '/api/orders/1001', description }
 }));
 ```
 
 - `shopView` is `baseView` (header data, message, `kept`, curl, endpoint list, API box) plus `catalogView`,
   `cartView` and `ordersView`. A page without a cart (store credit, an exchange, an API landing page) uses
   `baseView(req, res, { result, curl, endpoints?, api?, wallet?, intent?, extra? })` and the parts it has.
+- A lab whose checkout has several steps (RM-13) names the cart button's intent with `checkoutIntent: 'start'` (`shopView`
+  spec or `cartView` option; default `checkout`), so the cart partial's form posts that intent.
 - `kept` is what was posted (`intent`, `sku`, `qty`): a product's quantity field keeps it only after an `add` of
   that product, and a lab's own form keeps its value only after its own intent.
+- A lab without a cart (RM-08 store credit, RM-10 money changer) renders `{ ...baseView(...), ...ordersView(...) }` (or
+  only `baseView`) with its own view. Its history keeps the shell's hooks, so `describeShopBasics({ hasCart: false,
+  purchase })` reads it: RM-08's purchases are real orders (`pushOrder`), RM-10's exchanges are `<li data-order
+  data-total data-charged data-status="exchanged">` numbered with `nextOrderNo` and kept to the newest 30 with
+  `pushHistory`. The flag of a lab whose proof is a balance sits in the page's own line (`flagLine(req, challenge)`),
+  and a proof that a later action could undo (RM-10's net worth) is recorded once, in the state, when it first holds.
 - Views compose the partials in `relic-market/_shared/views/` (`shop-header`, `message`, `catalog`, `cart`, `orders`,
   `api`, `endpoints`, `staff-code`) with the curl note, e.g. `<%- include('../../_shared/views/cart') %>`. `served`
   is the level (`level` is a reserved view key); `heading` goes to `shop-header` only (a page-level `title` would
@@ -1369,7 +1386,7 @@ Restart restores the start wallet and empties the cart and the orders, and that 
   isolated per player and per level, Restart (and its 429 cooldown) or a 404, the 21st cart line, the newest 30
   orders, money formatting. The default purchase is the cheapest product with its own form, then checkout; a lab
   without a cart passes its own `purchase` and `hasCart: false`.
-- Readers: `walletOf`, `ordersOf`, `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
+- Readers: `walletOf`, `ordersOf` (numeric ids; `orderIdsOf` reads string ids too), `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
   them), `pricesOf`, `endpointsShown`.
 - Exploit scripts end on checkout, and Divine's answer to each is `Insufficient funds: …` (`resisted` is the text, or
   a map keyed by the exploit's level when the totals differ).
@@ -1391,7 +1408,15 @@ Real in production, deterministic in tests (`relic-market/_shared/race.ts` and t
 - Tests install `barrierGate(n, fallbackMs = 2000)` on one session's state (`labState(sid, level).gate =
   barrier.gate`) and fire the race with `Promise.all`. `pass()` resolves once n requests have **arrived** (not reached
   `pass`), so every request has done its check before any does its update, and a Divine request refused before `pass`
-  still counts, so the barrier never deadlocks. Assert `timedOut() === false`: the fallback fires only on a regression.
+  still counts, so the barrier never deadlocks. Released passes resume in a later **macrotask** (`setImmediate`), after
+  every microtask the last arrival queued: a locking level's check starts one microtask after `arrive()` (the
+  `state.locks.run` hop), and a barrier that resumed in a microtask would let the first request write before the second
+  one's check (RM-08 Inquisitor's buy against gift). Assert `timedOut() === false`: the fallback fires only on a
+  regression.
+  - **Atomic Divine, two ways.** RM-07 reserves in the check's own synchronous step (mark the voucher used before the
+    first `await`, give it back in `finally`); RM-08 funnels every spending path through one synchronous `debit`
+    (check and subtract, refund on failure). Both need no lock, and the same barrier test proves them: exactly one of
+    N parallel requests succeeds. A mutant that moves the write after the await goes red.
   - **Install the barrier right before the race**, after the set-up requests: a set-up request that goes through a
     racy route counts as an arrival and spends the barrier before the race starts.
   - **Install it again after a Restart**: Restart builds a fresh state, whose gate is the real `waitGate` again.

@@ -3,7 +3,7 @@
   <h2>API</h2>
   <ul class="shop-api">
 <% api.forEach(function (e) { -%>
-    <li><code><%= e.method %> <a href="<%= e.href %>"><%= e.path %></a></code>: <%= e.description %></li>
+    <li><code><%= e.method %> <% if (e.href) { %><a href="<%= e.href %>"><%= e.path %></a><% } else { %><%= e.path %><% } %></code>: <%= e.description %></li>
 <% }); -%>
   </ul>
 <% } -%>
