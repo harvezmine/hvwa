@@ -9,7 +9,7 @@
 // load event fires only if it closed, and the document element's only if the whole document is well-formed.
 import { defaultTreeAdapter as A, type DefaultTreeAdapterTypes } from 'parse5';
 import { XSS_LIMITS } from './limits.js';
-import { NS } from './rules.js';
+import { NS } from './ns.js';
 
 type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode;

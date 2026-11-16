@@ -104,6 +104,8 @@ interface Frame {
   readonly scriptElements: boolean;
   /** Declarative shadow roots attach (a document read by the HTML parser: never innerHTML, never XML). */
   readonly dsd: boolean;
+  /** The document has a @keyframes rule: an inline animation runs by itself. */
+  readonly keyframes: boolean;
   readonly prefix: string;
   readonly srcdocDepth: number;
 }
@@ -294,7 +296,7 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
   // Event handler attributes.
   for (const a of el.attrs) {
     if (a.namespace !== undefined || !a.name.startsWith('on')) continue;
-    const trigger = handlerTrigger(el, a.name, f.scriptElements);
+    const trigger = handlerTrigger(el, a.name, f);
     if (trigger !== undefined) addSink(w, f, ctx, 'event-handler', `${label(el)}[${a.name}]`, trigger, false, ctx.re.test(a.value));
   }
   // javascript: and data: URLs on navigations and frames.
@@ -326,6 +328,7 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
     }
     walkInto(doc, {
       isolated: f.isolated || (sandbox !== undefined && !sandbox.sameOrigin), live: true, scriptElements: true, dsd: true,
+      keyframes: hasKeyframes(srcdoc),
       prefix: `${f.prefix}iframe[srcdoc] > `, srcdocDepth: f.srcdocDepth + 1,
     }, ctx, w);
   }
@@ -426,7 +429,7 @@ function xmlVerdict(page: string, re: RegExp, opts: XssOracleOptions, budget: Bu
   const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
   const top: Frame = {
     isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
-    scriptElements: true, dsd: false, prefix: '', srcdocDepth: 0,
+    scriptElements: true, dsd: false, keyframes: hasKeyframes(page), prefix: '', srcdocDepth: 0,
   };
   const w = walk(read.document, top, { re, interact: opts.interact !== false, budget, timed: false });
   return Object.freeze({
@@ -434,6 +437,8 @@ function xmlVerdict(page: string, re: RegExp, opts: XssOracleOptions, budget: Bu
     ...(budget.limited === undefined ? {} : { limited: budget.limited }), wellFormed: read.wellFormed,
   });
 }
+
+const hasKeyframes = (text: string): boolean => /@keyframes/i.test(text);
 
 const sinkKey = (s: Sink): string => `${s.kind}|${s.detail}|${s.trigger}|${s.isolated}|${s.marker}`;
 
@@ -473,7 +478,7 @@ export function xssOracle(html: string, marker: string, opts: XssOracleOptions =
   const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
   const top: Frame = {
     isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
-    scriptElements: insertion === 'document', dsd: insertion === 'document', prefix: '', srcdocDepth: 0,
+    scriptElements: insertion === 'document', dsd: insertion === 'document', keyframes: hasKeyframes(page), prefix: '', srcdocDepth: 0,
   };
   const ctx: Context = { re, interact: opts.interact !== false, budget, timed: false };
   const first = walk(tree, top, ctx);
@@ -508,7 +513,7 @@ export function roundTrip(html: string, opts: { readonly insertion?: XssInsertio
   const tree = parseBounded(html, insertion, true, budget, { checkTags: true, timed: false });
   if (tree === undefined) return undefined;
   const ctx: Context = { re: /(?!)/, interact: true, budget, timed: false };
-  if (walk(tree, { isolated: false, live: false, scriptElements: false, dsd: false, prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
+  if (walk(tree, { isolated: false, live: false, scriptElements: false, dsd: false, keyframes: false, prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
   return serialize(tree);
 }
 

@@ -327,6 +327,70 @@ describe('xssOracle syntax: xml (FP2)', () => {
   });
 });
 
+// Each row checked in headless Chrome 157 (review M2, M3, M5).
+describe('xssOracle: rule precision', () => {
+  const GIF = 'R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const SVG_IMAGE = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>";
+  const fires = (html: string, interact = true) => xssOracle(html, M, { interact }).executes;
+
+  it('M2: link preloads with an `as`, modulepreload and prefetch fetch by themselves; a bare preload does not', () => {
+    for (const rel of ['preload as=style', 'preload as=script', 'preload as=image', 'modulepreload', 'prefetch', 'stylesheet']) {
+      expect(fires(`<link rel=${rel} href=x onerror=${M}>`, false), rel).toBe(true);
+    }
+    expect(fires(`<link rel=preload href=x onerror=${M}>`)).toBe(false);
+    expect(fires(`<link rel=icon href=x onerror=${M}>`)).toBe(false);
+  });
+
+  it('M2: animation events fire by themselves with inline CSS (@keyframes plus an animation); content-visibility auto too', () => {
+    const keyframes = '<style>@keyframes k{from{opacity:0}to{opacity:1}}</style>';
+    for (const event of ['onanimationstart', 'onanimationend', 'onanimationiteration', 'onwebkitanimationend']) {
+      expect(fires(`${keyframes}<b style="animation:k 1ms" ${event}=${M}>x</b>`, false), event).toBe(true);
+      expect(fires(`<b style="animation:k 1ms" ${event}=${M}>x</b>`, false), `${event} without @keyframes`).toBe(false);
+      expect(fires(`<b style="animation:k 1ms" ${event}=${M}>x</b>`), `${event}, interacting`).toBe(true);
+    }
+    expect(fires(`<div style="content-visibility: auto" oncontentvisibilityautostatechange=${M}>x</div>`, false)).toBe(true);
+    expect(fires(`<div oncontentvisibilityautostatechange=${M}>x</div>`, false)).toBe(false);
+    expect(fires(`${keyframes}<b style="transition:color 1ms" ontransitionend=${M}>x</b>`, false)).toBe(false); // a transition needs a change
+    expect(fires(`<div onbeforexrselect=${M}>x</div>`, false)).toBe(false);
+    expect(fires(`<div onbeforexrselect=${M}>x</div>`)).toBe(true);
+  });
+
+  it('M3: a data: image that decodes loads (onload fires, onerror does not); a broken one errors', () => {
+    for (const src of [`data:image/gif;base64,${GIF}`, `data:image/png;base64,${PNG}`, SVG_IMAGE]) {
+      expect(fires(`<img src="${src}" onerror=${M}>`), src).toBe(false);
+      expect(fires(`<img src="${src}" onload=${M}>`, false), src).toBe(true);
+    }
+    for (const src of ['data:image/gif;base64,R0lGODlhAQABAAAAACw=', 'data:image/svg+xml,<svg/>', 'data:text/plain,hi', 'data:image/png;base64,iVBORw0KGgo=', 'x']) {
+      expect(fires(`<img src="${src}" onerror=${M}>`, false), src).toBe(true);
+      expect(fires(`<img src="${src}" onload=${M}>`), src).toBe(false);
+    }
+  });
+
+  it('M3: a track fetches only when it is the default one', () => {
+    expect(fires(`<video><track src=x onerror=${M}></video>`)).toBe(false);
+    expect(fires(`<video><track default src=x onerror=${M}></video>`, false)).toBe(true);
+  });
+
+  it('M3: formaction runs only on a submit button that has a form', () => {
+    for (const html of [`<form><button formaction="javascript:${M}">x</button></form>`, `<form><input type=submit formaction="javascript:${M}"></form>`,
+      `<form><input type=image src=x formaction="javascript:${M}"></form>`, `<form id=f></form><button form=f formaction="javascript:${M}">x</button>`,
+      `<form><button type=bogus formaction="javascript:${M}">x</button></form>`]) {
+      expect(fires(html), html).toBe(true);
+    }
+    for (const html of [`<input formaction="javascript:${M}">`, `<form><input formaction="javascript:${M}"></form>`, `<button formaction="javascript:${M}">x</button>`,
+      `<form><button type=button formaction="javascript:${M}">x</button></form>`, `<form><button type=reset formaction="javascript:${M}">x</button></form>`]) {
+      expect(fires(html), html).toBe(false);
+    }
+  });
+
+  it('M5: a sandbox without allow-scripts blocks a javascript: frame even with allow-same-origin; the marker needs a word boundary', () => {
+    expect(xssOracle(`<iframe sandbox="allow-same-origin" src="javascript:${M}"></iframe>`, M).executes).toBe(false);
+    expect(xssOracle(`<iframe sandbox="allow-scripts allow-same-origin" src="javascript:${M}"></iframe>`, M).executes).toBe(true);
+    for (const code of [`x${M}`, `$${M}`, `_${M}`, `a.b${M}`]) expect(xssOracle(`<img src=x onerror="${code}">`, M).executes, code).toBe(false);
+  });
+});
+
 describe('xssOracle: options', () => {
   it('insertion innerHTML: inserted scripts never run (HTML or SVG); handlers and framed documents do', () => {
     const opts: XssOracleOptions = { insertion: 'innerHTML' };
@@ -855,7 +919,7 @@ describe('no player code runs, and core/xss/ reaches no network, file system or 
   });
 
   it('src/core/xss/ imports only parse5, the copying clip and its own files; no dynamic loading, no denied global', () => {
-    expect(XSS_FILES).toEqual(['limits.ts', 'marker.ts', 'oracle.ts', 'preview.ts', 'rules.ts', 'xml.ts']);
+    expect(XSS_FILES).toEqual(['limits.ts', 'marker.ts', 'ns.ts', 'oracle.ts', 'preview.ts', 'rules.ts', 'xml.ts']);
     for (const file of XSS_FILES) {
       const { runtime, problems } = sourceCheck(readFileSync(new URL(file, XSS_DIR), 'utf8'));
       expect(runtime.filter((m) => !XSS_ALLOWED_IMPORTS.has(m)), file).toEqual([]);

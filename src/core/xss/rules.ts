@@ -3,17 +3,12 @@
 // Rules read parse5 elements (namespace, tag name, attributes as the tree builder left them: entities decoded, HTML
 // names lower-cased, SVG names adjusted). Nothing here runs or parses JavaScript.
 import type { DefaultTreeAdapterTypes } from 'parse5';
+import { NS } from './ns.js';
+import { readXml } from './xml.js';
+
+export { NS };
 
 type Element = DefaultTreeAdapterTypes.Element;
-
-export const NS = Object.freeze({
-  HTML: 'http://www.w3.org/1999/xhtml',
-  SVG: 'http://www.w3.org/2000/svg',
-  MATHML: 'http://www.w3.org/1998/Math/MathML',
-  XLINK: 'http://www.w3.org/1999/xlink',
-  XML: 'http://www.w3.org/XML/1998/namespace',
-  XMLNS: 'http://www.w3.org/2000/xmlns/',
-});
 
 /** How a sink fires: by itself while the page loads, or when the victim acts on the page (click, hover, focus...). */
 export type Trigger = 'load' | 'interaction';
@@ -54,11 +49,17 @@ const UI_EVENTS: ReadonlySet<string> = new Set([
   'onsecuritypolicyviolation', 'onselect', 'onselectionchange', 'onselectstart', 'onslotchange', 'onsubmit', 'onwheel',
   'onpointerdown', 'onpointerup', 'onpointermove', 'onpointerover', 'onpointerout', 'onpointerenter', 'onpointerleave',
   'onpointercancel', 'onpointerrawupdate', 'ongotpointercapture', 'onlostpointercapture', 'ontouchstart', 'ontouchend',
-  'ontouchmove', 'ontouchcancel', 'onanimationstart', 'onanimationend', 'onanimationiteration', 'onanimationcancel',
-  'ontransitionstart', 'ontransitionend', 'ontransitionrun', 'ontransitioncancel', 'onwebkitanimationstart',
-  'onwebkitanimationend', 'onwebkitanimationiteration', 'onwebkittransitionend', 'oncontentvisibilityautostatechange',
-  'onfullscreenchange', 'onfullscreenerror', 'onwebkitfullscreenchange', 'onwebkitfullscreenerror', 'onsearch',
-  'onbeforecopy', 'onbeforecut', 'onbeforepaste',
+  'ontouchmove', 'ontouchcancel', 'ontransitionstart', 'ontransitionend', 'ontransitionrun', 'ontransitioncancel',
+  'onwebkittransitionend', 'onfullscreenchange', 'onfullscreenerror', 'onwebkitfullscreenchange', 'onwebkitfullscreenerror',
+  'onsearch', 'onbeforecopy', 'onbeforecut', 'onbeforepaste', 'onbeforexrselect',
+]);
+/**
+ * CSS animation events: they fire by themselves when the page's own CSS animates the element (an inline animation
+ * and a @keyframes rule on the page); otherwise only after the victim's interaction (a :hover rule, say).
+ */
+const ANIMATION_EVENTS: ReadonlySet<string> = new Set([
+  'onanimationstart', 'onanimationend', 'onanimationiteration', 'onanimationcancel', 'onwebkitanimationstart',
+  'onwebkitanimationend', 'onwebkitanimationiteration',
 ]);
 /** Focus events: only an element that can take focus gets them. */
 const FOCUS_EVENTS: ReadonlySet<string> = new Set(['onfocus', 'onblur', 'onfocusin', 'onfocusout']);
@@ -80,13 +81,26 @@ const SMIL_ELEMENTS: ReadonlySet<string> = new Set(['animate', 'animateMotion', 
 
 /** Every event handler attribute the rules know (lower case). */
 export const EVENT_HANDLERS: ReadonlySet<string> = new Set([
-  ...UI_EVENTS, ...FOCUS_EVENTS, ...MEDIA_EVENTS, ...WINDOW_EVENTS, ...SMIL_EVENTS, 'onload', 'onerror', 'ontoggle',
+  ...UI_EVENTS, ...ANIMATION_EVENTS, ...FOCUS_EVENTS, ...MEDIA_EVENTS, ...WINDOW_EVENTS, ...SMIL_EVENTS, 'onload', 'onerror',
+  'ontoggle', 'oncontentvisibilityautostatechange',
 ]);
 
+/** What a handler's trigger depends on beyond its element: the document it is in. */
+export interface PageFacts {
+  /** Script elements run (false for markup inserted by innerHTML: its scripts are never fetched either). */
+  readonly scriptElements: boolean;
+  /** The page has a @keyframes rule (so an inline animation runs by itself). */
+  readonly keyframes: boolean;
+}
+
+/** A link's rel tokens, lower case. */
+const rels = (el: Element): ReadonlySet<string> => new Set((attr(el, 'rel') ?? '').toLowerCase().split(/[\t\n\f\r ]+/));
+
 /**
- * The URL an element fetches by itself, so its error (and, if it loads, load) event fires on its own; undefined when
- * it fetches nothing. A script element inserted by innerHTML is never fetched (`scripts` false). Checked against
- * Chromium: an icon link and an embed fire no error event, an iframe never does.
+ * The URL an element fetches by itself, so its error (or, if it loads, its load) event fires on its own; undefined
+ * when it fetches nothing. Checked against Chromium 157: a script inserted by innerHTML is never fetched (`scripts`
+ * false); a link fetches as a stylesheet, a preload with an `as`, a modulepreload or a prefetch (an icon, a bare
+ * preload: no event); a track only when it is the default one; an embed and an iframe fire no error event.
  */
 function sourceOf(el: Element, scripts: boolean): string | undefined {
   if (el.namespaceURI === NS.SVG) {
@@ -95,17 +109,64 @@ function sourceOf(el: Element, scripts: boolean): string | undefined {
   }
   if (el.namespaceURI !== NS.HTML) return undefined;
   switch (el.tagName) {
-    case 'img': case 'source': return attr(el, 'src') ?? attr(el, 'srcset');
+    case 'img': case 'source': {
+      const src = attr(el, 'src');
+      if (src !== undefined) return src;
+      const srcset = attr(el, 'srcset');
+      return srcset === undefined ? undefined : trimAsciiWhitespace(srcset.split(',')[0] ?? '').split(/[\t\n\f\r ]+/)[0];
+    }
     case 'input': return (attr(el, 'type') ?? '').trim().toLowerCase() === 'image' ? attr(el, 'src') : undefined;
-    case 'video': case 'audio': case 'track': return attr(el, 'src');
+    case 'video': case 'audio': return attr(el, 'src');
+    case 'track': return has(el, 'default') ? attr(el, 'src') : undefined;
     case 'script': return scripts ? attr(el, 'src') : undefined;
-    case 'link': return /(^|[\t\n\f\r ])stylesheet([\t\n\f\r ]|$)/i.test(attr(el, 'rel') ?? '') ? attr(el, 'href') : undefined;
+    case 'link': {
+      const r = rels(el);
+      const fetches = r.has('stylesheet') || r.has('modulepreload') || r.has('prefetch') || (r.has('preload') && (attr(el, 'as') ?? '') !== '');
+      return fetches ? attr(el, 'href') : undefined;
+    }
     case 'object': return attr(el, 'data');
     default: return undefined;
   }
 }
 /** Elements whose load event fires when their source loads (media elements have no load event). */
 const LOADING_ELEMENTS: ReadonlySet<string> = new Set(['img', 'input', 'script', 'link', 'object', 'track', 'svg:image', 'svg:script', 'svg:feImage']);
+const IMAGE_ELEMENTS: ReadonlySet<string> = new Set(['img', 'input', 'source', 'svg:image', 'svg:feImage']);
+
+/** Whether image bytes decode: a complete GIF, PNG, JPEG or WebP, or a well-formed SVG document (a broken one errors). */
+function imageLoads(d: { readonly mime: string; readonly text: string; readonly bytes: Uint8Array }): boolean {
+  const b = d.bytes;
+  const n = b.length;
+  const ascii = (at: number, s: string): boolean => [...s].every((c, k) => b[at + k] === c.charCodeAt(0));
+  if (ascii(0, 'GIF87a') || ascii(0, 'GIF89a')) return n > 13 && b[n - 1] === 0x3b; // the trailer
+  if (b[0] === 0x89 && ascii(1, 'PNG\r\n\x1a\n')) return n >= 20 && ascii(n - 8, 'IEND');
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return b[n - 2] === 0xff && b[n - 1] === 0xd9;
+  if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return (b[4] | (b[5] << 8) | (b[6] << 16) | (b[7] << 24)) + 8 === n;
+  if (d.mime === 'image/svg+xml') {
+    const read = readXml(d.text);
+    const root = read.document.childNodes.find((c): c is Element => 'tagName' in c);
+    return read.wellFormed && root !== undefined && root.namespaceURI === NS.SVG && root.tagName === 'svg';
+  }
+  return false;
+}
+
+/**
+ * Whether a source loads (so onload fires and onerror does not). In the simulation only a data: URL can: every other
+ * fetch fails (the citadel answers 404 for `src=x`, attacker.test serves nothing). A data: image must decode; a
+ * script runs; a style sheet must be CSS; an object must be a document or an image; media is never judged playable.
+ */
+function sourceLoads(el: Element, src: string): boolean {
+  const url = urlText(src);
+  if (schemeOf(url) !== 'data') return false;
+  const d = dataUrl(url);
+  if (d === undefined) return false;
+  const name = label(el);
+  if (IMAGE_ELEMENTS.has(name)) return imageLoads(d);
+  if (name === 'script' || name === 'svg:script') return true;
+  if (name === 'link') return d.mime === 'text/css';
+  if (name === 'object') return DOCUMENT_MIME_TYPES.has(d.mime) || imageLoads(d);
+  if (name === 'track') return d.text.startsWith('WEBVTT');
+  return false;
+}
 
 /** Whether the victim can focus the element (by clicking or tabbing to it). */
 function focusable(el: Element): boolean {
@@ -126,10 +187,10 @@ function focusable(el: Element): boolean {
 /**
  * How an event handler attribute on `el` fires: 'load' (by itself, as the page loads), 'interaction' (when the victim
  * clicks, hovers, focuses, scrolls...) or undefined (never: an unknown name, or an event this element never gets).
- * `name` is the attribute name, lower case; `scripts` is false for markup inserted by innerHTML (its scripts are
- * never fetched).
+ * `name` is the attribute name, lower case; `page` says what the document allows (scripts, a @keyframes rule).
  */
-export function handlerTrigger(el: Element, name: string, scripts: boolean): Trigger | undefined {
+export function handlerTrigger(el: Element, name: string, page: PageFacts): Trigger | undefined {
+  const scripts = page.scriptElements;
   if (!EVENT_HANDLERS.has(name)) return undefined;
   const windowish = isHtml(el, 'body', 'frameset');
   if (WINDOW_EVENTS.has(name)) {
@@ -138,15 +199,19 @@ export function handlerTrigger(el: Element, name: string, scripts: boolean): Tri
   }
   if (name === 'onload') {
     // The page's own load; a frame's (about:blank at least); an inline style sheet; an SVG element that is an <svg>
-    // (not its children); and an element whose source loads without the network: a data: URL. (In the simulation
-    // every other fetch fails: the citadel answers 404 for `src=x`, attacker.test serves nothing.)
+    // (not its children); and an element whose source loads (sourceLoads: only a data: URL that decodes).
     if (windowish || isHtml(el, 'iframe', 'frame', 'style') || isSvg(el, 'svg')) return 'load';
     const src = sourceOf(el, scripts);
-    return src !== undefined && LOADING_ELEMENTS.has(label(el)) && schemeOf(urlText(src)) === 'data' ? 'load' : undefined;
+    return src !== undefined && LOADING_ELEMENTS.has(label(el)) && sourceLoads(el, src) ? 'load' : undefined;
   }
   if (name === 'onerror') {
-    if (sourceOf(el, scripts) !== undefined) return 'load'; // `src=x` fails by itself
+    const src = sourceOf(el, scripts);
+    if (src !== undefined) return sourceLoads(el, src) ? undefined : 'load'; // `src=x` fails by itself; a valid data: image does not
     return windowish ? 'interaction' : undefined; // window.onerror needs some other script to fail
+  }
+  if (ANIMATION_EVENTS.has(name)) return page.keyframes && /animation/i.test(attr(el, 'style') ?? '') ? 'load' : 'interaction';
+  if (name === 'oncontentvisibilityautostatechange') {
+    return /content-visibility\s*:\s*auto/i.test(attr(el, 'style') ?? '') ? 'load' : 'interaction';
   }
   if (FOCUS_EVENTS.has(name)) {
     if (windowish) return 'interaction';
@@ -230,6 +295,10 @@ export function schemeOf(url: string): string | undefined {
 }
 
 function percentDecode(s: string): string {
+  return new TextDecoder().decode(percentDecodeBytes(s));
+}
+
+function percentDecodeBytes(s: string): Uint8Array {
   const bytes = new TextEncoder().encode(s);
   const out = new Uint8Array(bytes.length);
   const hex = (b: number): number => (b >= 48 && b <= 57 ? b - 48 : b >= 65 && b <= 70 ? b - 55 : b >= 97 && b <= 102 ? b - 87 : -1);
@@ -243,7 +312,7 @@ function percentDecode(s: string): string {
       out[n++] = b;
     }
   }
-  return new TextDecoder().decode(out.subarray(0, n));
+  return out.subarray(0, n);
 }
 
 /** The code a `javascript:` URL runs: everything after the scheme, percent-decoded (HTML's javascript: URL rule). */
@@ -251,18 +320,19 @@ export function javascriptSource(url: string): string {
   return percentDecode(url.slice(url.indexOf(':') + 1));
 }
 
-/** A `data:` URL's MIME type and text (percent-decoded, base64-decoded when marked), or undefined when malformed. */
-export function dataUrl(url: string): { readonly mime: string; readonly text: string } | undefined {
+/** A `data:` URL's MIME type, bytes and text (percent-decoded, base64-decoded when marked), or undefined when malformed. */
+export function dataUrl(url: string): { readonly mime: string; readonly text: string; readonly bytes: Uint8Array } | undefined {
   const comma = url.indexOf(',');
   if (comma === -1) return undefined;
   const meta = url.slice(url.indexOf(':') + 1, comma);
   const base64 = /;[\t\n\f\r ]*base64[\t\n\f\r ]*$/i.test(meta);
   const mime = (base64 ? meta.replace(/;[\t\n\f\r ]*base64[\t\n\f\r ]*$/i, '') : meta).split(';')[0].trim().toLowerCase() || 'text/plain';
-  const body = percentDecode(url.slice(comma + 1));
-  if (!base64) return { mime, text: body };
+  const raw = percentDecodeBytes(url.slice(comma + 1));
+  if (!base64) return { mime, text: new TextDecoder().decode(raw), bytes: raw };
   try {
-    const binary = atob(body.replace(/[\t\n\f\r ]/g, ''));
-    return { mime, text: new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0))) };
+    const binary = atob(new TextDecoder().decode(raw).replace(/[\t\n\f\r ]/g, ''));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return { mime, text: new TextDecoder().decode(bytes), bytes };
   } catch {
     return undefined; // not base64: the fetch fails, nothing runs
   }
@@ -291,6 +361,18 @@ const NAV_HTML: Readonly<Record<string, readonly NavRule[]>> = Object.freeze({
   embed: [{ attribute: 'src', trigger: 'load', frame: true, javascript: false }],
 });
 
+/**
+ * Whether a button or input submits a form, so its formaction navigates: a submit button (a button of any type but
+ * button and reset; an input of type submit or image) with a form owner (an ancestor form, or a form= attribute).
+ */
+function submitsForm(el: Element): boolean {
+  const type = (attr(el, 'type') ?? '').trim().toLowerCase();
+  if (el.tagName === 'button' ? type === 'button' || type === 'reset' : type !== 'submit' && type !== 'image') return false;
+  if ((attr(el, 'form') ?? '') !== '') return true;
+  for (let p = el.parentNode; p !== null && 'tagName' in p; p = p.parentNode) if (isHtml(p, 'form')) return true;
+  return false;
+}
+
 /** The navigation attributes of an element, with their values: `[rule, attribute as shown, value]`. */
 export function navAttributes(el: Element): readonly (readonly [NavRule, string, string])[] {
   if (el.namespaceURI === NS.SVG) {
@@ -299,6 +381,7 @@ export function navAttributes(el: Element): readonly (readonly [NavRule, string,
     return href === undefined ? [] : [[{ attribute: 'href', trigger: 'interaction', frame: false, javascript: true }, href.name, href.value]];
   }
   if (el.namespaceURI !== NS.HTML || !Object.hasOwn(NAV_HTML, el.tagName)) return [];
+  if ((el.tagName === 'button' || el.tagName === 'input') && !submitsForm(el)) return []; // formaction needs a submit with a form
   const out: (readonly [NavRule, string, string])[] = [];
   for (const rule of NAV_HTML[el.tagName]) {
     const value = attr(el, rule.attribute);
