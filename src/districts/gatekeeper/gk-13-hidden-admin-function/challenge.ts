@@ -2,7 +2,8 @@
 import { join } from 'node:path';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
-import { byLevel, labPath, sendLines } from '../../../core/lab.js';
+import { sendLines } from '../../../core/fixtures.js';
+import { byLevel, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import type { Level } from '../../../core/levels.js';

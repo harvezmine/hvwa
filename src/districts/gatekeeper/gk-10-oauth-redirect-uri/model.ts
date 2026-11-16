@@ -2,10 +2,11 @@
 // open, and the contract every levels/<level>.ts implements. Not served: View Source shows only levels/*.ts. The level
 // modules are gathered here because the admin's simulated browser needs them too; they import only types from this
 // file, so there is no import cycle.
-import { byLevel, perSession } from '../../../core/lab.js';
+import { byLevel, declareLabWeight, perSession } from '../../../core/lab.js';
+import { clip } from '../../../core/sim/limits.js';
 import type { Level } from '../../../core/levels.js';
 import {
-  CITADEL_ORIGIN, cookiePath, simVisitOf, simWorld, toSim,
+  CITADEL_ORIGIN, SIM_LIMITS, cookiePath, simVisitOf, simWorld, toSim,
   type Reply, type SimBrowser, type SimRequest, type SimResponse, type SimWorld, type TwinCookie, type Visit,
 } from '../../../core/sim.js';
 import { ADMIN_NAME } from '../_shared/lab.js';
@@ -103,7 +104,8 @@ export function startLogin(v: Visit, state: LabState): Reply {
   const cookies: TwinCookie[] = [{ name: nextCookie(v.level), value: '', path, clear: true }];
   if (next) {
     const id = newId();
-    put(state.returns, id, { next, until: state.world.now() + RETURN_TTL_MS });
+    // Kept as a copy one past the URL cap (as mail links are): bounded memory, and a too-long `next` stays too long.
+    put(state.returns, id, { next: clip(next, SIM_LIMITS.urlLength + 1), until: state.world.now() + RETURN_TTL_MS });
     cookies[0] = { name: nextCookie(v.level), value: id, path, maxAgeSec: RETURN_TTL_MS / 1000 };
   }
   const params = new URLSearchParams({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: REGISTERED_REDIRECT });
@@ -177,7 +179,14 @@ function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
 
 // Per player AND per level: both apps' sessions, the codes, the admin's browser and the attacker log together, so one
 // eviction (or TTL expiry) drops them all at once. No limiter lives here, so the shared sim budget is harmless.
+/**
+ * What this lab's own maps can hold at worst, in the shared byte budget (declareLabWeight): returns, codes (a player redirect_uri and code_challenge, each clipped one past the URL cap), both session maps and the pending sign-ins, 50 each.
+ * ~662 KiB measured filled to every cap (tests/lab-state-weights.spec.ts), plus ~10%, rounded up to 32 KiB.
+ */
+export const STATE_WEIGHT = 736 * 1024;
+
 const labs = perSession((level: Level): LabState => {
+  declareLabWeight(STATE_WEIGHT, 'GK-10 lab state'); // its maps; its world and browser weigh themselves
   const world = simWorld();
   const adminPid = newId();
   // The handler reads `state` only when the admin browses, after it is assigned.
