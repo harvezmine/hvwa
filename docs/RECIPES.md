@@ -62,10 +62,10 @@ src/districts/index.ts              imports each district index
 - **Plumbing for every district: `src/districts/_shared/`.** A district never imports another district's `_shared/`;
   what two districts need lives here. Like any `_shared/`, it never holds a flaw.
   - `result.ts`: `Result` (`{ ok, text }`), the lab message a view shows as `lab-message lab-success|lab-error`.
-  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form?, signIn? })` → `CurlView`, `shellQuote(text)`,
+  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form?, files?, signIn? })` → `CurlView`, `shellQuote(text)`,
     with the partial `views/curl-note.ejs`: a curl line that can work. It carries the full quoted URL, `-X <method>`
     (PUT, PATCH ...), the headers it needs, `-d '<json>'` and/or `--data-urlencode 'name=value'` (values are
-    shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. Never print the sid: a lab belongs to the browser session,
+    shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. With `files: [{ field, filename, sendAs?, type? }]` the example is multipart: `-F 'field=@filename;filename=sendAs;type=type'` per file, then each `form` field as `-F 'name=value'` (files and fields in the order given; `CurlView.multipart`), after the `-b` cookie. Scriptorium's `uploadCurl` is this call. Never print the sid: a lab belongs to the browser session,
     so curl without that cookie plays in another session whose flags `/api/submit` from the browser would reject. The
     partial also says the line is bash syntax and that Windows PowerShell needs `curl.exe` (plain `curl` there is
     `Invoke-WebRequest`). A lab view at `src/districts/<district>/<lab>/views/` (or `<district>/_shared/views/`)

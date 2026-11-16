@@ -100,7 +100,7 @@ describe('SC-10 page and state', () => {
       expect(page.text, level).toContain('nothing you upload ever runs for real');
       expect(page.text, level).toMatch(/Python's <code>zipfile<\/code> on Windows turns a backslash in <code>ZipInfo\(name\)<\/code> into a slash[^<]*<code>\.filename<\/code>/);
       expect(page.text, level).toMatch(new RegExp(
-        `curl -F 'archive=@\\./local-file;filename=&lt;name&gt;;type=&lt;content type&gt;' -F 'caption=&lt;text&gt;' "http://[^/"]+${LAB}\\?level=${level}" -b "hvwa_sid=&lt;copy from devtools&gt;"`));
+        `curl "http://[^/"]+${LAB}\\?level=${level}" -b "hvwa_sid=&lt;copy from devtools&gt;" -F 'archive=@\\./local-file;filename=&lt;name&gt;;type=&lt;content type&gt;' -F 'caption=&lt;text&gt;'`));
       expect(page.text, level).not.toContain(sid);
     }
   });

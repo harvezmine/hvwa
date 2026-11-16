@@ -48,7 +48,7 @@ export function describeDeskBasics(k: DeskKit): void {
         expect(page.text, level).toContain('nothing you upload ever runs for real');
         // The curl line: multipart with the file name and type spelled out, never the session id.
         expect(page.text, level).toMatch(new RegExp(
-          `curl -F 'scroll=@\\./local-file;filename=&lt;name&gt;;type=&lt;content type&gt;' -F 'caption=&lt;text&gt;' "http://[^/"]+${k.path}\\?level=${level}" -b "hvwa_sid=&lt;copy from devtools&gt;"`));
+          `curl "http://[^/"]+${k.path}\\?level=${level}" -b "hvwa_sid=&lt;copy from devtools&gt;" -F 'scroll=@\\./local-file;filename=&lt;name&gt;;type=&lt;content type&gt;' -F 'caption=&lt;text&gt;'`));
         expect(page.text, level).toContain('<code>curl.exe</code>');
         expect(page.text, level).not.toContain(sid);
       }

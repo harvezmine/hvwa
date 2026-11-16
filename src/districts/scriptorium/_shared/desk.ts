@@ -64,7 +64,7 @@ export function mountDesk(router: Router, o: DeskOptions): void {
     files: o.labFor(req).fs.list(UPLOADS_DIR).map((f) => ({
       shown: visible(f.path), href: encodeURIComponent(f.path.slice(UPLOADS_DIR.length + 1)),
     })),
-    upload: uploadCurl(req, res, 'scroll'),
+    curl: uploadCurl(req, res, 'scroll'),
   });
 
   router.get('/', (req, res) => show(req, res, null));
