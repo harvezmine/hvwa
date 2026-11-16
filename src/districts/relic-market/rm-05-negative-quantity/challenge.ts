@@ -6,7 +6,7 @@ import { byLevel, field } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { exactTotals, formatMoney, orderLines, placeOrder, setLine } from '../_shared/shop.js';
-import { mountIntents, refusal, shopView, success, type Outcome } from '../_shared/shop-lab.js';
+import { mountIntents, refusal, removeLineIntent, shopView, success, type Intent, type Outcome } from '../_shared/shop-lab.js';
 import { CATALOG, labFor, proves, resetLab, type LabState, type QtyLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -54,8 +54,11 @@ function checkout(req: Request): Outcome {
   const order = placeOrder(state, { lines: orderLines(state), subtotal: total, total, charged: total });
   if (typeof order === 'string') return refusal(order);
   for (const l of order.lines) {
+    // Book only what really changed hands: units bought (a purchase line above 0), units returned (a return line below 0).
+    const units = l.kind === 'return' ? -l.qty : l.qty;
+    if (units <= 0) continue;
     const book = l.kind === 'return' ? state.returned : state.owned;
-    book.set(l.sku, (book.get(l.sku) ?? 0) + (l.kind === 'return' ? -l.qty : l.qty));
+    book.set(l.sku, (book.get(l.sku) ?? 0) + units);
   }
   return success(`Order #${order.no} placed. Charged ${formatMoney(order.charged)}; your wallet now holds ${formatMoney(state.wallet)}.`);
 }
@@ -65,14 +68,24 @@ const ownedRows = (state: LabState) => CATALOG.products
   .map((p) => ({ sku: p.sku, name: p.name, owned: state.owned.get(p.sku) ?? 0, returned: state.returned.get(p.sku) ?? 0 }))
   .filter((o) => o.owned > 0);
 
+/** The page's actions: POST / with a hidden intent, or each one's own path. */
+const INTENTS: Readonly<Record<string, Intent>> = {
+  add: { path: '/cart', fields: ['sku', 'qty'], run: add },
+  return: { path: '/cart/return', fields: ['sku', 'qty'], run: giveBack },
+  remove: removeLineIntent(labFor),
+  checkout: { path: '/checkout', run: checkout },
+};
+
 async function render(req: Request, res: Response, outcome: Outcome): Promise<void> {
   const state = labFor(req);
   const owned = ownedRows(state);
   const keptSku = field(req, 'sku');
+  // The return form keeps what was typed only after a return of an item it lists.
+  const returnQty = outcome.intent === 'return' && owned.some((o) => o.sku === keptSku) ? field(req, 'qty') : '1';
   await sendPage(res, view, shopView(req, res, state, {
-    challenge: RM05, result: outcome.result, totals: exactTotals(state), proves,
+    challenge: RM05, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves, removable: true,
     curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' } },
-    extra: { owned, returnQty: owned.some((o) => o.sku === keptSku) ? field(req, 'qty') : '1' },
+    extra: { owned, returnQty },
   }));
 }
 
@@ -96,10 +109,6 @@ export const RM05 = register(defineChallenge({
   reset: (req) => { resetLab(req); },
   mount: (router) => {
     router.get('/', async (req, res) => { await render(req, res, { result: null }); });
-    mountIntents(router, {
-      add: { path: '/cart', run: add },
-      return: { path: '/cart/return', run: giveBack },
-      checkout: { path: '/checkout', run: checkout },
-    }, render);
+    mountIntents(router, INTENTS, render);
   },
 }));

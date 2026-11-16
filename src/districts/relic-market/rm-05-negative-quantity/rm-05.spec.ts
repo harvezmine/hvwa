@@ -4,7 +4,7 @@ import type request from 'supertest';
 import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tests/helpers.js';
 import { LEVELS } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
-import { cartOf, describeShopBasics, ordersOf, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, ordersOf, productForm, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM05 } from './challenge.js'; // registers RM-05 before createApp() inside freshSession
 import { labState } from './model.js';
 
@@ -184,6 +184,47 @@ describe('RM-05 negative quantity', () => {
     expect(cartOf(back.text)).toEqual([{ sku: 'ROSARY', qty: -1, line: -4000, kind: 'return' }]);
     expect(back.text).toContain('(return for store credit)');
     expect((await form(c, { intent: 'bogus' })).text).toMatch(/class="lab-message lab-error"[^>]*>Unknown action\./);
+  });
+
+  it('only units really bought are owned, and only units really returned are returned (a negative purchase books nothing)', async () => {
+    const c = await ctx('acolyte');
+    await acolyteExploit(c); // RELIQUARY x1, ROSARY x -25
+    expect([...labState(c.sid, 'acolyte').owned]).toEqual([['RELIQUARY', 1]]);
+    await giveBack(c, 'CANDLE', '-2'); // a "return" line of +2 at acolyte: bought at full price, not returned
+    await checkout(c);
+    const state = labState(c.sid, 'acolyte');
+    expect([...state.owned]).toEqual([['RELIQUARY', 1]]);
+    expect([...state.returned]).toEqual([]);
+  });
+
+  it('a pending return can be taken back with Remove (Divine refuses a quantity of 0), and frees the units again', async () => {
+    const c = await ctx('divine');
+    await add(c, 'ROSARY', '1');
+    await checkout(c); // owned 1, wallet $10.00
+    await giveBack(c, 'ROSARY', '1');
+    expect((await checkout(c)).text).toContain('The order total cannot be negative.'); // the mistaken return blocks checkout
+    expect((await giveBack(c, 'ROSARY', '0')).text).toContain('Quantity must be a whole number from 1 to 99.');
+    const removed = await form(c, { intent: 'remove', sku: 'ROSARY', kind: 'return' });
+    expect(removed.text).toContain('Removed Pilgrim&#39;s Rosary (return) from your cart.');
+    expect(cartOf(removed.text)).toEqual([]);
+    expect(cartOf((await giveBack(c, 'ROSARY', '1')).text)).toEqual([{ sku: 'ROSARY', qty: -1, line: -4000, kind: 'return' }]);
+    await shop.post(c, '/cart/remove', { sku: 'ROSARY', kind: 'return' });
+    await add(c, 'CANDLE', '4');
+    expect((await checkout(c)).text).toContain('Order #2 placed'); // the wallet still decides: $10.00 for 4 candles
+  });
+
+  it('the return form keeps a typed quantity only after a return, and a product form only after an add', async () => {
+    const c = await ctx('acolyte');
+    await add(c, 'ROSARY', '1');
+    await checkout(c);
+    const returnQty = (html: string) => /name="qty" type="text" autocomplete="off" spellcheck="false" value="([^"]*)"><\/label>\s*<button type="submit">Return/.exec(html)?.[1];
+    const rosaryQty = (html: string) => productForm(html, 'ROSARY').qty;
+    const added = (await add(c, 'ROSARY', '7')).text;
+    expect([returnQty(added), rosaryQty(added)]).toEqual(['1', '7']);
+    const returned = (await giveBack(c, 'ROSARY', '5')).text;
+    expect([returnQty(returned), rosaryQty(returned)]).toEqual(['5', '1']);
+    const viaForm = (await form(c, { intent: 'return', sku: 'ROSARY', qty: '3' })).text;
+    expect([returnQty(viaForm), rosaryQty(viaForm)]).toEqual(['3', '1']);
   });
 
   it('acolyte: the shell bound still applies to what the level accepts', async () => {
