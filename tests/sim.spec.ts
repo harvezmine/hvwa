@@ -2,8 +2,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import net from 'node:net';
-import v8 from 'node:v8';
-import vm from 'node:vm';
 import ts from 'typescript';
 import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { NewSessionLimitError, insidePerSessionFactory, perSession, setCappedBudget, setPerSessionDefaults } from '../src/core/lab.js';
@@ -19,6 +17,13 @@ let n = 0;
 function inSession<T>(make: () => T, level: Level = 'acolyte'): T {
   return perSession(() => make()).for({ sessionId: `sim-${++n}`, level });
 }
+/** A full GC: vitest.config.ts starts the test workers with --expose-gc (poolOptions.forks.execArgv). */
+function fullGc(): () => void {
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (typeof gc !== 'function') throw new Error('globalThis.gc is missing: run the specs with --expose-gc (vitest.config.ts)');
+  return gc;
+}
+
 /** A world whose clock tests can move (world.now = ...). */
 const world = (mailboxes: readonly string[] = [ADMIN_MAILBOX]): SimWorld => inSession(() => simWorld({ mailboxes }));
 
@@ -811,8 +816,7 @@ describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
   it('a clipped field is a real copy: an attacker-sized parent string is not kept alive', () => {
     // V8's slice() of a long string may be a view that keeps the WHOLE parent alive; measured with a full GC
     // (exposed at runtime), the margin is about 50x either way, so this is not timing- or GC-noise-sensitive.
-    v8.setFlagsFromString('--expose-gc');
-    const gc = vm.runInNewContext('gc') as () => void;
+    const gc = fullGc();
     const big = (tag: string) => `${tag}`.padEnd(100_000, 'x');
     const logs = Array.from({ length: 4 }, () => inSession(() => attackerLog()));
     // Cookies parsed from Set-Cookie lines with a long (ignored) attribute: a stored value must not pin its line.
@@ -835,8 +839,7 @@ describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
   });
 
   it('a mail keeps the mailbox\'s own address as `to`: a padded address (from a form) is not kept alive', () => {
-    v8.setFlagsFromString('--expose-gc');
-    const gc = vm.runInNewContext('gc') as () => void;
+    const gc = fullGc();
     const worlds = Array.from({ length: 4 }, () => world());
     gc(); gc();
     const before = process.memoryUsage().heapUsed;
@@ -853,8 +856,7 @@ describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
   });
 
   it('a URL the sim keeps (classifySimUrl fields, hops, pages) is its own text: a long fragment does not pin the href', () => {
-    v8.setFlagsFromString('--expose-gc');
-    const gc = vm.runInNewContext('gc') as () => void;
+    const gc = fullGc();
     // Each URL is short, but its href carries a fragment that percent-encodes to ~16 KB (1800 x 9 chars).
     const long = (i: number) => `http://citadel.test/p${i}/a-long-path-segment?q=${i}-a-long-query-value#${'✓'.repeat(1800)}`;
     const worlds = Array.from({ length: 40 }, () => { const w = world(); return { w, b: inSession(() => w.browser(() => ({ status: 200 }))) }; });
