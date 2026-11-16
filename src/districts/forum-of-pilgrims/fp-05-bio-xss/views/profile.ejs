@@ -1,0 +1,11 @@
+<%# FP-05 a member's public profile. Lab content is English by design. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1><%= name %></h1>
+<% if (found) { -%>
+  <p class="lab-note">Member of the Forum of Pilgrims. The profile card as this page renders it, live in a sandboxed frame:</p>
+  <%- preview %>
+<% } else { -%>
+  <p class="lab-message lab-error" role="status">No such member.</p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to your profile</a></p>
+</section>

@@ -5,14 +5,14 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 35/122 registered**
+**Total: 36/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
 | Relic Market | 7 | 7 |
 | Scriptorium | 7 | 13 |
-| Forum of Pilgrims | 3 | 9 |
+| Forum of Pilgrims | 4 | 8 |
 | Archive API | 0 | 15 |
 | Oracle | 0 | 21 |
 | Forge | 0 | 10 |
@@ -94,7 +94,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Forum of Pilgrims
 
-3/12 registered
+4/12 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -102,7 +102,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | FP-02 | CSRF via JSON content-type | A01 | A T I D | 2 | planned |
 | FP-03 | CORS reflect-origin misconfig | A05 | A T I D | 2 | planned |
 | FP-04 | Clickjacking (no frame headers) | A05 | A T D | 2 | planned |
-| FP-05 | Stored XSS (bio) | A05 | A T I D | 2 | planned |
+| FP-05 | Stored XSS (bio) | A05 | A T I D | 2 | ✅ registered |
 | FP-06 | SSTI (Nunjucks) | A05 | A T I D | 2 | planned |
 | FP-07 | SSTI → RCE | A05 | A I D | 2 | planned |
 | FP-08 | Open redirect (share link) | A01 | A T I D | 2 | ✅ registered |
