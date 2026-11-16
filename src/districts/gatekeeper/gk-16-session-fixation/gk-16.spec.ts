@@ -288,6 +288,11 @@ describe('GK-16 the lab state', () => {
     expect(sessions.size).toBe(before);
   });
 
+  // The two flood tests below make ~250 sequential full-page requests each, to push past the 100-entry caps
+  // over HTTP. That takes ~0.6 s alone but can pass vitest's 5 s default when other suites share the CPU, so
+  // they get an explicit budget. What they prove is unchanged.
+  const FLOOD_TIMEOUT_MS = 30_000;
+
   it('a flood of anonymous sessions never pushes out a signed-in one: anonymous sessions go first', async () => {
     for (const level of ['acolyte', 'divine'] as const) {
       const { agent, app, sid } = await freshSession();
@@ -300,7 +305,7 @@ describe('GK-16 the lab state', () => {
       const still = await bare(app, sid, `${cookieName(level)}=${mine}`).get(`${LAB}?level=${level}&lang=en`);
       expect(still.text, level).toContain('Signed in as pilgrim.');
     }
-  });
+  }, FLOOD_TIMEOUT_MS);
 
   it('session, alias and resume maps stay bounded however many ids you push', async () => {
     const { agent, sid } = await freshSession();
@@ -315,7 +320,7 @@ describe('GK-16 the lab state', () => {
     expect(state.sessions.size).toBeLessThanOrEqual(100);
     expect(state.aliases.size).toBeLessThanOrEqual(100);
     expect(state.resumes.size).toBeLessThanOrEqual(100);
-  });
+  }, FLOOD_TIMEOUT_MS);
 
   // The session cookie's names, path and HttpOnly: describeLabCookies above.
   it('a wrong password does not sign in, and the admin cannot be signed in to through guesses', async () => {
