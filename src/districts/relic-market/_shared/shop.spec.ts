@@ -3,8 +3,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { challengeDb } from '../../../core/challenge-db.js';
 import {
-  CUSTOMER, LIMITS, OUT_OF_RANGE, cartTotal, catalogOf, exactValue, formatMoney, insufficientFunds, newShop, orderLines,
-  placeOrder, pushOrder, setLine, type Order, type ShopState,
+  CUSTOMER, LIMITS, OUT_OF_RANGE, addDiscount, cartTotal, catalogOf, clipText, exactValue, formatMoney, insufficientFunds,
+  newShop, orderLines, placeOrder, pushHistory, pushOrder, setLine, type Order, type ShopState,
 } from './shop.js';
 import { MAX_WAIT_MS, realClock, setClockForTests, type LabClock } from './clock.js';
 import { KeyedMutex, waitGate } from './race.js';
@@ -177,6 +177,40 @@ describe('orders', () => {
     for (let no = 1; no <= 31; no++) pushOrder(s, order(no));
     expect(LIMITS.orders).toBe(30);
     expect(s.orders.map((o) => o.no)).toEqual(Array.from({ length: 30 }, (_, i) => i + 2));
+  });
+});
+
+describe('stored-data bounds', () => {
+  it('clipText: stored free text, at most LIMITS.text (100) characters by default, any n on request', () => {
+    expect(clipText('x'.repeat(300))).toBe('x'.repeat(100));
+    expect(clipText('friend@relic-market.test')).toBe('friend@relic-market.test');
+    expect(clipText('abcdef', 3)).toBe('abc');
+    expect(clipText('')).toBe('');
+    expect(clipText('😀\uD800x', 2)).toBe('😀'); // code units kept as they are
+  });
+
+  it('addDiscount stores a copy, refuses an 11th discount and refuses an amount that is not whole cents', () => {
+    const s = shop();
+    const d = { code: 'WELCOME10', amount: 500 };
+    expect(addDiscount(s, d)).toEqual({ ok: true, text: 'Promotion WELCOME10 applied.' });
+    d.amount = 1;
+    expect(s.discounts).toEqual([{ code: 'WELCOME10', amount: 500 }]);
+    for (let i = 1; i < LIMITS.discounts; i++) expect(addDiscount(s, { code: `C${i}`, amount: i }).ok).toBe(true);
+    expect(addDiscount(s, { code: 'ONE-TOO-MANY', amount: 1 })).toEqual({ ok: false, text: 'Too many promotions on this cart (10).' });
+    expect(s.discounts).toHaveLength(10);
+    expect(() => addDiscount(shop(), { code: 'X', amount: 0.5 })).toThrow(TypeError);
+  });
+
+  it('addDiscount clips a long code (stored free text)', () => {
+    const s = shop();
+    addDiscount(s, { code: 'A'.repeat(500), amount: 1 });
+    expect(s.discounts[0].code).toBe('A'.repeat(LIMITS.text));
+  });
+
+  it('pushHistory keeps the newest LIMITS.history (30) entries, oldest dropped', () => {
+    const list: number[] = [];
+    for (let i = 1; i <= 31; i++) pushHistory(list, i);
+    expect(list).toEqual(Array.from({ length: 30 }, (_, i) => i + 2));
   });
 });
 

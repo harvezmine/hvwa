@@ -20,7 +20,10 @@ export function firstRows(stmt: StatementSync, max: number, ...params: SQLInputV
   return rows;
 }
 
-/** A value shown in a result cell: as text, at most `n` characters (default 200). */
+/**
+ * A value shown in a result cell: as text, at most `n` characters (default 200). Display only: it slices, and a slice
+ * may keep its whole parent string alive, so text a lab STORES goes through shop.ts `clipText` (a copy) instead.
+ */
 export function clip(v: unknown, n = 200): string {
   const s = String(v ?? '');
   return s.length > n ? s.slice(0, n) : s;

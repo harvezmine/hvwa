@@ -2,6 +2,7 @@
 // money in integer US cents. Pure plumbing shared by the shop labs: every parse rule, check, rounding rule and price
 // decision lives in a lab's levels/*.ts, which hand this module what they decided. The bounds here are platform
 // safety, not the lesson. Not a challenge: nothing here is served by View Source.
+import { clip as copyingClip } from '../../../core/sim/limits.js';
 import type { Result } from '../../_shared/result.js';
 import { realClock, type LabClock } from './clock.js';
 import { waitGate, type Gate } from './race.js';
@@ -82,6 +83,33 @@ export const LIMITS = Object.freeze({
 
 /** The refusal when an amount would leave the safe integers (platform safety, never rounded). */
 export const OUT_OF_RANGE = 'This amount is out of range for this shop.';
+
+/**
+ * Free text a lab STORES (a gift recipient, a voucher code, a history note): at most `n` characters (default
+ * LIMITS.text), always as a new string. It is the engine's copying clip (core/sim/limits.ts): a plain slice() may be a
+ * view that keeps the whole request body alive. sql.ts `clip` slices, so it is for display cells only, never storage.
+ */
+export function clipText(s: string, n: number = LIMITS.text): string {
+  return copyingClip(s, n);
+}
+
+/** Append to a history list (exchanges, gifts, purchases): the newest LIMITS.history entries are kept. */
+export function pushHistory<T>(list: T[], entry: T): void {
+  list.push(entry);
+  while (list.length > LIMITS.history) list.shift();
+}
+
+/**
+ * Apply a discount to the cart, stored as given (the level decided its code and amount), as a copy with the code
+ * clipped. Platform bound: at most LIMITS.discounts discounts. An amount that is not a safe integer throws.
+ */
+export function addDiscount(state: ShopState, d: Discount): Result {
+  if (!Number.isSafeInteger(d.amount)) throw new TypeError(`addDiscount: amount ${d.amount} is not a safe integer`);
+  if (state.discounts.length >= LIMITS.discounts) return { ok: false, text: `Too many promotions on this cart (${LIMITS.discounts}).` };
+  const code = clipText(d.code);
+  state.discounts.push(Object.freeze({ code, amount: d.amount }));
+  return { ok: true, text: `Promotion ${code} applied.` };
+}
 
 const SKU_RE = /^[A-Z][A-Z0-9-]{0,31}$/;
 
