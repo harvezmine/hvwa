@@ -499,13 +499,15 @@ export const labFor = (req: { sessionId: string; level: Level }) => labs.for(req
 ### How levels plug in
 
 The handler is the lab seen from the victim's browser. It dispatches on `r.path` and calls **the same level functions
-the real routes call**, so the flaw lives in `levels/*.ts` once and View Source and the Diff tell the whole story:
+the real routes call**, so the flaw lives in `levels/*.ts` once and View Source and the Diff tell the whole story.
+Paths are twins: `http://citadel.test/<path>` is the real route `<labPath>/<path>`, so the handler and the router
+use the same path for the same page (`/idp/authorize` in both examples below):
 
 ```ts
 // challenge.ts (or model.ts)
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
   const impl = byLevelImpl.for(level);
-  if (r.path === '/authorize') return impl.authorize(state, r.query, r.cookies.pid_session, ''); // { status: 302, headers: { Location } }
+  if (r.path === '/idp/authorize') return impl.authorize(state, r.query, r.cookies.pid_session, ''); // { status: 302, headers: { Location } }
   if (r.path === '/reset') return { status: 200, body: 'Choose a new password' };
   return { status: 404, body: 'Not found' };
 }
@@ -534,7 +536,7 @@ An empty or blank Location (an empty `redirect_uri`) gets a "this redirect has n
 the route itself.
 
 ```ts
-router.get('/idp/authorize', async (req, res) => { // the player authorizes in their own browser
+router.get('/idp/authorize', async (req, res) => { // the twin of http://citadel.test/idp/authorize, in the player's own browser
   const params = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
   const out = impl.for(req.level).authorize(labFor(req), params, req.cookies.pid_session, labPath(res));
   const location = out.headers?.Location;
