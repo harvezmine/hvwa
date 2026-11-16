@@ -391,6 +391,18 @@ describe('xssOracle: rule precision', () => {
   });
 });
 
+// A documented limitation (FP1, RECIPES "XSS labs"): the oracle does not parse JavaScript, so a marker call anywhere in
+// a sink's code counts, inside a JS string or comment too. Hence the rule: no level ever places player input inside
+// script or event-handler code; labs put it in HTML contexts only, where the oracle is exact.
+describe('xssOracle: the marker inside JavaScript (a documented limitation)', () => {
+  it('counts a marker inside a JS string or a JS comment as running', () => {
+    for (const html of [`<script>var q = "${M}";</script>`, `<script>var q = "x"; // ${M}</script>`,
+      `<script>/* ${M} */</script>`, `<img src=x onerror="var s = '${M.replace(/'/g, '&quot;')}'">`]) {
+      expect(xssOracle(html, M).executes, html).toBe(true);
+    }
+  });
+});
+
 describe('xssOracle: options', () => {
   it('insertion innerHTML: inserted scripts never run (HTML or SVG); handlers and framed documents do', () => {
     const opts: XssOracleOptions = { insertion: 'innerHTML' };
