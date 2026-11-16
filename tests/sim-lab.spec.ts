@@ -479,6 +479,45 @@ describe('sendSimRedirect: the player\'s real browser never leaves the lab', () 
   });
 });
 
+describe('sendSimRedirect: exact mapping', () => {
+  it('a path that only starts like the lab path is a citadel path (a lab path needs a separator after the base)', async () => {
+    const { agent } = await freshSession();
+    for (const [to, location] of [
+      ['/d/sim-test/courierx/x', `${LAB}/d/sim-test/courierx/x?level=acolyte`],
+      [`${LAB}x/y`, `${LAB}/d/sim-test/courierx/y?level=acolyte`],
+      [LAB, `${LAB}?level=acolyte`],
+      [`${LAB}#top`, `${LAB}?level=acolyte`],
+    ]) {
+      const res = await agent.get(`${LAB}/go?level=acolyte&to=${encodeURIComponent(to)}`);
+      expect(res.status, to).toBe(302);
+      expect(res.headers.location, to).toBe(location);
+    }
+  });
+
+  it('a relative Location resolves against the citadel twin of the route that answered it (a nested route too)', async () => {
+    const { agent } = await freshSession();
+    for (const [route, to, location] of [
+      ['/idp/go', 'callback?code=1', `${LAB}/idp/callback?code=1&level=acolyte`],
+      ['/idp/go', '../callback', `${LAB}/callback?level=acolyte`],
+      ['/idp/go', '/callback', `${LAB}/callback?level=acolyte`],
+      ['/go', 'callback', `${LAB}/callback?level=acolyte`],
+    ]) {
+      const res = await agent.get(`${LAB}${route}?level=acolyte&to=${encodeURIComponent(to)}`);
+      expect(res.headers.location, `${route} ${to}`).toBe(location);
+    }
+  });
+
+  it('a status that is not a redirect is a programming error (stack-free 500), never a response with that status', async () => {
+    const { agent } = await freshSession();
+    for (const status of [200, 300, 304, 305, 399, 404]) {
+      const res = await agent.get(`${LAB}/go?level=acolyte&status=${status}&to=${encodeURIComponent('http://citadel.test/x')}`);
+      expect(res.status, String(status)).toBe(500);
+      expect(res.headers.location, String(status)).toBeUndefined();
+      expect(res.text, String(status)).not.toMatch(/at |victim\.ts|sendSimRedirect/);
+    }
+  });
+});
+
 describe('sendSimRedirect: no target', () => {
   it('an empty, blank or non-string Location never redirects (it would loop to this route): a page says there is no target', async () => {
     const { agent } = await freshSession();
