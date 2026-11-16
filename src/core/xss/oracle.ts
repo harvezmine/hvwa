@@ -6,6 +6,7 @@ import { defaultTreeAdapter, html as parse5Html, parse, parseFragment, serialize
 import { SIM_LIMITS, clip } from '../sim/limits.js';
 import { XSS_LIMITS } from './limits.js';
 import { markerNonce, markerPattern } from './marker.js';
+import { readXml } from './xml.js';
 import {
   DOCUMENT_MIME_TYPES, NS, attr, canHostShadow, dataUrl, handlerTrigger, hrefAnimation, hrefOf, javascriptSource, label,
   navAttributes, sandboxOf, schemeOf, scriptKind, scriptMimeRuns, shadowRootMode, urlText, type Trigger,
@@ -59,6 +60,11 @@ export interface XssOracleOptions {
    * directive's tokens. Without allow-scripts nothing runs; without allow-same-origin everything is isolated.
    */
   readonly sandbox?: string;
+  /**
+   * How the bytes are parsed: 'html' (default, parse5) or 'xml' (a document served as image/svg+xml,
+   * application/xhtml+xml, text/xml ...: read as XML with namespaces by core/xss/xml.ts; insertion 'document' only).
+   */
+  readonly syntax?: 'html' | 'xml';
 }
 
 /** The oracle's answer. Frozen. */
@@ -83,6 +89,8 @@ export interface XssVerdict {
    * or the mXSS round trip ('depth', 'budget', 'time': mxss is then false, not proven).
    */
   readonly limited?: XssLimit;
+  /** syntax 'xml' only: whether the document was well-formed (if not, only what was read before the error counts). */
+  readonly wellFormed?: boolean;
 }
 
 interface Budget { left: number; readonly deadline: number; limited?: XssLimit }
@@ -94,6 +102,8 @@ interface Frame {
   readonly live: boolean;
   /** Script elements run (false for an innerHTML insertion). */
   readonly scriptElements: boolean;
+  /** Declarative shadow roots attach (a document read by the HTML parser: never innerHTML, never XML). */
+  readonly dsd: boolean;
   readonly prefix: string;
   readonly srcdocDepth: number;
 }
@@ -315,7 +325,7 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
       return;
     }
     walkInto(doc, {
-      isolated: f.isolated || (sandbox !== undefined && !sandbox.sameOrigin), live: true, scriptElements: true,
+      isolated: f.isolated || (sandbox !== undefined && !sandbox.sameOrigin), live: true, scriptElements: true, dsd: true,
       prefix: `${f.prefix}iframe[srcdoc] > `, srcdocDepth: f.srcdocDepth + 1,
     }, ctx, w);
   }
@@ -366,7 +376,7 @@ function walkInto(root: Root, f: Frame, ctx: Context, w: Walk): void {
       // except a declarative shadow root: a page's <template shadowrootmode> on a host that can take one (the first
       // such template per host; never through innerHTML) becomes live content, as Chrome attaches it.
       const host = el.parentNode;
-      const live = !inert && f.scriptElements && shadowRootMode(el) !== undefined && host !== null && 'tagName' in host
+      const live = !inert && f.dsd && shadowRootMode(el) !== undefined && host !== null && 'tagName' in host
         && canHostShadow(host as Element) && !w.shadowHosts.has(host);
       if (live) w.shadowHosts.add(host);
       push((el as DefaultTreeAdapterTypes.Template).content.childNodes, depth + 1, !live);
@@ -408,6 +418,23 @@ function roundTripAdds(tree: Root, before: Walk, insertion: XssInsertion, script
   return false;
 }
 
+/** An XML document: read with core/xss/xml.ts and walked as any page (no select pass, no round trip: both are HTML's). */
+function xmlVerdict(page: string, re: RegExp, opts: XssOracleOptions, budget: Budget): XssVerdict {
+  if (tagOpens(page) > XSS_LIMITS.tags) return refused('tags');
+  const read = readXml(page);
+  if (read.limited !== undefined) return refused(read.limited);
+  const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
+  const top: Frame = {
+    isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
+    scriptElements: true, dsd: false, prefix: '', srcdocDepth: 0,
+  };
+  const w = walk(read.document, top, { re, interact: opts.interact !== false, budget, timed: false });
+  return Object.freeze({
+    executes: w.firing.size > 0, sinks: Object.freeze([...w.sinks]), reachedMarker: w.reached, mxss: false,
+    ...(budget.limited === undefined ? {} : { limited: budget.limited }), wellFormed: read.wellFormed,
+  });
+}
+
 const sinkKey = (s: Sink): string => `${s.kind}|${s.detail}|${s.trigger}|${s.isolated}|${s.marker}`;
 
 /** The page with every select tag renamed (an unknown element: its content parsed as ordinary markup), read like the page. */
@@ -434,15 +461,19 @@ export function xssOracle(html: string, marker: string, opts: XssOracleOptions =
   const re = markerPattern(markerNonce(marker));
   const insertion = insertionOf(opts.insertion);
   if (opts.sandbox !== undefined && typeof opts.sandbox !== 'string') throw new Error('xssOracle: sandbox must be a string of tokens');
+  const syntax = opts.syntax ?? 'html';
+  if (syntax !== 'html' && syntax !== 'xml') throw new Error(`xssOracle: syntax must be 'html' or 'xml' (got ${JSON.stringify(syntax)})`);
+  if (syntax === 'xml' && insertion !== 'document') throw new Error("xssOracle: syntax 'xml' reads a document (insertion 'document')");
   const page = typeof html === 'string' ? html : '';
   if (page.length > XSS_LIMITS.htmlLength) return refused('size');
   const budget: Budget = { left: XSS_LIMITS.parseBudget, deadline: performance.now() + XSS_LIMITS.timeMs };
+  if (syntax === 'xml') return xmlVerdict(page, re, opts, budget);
   const tree = parseBounded(page, insertion, true, budget, { checkTags: true, timed: false });
   if (tree === undefined) return refused(budget.limited ?? 'size');
   const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
   const top: Frame = {
     isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
-    scriptElements: insertion === 'document', prefix: '', srcdocDepth: 0,
+    scriptElements: insertion === 'document', dsd: insertion === 'document', prefix: '', srcdocDepth: 0,
   };
   const ctx: Context = { re, interact: opts.interact !== false, budget, timed: false };
   const first = walk(tree, top, ctx);
@@ -477,7 +508,7 @@ export function roundTrip(html: string, opts: { readonly insertion?: XssInsertio
   const tree = parseBounded(html, insertion, true, budget, { checkTags: true, timed: false });
   if (tree === undefined) return undefined;
   const ctx: Context = { re: /(?!)/, interact: true, budget, timed: false };
-  if (walk(tree, { isolated: false, live: false, scriptElements: false, prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
+  if (walk(tree, { isolated: false, live: false, scriptElements: false, dsd: false, prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
   return serialize(tree);
 }
 

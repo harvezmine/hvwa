@@ -256,6 +256,77 @@ describe('xssOracle: what parse5 8.0.1 does not build but Chrome 157 runs', () =
   });
 });
 
+// XML documents (image/svg+xml, application/xhtml+xml, text/xml ...): read as XML, with namespaces, as Chrome 157 does
+// (every row checked in headless Chrome). An error stops the parse; what was read before it stays (FP2).
+describe('xssOracle syntax: xml (FP2)', () => {
+  const SVG = 'http://www.w3.org/2000/svg';
+  const XHTML = 'http://www.w3.org/1999/xhtml';
+  const svg = (inner: string, attrs = ''): string => `<svg xmlns="${SVG}"${attrs}>${inner}</svg>`;
+  const xml = (html: string, interact = true) => xssOracle(html, M, { syntax: 'xml', interact });
+
+  it('runs what an XML document runs: SVG and XHTML elements by namespace, prefixes, CDATA, entities, a DTD', () => {
+    for (const doc of [
+      `<svg xmlns="${SVG}" onload="${M}"/>`, svg(`<script>${M}</script>`), svg(`<script><![CDATA[${M}]]></script>`),
+      svg(`<script>hvwa(&apos;${N}&apos;)</script>`), `<svg xmlns="${SVG}" onload="hvwa(&apos;${N}&apos;)"/>`,
+      svg(`<foreignObject><img xmlns="${XHTML}" src="x" onerror="${M}"/></foreignObject>`), svg(`<script href="data:,${encodeURIComponent(M)}"/>`),
+      `<?xml version="1.0"?><!DOCTYPE svg><svg xmlns="${SVG}" onload="${M}"/>`, `<!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="${SVG}" onload="${M}"/>`,
+      `<s:svg xmlns:s="${SVG}" onload="${M}"/>`, `<root><svg xmlns="${SVG}" onload="${M}"/></root>`, `<root><x:script xmlns:x="${XHTML}">${M}</x:script></root>`,
+      `<html xmlns="${XHTML}"><body><img src="x" onerror="${M}"/></body></html>`, `<html xmlns="${XHTML}"><body onload="${M}"></body></html>`,
+      svg(`<svg onload="${M}"/>`), svg(`<iframe xmlns="${XHTML}" srcdoc="&lt;script&gt;${M}&lt;/script&gt;"></iframe>`),
+    ]) {
+      expect(xml(doc), doc).toMatchObject({ executes: true, wellFormed: true });
+    }
+    expect(xml(svg(`<a xmlns:xl="http://www.w3.org/1999/xlink" xl:href="javascript:${M}"><text>x</text></a>`)).executes).toBe(true);
+    expect(xml(svg(`<a xmlns:xl="http://www.w3.org/1999/xlink" xl:href="javascript:${M}"><text>x</text></a>`), false).executes).toBe(false);
+  });
+
+  it('runs nothing the namespaces rule out: no SVG namespace, an SVG-namespaced img, case-sensitive names', () => {
+    for (const doc of [
+      `<svg onload="${M}"/>`, svg(`<img src="x" onerror="${M}"/>`), `<svg xmlns="${SVG}" onLoad="${M}"/>`, svg(`<g onload="${M}"/>`),
+      `<html xmlns="${XHTML}"><body><IMG src="x" onerror="${M}"/></body></html>`, svg(`<template xmlns="${XHTML}"><img src="x" onerror="${M}"/></template>`),
+      svg(`<div xmlns="${XHTML}"><template shadowrootmode="open"><img src="x" onerror="${M}"/></template></div>`), // no declarative shadow DOM in XML
+    ]) {
+      expect(xml(doc).executes, doc).toBe(false);
+    }
+  });
+
+  it('a not-well-formed document runs only what was read before the error (Chrome stops there)', () => {
+    const runs = [
+      svg(`<script>${M}</script><g a=1/>`), svg(`<g><script>${M}</script></g><g a=1/>`), `${svg(`<script>${M}</script>`)}<extra/>`,
+      `${svg(`<script>${M}</script>`)}trailing text`, svg(`<image href="x" onerror="${M}"/><g a=1/>`), svg(`<set attributeName="x" onbegin="${M}"/><g a=1/>`),
+      `<root><svg xmlns="${SVG}" onload="${M}"/><x a=1/></root>`, svg(`<!--x--><svg onload="${M}"/><g a=1/>`), // a nested svg that closed
+      `<html xmlns="${XHTML}"><body onload="${M}"><p a=1/></body></html>`, // the window's load still fires
+    ];
+    for (const doc of runs) expect(xml(doc), doc).toMatchObject({ executes: true, wellFormed: false });
+    const stops = [
+      `<svg xmlns="${SVG}" onload=${M}/>`, `<svg xmlns="${SVG}" onload="${M}" onload="x"/>`, svg(`<script>${M}</script>`, ' a="<"'),
+      svg(`<text>&nbsp;</text><script>${M}</script>`), svg(`<script>${M}<g a=1/></script>`), // the script never ended
+      `<svg xmlns="${SVG}" onload="${M}"><g a=1/></svg>`, `<svg xmlns="${SVG}" onload="${M}">`, `<svg xmlns="${SVG}" onload="${M}"/><extra/>`, // the root's load
+      svg(`<g a=1/><script>${M}</script>`), svg(`<script>${M}</script>`).replace('xmlns', 'xmlns:p="x" p:q="1" xmlns:p'), `<p:svg xmlns="${SVG}" onload="${M}"/>`,
+      svg(`<script>&x;${M}</script>`), `<!DOCTYPE svg [<!ENTITY x "y">]>${svg(`<script>&x;${M}</script>`)}`, // entities other than the five: not read
+      svg(`<script>${M}</script>`.replace('script', 'script\u0001')),
+    ];
+    for (const doc of stops) expect(xml(doc).executes, doc).toBe(false);
+  });
+
+  it('is bounded like HTML: size, tags, elements and attribute text; it never round-trips', () => {
+    expect(xml(svg(`<script>${M}</script>`.padEnd(XSS_LIMITS.htmlLength + 1, ' ')))).toMatchObject({ executes: false, limited: 'size' });
+    expect(xml(svg(`<script>${M}</script>${'<g/>'.repeat(XSS_LIMITS.tags)}`))).toMatchObject({ executes: false, limited: 'tags' });
+    expect(xml(svg(`<script>${M}</script>`))).toMatchObject({ mxss: false });
+    expect(() => xssOracle('<x/>', M, { syntax: 'xml', insertion: 'innerHTML' })).toThrow(/xml/);
+    expect(() => xssOracle('<x/>', M, { syntax: 'json' as never })).toThrow(/syntax/);
+    // Linear on long runs (text, attribute values, comments, a DTD) and on many attributes.
+    const spaces = ' '.repeat(XSS_LIMITS.htmlLength - 120);
+    let k = 0;
+    const many = `<svg xmlns="${SVG}"${Array.from({ length: 1500 }, () => ` a${(k++).toString(36)}="1"`).join('')}/>`;
+    for (const doc of [svg(`<text>${spaces}x</text>`), svg(`<g a="${spaces}x"/>`), svg(`<!--${spaces}-->`), `<!DOCTYPE svg [${spaces}]>${svg('')}`, many.slice(0, XSS_LIMITS.htmlLength - 3) + '/>']) {
+      const t = performance.now();
+      xml(doc);
+      expect(performance.now() - t, doc.slice(0, 40)).toBeLessThan(300);
+    }
+  });
+});
+
 describe('xssOracle: options', () => {
   it('insertion innerHTML: inserted scripts never run (HTML or SVG); handlers and framed documents do', () => {
     const opts: XssOracleOptions = { insertion: 'innerHTML' };
@@ -784,7 +855,7 @@ describe('no player code runs, and core/xss/ reaches no network, file system or 
   });
 
   it('src/core/xss/ imports only parse5, the copying clip and its own files; no dynamic loading, no denied global', () => {
-    expect(XSS_FILES).toEqual(['limits.ts', 'marker.ts', 'oracle.ts', 'preview.ts', 'rules.ts']);
+    expect(XSS_FILES).toEqual(['limits.ts', 'marker.ts', 'oracle.ts', 'preview.ts', 'rules.ts', 'xml.ts']);
     for (const file of XSS_FILES) {
       const { runtime, problems } = sourceCheck(readFileSync(new URL(file, XSS_DIR), 'utf8'));
       expect(runtime.filter((m) => !XSS_ALLOWED_IMPORTS.has(m)), file).toEqual([]);

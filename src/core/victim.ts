@@ -454,13 +454,18 @@ function headerLists(res: SimResponse): Map<string, string[]> {
   return m;
 }
 
-/** Whether a browser renders the response as a document that can run script: HTML, XHTML, SVG or XML (or no type), not a download. */
-function rendersDocument(h: Map<string, string[]>): boolean {
-  if (/^\s*attachment\b/i.test(h.get('content-disposition')?.[0] ?? '')) return false;
+/**
+ * How a browser renders the response: as an HTML document ('html': text/html, or no type, as labs answer by default),
+ * as an XML document ('xml': image/svg+xml, application/xhtml+xml, text/xml, application/xml: read as XML, with
+ * namespaces), or not as a document that can run script (undefined: any other type, or a download).
+ */
+function rendersDocument(h: Map<string, string[]>): 'html' | 'xml' | undefined {
+  if (/^\s*attachment\b/i.test(h.get('content-disposition')?.[0] ?? '')) return undefined;
   const type = h.get('content-type')?.[0];
-  if (type === undefined) return true; // labs answer HTML by default
+  if (type === undefined) return 'html';
   const essence = type.split(';')[0].trim().toLowerCase();
-  return essence === '' || DOCUMENT_MIME_TYPES.has(essence);
+  if (essence === '' || essence === 'text/html') return 'html';
+  return DOCUMENT_MIME_TYPES.has(essence) ? 'xml' : undefined;
 }
 
 /**
@@ -524,17 +529,18 @@ class XssVictimBrowser implements XssBrowser {
       if (own !== '') this.hash = own;
       return res;
     }
-    if (rendersDocument(h)) this.judge(r, res, h);
+    const syntax = rendersDocument(h);
+    if (syntax !== undefined) this.judge(r, res, h, syntax);
     if (h.has('refresh')) this.hash = ''; // the next page is a new navigation
     return res;
   }
 
-  private judge(r: SimRequest, res: SimResponse, h: Map<string, string[]>): void {
+  private judge(r: SimRequest, res: SimResponse, h: Map<string, string[]>, syntax: 'html' | 'xml'): void {
     const { marker, interact = true, dom } = this.opts;
     const sandbox = cspSandbox(h.get('content-security-policy'));
     const options: XssOracleOptions = { interact, ...(sandbox === undefined ? {} : { sandbox }) };
     const body = typeof res.body === 'string' ? res.body : '';
-    const page = xssOracle(body, marker, options);
+    const page = xssOracle(body, marker, { ...options, syntax });
     let written: XssVerdict | undefined;
     if (dom !== undefined) {
       const w: unknown = dom(Object.freeze({

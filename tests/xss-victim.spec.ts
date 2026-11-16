@@ -135,6 +135,22 @@ describe('xssBrowser: the admin views a page; the oracle decides whether the pay
     }
   });
 
+  it('an XML type is read as XML (FP2): no SVG namespace or a not-well-formed root runs nothing; text/html is HTML', () => {
+    const cases: [string, Record<string, string>, boolean][] = [
+      ['<svg xmlns="http://www.w3.org/2000/svg" onload="M"/>', { 'Content-Type': 'image/svg+xml' }, true],
+      ['<svg onload="M"/>', { 'Content-Type': 'image/svg+xml' }, false], // no xmlns: not SVG at all
+      ['<svg xmlns="http://www.w3.org/2000/svg" onload=M/>', { 'Content-Type': 'image/svg+xml' }, false], // unquoted: not well-formed
+      ['<svg xmlns="http://www.w3.org/2000/svg"><img src="x" onerror="M"/></svg>', { 'Content-Type': 'image/svg+xml' }, false],
+      ['<svg onload=M>', { 'Content-Type': 'text/html' }, true], ['<svg onload=M>', {}, true],
+      ['<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="x" onerror="M"/></body></html>', { 'Content-Type': 'application/xhtml+xml' }, true],
+    ];
+    for (const [body, headers, fires] of cases) {
+      const l = lab((m) => ({ '/sigil': page(body.replace('M', m), headers) }));
+      l.admin.follow('http://citadel.test/sigil');
+      expect(steals(l).length, `${JSON.stringify(headers)} ${body}`).toBe(fires ? 1 : 0);
+    }
+  });
+
   it('a CSP sandbox on the response applies (no allow-scripts: nothing runs; no allow-same-origin: nothing reaches the admin\'s cookie)', () => {
     const cases: [string | string[], boolean][] = [
       ['sandbox', false], ['sandbox allow-scripts', false], ["default-src 'none'; sandbox allow-scripts allow-same-origin", true],
