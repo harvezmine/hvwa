@@ -804,6 +804,17 @@ describe('xssOracle: bounds (size, tags, depth, srcdoc, budget, time)', () => {
       expect(xssOracle(MGLYPH, M).mxss).toBe(true); // on time, the round trip runs
     });
 
+    it('past the deadline before the select pass: the pass still runs (a select-only sink keeps executes)', () => {
+      // only the select pass sees this img, and only past its 256th element (where a timed parse would stop)
+      const html = `${'<b></b>'.repeat(300)}<select><img src=x onerror=${M}></select>`;
+      const spy = clock(1);
+      try {
+        expect(xssOracle(html, M)).toMatchObject({ executes: true, limited: 'time' });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('past the deadline in the middle of a round trip parse: it stops there (checked every 256 elements)', () => {
       const html = `${MGLYPH}${'<i>x</i>'.repeat(300)}`;
       expect(xssOracle(html, M).mxss).toBe(true);
@@ -991,6 +1002,54 @@ describe('previewFrame: the payload runs for the player in an opaque origin', ()
     expect(srcdoc).not.toContain(M);
     expect(elementsOf(body.childNodes).map(textIn).join('')).toMatch(/Preview omitted/);
     expect(previewFrame(undefined as never)).toContain('srcdoc=');
+  });
+});
+
+// --- Mutants that survived the re-review: each case below fails if its rule is weakened ------------------------------
+
+describe('xssOracle: the rules the re-review mutants weakened', () => {
+  const SVG = 'http://www.w3.org/2000/svg';
+  const best = (f: () => unknown): number => { let m = Infinity; for (let i = 0; i < 3; i++) { const t = performance.now(); f(); m = Math.min(m, performance.now() - t); } return m; };
+
+  it('M01: an interior run of white space in a trimmed attribute costs what a run of letters costs (trims are linear)', () => {
+    const run = (c: string) => c.repeat(XSS_LIMITS.htmlLength - 120);
+    for (const make of [(r: string) => `<script type="x${r}y">1</script>`, (r: string) => `<img srcset="x${r}y" onerror=${M}>`]) {
+      expect(best(() => xssOracle(make(run(' ')), M))).toBeLessThan(4 * best(() => xssOracle(make(run('a')), M)) + 20);
+    }
+  });
+
+  it('M12/M13: what only the select pass finds is in the verdict: its sinks, and that the marker reached the page', () => {
+    const v = xssOracle(`<select><img src=x onerror=${M}></select>`, M);
+    expect(v.reachedMarker).toBe(true); // parse5 drops the img: only the select pass reads the marker
+    expect(v.sinks).toContainEqual({ kind: 'event-handler', detail: 'img[onerror]', trigger: 'load', isolated: false, marker: true });
+  });
+
+  it('M18/M19: a declarative shadow root inside inert template content stays inert; one in a srcdoc document is live', () => {
+    expect(xssOracle(`<template><div><template shadowrootmode=open><img src=x onerror=${M}></template></div></template>`, M).executes).toBe(false);
+    expect(xssOracle(`<iframe srcdoc="<div><template shadowrootmode=open><img src=x onerror=${M}></template></div>"></iframe>`, M).executes).toBe(true);
+  });
+
+  it('M22/M25/M55: XML: an inner <svg> left open by an error loses its onload; the character check stops the read; a sandbox applies', () => {
+    const xml = (html: string, sandbox?: string) => xssOracle(html, M, { syntax: 'xml', ...(sandbox === undefined ? {} : { sandbox }) });
+    expect(xml(`<svg xmlns="${SVG}"><svg onload="${M}"><g a=1/></svg></svg>`).executes).toBe(false);
+    expect(xml(`<svg xmlns="${SVG}"><svg onload="${M}"/><g a=1/></svg>`).executes).toBe(true); // closed before the error
+    expect(xml(`<svg xmlns="${SVG}"><text>\u0001</text><script>${M}</script></svg>`)).toMatchObject({ executes: false, wellFormed: false });
+    const isolated = xml(`<svg xmlns="${SVG}" onload="${M}"/>`, 'allow-scripts');
+    expect(isolated.executes).toBe(false);
+    expect(isolated.sinks).toContainEqual(expect.objectContaining({ detail: 'svg:svg[onload]', isolated: true, marker: true }));
+    expect(xml(`<svg xmlns="${SVG}" onload="${M}"/>`, '')).toMatchObject({ executes: false, sinks: [] });
+  });
+
+  it('M30: a data: SVG image that is not well-formed errors (onerror fires, onload does not)', () => {
+    const src = `data:image/svg+xml,<svg xmlns='${SVG}'><g></svg>`;
+    expect(xssOracle(`<img src="${src}" onerror=${M}>`, M, { interact: false }).executes).toBe(true);
+    expect(xssOracle(`<img src="${src}" onload=${M}>`, M).executes).toBe(false);
+  });
+
+  it('M58: an unterminated url( in CSS fetches nothing; a terminated one does', () => {
+    expect(linkSinks('<div style="background:url(http://attacker.test/x">x</div>')).toEqual([]);
+    expect(linkSinks('<style>p{background:url(http://attacker.test/x</style>')).toEqual([]);
+    expect(linkSinks('<div style="background:url(http://attacker.test/x)">x</div>').map((l) => l.url)).toEqual(['http://attacker.test/x']);
   });
 });
 
