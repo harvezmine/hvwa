@@ -6,6 +6,7 @@ import {
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { GK11 } from './challenge.js'; // registers GK-11 before createApp() inside freshSession
+import * as divine from './levels/divine.js';
 import { clientCookie, labState, pidCookie } from './model.js';
 
 const LAB = '/d/gatekeeper/oauth-missing-state';
@@ -155,7 +156,8 @@ describe('GK-11 what each level does with state', () => {
       const { code, state } = await ownLinkCode(agent, level, 'client');
       const lab = labState(sid, level);
       expect(lab.codes.get(code)?.used, level).toBe(false);
-      if (state !== null) expect(lab.flows.has(state), level).toBe(true);
+      expect(state === null, `${level}: only Acolyte sends no state`).toBe(level === 'acolyte');
+      expect(state === null || lab.flows.has(state), `${level}: the state is still unused`).toBe(true);
       const again = await agent.get(`${LAB}/link/callback?code=${code}${state === null ? '' : `&state=${state}`}&level=${level}`);
       expect(again.text, level).toContain('Sign in to Citadel to finish linking. Nothing was linked.');
     }
@@ -179,6 +181,50 @@ describe('GK-11 what each level does with state', () => {
     expect(labState(sid, 'divine').links.get('pilgrim')).toBe('pilgrim');
     const replay = await agent.get(at);
     expect(replay.text).toContain('Linking failed');
+  });
+});
+
+describe('GK-11 divine: the state check (levels/divine.ts acceptState, called directly)', () => {
+  // Directly on the level function: over HTTP a replayed callback also fails on its used-up code, which masks a
+  // state that is not single-use.
+  const fresh = async () => labState((await freshSession()).sid, 'divine');
+
+  it('the session that started a flow finishes it once: the same state a second time fails', async () => {
+    const lab = await fresh();
+    const st = lab.newState({ session: 's1', purpose: 'link', verifier: 'v' });
+    expect(divine.acceptState(lab, st, 's1', 'link')).toEqual({ ok: true, flow: { session: 's1', purpose: 'link', verifier: 'v' } });
+    expect(divine.acceptState(lab, st, 's1', 'link')).toEqual({ ok: false });
+  });
+
+  it('a link state does not finish a sign-in (a link state at /callback), and it is used up', async () => {
+    const lab = await fresh();
+    const st = lab.newState({ session: 's1', purpose: 'link' });
+    expect(divine.acceptState(lab, st, 's1', 'login')).toEqual({ ok: false });
+    expect(divine.acceptState(lab, st, 's1', 'link')).toEqual({ ok: false });
+  });
+
+  it('another session cannot finish it, and no state finishes nothing', async () => {
+    const lab = await fresh();
+    const st = lab.newState({ session: 's1', purpose: 'link' });
+    expect(divine.acceptState(lab, st, 's2', 'link')).toEqual({ ok: false });
+    expect(divine.acceptState(lab, null, 's1', 'link')).toEqual({ ok: false });
+    expect(divine.acceptState(lab, 'never-issued', 's1', 'link')).toEqual({ ok: false });
+  });
+
+  it('over HTTP: the state of your own link flow does not complete your own sign-in', async () => {
+    const { agent, sid } = await freshSession();
+    await pidSignIn(agent, 'divine', 'pilgrim', 'pilgrim');
+    const link = await agent.get(`${LAB}/link?level=divine`);
+    const linkState = new URL(String(link.headers.location), 'http://lab.invalid').searchParams.get('state') ?? '';
+    const login = await agent.get(`${LAB}/login?level=divine`);
+    const authorized = await agent.get(String(login.headers.location)); // Pilgrim-ID's answer, mapped into the lab
+    const callback = new URL(String(authorized.headers.location), 'http://lab.invalid');
+    expect(callback.pathname).toBe(`${LAB}/callback`);
+    callback.searchParams.set('state', linkState);
+    const res = await agent.get(`${callback.pathname}${callback.search}`);
+    expect(res.status).toBe(400);
+    expect(res.text).toContain('Sign-in failed: the state does not belong to a sign-in this browser started.');
+    expect(labState(sid, 'divine').flows.has(linkState)).toBe(false);
   });
 });
 
