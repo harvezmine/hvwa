@@ -14,6 +14,14 @@ describe('i18n', () => {
     expect(t('safety.warning', 'id')).toMatch(/jangan pernah mengeksposnya ke jaringan yang tidak tepercaya/i);
   });
 
+  it('the simulated-victim panel keys follow the underscore convention (no hyphenated keys)', () => {
+    for (const key of ['sim.outcome.too_many_redirects', 'sim.reason.too_long']) {
+      expect(t(key, 'en'), key).not.toBe(key);
+      expect(t(key, 'id'), key).not.toBe(key);
+    }
+    for (const key of ['sim.outcome.too-many-redirects', 'sim.reason.too-long']) expect(t(key, 'en'), key).toBe(key);
+  });
+
   it.each(['toString', '__proto__', 'constructor', 'hasOwnProperty', 'valueOf'])(
     'treats inherited Object property %j as an unknown key', (key) => {
       expect(t(key, 'en')).toBe(key);

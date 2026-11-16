@@ -52,6 +52,8 @@ function citadel(level: Level, lab: Courier, r: SimRequest): SimResponse {
   if (r.path === '/crumbs') { // a page that sets more cookies than the jar holds: the oldest (the admin's session) goes
     return { status: 200, headers: { 'Set-Cookie': Array.from({ length: 25 }, (_, i) => `crumb${i}=${i}; Path=/`) }, body: 'Crumbs.' };
   }
+  if (r.path === '/loop') return { status: 302, headers: { Location: '/loop' } };
+  if (r.path === '/deeper') return { status: 302, headers: { Location: `/deeper?n=${Number(r.query.get('n') ?? 0) + 1}` } };
   if (r.path === '/') return { status: 200, body: 'Courier home' };
   return { status: 404, body: 'Not found' };
 }
@@ -328,6 +330,30 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     for (const [url, why] of [['http://127.0.0.1/', 'IP addresses are unreachable'], ['http://localhost:3000/', 'unknown host'], ['http://citadel.test:8080/', 'nothing listens on that citadel.test port'], ['nope', 'not a valid absolute URL']]) {
       await sendLink(agent, 'acolyte', url);
       expect(panelOf((await labPage(agent, 'acolyte')).text), url).toContain(why);
+    }
+  });
+
+  it('every outcome and every unreachable reason is told in both languages (never a raw key)', async () => {
+    const { agent } = await freshSession();
+    const cases: [string, string, string][] = [ // link, English, Indonesian
+      ['http://citadel.test/', 'ended on a citadel.test page (HTTP 200)', 'berakhir di halaman citadel.test (HTTP 200)'],
+      ['http://attacker.test/', 'reached your server (attacker.test)', 'sampai di server Anda (attacker.test)'],
+      ['http://citadel.test/deeper', `stopped: more than ${SIM_LIMITS.maxRedirects} redirects`, `berhenti: lebih dari ${SIM_LIMITS.maxRedirects} pengalihan`],
+      ['http://citadel.test/loop', 'stopped: redirect loop', 'berhenti: pengalihan berputar-putar'],
+      ['nope', 'not a valid absolute URL', 'bukan URL absolut yang valid'],
+      [`http://attacker.test/${'a'.repeat(SIM_LIMITS.urlLength)}`, 'the URL is too long', 'URL terlalu panjang'],
+      ['javascript:1', 'only http(s) links are followed', 'hanya tautan http(s) yang diikuti'],
+      ['http://127.0.0.1/', 'IP addresses are unreachable', 'alamat IP tidak dapat dijangkau'],
+      ['http://citadel.test:81/', 'nothing listens on that citadel.test port', 'tidak ada layanan di port citadel.test itu'],
+      ['http://example.com/', 'unknown host', 'host tidak dikenal'],
+    ];
+    for (const [link, en, id] of cases) {
+      await sendLink(agent, 'acolyte', link);
+      const enPanel = panelOf((await labPage(agent, 'acolyte', 'en')).text);
+      const idPanel = panelOf((await labPage(agent, 'acolyte', 'id')).text);
+      expect(enPanel, link).toContain(en);
+      expect(idPanel, link).toContain(id);
+      expect(`${enPanel}${idPanel}`, link).not.toMatch(/sim\.(outcome|reason)\./);
     }
   });
 

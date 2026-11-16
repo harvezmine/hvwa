@@ -1087,14 +1087,23 @@ function worldOf(v: VictimConfig, req: Pick<Request, 'sessionId' | 'level'>): Wo
   return w;
 }
 
+// The panel's words for each outcome and reason (core/i18n.ts). Typed maps: a new outcome or reason cannot go
+// without a string, and no key is built from data.
+const OUTCOME_KEYS: Readonly<Record<SimOutcome, string>> = Object.freeze({
+  page: 'sim.outcome.page', attacker: 'sim.outcome.attacker', unreachable: 'sim.outcome.unreachable',
+  'too-many-redirects': 'sim.outcome.too_many_redirects', loop: 'sim.outcome.loop',
+});
+const REASON_KEYS: Readonly<Record<SimUnreachable, string>> = Object.freeze({
+  invalid: 'sim.reason.invalid', 'too-long': 'sim.reason.too_long', scheme: 'sim.reason.scheme', ip: 'sim.reason.ip',
+  port: 'sim.reason.port', host: 'sim.reason.host',
+});
+
 /** "Visit 2: 3 request(s); reached your server (attacker.test)." Requests actually sent; no URL. */
 function visitLine(visit: SimVisit, i: number, lang: Lang): string {
   const tr = (key: string, vars: Readonly<Record<string, string | number>> = {}): string => fmt(t(key, lang), vars);
-  let outcome: string;
-  if (visit.outcome === 'page') outcome = tr('sim.outcome.page', { status: visit.page?.status ?? '' });
-  else if (visit.outcome === 'unreachable') outcome = tr('sim.outcome.unreachable', { reason: tr(`sim.reason.${visit.hops.at(-1)?.reason ?? 'invalid'}`) });
-  else if (visit.outcome === 'too-many-redirects') outcome = tr('sim.outcome.too-many-redirects', { n: SIM_LIMITS.maxRedirects });
-  else outcome = tr(`sim.outcome.${visit.outcome}`);
+  const outcome = tr(OUTCOME_KEYS[visit.outcome], {
+    status: visit.page?.status ?? '', n: SIM_LIMITS.maxRedirects, reason: tr(REASON_KEYS[visit.hops.at(-1)?.reason ?? 'invalid']),
+  });
   return tr('sim.visit', { n: i + 1, requests: visit.hops.filter((h) => h.site !== 'other').length, outcome });
 }
 
