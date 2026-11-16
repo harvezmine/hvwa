@@ -17,8 +17,11 @@ describe('every lab, every level', () => {
   });
 
   const app = createApp();
+  // One cookie jar, like a browser (and verify:dist): a request without hvwa_sid mints a new session, and the
+  // platform issues at most 60 a minute, fewer than the labs x levels this smoke test visits.
+  const browser = request.agent(app);
   it.each(cases)('$id lab at $level: 200 with the lab bar ($url)', async ({ id, level, url }) => {
-    const res = await request(app).get(url);
+    const res = await browser.get(url);
     expect(res.status).toBe(200);
     expect(res.text).toContain('data-testid="lab-bar"');
     expect(res.text).toMatch(new RegExp(`data-testid="lab-level"[^>]*data-level="${level}"`));
