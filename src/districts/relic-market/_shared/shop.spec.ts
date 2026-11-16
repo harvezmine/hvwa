@@ -459,6 +459,20 @@ describe('race primitives', () => {
     expect(b.timedOut()).toBe(false);
   });
 
+  it('barrierGate(3): a pass stays pending after 2 arrivals and is released by the third', async () => {
+    const b = barrierGate(3);
+    let released = false;
+    b.gate.arrive();
+    b.gate.arrive();
+    const p = b.gate.pass(1000).then(() => { released = true; });
+    await new Promise<void>((resolve) => { setTimeout(resolve, 10); }); // well past any microtask or immediate
+    expect(released).toBe(false);
+    b.gate.arrive();
+    await p;
+    expect(released).toBe(true);
+    expect(b.timedOut()).toBe(false);
+  });
+
   it('barrierGate: the fallback releases a stuck pass and sets timedOut', async () => {
     const b = barrierGate(2, 20);
     b.gate.arrive();
