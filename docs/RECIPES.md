@@ -302,7 +302,9 @@ generic message. Parser labs (XXE, YAML) pass a label:
 `tryDb(req, () => parse(xml), 'Parser error')`. `fn` must be synchronous
 (`node:sqlite` is); `tryDb` throws if it returns a Promise. Read body fields
 with `field()`, so a JSON object or extended-urlencoded nesting is an empty
-string, not a 500.
+string, not a 500. **One exception: blind labs** (RM-02, RM-03) show no database text at ANY level, because an echoed
+error would make them error-based; a database error is rendered as the level's ordinary negative answer, `divine.ts`
+says so, and the spec uses `malformed: []` plus an explicit "no database text at any level" case (section 11).
 
 **Lab links and cookies.**
 
@@ -975,3 +977,26 @@ Real in production, deterministic in tests (`relic-market/_shared/race.ts` and t
   request: the delay is exact and the test instant (decide with `dt >= 1000`). `useInstantWaits()` makes waits instant
   without moving time.
 - Players measure real time with `curl -o /dev/null -s -w '%{time_total}\n' …`.
+- **What RM-03 (`rm-03-blind-time-sqli`) uses, the worked example:**
+  - **A provided `sleep(seconds)` SQL function** (the MySQL-style helper the page announces), registered in the seed on
+    the raw handle: `raw.function('sleep', { directOnly: true }, fn)`. It never blocks: it adds
+    `clamp(seconds, 0, 5) * 1000` ms to the lab's accumulator (`delay.ms`, capped at `MAX_WAIT_MS`) and returns 0. It
+    takes a number or numeric text only (a blob, NULL or junk is 0), and a negative never cancels another sleep.
+    The seed registers nothing else: `randomblob()`/`zeroblob()` are capped by the engine (section 4).
+  - **`measured(level, run)`** in `model.ts` resets the accumulator, runs the query, reads it, and resets it again in a
+    `finally`. `node:sqlite` is synchronous, so no other request runs between the reset and the read: the accumulator
+    can live on a `perLevel` instance, and the function that wraps the query must not `await` inside it.
+  - **The route** wraps `tryDb` in `measured`, so a query that sleeps and then fails still reports its delay, then
+    `await realClock.wait(delayMs)` and answers. The answer is the same bytes for a hit, a miss and an error; only a
+    refused input says so. A database error is that uniform answer, never its message: blind labs (RM-02, RM-03) hide
+    DB text at EVERY level (decision Q4), say so in `divine.ts`, use `malformed: []` and add an explicit "no database
+    text at any level" case.
+  - **The tests** call `useFakeClock()` once at the top of the spec file (it uses `beforeAll`/`afterAll`) and wrap each
+    probe: `t0 = clock.now()`, the request, `dt = clock.now() - t0`. A true condition is exactly 2000 ms and a false one
+    0, so the oracle is `dt >= 1000` and the exploit script binary-searches the hex alphabet (4 requests a character)
+    and then redeems. Lab-specific cases to copy: true costs 2000 and false 0 at every exploitable level, Divine never
+    delays, the 5000 ms cap, odd `sleep()` arguments, a failing query leaves no stale delay, `sleep()` itself never
+    blocks (a direct call takes no real time), and the answer's bytes do not depend on the data.
+  - **Pitfalls.** Use the `UNION SELECT sleep(...)` form: it runs `sleep` exactly once. An `AND`/`OR` form runs it once per
+    scanned row, or never when a literal has a trailing newline, so neither the hints nor the tests may depend on row
+    counts. Never `setTimeout` in a level and never rely on a genuinely slow query (rule (g)).
