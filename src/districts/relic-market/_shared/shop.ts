@@ -258,20 +258,33 @@ export function exactTotals(state: ShopState): CartTotals {
   return { lines, total: cartTotal(state.cart) ?? OUT_OF_RANGE };
 }
 
-const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-const isDecimal = (s: string): s is `${number}` => /^-?\d+\.\d\d$/.test(s);
+/**
+ * The currencies a Relic Market page shows, each held as whole minor units: US cents, whole crowns (the market's own
+ * coin, 1 crown = $1.00), whole rupiah. `digits` is how many of those units make the decimals shown.
+ */
+export const CURRENCIES = Object.freeze({
+  USD: Object.freeze({ digits: 2, prefix: '$' }),
+  CRN: Object.freeze({ digits: 0, prefix: '₡' }),
+  IDR: Object.freeze({ digits: 0, prefix: 'IDR ' }),
+});
+export type Currency = keyof typeof CURRENCIES;
+
+const GROUPED = new Intl.NumberFormat('en-US'); // grouping only; format(bigint) is exact
 
 /**
- * Integer cents as US dollars: `$1,000.00`, and `-$10.00` for negatives. The one money formatter: no level code
- * formats money itself. Exact for every integer: the amount goes to Intl as a decimal string, not as a float.
+ * An amount in whole minor units of `currency` (default USD cents), as text: `$1,000.00` and `-$10.00`, `₡5`,
+ * `IDR 162,500`. The one money formatter: no level code formats money itself. Exact for every integer (BigInt and
+ * Intl's bigint grouping, never a float division); an amount that is not a whole number of minor units is a
+ * programming error and throws.
  */
-export function formatMoney(cents: number): string {
-  if (!Number.isInteger(cents)) return USD.format(cents / 100);
-  const b = BigInt(cents); // BigInt(-0) is 0n, so zero is never "-$0.00"
+export function formatMoney(amount: number, currency: Currency = 'USD'): string {
+  if (!Number.isInteger(amount)) throw new TypeError(`formatMoney: ${amount} is not a whole number of ${currency} minor units`);
+  const { digits, prefix } = CURRENCIES[currency];
+  const b = BigInt(amount); // BigInt(-0) is 0n, so zero is never "-$0.00"
   const abs = b < 0n ? -b : b;
-  const decimal = `${b < 0n ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`;
-  // Intl.NumberFormat reads a numeric string as an exact decimal (ECMA-402 NumberFormat v3).
-  return isDecimal(decimal) ? USD.format(decimal) : USD.format(cents / 100);
+  const unit = 10n ** BigInt(digits);
+  const fraction = digits > 0 ? `.${String(abs % unit).padStart(digits, '0')}` : '';
+  return `${b < 0n ? '-' : ''}${prefix}${GROUPED.format(abs / unit)}${fraction}`;
 }
 
 /** The refusal every shop lab's checkout gives when the wallet does not cover the total. */

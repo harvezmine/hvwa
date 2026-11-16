@@ -3,8 +3,9 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { challengeDb } from '../../../core/challenge-db.js';
 import {
-  CUSTOMER, LIMITS, OUT_OF_RANGE, SHOP_MAX_ENTRIES, addDiscount, cartTotal, catalogOf, clipText, exactValue, formatMoney,
-  insufficientFunds, newShop, orderLines, perShop, placeOrder, pushHistory, pushOrder, setLine, type Order, type ShopState,
+  CURRENCIES, CUSTOMER, LIMITS, OUT_OF_RANGE, SHOP_MAX_ENTRIES, addDiscount, cartTotal, catalogOf, clipText, exactValue,
+  formatMoney, insufficientFunds, newShop, orderLines, perShop, placeOrder, pushHistory, pushOrder, setLine,
+  type Currency, type Order, type ShopState,
 } from './shop.js';
 import { MAX_WAIT_MS, realClock, setClockForTests, type LabClock } from './clock.js';
 import { KeyedMutex, waitGate } from './race.js';
@@ -253,6 +254,24 @@ describe('money', () => {
       [Number.MAX_SAFE_INTEGER, '$90,071,992,547,409.91'], [-Number.MAX_SAFE_INTEGER, '-$90,071,992,547,409.91'],
     ];
     for (const [cents, text] of cases) expect(formatMoney(cents), String(cents)).toBe(text);
+  });
+
+  it('formatMoney in other currencies: whole crowns and whole rupiah, minor units of each currency', () => {
+    expect(CURRENCIES).toEqual({ USD: { digits: 2, prefix: '$' }, CRN: { digits: 0, prefix: '₡' }, IDR: { digits: 0, prefix: 'IDR ' } });
+    const cases: [number, Currency, string][] = [
+      [5, 'CRN', '₡5'], [-3, 'CRN', '-₡3'], [1000, 'CRN', '₡1,000'], [0, 'CRN', '₡0'],
+      [162_500, 'IDR', 'IDR 162,500'], [-16_250, 'IDR', '-IDR 16,250'], [0, 'IDR', 'IDR 0'],
+      [1050, 'USD', '$10.50'],
+    ];
+    for (const [amount, currency, text] of cases) expect(formatMoney(amount, currency), `${amount} ${currency}`).toBe(text);
+  });
+
+  it('formatMoney refuses an amount that is not a whole number of minor units', () => {
+    for (const bad of [1.5, -0.01, Number.NaN, Infinity, -Infinity]) {
+      expect(() => formatMoney(bad), String(bad)).toThrow(TypeError);
+      expect(() => formatMoney(bad, 'IDR'), String(bad)).toThrow(TypeError);
+    }
+    expect(formatMoney(1e21)).toBe('$10,000,000,000,000,000,000.00'); // a whole number beyond 2^53 is still exact
   });
 
   it('insufficientFunds names the total and the wallet through formatMoney', () => {
