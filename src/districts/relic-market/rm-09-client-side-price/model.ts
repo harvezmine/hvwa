@@ -1,8 +1,7 @@
 // model.ts — RM-09's shop, price lists, per-player state, the contract every levels/<level>.ts implements and the
 // proof. Not served: View Source shows only levels/*.ts, and nothing here has a route.
-import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
-import { CUSTOMER, catalogOf, newShop, type Order, type Product, type ShopState } from '../_shared/shop.js';
+import { CUSTOMER, catalogOf, newShop, perShop, type Order, type Product, type ShopState } from '../_shared/shop.js';
 
 /** The wallet every instance starts with: $25.00. */
 export const START_WALLET = 2500;
@@ -38,7 +37,7 @@ export interface Account { readonly customer: string; readonly priceList: string
 /** One player's shop at one level. */
 export interface LabState extends ShopState { readonly account: Account }
 
-const labs = perSession((): LabState => ({
+const labs = perShop((): LabState => ({
   ...newShop({ catalog: CATALOG, wallet: START_WALLET }),
   account: Object.freeze({ customer: CUSTOMER.id, priceList: 'retail' }),
 }));

@@ -1,8 +1,7 @@
 // model.ts — RM-05's shop, per-player state, the contract every levels/<level>.ts implements and the proof.
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
-import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
-import { catalogOf, newShop, type Order, type ShopState } from '../_shared/shop.js';
+import { catalogOf, newShop, perShop, type Order, type ShopState } from '../_shared/shop.js';
 
 /** The wallet every instance starts with: $50.00. */
 export const START_WALLET = 5000;
@@ -21,7 +20,7 @@ export interface LabState extends ShopState {
   readonly returned: Map<string, number>;
 }
 
-const labs = perSession((): LabState => ({ ...newShop({ catalog: CATALOG, wallet: START_WALLET }), owned: new Map(), returned: new Map() }));
+const labs = perShop((): LabState => ({ ...newShop({ catalog: CATALOG, wallet: START_WALLET }), owned: new Map(), returned: new Map() }));
 export const labFor = (req: { sessionId: string; level: Level }): LabState => labs.for(req);
 /** Test seam: the lab state of session `sessionId` at `level`. */
 export const labState = (sessionId: string, level: Level): LabState => labs.for({ sessionId, level });

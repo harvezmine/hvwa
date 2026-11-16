@@ -2,10 +2,12 @@
 // money in integer US cents. Pure plumbing shared by the shop labs: every parse rule, check, rounding rule and price
 // decision lives in a lab's levels/*.ts, which hand this module what they decided. The bounds here are platform
 // safety, not the lesson. Not a challenge: nothing here is served by View Source.
+import { perSession, type PerSession, type PerSessionOptions } from '../../../core/lab.js';
+import type { Level } from '../../../core/levels.js';
 import { clip as copyingClip } from '../../../core/sim/limits.js';
 import type { Result } from '../../_shared/result.js';
 import { realClock, type LabClock } from './clock.js';
-import { waitGate, type Gate } from './race.js';
+import { KeyedMutex, waitGate, type Gate } from './race.js';
 
 /** A product. `price` is the server's list price in cents. */
 export interface Product { readonly sku: string; readonly name: string; readonly price: number; readonly blurb: string }
@@ -64,6 +66,26 @@ export interface ShopState {
   clock: LabClock;
   /** The race window of racy levels (race.ts); tests replace it on one session's instance. */
   gate: Gate;
+  /**
+   * The locks of locking levels (race.ts KeyedMutex), per player and level: a Restart or an eviction drops them with
+   * the shop. Never a module-level mutex, which would serialize every player through one queue.
+   */
+  readonly locks: KeyedMutex;
+}
+
+/**
+ * Most shop instances one lab keeps (perShop's default): platform safety. A fully used shop (20 cart lines, 30 orders
+ * of up to 20 lines, 10 discounts, 30 history entries) is about 20-25 KB, so the engine's default of 5000 entries would
+ * be about 125 MB per lab; 1000 keeps it near 25 MB. Eviction is a reset of that player's shop (no RM lab keeps a
+ * limiter, so nothing is refilled by it).
+ */
+export const SHOP_MAX_ENTRIES = 1000;
+
+/** The perSession holder of a shop lab's state: perSession with maxEntries SHOP_MAX_ENTRIES unless the lab says otherwise. */
+export function perShop<T extends ShopState>(
+  factory: (level: Level, sessionId: string) => T, opts: PerSessionOptions<T> = {},
+): PerSession<T> {
+  return perSession(factory, { maxEntries: SHOP_MAX_ENTRIES, ...opts });
 }
 
 /** The shopper of every shop lab: already signed in, no sign-in form (authentication is not what these labs teach). */
@@ -126,13 +148,13 @@ export function catalogOf(products: readonly Product[]): Catalog {
   return Object.freeze({ products: list, get: (sku: string) => bySku.get(sku) });
 }
 
-/** A fresh shop: the wallet (cents), an empty cart, no orders, order #1 next, the real clock and its gate. */
+/** A fresh shop: the wallet (cents), an empty cart, no orders, order #1 next, the real clock, its gate, its own locks. */
 export function newShop(o: { readonly catalog: Catalog; readonly wallet: number }): ShopState {
   if (!Number.isSafeInteger(o.wallet)) throw new Error('newShop: the wallet must be a safe integer (cents)');
   return {
     catalog: o.catalog, startWallet: o.wallet, wallet: o.wallet,
     cart: [], discounts: [], orders: [], nextOrderNo: 1,
-    clock: realClock, gate: waitGate(realClock),
+    clock: realClock, gate: waitGate(realClock), locks: new KeyedMutex(),
   };
 }
 

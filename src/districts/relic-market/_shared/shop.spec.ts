@@ -3,8 +3,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { challengeDb } from '../../../core/challenge-db.js';
 import {
-  CUSTOMER, LIMITS, OUT_OF_RANGE, addDiscount, cartTotal, catalogOf, clipText, exactValue, formatMoney, insufficientFunds,
-  newShop, orderLines, placeOrder, pushHistory, pushOrder, setLine, type Order, type ShopState,
+  CUSTOMER, LIMITS, OUT_OF_RANGE, SHOP_MAX_ENTRIES, addDiscount, cartTotal, catalogOf, clipText, exactValue, formatMoney,
+  insufficientFunds, newShop, orderLines, perShop, placeOrder, pushHistory, pushOrder, setLine, type Order, type ShopState,
 } from './shop.js';
 import { MAX_WAIT_MS, realClock, setClockForTests, type LabClock } from './clock.js';
 import { KeyedMutex, waitGate } from './race.js';
@@ -54,6 +54,13 @@ describe('newShop', () => {
     expect(s.catalog).toBe(CATALOG);
   });
 
+  it('each shop has its own KeyedMutex (locks): per player and level, gone with the shop', () => {
+    const a = shop();
+    const b = shop();
+    expect(a.locks).toBeInstanceOf(KeyedMutex);
+    expect(a.locks).not.toBe(b.locks);
+  });
+
   it('refuses a wallet that is not a safe integer', () => {
     expect(() => newShop({ catalog: CATALOG, wallet: 1.5 })).toThrow(/wallet/);
   });
@@ -63,6 +70,30 @@ describe('newShop', () => {
     const b = shop();
     setLine(a, { sku: 'CANDLE', qty: 1, unitPrice: 250 });
     expect(b.cart).toEqual([]);
+  });
+});
+
+describe('perShop', () => {
+  it('a shop holder keeps at most SHOP_MAX_ENTRIES (1000) instances by default, least recently used out', () => {
+    expect(SHOP_MAX_ENTRIES).toBe(1000);
+    const h = perShop(() => shop());
+    const first = h.for({ sessionId: 's0', level: 'acolyte' });
+    for (let i = 1; i <= SHOP_MAX_ENTRIES; i++) h.for({ sessionId: `s${i}`, level: 'acolyte' });
+    expect(h.size).toBe(SHOP_MAX_ENTRIES);
+    expect(h.for({ sessionId: 's0', level: 'acolyte' })).not.toBe(first); // evicted, rebuilt fresh
+  });
+
+  it('a lab may still pass its own options, and reset drops one instance (its locks with it)', () => {
+    const h = perShop(() => shop(), { maxEntries: 2 });
+    const req = { sessionId: 'a', level: 'templar' as const };
+    const s = h.for(req);
+    h.for({ sessionId: 'b', level: 'templar' });
+    h.for({ sessionId: 'c', level: 'templar' });
+    expect(h.size).toBe(2);
+    const again = h.for(req);
+    expect(again).not.toBe(s);
+    h.reset(req);
+    expect(h.for(req).locks).not.toBe(again.locks);
   });
 });
 
