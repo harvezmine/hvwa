@@ -2,10 +2,11 @@
 // core/upload-zip.ts and core/simfs.ts are parsed with the TypeScript compiler and may import only an allow-list
 // (node:buffer, node:zlib, each other, core/sim/limits.ts, and core/lab.ts for simfs's per-session cap), never load
 // code dynamically and name no network or code-loading global. Then a full upload, archive and interpreter run is
-// made with the fs, network, child-process and vm functions spied: none may be called. (Same style as the core/sim/
-// guard in tests/sim.spec.ts.)
+// made with the fs, network, child-process and vm functions spied (for ES-module importers too, through
+// syncBuiltinESMExports): none may be called. (Same style as the core/sim/ guard in tests/sim.spec.ts.)
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import { runInNewContext } from 'node:vm';
 import net from 'node:net';
 import ts from 'typescript';
 import { afterAll, describe, it, expect, vi } from 'vitest';
@@ -114,49 +115,86 @@ describe('the upload engine imports no filesystem, network or code runner', () =
   });
 });
 
+/**
+ * Spy on every filesystem, network, child-process and vm function. The spies sit on the CommonJS export objects;
+ * syncBuiltinESMExports() then points the builtins' ES-module bindings at them too, so a module that did
+ * `import { readFileSync } from 'node:fs'` is seen as well (without it, ESM callers bypass every spy).
+ */
+function installSpies() {
+  const require = createRequire(import.meta.url);
+  const on = (id: string, fns: readonly string[]) => {
+    const mod = require(id) as Record<string, unknown>;
+    return fns.filter((f) => typeof mod[f] === 'function').map((f) => vi.spyOn(mod as Record<string, () => unknown>, f));
+  };
+  const fsFns = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'mkdir',
+    'mkdirSync', 'createReadStream', 'createWriteStream', 'readdir', 'readdirSync', 'stat', 'statSync', 'unlink', 'unlinkSync', 'rename', 'renameSync'];
+  const fsPromises = require('node:fs/promises') as Record<string, () => unknown>;
+  const dns = require('node:dns') as { promises: Record<string, () => unknown> };
+  const spies = [
+    vi.spyOn(globalThis, 'fetch'),
+    ...on('node:fs', fsFns),
+    ...(['readFile', 'writeFile', 'appendFile', 'open', 'mkdir', 'readdir', 'stat', 'unlink', 'rename'] as const).map((f) => vi.spyOn(fsPromises, f)),
+    ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
+    ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
+    ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
+    ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
+    ...on('node:child_process', ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']),
+    ...on('node:vm', ['runInNewContext', 'runInThisContext', 'runInContext', 'compileFunction', 'createContext']),
+  ];
+  syncBuiltinESMExports();
+  return spies;
+}
+function releaseSpies(spies: ReturnType<typeof installSpies>): void {
+  for (const spy of spies) spy.mockRestore();
+  syncBuiltinESMExports();
+}
+
+/** The whole flow a lab runs: parse an upload, sniff it, unzip, store into a simFs, "run" two files. */
+async function wholeFlow(sessionId: string): Promise<void> {
+  const archive = zipOf([{ name: '../../templates/welcome.txt', data: "hvwa('CANARY')" }, { name: 'shell.php', data: '<?hvwa CANARY ?>', method: 'stored' }]);
+  const body = multipart([
+    { name: 'caption', value: 'restore' },
+    { name: 'archive', filename: '../backup.zip', contentType: 'application/zip', value: archive },
+    { name: 'sigil', filename: 'x.gif', contentType: 'image/gif', value: Buffer.from('GIF89a\x01\x00\x01\x00\xf7\x00\x00<?hvwa CANARY ?>', 'latin1') },
+  ]);
+  const up = await parseMultipart(uploadReq(body));
+  expect(up.files.map((f) => f.filename)).toEqual(['../backup.zip', 'x.gif']);
+  expect(looksLikeImage(up.files[1].bytes)).toBe(true);
+  const fs = perSession(() => simFs()).for({ sessionId, level: 'acolyte' });
+  fs.write('/srv/app/templates/welcome.txt', 'Welcome.', { pinned: true });
+  for (const e of readZip(up.files[0].bytes)) fs.write(`/srv/app/uploads/restore/${e.name}`, e.bytes);
+  fs.write(`/srv/app/uploads/${up.files[1].filename}`, up.files[1].bytes, { contentType: up.files[1].contentType });
+  expect(fs.read('/srv/app/templates/welcome.txt')?.bytes.toString()).toBe("hvwa('CANARY')");
+  expect(simInterpret(fs.read('/srv/app/uploads/restore/shell.php')?.bytes ?? Buffer.alloc(0), 'canary')).toBe('canary');
+  expect(simInterpret(fs.read('/srv/app/uploads/x.gif')?.bytes ?? Buffer.alloc(0), 'canary')).toBe('canary');
+}
+
 describe('a whole upload, archive and "execution" touches no filesystem, network, child-process or vm function', () => {
-  it('parse -> sniff -> unzip -> store -> interpret, with every such function spied', async () => {
-    const require = createRequire(import.meta.url);
-    const on = (id: string, fns: readonly string[]) => {
-      const mod = require(id) as Record<string, unknown>;
-      return fns.filter((f) => typeof mod[f] === 'function').map((f) => vi.spyOn(mod as Record<string, () => unknown>, f));
-    };
-    const fsFns = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'mkdir',
-      'mkdirSync', 'createReadStream', 'createWriteStream', 'readdir', 'readdirSync', 'stat', 'statSync', 'unlink', 'unlinkSync', 'rename', 'renameSync'];
-    const fsPromises = require('node:fs/promises') as Record<string, () => unknown>;
-    const dns = require('node:dns') as { promises: Record<string, () => unknown> };
-    const spies = [
-      vi.spyOn(globalThis, 'fetch'),
-      ...on('node:fs', fsFns),
-      ...(['readFile', 'writeFile', 'appendFile', 'open', 'mkdir', 'readdir', 'stat', 'unlink', 'rename'] as const).map((f) => vi.spyOn(fsPromises, f)),
-      ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
-      ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
-      ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
-      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
-      ...on('node:child_process', ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']),
-      ...on('node:vm', ['runInNewContext', 'runInThisContext', 'runInContext', 'compileFunction', 'createContext']),
-    ];
+  it('the spies see ES-module imports too (self-test): readFileSync(url, "utf8") and runInNewContext', () => {
+    const spies = installSpies();
     try {
-      const archive = zipOf([{ name: '../../templates/welcome.txt', data: "hvwa('CANARY')" }, { name: 'shell.php', data: '<?hvwa CANARY ?>', method: 'stored' }]);
-      const body = multipart([
-        { name: 'caption', value: 'restore' },
-        { name: 'archive', filename: '../backup.zip', contentType: 'application/zip', value: archive },
-        { name: 'sigil', filename: 'x.gif', contentType: 'image/gif', value: Buffer.from('GIF89a\x01\x00\x01\x00\xf7\x00\x00<?hvwa CANARY ?>', 'latin1') },
-      ]);
-      const up = await parseMultipart(uploadReq(body));
-      expect(up.files.map((f) => f.filename)).toEqual(['../backup.zip', 'x.gif']);
-      expect(looksLikeImage(up.files[1].bytes)).toBe(true);
-      const fs = perSession(() => simFs()).for({ sessionId: 'guard', level: 'acolyte' });
-      fs.write('/srv/app/templates/welcome.txt', 'Welcome.', { pinned: true });
-      for (const e of readZip(up.files[0].bytes)) fs.write(`/srv/app/uploads/restore/${e.name}`, e.bytes);
-      fs.write(`/srv/app/uploads/${up.files[1].filename}`, up.files[1].bytes, { contentType: up.files[1].contentType });
-      expect(fs.read('/srv/app/templates/welcome.txt')?.bytes.toString()).toBe("hvwa('CANARY')");
-      expect(simInterpret(fs.read('/srv/app/uploads/restore/shell.php')?.bytes ?? Buffer.alloc(0), 'canary')).toBe('canary');
-      expect(simInterpret(fs.read('/srv/app/uploads/x.gif')?.bytes ?? Buffer.alloc(0), 'canary')).toBe('canary');
+      const fsSpy = spies.find((s) => s.getMockName() === 'readFileSync');
+      const vmSpy = spies.find((s) => s.getMockName() === 'runInNewContext');
+      expect(readFileSync(new URL(import.meta.url), 'utf8')).toContain('installSpies'); // this module's own ESM import
+      expect(runInNewContext('6 * 7')).toBe(42);
+      expect(fsSpy).toHaveBeenCalledTimes(1);
+      expect(vmSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseSpies(spies);
+    }
+    // Restored for ESM callers too: the bindings point at the real functions again.
+    expect(vi.isMockFunction(readFileSync)).toBe(false);
+  });
+
+  it('parse -> sniff -> unzip -> store -> interpret, with every such function spied', async () => {
+    await wholeFlow('guard-warm-up'); // first use loads what it lazily needs, before the spies go on
+    const spies = installSpies();
+    try {
+      await wholeFlow('guard');
       expect(spies.length).toBeGreaterThan(40);
       for (const spy of spies) expect(spy, spy.getMockName()).not.toHaveBeenCalled();
     } finally {
-      for (const spy of spies) spy.mockRestore();
+      releaseSpies(spies);
     }
   });
 });

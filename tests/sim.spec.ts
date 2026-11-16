@@ -1,7 +1,7 @@
 // The simulated victim's stores and browser (src/core/sim/): inbox, attacker log, cookie jar, SimBrowser.
 import { readFileSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import net from 'node:net';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import net, { createConnection } from 'node:net';
 import ts from 'typescript';
 import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { NewSessionLimitError, insidePerSessionFactory, perSession, setCappedBudget, setPerSessionDefaults } from '../src/core/lab.js';
@@ -932,7 +932,11 @@ describe('no real network', () => {
     expect([...seen].map((h) => h.slice(core.length)).sort()).toEqual(['lab.ts', 'levels.ts', ...SIM_FILES.map((f) => `sim/${f}`)]);
   });
 
-  it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {
+  /**
+   * Spy on every network function. The spies sit on the CommonJS export objects; syncBuiltinESMExports() points the
+   * builtins' ES-module bindings at them too, so `import { request } from 'node:http'` callers are seen as well.
+   */
+  const installNetSpies = () => {
     const require = createRequire(import.meta.url);
     const on = (id: string, fns: readonly string[]) => fns.map((f) => vi.spyOn(require(id) as Record<string, () => unknown>, f));
     const dns = require('node:dns') as { promises: Record<string, () => unknown> };
@@ -943,6 +947,32 @@ describe('no real network', () => {
       ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
       ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
     ];
+    syncBuiltinESMExports();
+    return spies;
+  };
+  const releaseSpies = (spies: ReturnType<typeof installNetSpies>): void => {
+    for (const spy of spies) spy.mockRestore();
+    syncBuiltinESMExports();
+  };
+
+  it('the network spies see ES-module imports too (self-test: a named import of node:net createConnection)', () => {
+    const spies = installNetSpies();
+    try {
+      // By identity: vitest names a spy after the function, and net.createConnection is a function named `connect`.
+      const cjs = createRequire(import.meta.url)('node:net') as { createConnection: unknown };
+      const spy = spies.find((s) => s === cjs.createConnection);
+      expect(spy).toBeDefined();
+      spy?.mockImplementationOnce((() => ({})) as never); // seen, never really connecting
+      expect(createConnection({ port: 9 })).toEqual({});
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseSpies(spies);
+    }
+    expect(vi.isMockFunction(createConnection)).toBe(false);
+  });
+
+  it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {
+    const spies = installNetSpies();
     try {
       const w = world();
       const s = site({ '/a': { status: 200, headers: { refresh: '0;url=http://attacker.test/x' } } });
@@ -951,7 +981,7 @@ describe('no real network', () => {
       inSession(() => w.browser(s.handler)).follow('http://example.com/');
       for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     } finally {
-      for (const spy of spies) spy.mockRestore();
+      releaseSpies(spies);
     }
   });
 });
