@@ -34,7 +34,7 @@ export interface SimRequest {
 export interface SimResponse {
   readonly status: number;
   /**
-   * `Location` (followed on 301, 302, 303, 307 and 308 only), `Set-Cookie` (one line or a list), `Refresh` ("0; url=..": the page moves the
+   * `Location` (followed on 301, 302, 303, 307 and 308 only; a Location or Refresh value with CR or LF is a malformed response: the visit is unreachable), `Set-Cookie` (one line or a list), `Refresh` ("0; url=..": the page moves the
    * browser on, sending ITS URL as Referer: the stand-in for a meta refresh or script navigation) and
    * `Referrer-Policy` (what the next hop's Referer may contain). Others are ignored.
    */
@@ -133,6 +133,9 @@ function refererFor(from: SimUrl, to: SimUrl, policy: ReferrerPolicy): string | 
     case 'unsafe-url': return full;
   }
 }
+
+/** CR or LF: never part of a real header value. */
+const CRLF_RE = /[\r\n]/;
 
 /** The URL of a Refresh header ("<delay>; url=<url>", ";" or ",", url= optional, quotes optional), else undefined. */
 function refreshTarget(value: string | undefined): string | undefined {
@@ -256,6 +259,14 @@ export class Browser implements SimBrowser {
       const h = headerMap(res);
       for (const line of h.get('set-cookie') ?? []) this.jar.store(line, target);
       hop({ site: 'citadel', method, url: target.url, via, ...withReferer, status: res.status });
+      // A Location or Refresh value with CR or LF cannot exist in real HTTP (Node refuses to send it, a browser
+      // never receives it), and WHATWG URL parsing would silently drop the characters here. So the response is
+      // malformed and the visit unreachable: a lab must not pass in the sim what a real browser could not do.
+      const badHeader = CRLF_RE.test(h.get('location')?.[0] ?? '') ? 'redirect' : CRLF_RE.test(h.get('refresh')?.[0] ?? '') ? 'refresh' : undefined;
+      if (badHeader !== undefined) {
+        hop({ site: 'other', method, url: '', via: badHeader, reason: 'invalid' });
+        return finish('unreachable');
+      }
       // Only Fetch's redirect statuses follow Location. Any other response (a 300 or 304 with a Location, a 302
       // without one) is a page, so its Refresh, if any, moves the browser on as for any page.
       const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;

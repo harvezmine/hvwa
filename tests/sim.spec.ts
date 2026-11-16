@@ -580,6 +580,27 @@ describe('SimBrowser: redirects and Referer', () => {
     expect(w.attackerLog.entries()).toEqual([]);
   });
 
+  it('a Location or Refresh with CR or LF is a malformed response: real HTTP cannot carry it, so the visit is unreachable and nothing is followed', () => {
+    // WHATWG URL parsing silently drops CR and LF, so without this check the sim would follow /b and a lab could pass here but not in a real browser.
+    const bad = ['/b\r\nSet-Cookie: x=1', '/b\nX: y', 'http://attacker.test/x\r\n', '/\rb'];
+    const cases = [[302, 'location', (v: string) => v], [200, 'refresh', (v: string) => `0;url=${v}`], [300, 'location', (v: string) => v]] as const;
+    for (const [status, name, wrap] of cases) {
+      for (const value of bad) {
+        const w = world();
+        const s = site({ '/a': { status, headers: { [name]: wrap(value) } }, '/b': { status: 200 } });
+        const v = inSession(() => w.browser(s.handler)).follow('http://citadel.test/a');
+        const label = `${status} ${name} ${JSON.stringify(value)}`;
+        expect(v.outcome, label).toBe('unreachable');
+        expect(v.hops.map((h) => [h.site, h.via, h.reason]), label).toEqual([['citadel', 'start', undefined], ['other', name === 'location' ? 'redirect' : 'refresh', 'invalid']]);
+        expect(s.seen, label).toHaveLength(1);
+        expect(w.attackerLog.entries(), label).toEqual([]);
+      }
+    }
+    // A header without them is still followed.
+    const ok = site({ '/a': redirect('/b'), '/b': { status: 200 } });
+    expect(inSession(() => world().browser(ok.handler)).follow('http://citadel.test/a').outcome).toBe('page');
+  });
+
   it('header names are case-insensitive; a 3xx without Location is a page', () => {
     const w = world();
     const s = site({ '/a': { status: 302, headers: { LOCATION: '/b' } }, '/b': { status: 304 } });

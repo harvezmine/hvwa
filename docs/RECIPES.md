@@ -565,7 +565,9 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   (URLSearchParams), lower-case `headers`, `cookies` and form `body` (null prototypes; `field()` and `header()` work on
   it); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
   any other status, a 300 or 304 with a Location included, is a page), `Set-Cookie`, `Refresh` and `Referrer-Policy`
-  are honoured. At most 10 redirects; the same request again with the jar unchanged is a loop.
+  are honoured. A `Location` or `Refresh` value containing CR or LF is a malformed response (real HTTP cannot carry
+  one, and URL parsing would silently drop it): the visit ends `unreachable` with an `other` hop whose reason is
+  `invalid`, so a lab cannot pass in the sim on a header a real browser would never receive. At most 10 redirects; the same request again with the jar unchanged is a loop.
 - **Referer, as real browsers send it**: a link opened from mail has none; `follow(url, { referrer })` is a click on a
   citadel page. **A redirect keeps the referrer of the page that started the navigation** (an open redirect does not leak
   its own URL). **A citadel page that moves the browser on by itself sends its own URL**: answer
