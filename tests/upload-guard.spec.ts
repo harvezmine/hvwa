@@ -30,12 +30,15 @@ const ALLOWED: ReadonlySet<string> = new Set([
   'node:buffer', 'node:zlib', './upload.js', './upload-zip.js', './simfs.js', './sim/limits.js', './lab.js',
 ]);
 /**
- * Globals that reach the network or load or run code, however the call site spells the rest. `Response` (the WHATWG
- * body parser parseMultipart uses) is not one: it parses a Buffer in memory and never fetches.
+ * Names that reach the network or load or run code, however the call site spells the rest: globals, and
+ * `constructor` (`(() => 0).constructor` is the Function constructor without naming Function). Flagged as an
+ * identifier and as a string literal (`Reflect.get(o, 'fetch')`, `x['constructor']`). `Response` (the WHATWG body
+ * parser parseMultipart uses) is not one: it parses a Buffer in memory and never fetches. A class's `constructor()`
+ * is a declaration, not a name, and is not flagged.
  */
 const DENIED_GLOBALS: ReadonlySet<string> = new Set([
   'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'globalThis', 'global', 'window', 'self', 'process', 'require',
-  'module', 'eval', 'Function', 'WebAssembly', 'Worker', 'Deno', 'Bun',
+  'module', 'eval', 'Function', 'WebAssembly', 'Worker', 'Deno', 'Bun', 'constructor',
 ]);
 
 function sourceCheck(src: string): { runtime: string[]; problems: string[] } {
@@ -51,7 +54,7 @@ function sourceCheck(src: string): { runtime: string[]; problems: string[] } {
       problems.push('import = require');
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       problems.push('dynamic import()');
-    } else if (ts.isIdentifier(node) && DENIED_GLOBALS.has(node.text)) {
+    } else if ((ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && DENIED_GLOBALS.has(node.text)) {
       problems.push(`${node.text} (line ${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1})`);
     }
     ts.forEachChild(node, visit);
@@ -84,6 +87,9 @@ describe('the upload engine imports no filesystem, network or code runner', () =
       "import { runInNewContext } from 'node:vm';", "import { Worker } from 'node:worker_threads';", 'const m = await import(`node:fs`);',
       "globalThis['fe' + 'tch']('http://x');", "fetch('http://x');", 'process.binding("fs");', "(0, eval)('1');", "Function('return 1')();",
       "new WebAssembly.Module(b);", "import x from 'express';",
+      // The Function constructor without naming Function, and globals named by a string.
+      "(() => 0).constructor('return 1')();", "const k = 'constructor'; ({})[k][k]('return 1')();", 'Reflect.get(Object, `constructor`);',
+      "const g = Reflect.get(Object.getPrototypeOf(Math), 'globalThis');", "Reflect.get(x, 'fetch')('http://x');", "o['process'];",
     ];
     for (const src of evasions) {
       const { runtime, problems } = sourceCheck(src);
@@ -91,14 +97,23 @@ describe('the upload engine imports no filesystem, network or code runner', () =
     }
     expect(sourceCheck("import type { Request } from 'express'; import { inflateRawSync } from 'node:zlib'; new Response(b);"))
       .toEqual({ runtime: ['node:zlib'], problems: [] });
+    // A class constructor is a declaration, not the name; a string that merely contains a denied word is fine.
+    expect(sourceCheck("class E extends Error { constructor() { super('fetching the process-wide budget'); } }"))
+      .toEqual({ runtime: [], problems: [] });
   });
 
-  it('each module imports only the allow-list, never loads code dynamically and names no denied global', () => {
+  it('each module imports only the allow-list, never loads code dynamically', () => {
     for (const file of MODULES) {
       const { runtime, problems } = sourceCheck(readFileSync(new URL(file, CORE), 'utf8'));
       expect(runtime.filter((m) => !ALLOWED.has(m)), file).toEqual([]);
       expect(problems, file).toEqual([]);
     }
+  });
+
+  it('no file the three modules reach, transitively, names a denied global (as a name or a string)', () => {
+    const { files } = closure(MODULES);
+    expect(files).toEqual(['lab.ts', 'levels.ts', 'sim/limits.ts', 'simfs.ts', 'upload-zip.ts', 'upload.ts']);
+    for (const file of files) expect(sourceCheck(readFileSync(new URL(file, CORE), 'utf8')).problems, file).toEqual([]);
   });
 
   it('the multipart parser and the zip reader reach only node:buffer and node:zlib, transitively', () => {
