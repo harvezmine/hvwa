@@ -1,7 +1,6 @@
 // src/districts/forum-of-pilgrims/_shared/forum.ts — plumbing the Forum of Pilgrims labs share: the forum's cast, its public
 // thread list and the pilgrim sign-in. Not a challenge: nothing here is served by View Source, and the flaw of a lab
 // (a redirect check, an ownership check, a query) never lives here: it stays in the lab's levels/*.ts.
-import type { Request } from 'express';
 import { field } from '../../../core/lab.js';
 import type { Result } from '../../_shared/result.js';
 
@@ -28,8 +27,8 @@ export const THREADS: readonly Thread[] = Object.freeze([
 /** A thread by its numeric id, or undefined (compared, never used as an object key). */
 export const threadById = (id: string): Thread | undefined => THREADS.find((t) => String(t.id) === id);
 
-/** The player's credentials check, shared by the forum sign-in forms. Reads the username and password fields. */
-export function forumLogin(req: Request): { readonly ok: boolean; readonly result: Result; readonly username: string; readonly password: string } {
+/** The player's credentials check, shared by the forum sign-in forms. Reads the username and password fields of anything with a body (an Express request or a simulated browser's). */
+export function forumLogin(req: { readonly body?: unknown }): { readonly ok: boolean; readonly result: Result; readonly username: string; readonly password: string } {
   const username = field(req, 'username');
   const password = field(req, 'password');
   const ok = username === PLAYER.username && password === PLAYER.password;
