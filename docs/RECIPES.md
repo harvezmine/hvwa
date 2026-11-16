@@ -77,6 +77,9 @@ src/districts/index.ts              imports each district index
     pin goes) and `trimBounded(map, { max, pin?, spare? })` for a lab that inserts elsewhere and trims later (`pin`:
     never evicted, e.g. the admin's session; `spare`: evicted only when nothing else can go, e.g. signed-in sessions
     after anonymous ones). Each lab states its own rule: GK-10/11 pin the admin's session, GK-16 spares signed-in ones.
+  - `sql.ts`: `firstRows(stmt, max, ...params)` (at most `max` rows read with `iterate()` and stopped there: the result cap of
+    rule (g); a SQL `LIMIT` is no cap) and `cell(v, n = 200)` (a result cell as display text; core `clip` is the copying clip
+    for stored text). Relic Market's `_shared/sql.ts` re-exports them (`cell` as `clip`).
   - `url.ts`: `withParams(uri, params)`: `uri` with `params` appended to its query, as an authorization server
     appends a code (the uri otherwise left as given, a fragment kept last). Build such URLs with it, never by
     concatenating `${uri}?code=` (that breaks a uri that already has a query or a fragment).
@@ -250,6 +253,17 @@ delay in blind SQLi). It does NOT make a single injected call memory-safe in gen
 remain an **accepted self-DoS gap of a loopback, single-player lab**: the only player who can send them stops their
 own app (restart the container), so they are documented, not mitigated. Rule (g) still applies on top: a lab that runs
 fully attacker-chosen SQL caps what it returns (rows read, text shown).
+
+**CPU: a cross join is a time bomb too (accepted residual gap).** Capping what a query RETURNS does not cap what it
+COMPUTES, and the engine has no query timeout. A lab whose injected SQL can name a table of its own several times
+(`FROM activity,activity,activity,activity`, 61 characters) pays the PRODUCT of the row counts in blocked event loop:
+FP-10 with 106 activity rows took 5.3 s here (12.7 s on the reviewer's machine) for one request, and a 5-way join of the same
+tables is longer still. The mitigation is the same as for memory: keep the tables the player can fill SMALL and bound their
+rows (FP-10 trims members and activity to 30 registrations each: about 0.2 s worst case with four tables), and bound the
+attacker's text (a 64-character name limit leaves room for at most four such joins). What remains is an **accepted
+residual CPU gap of a loopback, single-player lab**, the same as the memory gap above: the only player who can send such a
+query stalls their own app for a moment. A lab that lets the player send SQL longer than a short name should measure the
+worst cross join of its own tables and put the number next to its caps.
 
 **Lab state: `perLevel` or `perSession`.** Never a bare module-level
 `challengeDb` for a lab that holds a secret or state.

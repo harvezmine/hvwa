@@ -1,7 +1,6 @@
 // src/districts/relic-market/_shared/shop.spec.ts — unit tests of the Relic Market shop shell's pure plumbing:
-// the catalog, cart bounds, orders, money, the injectable clock, the race primitives and the SQL helpers.
+// the catalog, cart bounds, orders, money, the injectable clock and the race primitives (SQL helpers: districts/_shared/sql.spec.ts).
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { challengeDb } from '../../../core/challenge-db.js';
 import {
   CURRENCIES, CUSTOMER, LIMITS, OUT_OF_RANGE, SHOP_MAX_ENTRIES, addDiscount, cartTotal, catalogOf, clipText, exactValue,
   formatMoney, insufficientFunds, newShop, orderLines, perShop, placeOrder, pushHistory, pushOrder, setLine,
@@ -9,7 +8,6 @@ import {
 } from './shop.js';
 import { MAX_WAIT_MS, realClock, setClockForTests, type LabClock } from './clock.js';
 import { KeyedMutex, waitGate } from './race.js';
-import { clip, firstRows } from './sql.js';
 import { barrierGate, useFakeClock, useInstantWaits } from './shop-lab.testkit.js';
 
 const CATALOG = catalogOf([
@@ -450,25 +448,3 @@ describe('race primitives', () => {
   });
 });
 
-describe('sql helpers', () => {
-  const db = challengeDb('CREATE TABLE t (n INTEGER)', (raw) => {
-    const ins = raw.prepare('INSERT INTO t (n) VALUES (?)');
-    for (let i = 1; i <= 100; i++) ins.run(i);
-  });
-
-  it('firstRows stops reading at max (the cap where the player controls the query), with bound parameters', () => {
-    const stmt = db.prepare('SELECT n FROM t WHERE n > ? ORDER BY n');
-    expect(firstRows(stmt, 3, 10)).toEqual([{ n: 11 }, { n: 12 }, { n: 13 }]);
-    expect(firstRows(stmt, 0, 10)).toEqual([]);
-    expect(firstRows(stmt, 500, 98)).toEqual([{ n: 99 }, { n: 100 }]);
-    expect(firstRows(db.prepare('SELECT n FROM t'), 50)).toHaveLength(50); // the statement is reusable after an early stop
-  });
-
-  it('clip: a cell as text, at most n characters (default 200)', () => {
-    expect(clip('x'.repeat(300))).toHaveLength(200);
-    expect(clip('abcdef', 3)).toBe('abc');
-    expect(clip(null)).toBe('');
-    expect(clip(undefined)).toBe('');
-    expect(clip(42)).toBe('42');
-  });
-});

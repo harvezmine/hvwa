@@ -1,0 +1,25 @@
+<%# FP-08 lab view: the Forum of Pilgrims front page, its share-link composer and the proof. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Forum of Pilgrims</h1>
+  <p class="lab-note">Every thread has a share link: <code>http://citadel.test/go?next=&lt;where to continue&gt;</code>. Your target: <code><%= target %></code>, the forum's moderator, who opens any share link you send (the button below the lab). Proof: your server (attacker.test) receives the moderator's visit.</p>
+  <h2>Threads</h2>
+  <ul>
+<% threads.forEach(function (t) { -%>
+    <li><a href="<%= base %>/thread/<%= t.id %>?level=<%= level %>"><%= t.title %></a> by <%= t.author %></li>
+<% }); -%>
+  </ul>
+  <h2>Compose a share link</h2>
+  <form method="post">
+    <label>Continue to <input name="next" type="text" autocomplete="off" spellcheck="false" value="<%= next %>"></label>
+    <button type="submit">Build link</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+<% if (tryHref) { -%>
+  <p class="lab-note"><a href="<%= tryHref %>">Try this link in your own browser</a> (your browser always stays in the lab; the page tells you where the moderator's browser would go).</p>
+<% } -%>
+  <h2>Has the moderator reached your server?</h2>
+  <p class="<%= outcome.ok ? 'lab-message lab-success' : 'lab-note' %>" role="status" data-testid="outcome"><%= outcome.text %></p>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>
