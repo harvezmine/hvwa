@@ -36,9 +36,21 @@ export interface XmlRead {
 const PREDEFINED: Readonly<Record<string, string>> = Object.freeze({ lt: '<', gt: '>', amp: '&', apos: "'", quot: '"' });
 
 const isSpace = (c: number): boolean => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
+/** XML's NameStartChar, for one UTF-16 code unit (a code point past the BMP is checked as a surrogate pair by name()). */
 const isNameStart = (c: number): boolean =>
-  (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || c === 0x5f || c === 0x3a || (c >= 0xc0 && c !== 0xd7 && c !== 0xf7);
-const isNameChar = (c: number): boolean => isNameStart(c) || (c >= 0x30 && c <= 0x39) || c === 0x2d || c === 0x2e || c === 0xb7;
+  (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || c === 0x5f || c === 0x3a
+  || (c >= 0xc0 && c <= 0xd6) || (c >= 0xd8 && c <= 0xf6) || (c >= 0xf8 && c <= 0x2ff) || (c >= 0x370 && c <= 0x37d)
+  || (c >= 0x37f && c <= 0x1fff) || c === 0x200c || c === 0x200d || (c >= 0x2070 && c <= 0x218f) || (c >= 0x2c00 && c <= 0x2fef)
+  || (c >= 0x3001 && c <= 0xd7ff) || (c >= 0xf900 && c <= 0xfdcf) || (c >= 0xfdf0 && c <= 0xfffd);
+/** XML's NameChar, for one UTF-16 code unit. */
+const isNameChar = (c: number): boolean => isNameStart(c) || (c >= 0x30 && c <= 0x39) || c === 0x2d || c === 0x2e || c === 0xb7
+  || (c >= 0x300 && c <= 0x36f) || c === 0x203f || c === 0x2040;
+/** A surrogate pair at i that encodes a code point XML names allow (#x10000-#xEFFFF). */
+const isNamePair = (s: string, i: number): boolean => {
+  const hi = s.charCodeAt(i);
+  const lo = s.charCodeAt(i + 1);
+  return hi >= 0xd800 && hi <= 0xdb7f && lo >= 0xdc00 && lo <= 0xdfff; // high surrogates up to DB7F: at most U+EFFFF
+};
 /** XML's Char production (a surrogate pair is checked by the caller as two code units). */
 const isXmlChar = (c: number): boolean => c === 0x09 || c === 0x0a || c === 0x0d || (c >= 0x20 && c <= 0xfffd && c !== 0xfffe);
 
@@ -89,21 +101,68 @@ class Reader {
 
   private name(): string {
     const start = this.i;
-    if (this.i >= this.s.length || !isNameStart(this.s.charCodeAt(this.i))) this.fail('a name was expected');
-    this.i++;
-    while (this.i < this.s.length && isNameChar(this.s.charCodeAt(this.i))) this.i++;
+    const step = (ok: (c: number) => boolean): boolean => {
+      if (this.i >= this.s.length) return false;
+      if (isNamePair(this.s, this.i)) { this.i += 2; return true; }
+      if (!ok(this.s.charCodeAt(this.i))) return false;
+      this.i++;
+      return true;
+    };
+    if (!step(isNameStart)) this.fail('a name was expected');
+    while (step(isNameChar));
+    // The name ends where the markup goes on: a character no name may hold here (Chrome 157 stops at `<g\u2190/>`).
+    const next = this.s.charCodeAt(this.i);
+    if (this.i < this.s.length && !isSpace(next) && next !== 0x2f && next !== 0x3e && next !== 0x3d && next !== 0x3f && next !== 0x3b) {
+      this.fail('a character XML names do not allow');
+    }
     return this.s.slice(start, this.i);
+  }
+
+  /**
+   * `<?xml version="1.x" (encoding="...")? (standalone="yes|no")? ?>`, its pseudo-attributes in that order and no other
+   * (Chrome 157 stops at `version="9.9" foo="bar"`).
+   */
+  private xmlDeclaration(): void {
+    this.i += '<?xml'.length;
+    const pseudo = (name: string, valid: RegExp, required: boolean): void => {
+      const before = this.i;
+      this.skipSpace();
+      if (!this.at(name)) {
+        if (required) this.fail(`the XML declaration needs ${name}`);
+        this.i = before;
+        return;
+      }
+      if (this.i === before) this.fail('the XML declaration needs white space');
+      this.i += name.length;
+      this.skipSpace();
+      if (this.s[this.i] !== '=') this.fail('a bad XML declaration');
+      this.i++;
+      this.skipSpace();
+      const quote = this.s[this.i];
+      if (quote !== '"' && quote !== "'") this.fail('a bad XML declaration');
+      const end = this.s.indexOf(quote, this.i + 1);
+      if (end === -1 || !valid.test(this.s.slice(this.i + 1, end))) this.fail(`a bad ${name} in the XML declaration`);
+      this.i = end + 1;
+    };
+    pseudo('version', /^[0-9]+\.[0-9]+$/, true);
+    pseudo('encoding', /^[A-Za-z][A-Za-z0-9._-]*$/, false);
+    pseudo('standalone', /^(yes|no)$/, false);
+    this.skipSpace();
+    if (!this.at('?>')) this.fail('a bad XML declaration');
+    this.i += 2;
   }
 
   /** `&...;` at i: its text. Only the five predefined entities and character references are read (a DTD's are not). */
   private reference(): string {
     const end = this.s.indexOf(';', this.i);
-    if (end === -1 || end - this.i > 12) this.fail('an unterminated reference');
+    if (end === -1) this.fail('an unterminated reference');
     const body = this.s.slice(this.i + 1, end);
     this.i = end + 1;
     if (body.startsWith('#')) {
-      const n = body[1] === 'x' ? (/^[0-9a-fA-F]{1,6}$/.test(body.slice(2)) ? parseInt(body.slice(2), 16) : NaN)
-        : (/^[0-9]{1,7}$/.test(body.slice(1)) ? parseInt(body.slice(1), 10) : NaN);
+      // Any number of leading zeros (Chrome 157 reads &#x0000041;); at most 8 significant digits after them.
+      const hex = body[1] === 'x';
+      const digits = (hex ? body.slice(2) : body.slice(1)).replace(/^0+(?=.)/, '');
+      const n = (hex ? /^[0-9a-fA-F]{1,8}$/ : /^[0-9]{1,8}$/).test(digits) ? parseInt(digits, hex ? 16 : 10) : NaN;
       if (!Number.isFinite(n) || n > 0x10ffff || (n < 0x10000 && (!isXmlChar(n) || (n >= 0xd800 && n <= 0xdfff)))) this.fail('a bad character reference');
       return String.fromCodePoint(n);
     }
@@ -208,7 +267,10 @@ class Reader {
       if (a.qname === 'xmlns') scope.set('', a.value);
       else if (a.qname.startsWith('xmlns:')) {
         const p = a.qname.slice(6);
-        if (p === '' || p.includes(':') || a.value === '' || p === 'xmlns' || p === 'xml') this.fail('a bad namespace declaration');
+        // xmlns:xml may only restate the xml namespace (legal; Chrome goes on); nothing else may bind it, or xmlns.
+        if (p === 'xml' ? a.value !== NS.XML : p === '' || p.includes(':') || a.value === '' || p === 'xmlns' || a.value === NS.XML) {
+          this.fail('a bad namespace declaration');
+        }
         scope.set(p, a.value);
       }
     }
@@ -283,11 +345,7 @@ class Reader {
 
   read(): void {
     if (this.s.charCodeAt(0) === 0xfeff) this.i = 1;
-    if (this.at('<?xml') && (isSpace(this.s.charCodeAt(this.i + 5)) || this.at('<?xml?>'))) {
-      const end = this.s.indexOf('?>', this.i);
-      if (end === -1) this.fail('an unterminated XML declaration');
-      this.i = end + 2;
-    }
+    if (this.at('<?xml') && (isSpace(this.s.charCodeAt(this.i + 5)) || this.at('<?xml?>'))) this.xmlDeclaration();
     let doctypeSeen = false;
     while (this.i < this.s.length) {
       if (this.s[this.i] === '<') {

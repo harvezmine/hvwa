@@ -309,6 +309,25 @@ describe('xssOracle syntax: xml (FP2)', () => {
     for (const doc of stops) expect(xml(doc).executes, doc).toBe(false);
   });
 
+  it('matches Chrome 157 on names, the XML declaration, xmlns:xml and padded character references', () => {
+    // Chrome stops at a character XML names do not allow, and at a bad XML declaration.
+    expect(xml(svg(`<g←/><script>${M}</script>`))).toMatchObject({ executes: false, wellFormed: false });
+    expect(xml(`<?xml version="9.9" foo="bar"?>${svg(`<script>${M}</script>`)}`).executes).toBe(false);
+    expect(xml(`<?xml encoding="UTF-8" version="1.0"?>${svg(`<script>${M}</script>`)}`).executes).toBe(false); // out of order
+    expect(xml(`<?xml?>${svg(`<script>${M}</script>`)}`).executes).toBe(false); // no version
+    expect(xml(`<!DOCTYPE svg[]>${svg(`<script>${M}</script>`)}`).executes).toBe(false); // no white space before the subset
+    expect(xml(`<!DOCTYPE svg [<!ELEMENT svg ANY>]>${svg(`<script>${M}</script>`)}`).executes).toBe(true); // with it, read
+    // ... and goes on through a legal xmlns:xml declaration, zero-padded references, names in other scripts, a full declaration.
+    for (const doc of [
+      svg(`<script>${M}</script>`, ' xmlns:xml="http://www.w3.org/XML/1998/namespace"'), svg(`<text>&#x0000041;&#00065;</text><script>${M}</script>`),
+      svg(`<g data-été="1" 日本:x="1" xmlns:日本="u"/><script>${M}</script>`),
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>${svg(`<script>${M}</script>`)}`, `<?xml version='1.0'?>${svg(`<script>${M}</script>`)}`,
+    ]) {
+      expect(xml(doc), doc).toMatchObject({ executes: true, wellFormed: true });
+    }
+    expect(xml(svg(`<script>${M}</script>`, ' xmlns:xml="http://example.com/"')).executes).toBe(false); // xml bound elsewhere
+  });
+
   it("refuses a DOCTYPE whose internal subset declares an entity or an attribute default (limited: 'dtd'): Chrome runs them", () => {
     // Every one of these RAN in Chrome 157: entity text is markup or code; an ATTLIST default adds a handler.
     const runInChrome = [
