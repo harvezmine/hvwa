@@ -1,0 +1,3 @@
+<%# Relic Market shop header, shared by the shop labs: the shop name (heading), the signed-in customer and the wallet with its data-cents hook. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <h1><%= heading %></h1>
+  <p class="lab-note">Signed in as <code><%= customer.username %></code> (customer <code><%= customer.id %></code>, <%= customer.email %>). Wallet: <strong data-testid="wallet" data-cents="<%= wallet.cents %>"><%= wallet.text %></strong></p>

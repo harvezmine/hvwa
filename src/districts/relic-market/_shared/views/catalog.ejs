@@ -1,0 +1,18 @@
+<%# Relic Market catalog: one add-to-cart form per product (intent add, the SKU, the level's hidden fields rendered verbatim, a quantity text field that keeps what was typed). Hooks: data-product, data-price. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <h2>Catalog</h2>
+  <ul class="shop-catalog">
+<% catalog.forEach(function (p) { -%>
+    <li data-product="<%= p.sku %>" data-price="<%= p.price.cents %>">
+      <p><strong><%= p.name %></strong> (<code><%= p.sku %></code>), <%= p.price.text %>. <%= p.blurb %></p>
+      <form method="post">
+        <input type="hidden" name="intent" value="add">
+        <input type="hidden" name="sku" value="<%= p.sku %>">
+<% p.fields.forEach(function (f) { -%>
+        <input type="hidden" name="<%= f[0] %>" value="<%= f[1] %>">
+<% }); -%>
+        <label>Quantity <input name="qty" type="text" autocomplete="off" spellcheck="false" value="<%= p.qty %>"></label>
+        <button type="submit">Add to cart</button>
+      </form>
+    </li>
+<% }); -%>
+  </ul>

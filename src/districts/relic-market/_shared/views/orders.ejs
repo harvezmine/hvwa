@@ -1,0 +1,16 @@
+<%# Relic Market orders, newest first; a proving order carries its flag line. Hooks: li data-order data-total data-charged data-status, data-testid order-flag. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <h2>Your orders</h2>
+<% if (orders.length === 0) { -%>
+  <p class="lab-note">No orders yet.</p>
+<% } else { -%>
+  <ul class="shop-orders">
+<% orders.forEach(function (o) { -%>
+    <li data-order="<%= o.no %>" data-total="<%= o.total.cents %>" data-charged="<%= o.charged.cents %>" data-status="<%= o.status %>">
+      <p>Order #<%= o.no %>, <%= o.status %><% if (o.at) { %>, <time datetime="<%= o.at %>"><%= o.at %></time><% } %>: <% o.lines.forEach(function (l, i) { %><%= i ? '; ' : '' %><%= l.name %><% if (l.kind === 'return') { %> (return)<% } %> × <%= l.qty %> at <%= l.unit.text %><% }); %>. Total <%= o.total.text %>, charged <%= o.charged.text %>.</p>
+<% if (o.flag) { -%>
+      <p class="lab-message lab-success" data-testid="order-flag"><%= o.flag %></p>
+<% } -%>
+    </li>
+<% }); -%>
+  </ul>
+<% } -%>
