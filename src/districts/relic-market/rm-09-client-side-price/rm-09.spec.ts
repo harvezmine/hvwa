@@ -2,26 +2,26 @@
 import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import { describeExploitMatrix, describeLabView, freshSession, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
+import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
-import { cartOf, describeShopBasics, ordersOf, productForm, walletOf } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, ordersOf, productForm, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM09 } from './challenge.js'; // registers RM-09 before createApp() inside freshSession
 import { PRICE_LISTS, labState } from './model.js';
 
 const LAB = '/d/relic-market/client-side-price';
-interface Ctx { readonly agent: Agent; readonly level: Level; readonly sid: string }
+type Ctx = ShopCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 
 const sha256hex = (s: string) => createHash('sha256').update(s).digest('hex');
-const add = (c: Ctx, body: Record<string, string>) => c.agent.post(`${LAB}/cart?level=${c.level}`).type('form').send(body);
-const checkout = (c: Ctx) => c.agent.post(`${LAB}/checkout?level=${c.level}`).type('form').send({});
-const home = (c: Ctx) => c.agent.get(`${LAB}?level=${c.level}`);
-const ctx = async (level: Level): Promise<Ctx> => { const { agent, sid } = await freshSession(); return { agent, level, sid }; };
+const shop = shopClient(LAB);
+const { checkout, form, home, ctx, restart } = shop;
+/** POST <lab>/cart with exactly these fields (what a script or a devtools edit sends). */
+const add = (c: Ctx, body: Record<string, string>) => shop.post(c, '/cart', body);
 /** Add a product the way the browser does: with its own form's fields (the level's hidden ones included). */
 const addWithOwnForm = async (c: Ctx, sku: string, qty = '1') => {
   const fields = productForm((await home(c)).text, sku);
-  return c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ ...fields, qty });
+  return form(c, { ...fields, qty });
 };
 
 // Acolyte: the server charges the hidden price field.
@@ -42,7 +42,7 @@ describeExploitMatrix<Script>({
   resisted: 'Insufficient funds: the total is $500.00 and your wallet holds $25.00.',
   legit: [{
     name: 'buy a votive candle with the form\'s own hidden fields',
-    input: async (c) => { await addWithOwnForm(c, 'CANDLE'); return c.agent.post(`${LAB}?level=${c.level}`).type('form').send({ intent: 'checkout' }); },
+    input: async (c) => { await addWithOwnForm(c, 'CANDLE'); return form(c, { intent: 'checkout' }); },
     expect: 'Order #1 placed',
   }],
   malformed: [],
@@ -184,7 +184,7 @@ describe('RM-09 client-side price', () => {
     const c = await ctx('templar');
     await templarExploit(c);
     expect(walletOf((await home(c)).text)).toBe(2400);
-    expect((await c.agent.post(`${LAB}/_reset?level=templar`)).status).toBe(303);
+    expect((await restart(c)).status).toBe(303);
     const fresh = (await home(c)).text;
     expect(walletOf(fresh)).toBe(2500);
     expect(ordersOf(fresh)).toEqual([]);

@@ -1,25 +1,22 @@
 // src/districts/relic-market/rm-05-negative-quantity/rm-05.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import { describeExploitMatrix, describeLabView, freshSession, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
-import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tests/helpers.js';
+import { LEVELS } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
-import { cartOf, describeShopBasics, ordersOf, walletOf } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, ordersOf, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM05 } from './challenge.js'; // registers RM-05 before createApp() inside freshSession
 import { labState } from './model.js';
 
 const LAB = '/d/relic-market/negative-quantity';
-interface Ctx { readonly agent: Agent; readonly level: Level; readonly sid: string }
+type Ctx = ShopCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 
-// The named paths (what curl and scripts use) ...
-const add = (c: Ctx, sku: string, qty: string) => c.agent.post(`${LAB}/cart?level=${c.level}`).type('form').send({ sku, qty });
-const giveBack = (c: Ctx, sku: string, qty: string) => c.agent.post(`${LAB}/cart/return?level=${c.level}`).type('form').send({ sku, qty });
-const checkout = (c: Ctx) => c.agent.post(`${LAB}/checkout?level=${c.level}`).type('form').send({});
-// ... and the page's own forms (POST / with a hidden intent).
-const form = (c: Ctx, body: Record<string, string>) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send(body);
-const home = (c: Ctx) => c.agent.get(`${LAB}?level=${c.level}`);
-const ctx = async (level: Level): Promise<Ctx> => { const { agent, sid } = await freshSession(); return { agent, level, sid }; };
+// The named paths (what curl and scripts use: add, checkout, the return door) and the page's own forms (form, POST /
+// with a hidden intent).
+const shop = shopClient(LAB);
+const { add, checkout, form, home, ctx, restart } = shop;
+const giveBack = (c: Ctx, sku: string, qty: string) => shop.post(c, '/cart/return', { sku, qty });
 
 // Acolyte: any integer is a quantity, so 25 rosaries at -$40.00 pay for the $1,000.00 reliquary.
 const acolyteExploit: Script = async (c) => { await add(c, 'RELIQUARY', '1'); await add(c, 'ROSARY', '-25'); return checkout(c); };
@@ -200,7 +197,7 @@ describe('RM-05 negative quantity', () => {
     const c = await ctx('acolyte');
     await inquisitorExploit(c); // works at acolyte too: wallet $10.00, two orders
     expect(walletOf((await home(c)).text)).toBe(1000);
-    expect((await c.agent.post(`${LAB}/_reset?level=acolyte`)).status).toBe(303);
+    expect((await restart(c)).status).toBe(303);
     const fresh = (await home(c)).text;
     expect(walletOf(fresh)).toBe(5000);
     expect(ordersOf(fresh)).toEqual([]);

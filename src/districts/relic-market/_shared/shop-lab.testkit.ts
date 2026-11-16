@@ -3,6 +3,7 @@
 // A test kit (docs/RECIPES.md section 1): `*.testkit.ts` is never collected as a spec and never reaches dist/.
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import type request from 'supertest';
+import type { Express } from 'express';
 import { FLAG_RE, freshSession, unescapeHtml, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import type { Challenge } from '../../../core/registry.js';
@@ -127,6 +128,33 @@ export function pricesOf(html: string): { readonly sku: string; readonly price: 
   return [...html.matchAll(/<li data-product="([^"]*)" data-price="(-?\d+)">/g)].map(([, sku, price]) => ({ sku: unescapeHtml(sku), price: Number(price) }));
 }
 
+// --- A shop lab's requests, as its specs send them -----------------------------------------------------------------
+
+/** One player's session at one level (the matrix's send also hands over the app). */
+export interface ShopCtx { readonly agent: Agent; readonly level: Level; readonly sid: string; readonly app?: Express }
+
+/**
+ * The requests every shop spec sends, for the lab at `path`: `ctx(level)` (a fresh session), `home(c)` (GET the page),
+ * `form(c, body)` (a page form: POST / with the body's hidden intent), `post(c, sub, body?)` (a named path, e.g.
+ * '/cart/return'), `add(c, sku, qty, extra?)` (POST /cart), `checkout(c)` (POST /checkout), `restart(c)` (POST /_reset).
+ */
+export function shopClient(path: string) {
+  const url = (c: Pick<ShopCtx, 'level'>, sub = '') => `${path}${sub}?level=${c.level}`;
+  const post = (c: ShopCtx, sub: string, body: Readonly<Record<string, string>> = {}) => c.agent.post(url(c, sub)).type('form').send({ ...body });
+  return {
+    ctx: async (level: Level): Promise<ShopCtx> => {
+      const { agent, sid, app } = await freshSession();
+      return { agent, level, sid, app };
+    },
+    home: (c: ShopCtx) => c.agent.get(url(c)),
+    form: (c: ShopCtx, body: Readonly<Record<string, string>>) => post(c, '', body),
+    post,
+    add: (c: ShopCtx, sku: string, qty: string, extra: Readonly<Record<string, string>> = {}) => post(c, '/cart', { ...extra, sku, qty }),
+    checkout: (c: ShopCtx) => post(c, '/checkout'),
+    restart: (c: ShopCtx) => c.agent.post(url(c, '/_reset')),
+  };
+}
+
 // --- describeShopBasics -------------------------------------------------------------------------------------------
 
 export interface ShopBasicsSpec {
@@ -137,28 +165,34 @@ export interface ShopBasicsSpec {
   readonly labState: (sessionId: string, level: Level) => ShopState;
   /** Whether the lab has Restart (POST <lab>/_reset); without it the route must be 404. */
   readonly hasRestart: boolean;
+  /**
+   * One ordinary purchase that places an order and spends from the wallet (default: the cheapest product bought with
+   * its own add-to-cart form, then the page's checkout). A lab without a cart passes its own (a store-credit buy).
+   */
+  readonly purchase?: (agent: Agent, level: Level) => Promise<request.Response>;
+  /** false for a lab without a cart: the cart checks (21st line, Restart empties the cart) are skipped. Default true. */
+  readonly hasCart?: boolean;
 }
 
 /**
  * What every shop lab shares, through the real pages: GET / at every level, per-player and per-level isolation of a
  * purchase, Restart (start wallet, empty cart and orders, the cooldown answers 429) or no Restart (404), the 21st cart
- * line refused, orders trimmed to the newest 30, and money formatted as US dollars, negatives included. A purchase is
- * the cheapest product bought with its own add-to-cart form (whatever hidden fields the level puts there), then the
- * page's checkout.
+ * line refused, orders trimmed to the newest 30, and money formatted as US dollars, negatives included.
  */
 export function describeShopBasics(o: ShopBasicsSpec): void {
   const levels = LEVELS.filter((l) => o.challenge.levels.includes(l));
   const first = levels[0];
+  const hasCart = o.hasCart ?? true;
   const url = (level: Level) => `${o.path}?level=${level}`;
   const page = async (agent: Agent, level: Level) => (await agent.get(url(level))).text;
   const post = (agent: Agent, level: Level, body: Record<string, string>) => agent.post(url(level)).type('form').send(body);
   const byPrice = (html: string) => [...pricesOf(html)].sort((a, b) => a.price - b.price);
   /** The cheapest product's own add-to-cart form, quantity 1. */
   const cheapestForm = (html: string) => ({ ...productForm(html, byPrice(html)[0].sku), qty: '1' });
-  const buy = async (agent: Agent, level: Level): Promise<request.Response> => {
+  const buy = o.purchase ?? (async (agent: Agent, level: Level): Promise<request.Response> => {
     await post(agent, level, cheapestForm(await page(agent, level)));
     return post(agent, level, { intent: 'checkout' });
-  };
+  });
 
   describe(`${o.challenge.id} shop basics`, () => {
     it('GET / answers 200 at every level, signed in as pilgrim, with the start wallet', async () => {
@@ -204,10 +238,10 @@ export function describeShopBasics(o: ShopBasicsSpec): void {
         const { agent, sid } = await freshSession();
         const start = o.labState(sid, first).startWallet;
         await buy(agent, first);
-        await post(agent, first, cheapestForm(await page(agent, first)));
+        if (hasCart) await post(agent, first, cheapestForm(await page(agent, first)));
         const before = await page(agent, first);
         expect(ordersOf(before)).toHaveLength(1);
-        expect(cartOf(before)).toHaveLength(1);
+        expect(cartOf(before)).toHaveLength(hasCart ? 1 : 0);
         const res = await agent.post(`${o.path}/_reset?level=${first}`);
         expect(res.status).toBe(303);
         expect(res.headers.location).toBe(url(first));
@@ -225,29 +259,28 @@ export function describeShopBasics(o: ShopBasicsSpec): void {
       });
     }
 
-    it('platform safety: a 21st cart line is refused', async () => {
-      const { agent, sid } = await freshSession();
-      const html = await page(agent, first);
-      const priciest = byPrice(html).at(-1);
-      if (priciest === undefined) throw new Error('the catalog is empty');
-      const state = o.labState(sid, first);
-      // A full cart through the seam (a shop of a few SKUs cannot fill one through its forms).
-      for (let i = 0; i < LIMITS.cartLines; i++) state.cart.push({ sku: priciest.sku, qty: 1, unitPrice: priciest.price });
-      const res = await post(agent, first, cheapestForm(html));
-      expect(res.status).toBe(200);
-      expect(res.text).toContain('Your cart is full (20 lines).');
-      expect(cartOf(res.text)).toHaveLength(LIMITS.cartLines);
-    });
+    if (hasCart) {
+      it('platform safety: a 21st cart line is refused', async () => {
+        const { agent, sid } = await freshSession();
+        const html = await page(agent, first);
+        const priciest = byPrice(html).at(-1);
+        if (priciest === undefined) throw new Error('the catalog is empty');
+        const state = o.labState(sid, first);
+        // A full cart through the seam (a shop of a few SKUs cannot fill one through its forms).
+        for (let i = 0; i < LIMITS.cartLines; i++) state.cart.push({ sku: priciest.sku, qty: 1, unitPrice: priciest.price });
+        const res = await post(agent, first, cheapestForm(html));
+        expect(res.status).toBe(200);
+        expect(res.text).toContain('Your cart is full (20 lines).');
+        expect(cartOf(res.text)).toHaveLength(LIMITS.cartLines);
+      });
+    }
 
     it('platform safety: the order list keeps the newest 30', async () => {
       const { agent, sid } = await freshSession();
-      const form = cheapestForm(await page(agent, first));
+      await page(agent, first);
       o.labState(sid, first).wallet = 10_000_000;
       let last: request.Response | undefined;
-      for (let i = 0; i < LIMITS.orders + 1; i++) {
-        await post(agent, first, form);
-        last = await post(agent, first, { intent: 'checkout' });
-      }
+      for (let i = 0; i < LIMITS.orders + 1; i++) last = await buy(agent, first);
       const nos = ordersOf(last?.text ?? '').map((x) => x.no);
       expect(nos).toEqual(Array.from({ length: LIMITS.orders }, (_, i) => LIMITS.orders + 1 - i));
     });

@@ -1,24 +1,20 @@
 // src/districts/relic-market/rm-14-cart-total-overflow/rm-14.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import { describeExploitMatrix, describeLabView, freshSession, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
-import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tests/helpers.js';
+import { LEVELS } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
 import { exactValue } from '../_shared/shop.js';
-import { cartOf, describeShopBasics, ordersOf, walletOf } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, ordersOf, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM14 } from './challenge.js'; // registers RM-14 before createApp() inside freshSession
 import { labState } from './model.js';
 
 const LAB = '/d/relic-market/cart-total-overflow';
 const INT32_MAX = 2_147_483_647;
-interface Ctx { readonly agent: Agent; readonly level: Level; readonly sid: string }
+type Ctx = ShopCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const add = (c: Ctx, sku: string, qty: string) => c.agent.post(`${LAB}/cart?level=${c.level}`).type('form').send({ sku, qty });
-const checkout = (c: Ctx) => c.agent.post(`${LAB}/checkout?level=${c.level}`).type('form').send({});
-const form = (c: Ctx, body: Record<string, string>) => c.agent.post(`${LAB}?level=${c.level}`).type('form').send(body);
-const home = (c: Ctx) => c.agent.get(`${LAB}?level=${c.level}`);
-const ctx = async (level: Level): Promise<Ctx> => { const { agent, sid } = await freshSession(); return { agent, level, sid }; };
+const { add, checkout, form, home, ctx, restart } = shopClient(LAB);
 const cartTotal = (html: string) => Number(/data-testid="cart-total" data-cents="(-?\d+)"/.exec(html)?.[1]);
 
 // Acolyte: Math.imul(999900, 3000) wraps to -1 295 267 296, which is "affordable" and credits the wallet.
@@ -144,7 +140,7 @@ describe('RM-14 integer overflow in cart total', () => {
     expect(big.text).toContain('$34,649,998.02');
     expect((await checkout(c)).text).toContain('Orders above $1,000,000.00 need a quote.');
     await add(c, 'THRONE', '0'); // refused: the line stays
-    await c.agent.post(`${LAB}/_reset?level=divine`);
+    await restart(c);
     await add(c, 'ALTAR', '6'); // $1,199,999.94
     expect((await checkout(c)).text).toContain('Orders above $1,000,000.00 need a quote.');
     await add(c, 'ALTAR', '5'); // $999,999.95: under the cap, so the wallet decides
@@ -181,7 +177,7 @@ describe('RM-14 integer overflow in cart total', () => {
     const c = await ctx('inquisitor');
     await inquisitorExploit(c);
     expect(walletOf((await home(c)).text)).toBe(4900);
-    expect((await c.agent.post(`${LAB}/_reset?level=inquisitor`)).status).toBe(303);
+    expect((await restart(c)).status).toBe(303);
     const fresh = (await home(c)).text;
     expect(walletOf(fresh)).toBe(5000);
     expect(ordersOf(fresh)).toEqual([]);
