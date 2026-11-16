@@ -296,6 +296,15 @@ function noteOf(note: unknown, action: string): Text | string {
   throw new Error(`victim action "${action}": run must return a string, bilingual text { id, en } or nothing`);
 }
 
+/**
+ * A Location with no target, as a browser reads it: WHATWG drops tabs and newlines and strips leading and trailing C0
+ * controls and spaces, so a Location made only of those (or empty) is blank. One anchored character class: linear
+ * (a trim regex such as /^\s+|\s+$/ is quadratic on a long run of spaces inside a level-made Location).
+ */
+export function isBlankLocation(raw: string): boolean {
+  return /^[\u0000-\u0020]*$/.test(raw);
+}
+
 /** The redirect statuses sendSimRedirect answers with (Fetch's redirect statuses). */
 export type SimRedirectStatus = 301 | 302 | 303 | 307 | 308;
 const awayView = join(dirname(fileURLToPath(import.meta.url)), 'views', 'sim-away.ejs');
@@ -317,9 +326,8 @@ export async function sendSimRedirect(res: Response, location: string, status: S
   const base = labPath(res);
   const raw = str(location);
   // No target (an empty, blank or non-string Location, e.g. an empty redirect_uri) would resolve to this very route
-  // and redirect the browser to itself forever: say so instead. Blank as a browser sees it: WHATWG drops tabs and
-  // newlines, and leading or trailing C0 controls and spaces.
-  if (raw.replace(/[\t\n\r]/g, '').replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '') === '') {
+  // and redirect the browser to itself forever: say so instead.
+  if (isBlankLocation(raw)) {
     await sendPage(res, awayView, { away: '' });
     return;
   }
