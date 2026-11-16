@@ -249,7 +249,9 @@ export function exploitMatrixCases<I>(m: ExploitMatrix<I>): MatrixCase[] {
   const send = async (level: Level, input: I) => {
     const { agent, sid, app } = await freshSession();
     const res = await m.send(agent, level, input, `${m.path}?level=${level}`, { sid, app });
-    return { agent, res, text: res.text ?? '' };
+    // An octet-stream answer has no res.text (supertest buffers it in res.body): scan its bytes too, so a flag in a download is seen.
+    const text = res.text || (Buffer.isBuffer(res.body) ? res.body.toString('latin1') : '');
+    return { agent, res, text };
   };
   const cases: MatrixCase[] = [];
   const add = (name: string, run: () => Promise<void>) => { cases.push({ name, run }); };

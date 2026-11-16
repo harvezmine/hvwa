@@ -1,0 +1,32 @@
+<%# SC-10 archive restore page. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Archive Restore</h1>
+  <p class="lab-note">You are signed in as <code>pilgrim</code>. Restore your workspace from a .zip archive: the server extracts each file into <code><%= restoreDir %></code>. The welcome page below is rendered from the template <code><%= sentinel %></code>.</p>
+  <form method="post" enctype="multipart/form-data">
+    <label>Archive <input name="archive" type="file" accept=".zip"></label>
+    <label>Note <input name="caption" type="text" value="<%= caption %>" autocomplete="off"></label>
+    <button type="submit">Restore</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+<% if (lines.length > 0) { -%>
+  <ul class="restore-report" data-testid="restore-report">
+<% for (const l of lines) { -%>
+    <li class="<%= l.ok ? 'restore-ok' : 'restore-skipped' %>"><%= l.text %></li>
+<% } -%>
+  </ul>
+<% } -%>
+  <h2>Welcome page</h2>
+  <p class="lab-note">The welcome template is a script in the archive server's own language, so it is run each time the page is drawn.</p>
+  <pre data-testid="welcome"><%= welcome %></pre>
+  <%- include('../../_shared/views/statement-note') %>
+  <p class="lab-note">Names inside an archive are plain bytes, and a tool may rewrite them as it writes the archive. Python's <code>zipfile</code> on Windows turns a backslash in <code>ZipInfo(name)</code> into a slash; set <code>.filename</code> on the <code>ZipInfo</code> afterwards to keep exactly what you wrote.</p>
+  <%- include('../../_shared/views/upload-curl', { upload: upload }) %>
+  <h2>Restore folder</h2>
+  <ul class="desk-files" data-testid="restore-files">
+<% for (const f of files) { -%>
+    <li data-path="<%= f %>"><%= f %></li>
+<% } -%>
+  </ul>
+</section>

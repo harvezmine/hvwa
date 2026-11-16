@@ -3,4 +3,5 @@
 // Importing this module for its side effects must happen before createApp().
 import './gatekeeper/index.js';
 import './relic-market/index.js';
+import './scriptorium/index.js';
 import './forum-of-pilgrims/index.js';

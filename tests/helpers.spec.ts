@@ -36,7 +36,7 @@ describe('DB_ERROR_RE', () => {
 
 // A 3-level fixture lab (no inquisitor). `mode` breaks it in one way at a time
 // so each matrix case can be shown to go red.
-const SOUND = { acolyteSecure: false, templarLikeAcolyte: false, divineVulnerable: false, divineLeaks: false, divineFlags: false };
+const SOUND = { acolyteSecure: false, templarLikeAcolyte: false, divineVulnerable: false, divineLeaks: false, divineFlags: false, binaryFlags: false };
 const mode = { ...SOUND };
 afterEach(() => { Object.assign(mode, SOUND); });
 
@@ -72,6 +72,12 @@ const HM01 = register(defineChallenge({
         out = `Pwned. ${flagFor(req, HM01)}`;
       } else {
         out = 'Denied.';
+      }
+      // A flag carried by an octet-stream body: supertest gives no res.text for it, only a Buffer in res.body.
+      if (mode.binaryFlags && q.endsWith('-EXPLOIT') && (level === 'divine' || out.includes('HVWA{'))) {
+        const bin = level === 'divine' ? `xx ${issueFlag(HM01.id, req.sessionId, 'acolyte')} xx` : out;
+        res.type('application/octet-stream').send(Buffer.from(bin, 'latin1'));
+        return;
       }
       res.type('text').send(out);
     });
@@ -157,6 +163,13 @@ describe('exploitMatrixCases', () => {
     mode.divineLeaks = true;
     await expect(caseNamed(parser, 'divine: malformed "bad xml" shows no error text')).rejects.toThrow(/divine leaked error text/);
     await expect(caseNamed(xml, 'divine: malformed "bad xml" shows no error text')).resolves.toBeUndefined(); // default misses it
+  });
+
+  it('a flag in an octet-stream body (no res.text) is found: credited at its level, and caught when Divine leaks one', async () => {
+    mode.binaryFlags = true;
+    await expect(caseNamed(MATRIX, 'acolyte: exploit reveals a flag credited at acolyte')).resolves.toBeUndefined();
+    await expect(caseNamed(MATRIX, 'divine resists the acolyte exploit')).rejects.toThrow(/divine (showed a flag|answered)/);
+    await expect(caseNamed(MATRIX, 'templar resists the acolyte exploit (step-up)')).resolves.toBeUndefined();
   });
 
   it('(g) step-up goes red when a level is no harder than the one below', async () => {

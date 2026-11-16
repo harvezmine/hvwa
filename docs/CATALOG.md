@@ -5,13 +5,13 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 28/122 registered**
+**Total: 32/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
 | Relic Market | 7 | 7 |
-| Scriptorium | 0 | 20 |
+| Scriptorium | 4 | 16 |
 | Forum of Pilgrims | 3 | 9 |
 | Archive API | 0 | 15 |
 | Oracle | 0 | 21 |
@@ -67,7 +67,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Scriptorium
 
-0/20 registered
+4/20 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -77,11 +77,11 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | SC-04 | Markdown renderer XSS | A05 | A T I D | 2 | planned |
 | SC-05 | SVG upload XSS | A05 | A T I D | 2 | planned |
 | SC-06 | mXSS sanitizer bypass | A05 | A I D | 2 | planned |
-| SC-07 | Upload webshell (ext bypass) | A05 | A T I D | 2 | planned |
-| SC-08 | Upload double-extension | A05 | A T I D | 2 | planned |
+| SC-07 | Upload webshell (ext bypass) | A05 | A T I D | 2 | ✅ registered |
+| SC-08 | Upload double-extension | A05 | A T I D | 2 | ✅ registered |
 | SC-09 | Upload polyglot image | A05 | A I D | 2 | planned |
-| SC-10 | ZIP slip | A01 | A T I D | 2 | planned |
-| SC-11 | Path traversal download | A01 | A T I D | 2 | planned |
+| SC-10 | ZIP slip | A01 | A T I D | 2 | ✅ registered |
+| SC-11 | Path traversal download | A01 | A T I D | 2 | ✅ registered |
 | SC-12 | Path traversal Unicode/double-encode | A01 | A I D | 3 | planned |
 | SC-13 | LFI → log poisoning RCE | A05 | A I D | 3 | planned |
 | SC-14 | XXE via DOCX | A05 | A T I D | 3 | planned |
