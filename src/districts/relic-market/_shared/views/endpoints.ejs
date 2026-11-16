@@ -1,0 +1,4 @@
+<%# Relic Market endpoint list: one line naming each intent's own door (absolute, with the served level) and its fields, for curl and scripts. Renders nothing for a page without endpoints. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<% if (endpoints.length > 0) { -%>
+  <p class="lab-note" data-testid="endpoints">Endpoints: <% endpoints.forEach(function (e, i) { %><%= i ? '; ' : '' %><code><%= e.method %> <%= e.href %></code><% if (e.fields.length > 0) { %> (<%= e.fields.join(', ') %>)<% } %><% }); %>. The forms on this page post the same fields to <code><%= base %>?level=<%= served %></code> with a hidden <code>intent</code>.</p>
+<% } -%>

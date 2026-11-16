@@ -98,43 +98,67 @@ export function welcome(
 export interface Money { readonly cents: number; readonly text: string }
 const money = (cents: number): Money => ({ cents, text: formatMoney(cents) });
 
-/** What shopView needs from a lab besides its state. */
-export interface ShopViewSpec {
-  readonly challenge: Pick<Challenge, 'id' | 'levels'>;
+// --- View data, in parts: the base every Relic Market page has, and the catalog, cart and orders of a shop ----------
+
+/** What baseView needs: the parts of a page that every Relic Market lab has, shop or not. */
+export interface BaseViewSpec {
   readonly result: Result | null;
-  /** The cart as the lab computed it (exactTotals, or the level's own arithmetic). */
-  readonly totals: CartTotals;
-  /** The lab's proof (model.ts): each order it holds for gets the flag line below Divine. */
-  readonly proves: (order: Order) => boolean;
-  /** The page's curl line (src/districts/_shared/curl.ts). */
+  /** The page's curl line (src/districts/_shared/curl.ts); `signIn: false` for these labs, where nobody signs in. */
   readonly curl: CurlSpec;
-  /** The level's hidden fields of a product's add-to-cart form, rendered verbatim (default none). */
-  readonly fields?: (p: Product) => Readonly<Record<string, string>>;
+  /** The intents' own doors (endpointsOf, or what mountIntents returned), for the one-line endpoint list. */
+  readonly endpoints?: readonly Endpoint[];
   /** The lab's GET endpoints for the API box, paths below the lab. */
   readonly api?: readonly { readonly path: string; readonly description: string }[];
+  /** The wallet (cents) the header shows; omit it and the header shows none. */
+  readonly wallet?: number;
+  /** The intent that ran (Outcome.intent); absent, the body's `intent` field is used. */
+  readonly intent?: string;
   /** Lab-specific view data (never a reserved view key). */
   readonly extra?: Readonly<Record<string, unknown>>;
 }
 
-const isoTime = (ms: number): string => (Number.isFinite(ms) && Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString() : '');
+/** What the player typed in the form that was posted: the intent that ran, and the `sku` and `qty` fields. */
+const keptOf = (req: Request, intent: string | undefined) => ({ intent: intent ?? field(req, 'intent'), sku: field(req, 'sku'), qty: field(req, 'qty') });
 
 /**
- * The shared view data of a shop page, for the partials in views/: `base` (labPath), `served` (the level; `level` is a
- * reserved view key), the customer, the wallet, catalog rows (with the level's hidden fields and the quantity the player
- * typed kept in that product's field), the cart with the lab's line totals and total, the orders newest first (each
- * proving one with its flag line), `kept`, the API box, the curl line, `result`, and the lab's `extra`.
+ * The base of every Relic Market page, for views/shop-header, message, endpoints and api and the curl note: `base`
+ * (labPath), `served` (the level; `level` is a reserved view key), the customer, the wallet or null, `result`, `kept`
+ * (keptOf), `curl`, `endpoints` (with absolute hrefs), `api`, then the lab's `extra`.
  */
-export function shopView(req: Request, res: Response, state: ShopState, spec: ShopViewSpec): Record<string, unknown> {
+export function baseView(req: Request, res: Response, spec: BaseViewSpec): Record<string, unknown> {
   const base = labPath(res);
-  const kept = { sku: field(req, 'sku'), qty: field(req, 'qty') };
-  const { totals } = spec;
-  const nameOf = (sku: string): string => state.catalog.get(sku)?.name ?? sku;
+  const href = (path: string) => `${base}${path}?level=${req.level}`;
   return {
-    base, served: req.level, customer: CUSTOMER, wallet: money(state.wallet), result: spec.result, kept,
+    base, served: req.level, customer: CUSTOMER, wallet: spec.wallet === undefined ? null : money(spec.wallet),
+    result: spec.result, kept: keptOf(req, spec.intent),
+    endpoints: (spec.endpoints ?? []).map((e) => ({ method: e.method, path: e.path, href: href(e.path), fields: e.fields })),
+    api: (spec.api ?? []).map((e) => ({ method: 'GET', path: e.path, href: href(e.path), description: e.description })),
+    curl: curlFor(req, res, spec.curl),
+    ...spec.extra,
+  };
+}
+
+/**
+ * The catalog part (views/catalog): one row per product with the level's hidden fields (`fields`, rendered verbatim)
+ * and the quantity field, which keeps what the player typed only after an `add` of that product.
+ */
+export function catalogView(
+  req: Request, state: ShopState,
+  o: { readonly fields?: (p: Product) => Readonly<Record<string, string>>; readonly intent?: string } = {},
+): { catalog: unknown[] } {
+  const kept = keptOf(req, o.intent);
+  return {
     catalog: state.catalog.products.map((p) => ({
       sku: p.sku, name: p.name, blurb: p.blurb, price: money(p.price),
-      fields: Object.entries(spec.fields?.(p) ?? {}), qty: kept.sku === p.sku ? kept.qty : '1',
+      fields: Object.entries(o.fields?.(p) ?? {}), qty: kept.intent === 'add' && kept.sku === p.sku ? kept.qty : '1',
     })),
+  };
+}
+
+/** The cart part (views/cart): each line with the lab's line total (or its note), and the total (or its note). */
+export function cartView(state: ShopState, totals: CartTotals): { cart: unknown } {
+  const nameOf = (sku: string): string => state.catalog.get(sku)?.name ?? sku;
+  return {
     cart: {
       rows: totals.lines.map(({ line, total }) => ({
         sku: line.sku, name: nameOf(line.sku), qty: line.qty, kind: line.kind ?? '', unit: money(line.unitPrice),
@@ -143,14 +167,49 @@ export function shopView(req: Request, res: Response, state: ShopState, spec: Sh
       total: typeof totals.total === 'number' ? money(totals.total) : null,
       note: typeof totals.total === 'string' ? totals.total : '',
     },
-    orders: [...state.orders].reverse().map((o) => ({
-      no: o.no, status: o.status, at: isoTime(o.at),
-      lines: o.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty, kind: l.kind ?? '', unit: money(l.unitPrice) })),
-      total: money(o.total), charged: money(o.charged),
-      flag: spec.proves(o) ? flagLine(req, spec.challenge) : '',
+  };
+}
+
+const isoTime = (ms: number): string => (Number.isFinite(ms) && Math.abs(ms) <= 8.64e15 ? new Date(ms).toISOString() : '');
+
+/** The orders part (views/orders): newest first, each order the lab's proof holds for with its flag line (flagLine). */
+export function ordersView(
+  req: Pick<Request, 'sessionId' | 'level'>, state: ShopState,
+  o: { readonly challenge: Pick<Challenge, 'id' | 'levels'>; readonly proves: (order: Order) => boolean },
+): { orders: unknown[] } {
+  return {
+    orders: [...state.orders].reverse().map((order) => ({
+      no: order.no, status: order.status, at: isoTime(order.at),
+      lines: order.lines.map((l) => ({ sku: l.sku, name: l.name, qty: l.qty, kind: l.kind ?? '', unit: money(l.unitPrice) })),
+      total: money(order.total), charged: money(order.charged),
+      flag: o.proves(order) ? flagLine(req, o.challenge) : '',
     })),
-    api: (spec.api ?? []).map((e) => ({ method: 'GET', path: e.path, href: `${base}${e.path}?level=${req.level}`, description: e.description })),
-    curl: curlFor(req, res, spec.curl),
-    ...spec.extra,
+  };
+}
+
+/** What shopView needs from a cart-and-checkout lab besides its state. */
+export interface ShopViewSpec extends Omit<BaseViewSpec, 'wallet'> {
+  readonly challenge: Pick<Challenge, 'id' | 'levels'>;
+  /** The cart as the lab computed it (exactTotals, or the level's own arithmetic). */
+  readonly totals: CartTotals;
+  /** The lab's proof (model.ts): each order it holds for gets the flag line below Divine. */
+  readonly proves: (order: Order) => boolean;
+  /** The level's hidden fields of a product's add-to-cart form, rendered verbatim (default none). */
+  readonly fields?: (p: Product) => Readonly<Record<string, string>>;
+}
+
+/**
+ * The whole view data of a cart-and-checkout page: baseView (with the shop's wallet), catalogView, cartView and
+ * ordersView, then the lab's `extra`. A lab without a cart (store credit, an exchange, an API) uses baseView and the
+ * parts it has.
+ */
+export function shopView(req: Request, res: Response, state: ShopState, spec: ShopViewSpec): Record<string, unknown> {
+  const { extra, ...base } = spec;
+  return {
+    ...baseView(req, res, { ...base, wallet: state.wallet }),
+    ...catalogView(req, state, { fields: spec.fields, intent: spec.intent }),
+    ...cartView(state, spec.totals),
+    ...ordersView(req, state, { challenge: spec.challenge, proves: spec.proves }),
+    ...extra,
   };
 }

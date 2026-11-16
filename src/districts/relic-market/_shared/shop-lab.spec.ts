@@ -9,7 +9,9 @@ import { FLAG_RE } from '../../../../tests/helpers.js';
 import { flagFor } from '../../../core/mount.js';
 import type { Level } from '../../../core/levels.js';
 import { catalogOf, exactTotals, newShop, placeOrder, orderLines, setLine, type Order, type ShopState } from './shop.js';
-import { endpointsOf, flagLine, mountIntents, shopView, welcome, type Intent, type Outcome } from './shop-lab.js';
+import {
+  baseView, cartView, catalogView, endpointsOf, flagLine, mountIntents, ordersView, shopView, welcome, type Intent, type Outcome,
+} from './shop-lab.js';
 import { redeemCode } from './staff-code.js';
 import { cartOf, ordersOf, productForm, walletOf } from './shop-lab.testkit.js';
 
@@ -203,7 +205,7 @@ describe('shopView', () => {
   it('keeps what the player typed into a product form after a POST (that product\'s field only)', async () => {
     const d = await viewData('acolyte', { intent: 'add', sku: 'CANDLE', qty: '"><x' });
     expect((d.catalog as { qty: string }[]).map((p) => p.qty)).toEqual(['1', '"><x']);
-    expect(d.kept).toEqual({ sku: 'CANDLE', qty: '"><x' });
+    expect(d.kept).toEqual({ intent: 'add', sku: 'CANDLE', qty: '"><x' });
   });
 
   it('a line or total the lab could not price is shown as its note, not as money', async () => {
@@ -222,6 +224,82 @@ describe('shopView', () => {
       rows: [{ sku: 'CANDLE', name: 'Votive Candle', qty: 1, kind: '', unit: { cents: 250, text: '$2.50' }, line: null, note: 'Line total too large.' }],
       total: null, note: 'out of range',
     });
+  });
+});
+
+/** What `build` makes of a real request at `level` (the view builders read the lab path, the level and the body). */
+async function built(level: Level, body: object, build: (req: Request, res: Response) => unknown): Promise<Record<string, unknown>> {
+  const app = express();
+  app.use(express.urlencoded({ extended: true }));
+  app.use((req, res, next) => { req.level = level; req.sessionId = 'sid-shell'; res.locals.labPath = LAB; next(); });
+  app.post('/', (req, res) => { res.json(build(req, res)); });
+  return (await request(app).post('/').set('Host', '127.0.0.1:3000').type('form').send(body)).body as Record<string, unknown>;
+}
+
+const ENDPOINTS = endpointsOf({
+  add: { path: '/cart', fields: ['sku', 'qty'], run: () => ({ result: null }) },
+  checkout: { path: '/checkout', run: () => ({ result: null }) },
+});
+
+describe('the view parts', () => {
+  it('baseView needs no shop: header data, message, curl, endpoints and api; no wallet unless given', async () => {
+    const d = await built('templar', {}, (req, res) => baseView(req, res, {
+      result: null, curl: { path: '/wallet/buy', signIn: false }, endpoints: ENDPOINTS,
+    }));
+    expect(d).toEqual({
+      base: LAB, served: 'templar', customer: { username: 'pilgrim', id: 'C-1042', email: 'pilgrim@relic-market.test' },
+      wallet: null, result: null, kept: { intent: '', sku: '', qty: '' }, api: [],
+      endpoints: [
+        { method: 'POST', path: '/cart', href: `${LAB}/cart?level=templar`, fields: ['sku', 'qty'] },
+        { method: 'POST', path: '/checkout', href: `${LAB}/checkout?level=templar`, fields: [] },
+      ],
+      curl: { url: `http://127.0.0.1:3000${LAB}/wallet/buy?level=templar`, method: '', headers: [], cookies: [], data: '', form: [], signIn: false },
+    });
+    const withWallet = await built('templar', {}, (req, res) => baseView(req, res, { result: null, curl: { path: '/' }, wallet: 1234 }));
+    expect(withWallet.wallet).toEqual({ cents: 1234, text: '$12.34' });
+  });
+
+  it('the catalog, cart and orders parts are shopView\'s pieces, each on its own', async () => {
+    const whole = await viewData('acolyte');
+    const parts = await built('acolyte', {}, (req) => {
+      const state = fixtureShop();
+      return {
+        ...catalogView(req, state, { fields: (p) => ({ price: String(p.price) }) }),
+        ...cartView(state, exactTotals(state)),
+        ...ordersView(req, state, { challenge: C, proves }),
+      };
+    });
+    expect(parts.catalog).toEqual(whole.catalog);
+    expect(parts.cart).toEqual(whole.cart);
+    expect((parts.orders as { flag: string }[]).map((o) => o.flag)).toEqual((whole.orders as { flag: string }[]).map((o) => o.flag));
+  });
+
+  it('a product form keeps the typed quantity only after an add (the intent that ran, else the body\'s intent)', async () => {
+    const typed = { sku: 'CANDLE', qty: '7' };
+    const qtys = async (body: object, intent?: string) => {
+      const d = await built('acolyte', body, (req) => catalogView(req, fixtureShop(), intent === undefined ? {} : { intent }));
+      return (d.catalog as { qty: string }[]).map((p) => p.qty);
+    };
+    expect(await qtys(typed, 'add')).toEqual(['1', '7']); // named path /cart: no intent field, mountIntents names it
+    expect(await qtys({ ...typed, intent: 'add' })).toEqual(['1', '7']);
+    expect(await qtys(typed, 'return')).toEqual(['1', '1']);
+    expect(await qtys({ ...typed, intent: 'return' })).toEqual(['1', '1']);
+    expect(await qtys(typed)).toEqual(['1', '1']);
+    const d = await built('acolyte', typed, (req, res) => baseView(req, res, { result: null, curl: { path: '/' }, intent: 'return' }));
+    expect(d.kept).toEqual({ intent: 'return', sku: 'CANDLE', qty: '7' });
+  });
+
+  it('the header shows the wallet only when there is one; the endpoint list is one line, or nothing', async () => {
+    const noWallet = await built('acolyte', {}, (req, res) => baseView(req, res, { result: null, curl: { path: '/' }, endpoints: ENDPOINTS }));
+    const header = await renderFile(views('shop-header'), { ...noWallet, heading: 'Relic Market' }, opts);
+    expect(header).toContain('Signed in as <code>pilgrim</code>');
+    expect(header).not.toContain('data-testid="wallet"');
+    const list = await renderFile(views('endpoints'), noWallet, opts);
+    expect(list).toContain(`Endpoints: <code>POST ${LAB}/cart?level=acolyte</code> (sku, qty); <code>POST ${LAB}/checkout?level=acolyte</code>.`);
+    expect(list).toContain(`with a hidden <code>intent</code>`);
+    expect(list.trim().split('\n')).toHaveLength(1);
+    const none = await built('acolyte', {}, (req, res) => baseView(req, res, { result: null, curl: { path: '/' } }));
+    expect((await renderFile(views('endpoints'), none, opts)).trim()).toBe('');
   });
 });
 
