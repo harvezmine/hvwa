@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { gzipSync } from 'node:zlib';
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { describe, it, expect, onTestFinished, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { byLevel, labPath, perSession, tryDb } from '../src/core/lab.js';
@@ -64,13 +64,18 @@ const DESK = register(defineChallenge({
     router.get('/', (req, res) => show(req, res, null));
     // At most UPLOADS_IN_FLIGHT uploads at once (before the body is read), then the raw multipart body on THIS route
     // only (owner decision Q6), with the engine's body cap.
-    router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
+    router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req: Request, res: Response) => {
       const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1 })), 'Upload error'); // async parse, sync rule
       if (!up.ok) return show(req, res, { ok: false, text: up.message });
       const file = up.value.files.find((f) => f.field === 'scroll');
       if (file === undefined) return show(req, res, { ok: false, text: 'Choose a scroll to upload.' });
       const stored = tryDb(req, () => impl.for(req.level).store(deskFor(req).fs, file), 'Storage error');
       return show(req, res, stored.ok ? { ok: true, text: `Stored as ${stored.value}.` } : { ok: false, text: stored.message });
+    }, (err: unknown, req: Request, res: Response, next: NextFunction) => {
+      // Optional: express.raw's 413 shown on the lab's own page (status kept); anything else goes to the platform handler.
+      if ((err as { type?: unknown } | null)?.type !== 'entity.too.large') return next(err);
+      res.status(413);
+      return show(req, res, { ok: false, text: 'The scroll is too large (at most 2 MiB).' });
     });
     router.get('/uploads', async (req, res) => {
       const name = typeof req.query.name === 'string' ? req.query.name : '';
@@ -161,6 +166,9 @@ describe('UP-01: the upload recipe through the real app', () => {
     const big = multipart([scroll('big.bin', Buffer.alloc(UPLOAD_LIMITS.maxBytes))]);
     const plain = await agent.post(`${LAB}/upload?level=acolyte`).set('Content-Type', big.contentType).send(big.body);
     expect(plain.status).toBe(413);
+    // The lab's own error handler on the route turns it into the lab page (status kept), not the bare platform page.
+    expect(plain.text).toContain('Scroll Desk');
+    expect(plain.text).toContain('The scroll is too large (at most 2 MiB).');
     // The limit counts the inflated body: a small gzip of a large body is refused the same way.
     const gz = gzipSync(big.body);
     expect(gz.length).toBeLessThan(64 * 1024);

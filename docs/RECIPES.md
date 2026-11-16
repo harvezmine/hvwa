@@ -835,16 +835,23 @@ The worked example is the fixture lab UP-01 in `tests/upload-lab.spec.ts`.
 
 ```ts
 // challenge.ts
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { SIMFS_LIMITS } from '../../../core/simfs.js';
 import { UPLOAD_LIMITS, parseMultipart, settle, uploadGate } from '../../../core/upload.js';
 
-router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req, res) => {
-  const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1 })), 'Upload error'); // await OUTSIDE tryDb
+router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', limit: UPLOAD_LIMITS.maxBytes }), async (req: Request, res: Response) => {
+  // A lab that stores the upload caps it at what the simulated file system takes, so a file that parses also fits.
+  const up = tryDb(req, await settle(parseMultipart(req, { maxFiles: 1, maxFileBytes: SIMFS_LIMITS.fileBytes })), 'Upload error'); // await OUTSIDE tryDb
   if (!up.ok) return show(res, { ok: false, text: up.message });
   const file = up.value.files.find((f) => f.field === 'scroll');
   if (file === undefined) return show(res, { ok: false, text: 'Choose a scroll to upload.' });
   const stored = tryDb(req, () => impl.for(req.level).store(labFor(req).fs, file), 'Storage error'); // the level's flaw
   // ...
+}, (err: unknown, req: Request, res: Response, next: NextFunction) => {
+  // Optional: express.raw's 413 on the lab's own page (status kept); any other error goes on to the platform handler.
+  if ((err as { type?: unknown } | null)?.type !== 'entity.too.large') return next(err);
+  res.status(413);
+  return show(res, { ok: false, text: 'The scroll is too large (at most 2 MiB).' });
 });
 ```
 
@@ -853,16 +860,21 @@ router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', 
   uploads alive, measured). The fifth gets a 503 (`Retry-After: 2`, `Connection: close`) with a plain message; a slot is
   freed when the response finishes or closes (a client that hangs up) or the request fails.
 - **`express.raw` on the upload route only** (owner decision Q6), with `limit: UPLOAD_LIMITS.maxBytes` (2 MiB). The
-  app-wide `express.json()`/`urlencoded()` ignore multipart. A bigger body gets 413 from the error handler before the
-  lab runs, and the limit counts the *inflated* body, so a small gzip of a large one gets 413 too. A form posted without
-  `enctype="multipart/form-data"` arrives as an object, and `parseMultipart` refuses it.
+  app-wide `express.json()`/`urlencoded()` ignore multipart. A bigger body gets 413 before the lab's handler runs, and
+  the limit counts the *inflated* body, so a small gzip of a large one gets 413 too. Without the optional error handler
+  above, the 413 is the platform's bare error page; with it, the lab's own page (its `err.type` is `entity.too.large`).
+  A form posted without `enctype="multipart/form-data"` arrives as an object, and `parseMultipart` refuses it.
 - **`parseMultipart` is async and `tryDb` is not.** `settle(promise)` turns the settled parse into a thunk that returns
   the value or rethrows, so `tryDb` applies its usual rule: `Upload error: <message>` below Divine, `Invalid request.`
   at Divine. Every refusal is an `UploadError` with a message meant for the player; one that escapes is a 400.
 - **Caps** (`UPLOAD_LIMITS`): body 2 MiB, 32 parts, 8 files, 512 KiB per file, 16 KiB per text field, 255-character
   filenames and field names, 255-character content types. The part count is checked by a scan of the body before it
   is parsed, so a flood of tiny parts costs a scan, not 40 000 entries. A lab may pass **lower** caps (an SVG lab:
-  `{ maxFileBytes: 64 * 1024 }`), never higher. A higher one, or a non-integer, is a plain `Error`: a lab bug.
+  `{ maxFileBytes: 64 * 1024 }`), never higher. A higher one, or a non-integer, is a plain `Error`: a lab bug. **A lab
+  that stores what it receives passes `maxFileBytes: SIMFS_LIMITS.fileBytes` (128 KiB)**, so the player gets the
+  upload's own error rather than a storage error for a file the simulated file system cannot hold. (An archive lab
+  keeps the 512 KiB default: the archive itself is not stored, its entries are.) The content type must hold exactly
+  one `boundary=`, a token or a quoted string; anything else is refused before parsing.
 - **Fields** are a null-prototype record; a repeated name keeps its first value. Read them with
   `field({ body: up.value.fields }, 'caption')`. The empty part a browser sends for an empty file input is dropped.
 
@@ -901,13 +913,20 @@ const labs = perSession((): LabState => {
   same rules:
 
   ```ts
-  const key = fs.resolve(`${dir}/${name}`);
-  if (!key.startsWith(`${fs.resolve(dir)}/`)) return reject(name); // escapes dir: refused, the sentinel untouched
+  const base = fs.resolve(dir);
+  const key = fs.resolve(`${base}/${name}`);
+  // Inside the root is anything but the root itself; inside any other directory is under `<dir>/`.
+  const inside = base === '/' ? key !== '/' : key.startsWith(`${base}/`);
+  if (!inside) return reject(name); // escapes dir (or names dir itself): refused, the sentinel untouched
   ```
-- **Bounds** (`SIMFS_LIMITS`): 64 files, 256 KiB per file, 512 KiB in all, 512-character paths, 255-character content
-  types. Past the file count or the total, the **oldest unpinned file is dropped**, the way the sim drops its oldest
-  mail. A file over 256 KiB, a write to the root, or no room even after dropping every unpinned file is a `SimFsError`
-  and changes nothing. Wrap writes in `tryDb(req, () => ..., 'Storage error')`.
+
+  (`tests/simfs.spec.ts` runs this snippet against `/`, sibling directories sharing a prefix, `....//` and both
+  separator styles.)
+- **Bounds** (`SIMFS_LIMITS`): 32 files, 128 KiB per file, 256 KiB in all, 512-character paths (checked once
+  resolved, too), 255-character content types. Past the file count or the total, the **oldest unpinned file is
+  dropped**, the way the sim drops its oldest mail. A file over 128 KiB (refused by its byte length, before any copy), a
+  write to the root, or no room even after dropping every unpinned file is a `SimFsError` and changes nothing. Wrap
+  writes in `tryDb(req, () => ..., 'Storage error')`.
 - **Every stored Buffer is a copy with memory of its own.** `Buffer.subarray` keeps its whole parent alive, and
   `Buffer.from(x)` of a small `x` is a slice of Node's shared 8 KiB pool (zlib even answers small inflates with a view of
   16 KiB). `simFs` copies with `ownBytes` from `core/upload.ts`; use it for any other Buffer a lab keeps.
@@ -920,8 +939,22 @@ const labs = perSession((): LabState => {
 
 ### Archives: `readZip(bytes)` (SC-10)
 
-Synchronous: `tryDb(req, () => readZip(file.bytes), 'Archive error')`. It returns `{ name, directory, method, size,
-compressedSize, bytes }` per entry, in central-directory order. **Names are exactly as written** (`../`, `\`, absolute
+```ts
+// The archive's entries may inflate to at most what the simulated file system holds (the default total is 2 MiB).
+const entries = tryDb(req, () => readZip(file.bytes, { totalBytes: SIMFS_LIMITS.totalBytes }), 'Archive error');
+if (!entries.ok) return show(res, { ok: false, text: entries.message });
+const fs = labFor(req).fs;
+for (const e of entries.value) {
+  if (e.directory) continue; // a folder entry ("notes/") holds no bytes: the simulated file system has no empty directories
+  const written = tryDb(req, () => impl.for(req.level).extract(fs, TARGET_DIR, e), 'Storage error'); // the level's join
+  // ...list e.name as written or rejected
+}
+```
+
+Synchronous, inside `tryDb`. Pass `{ totalBytes: SIMFS_LIMITS.totalBytes }`, so an archive that could never fit
+is refused as an archive. **Skip `e.directory` entries**: their name ends in `/` and they hold nothing, and writing one
+would store an empty file named after the folder. It returns `{ name, directory, method, size, compressedSize, bytes }`
+per entry, in central-directory order. **Names are exactly as written** (`../`, `\`, absolute
 and drive paths, NUL) and decoded as UTF-8, with U+FFFD for an invalid sequence. Bounds (`ZIP_LIMITS`): 64 entries
 (read from the end record before anything else), 255-character names, and a zip-bomb guard: the declared sizes may total
 2 MiB, and no entry inflates past its declared size (`inflateRawSync`'s `maxOutputLength` stops it there). A nested

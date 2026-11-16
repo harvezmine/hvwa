@@ -183,6 +183,31 @@ describe('simFs: files', () => {
     expect(() => inSession(() => simFs({ separators: '\\' as never }))).toThrow(/separators/);
   });
 
+  it('the containment check RECIPES section 9 gives a Divine level works for every directory, the root included', () => {
+    // Verbatim from docs/RECIPES.md ("A correct (Divine) check uses the same rules").
+    const inside = (fs: SimFs, dir: string, name: string): boolean => {
+      const base = fs.resolve(dir);
+      const key = fs.resolve(`${base}/${name}`);
+      return base === '/' ? key !== '/' : key.startsWith(`${base}/`);
+    };
+    const posix = fresh();
+    const win = fresh({ separators: '/\\' });
+    const cases: Array<[SimFs, string, string, boolean]> = [
+      [posix, '/srv/app/uploads/restore', 'notes/readme.txt', true],
+      [posix, '/srv/app/uploads/restore', '../../templates/welcome.txt', false],
+      [posix, '/srv/app/uploads/restore', '....//....//templates/welcome.txt', true], // `....` is a name: it stays inside
+      [posix, '/srv/app/uploads/restore', '..\\..\\templates\\welcome.txt', true], // POSIX: one odd filename, inside
+      [win, '/srv/app/uploads/restore', '..\\..\\templates\\welcome.txt', false],
+      [posix, '/srv/app/uploads/restore', '.', false], // the directory itself is not a file in it
+      [posix, '/srv/app/uploads/restore', 'x/../../restore-evil/x', false], // a sibling sharing the prefix
+      [posix, '/', 'templates/welcome.txt', true], // the root: everything but the root itself is inside
+      [posix, '/', '../../etc/passwd', true],
+      [posix, '/', '..', false],
+      [posix, '/srv/', 'a', true],
+    ];
+    for (const [fs, dir, name, expected] of cases) expect(inside(fs, dir, name), `${dir} + ${name}`).toBe(expected);
+  });
+
   it('has, delete and list (a directory is a key prefix; list is oldest write first)', () => {
     const fs = fresh();
     fs.write('/srv/uploads/b.txt', 'b');
