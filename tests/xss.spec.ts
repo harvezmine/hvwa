@@ -229,6 +229,15 @@ describe('xssOracle: what parse5 8.0.1 does not build but Chrome 157 runs', () =
     expect(xssOracle(`<select><b onmouseover=${M}>x</b></select>`, M, { interact: false }).executes).toBe(false);
     expect(xssOracle(`<select><b onmouseover=${M}>x</b></select>`, M).executes).toBe(true);
     expect(xssOracle(`<select><option>&lt;img src=x onerror=${M}&gt;</option></select>`, M).executes).toBe(false); // text stays text
+    // A select that only appears once a srcdoc is decoded (Chrome 157 runs both): the pass renames each framed document too.
+    for (const html of [
+      `<iframe srcdoc="&lt;select&gt;&lt;img src=x onerror=${M}&gt;&lt;/select&gt;"></iframe>`,
+      `<iframe srcdoc="<sel&#x65;ct><img src=x onerror=${M}></select>"></iframe>`,
+      `<iframe srcdoc="<iframe srcdoc=&quot;&amp;lt;select&amp;gt;&amp;lt;img src=x onerror=${M}&amp;gt;&quot;></iframe>"></iframe>`,
+    ]) {
+      for (const insertion of ['document', 'innerHTML'] as const) expect(xssOracle(html, M, { insertion }).executes, `${insertion} ${html}`).toBe(true);
+    }
+    expect(xssOracle(`<iframe srcdoc="&lt;textarea&gt;&lt;select&gt;&lt;img src=x onerror=${M}&gt;&lt;/textarea&gt;"></iframe>`, M).executes).toBe(false);
     expect(xssOracle(`<p title="<select><img src=x onerror=${M}>">x</p>`, M).executes).toBe(false); // the word in an attribute
   });
 

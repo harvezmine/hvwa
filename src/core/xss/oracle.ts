@@ -123,6 +123,8 @@ interface Walk {
   incomplete: boolean;
   /** Elements that already got a declarative shadow root (only the first template attaches). */
   readonly shadowHosts: Set<Node>;
+  /** A framed document, once decoded, mentions <select (so the select pass must run even if the page does not). */
+  selectInFrame: boolean;
 }
 
 interface Context {
@@ -131,6 +133,8 @@ interface Context {
   readonly budget: Budget;
   /** Inside an mXSS round trip: its framed-document parses stop at the deadline too. */
   readonly timed: boolean;
+  /** The select pass: every framed document is renamed before it is parsed, as the page was. */
+  readonly renameSelect?: boolean;
 }
 
 
@@ -315,7 +319,8 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
       w.incomplete = true;
       return;
     }
-    const doc = parseBounded(srcdoc, 'document', true, ctx.budget, { checkTags: true, timed: ctx.timed });
+    if (/<select/i.test(srcdoc)) w.selectInFrame = true;
+    const doc = parseBounded(ctx.renameSelect === true ? renameSelects(srcdoc) : srcdoc, 'document', true, ctx.budget, { checkTags: true, timed: ctx.timed });
     if (doc === undefined) {
       w.incomplete = true;
       return;
@@ -394,7 +399,7 @@ function animatedHref(el: Element, target: DefaultTreeAdapterTypes.ParentNode | 
 }
 
 function walk(root: Root, f: Frame, ctx: Context): Walk {
-  const w: Walk = { sinks: [], firing: new Map(), reached: false, deep: false, incomplete: false, shadowHosts: new Set() };
+  const w: Walk = { sinks: [], firing: new Map(), reached: false, deep: false, incomplete: false, shadowHosts: new Set(), selectInFrame: false };
   walkInto(root, f, ctx, w);
   return w;
 }
@@ -437,10 +442,16 @@ const hasKeyframes = (text: string): boolean => /@keyframes/i.test(text);
 const sinkKey = (s: Sink): string => `${s.kind}|${s.detail}|${s.trigger}|${s.isolated}|${s.marker}`;
 
 /** The page with every select tag renamed (an unknown element: its content parsed as ordinary markup), read like the page. */
+/** Every select start or end tag renamed to an unknown element, whose content the HTML parser keeps. */
+const renameSelects = (html: string): string => html.replace(/<(\/?)select(?=[\t\n\f\r />]|$)/gi, '<$1hvwa-select');
+
+/**
+ * The page with every select tag renamed, read like the page; so is every framed document it holds, once decoded
+ * (a select in an entity-encoded srcdoc exists only after the attribute is read).
+ */
 function selectPass(page: string, insertion: XssInsertion, top: Frame, ctx: Context): Walk | undefined {
-  const renamed = page.replace(/<(\/?)select(?=[\t\n\f\r />]|$)/gi, '<$1hvwa-select');
-  const tree = parseBounded(renamed, insertion, true, ctx.budget, { checkTags: false, timed: false });
-  return tree === undefined ? undefined : walk(tree, top, ctx);
+  const tree = parseBounded(renameSelects(page), insertion, true, ctx.budget, { checkTags: false, timed: false });
+  return tree === undefined ? undefined : walk(tree, top, { ...ctx, renameSelect: true });
 }
 
 function insertionOf(x: unknown): XssInsertion {
@@ -479,7 +490,7 @@ export function xssOracle(html: string, marker: string, opts: XssOracleOptions =
   const first = walk(tree, top, ctx);
   // Chrome 135+ parses select content as ordinary markup (the customizable select); parse5 8.0.1 drops most of it. A
   // second, deterministic pass reads the page with select renamed to an unknown element, and its sinks count too.
-  const select = /<select/i.test(page) ? selectPass(page, insertion, top, ctx) : undefined;
+  const select = /<select/i.test(page) || first.selectInFrame ? selectPass(page, insertion, top, ctx) : undefined;
   let mxss = roundTripAdds(tree, first, insertion, true, top, ctx);
   if (!mxss && !first.deep && !first.incomplete && /noscript/i.test(page)) {
     // A sanitizer that parses with scripting off (DOMParser, a template element) sees noscript content as markup.
