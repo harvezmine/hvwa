@@ -78,7 +78,7 @@ function safeRegex(source: string, flags: string): RegExp {
   let escaped = false;
   let previous = '';
   for (const ch of source) {
-    if (escaped) escaped = false;
+    if (escaped) { escaped = false; previous = ""; continue; } // an escaped character is a literal, never the "(" of "(?"
     else if (ch === '\\') escaped = true;
     else if ('*+?{'.includes(ch) && !(ch === '?' && previous === '(')) quantifiers++; // "(?" is group syntax, not a quantifier
     previous = ch;

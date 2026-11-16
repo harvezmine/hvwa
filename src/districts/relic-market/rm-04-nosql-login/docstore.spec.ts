@@ -200,6 +200,9 @@ describe('docstore: $regex', () => {
     expect(errorOf({ username: { $regex: 'a*a*a*a*' } })).toBe('');
     expect(errorOf({ username: { $regex: 'a*a*a*a*a*' } })).toMatch(/too many quantifiers/);
     expect(errorOf({ username: { $regex: 'a?b?c?d?e?' } })).toMatch(/too many quantifiers/);
+    // An escaped paren is a literal, so the ? after it IS a quantifier (and "(?" group syntax is not).
+    expect(errorOf({ username: { $regex: '\\(?'.repeat(10) } })).toMatch(/too many quantifiers/);
+    expect(errorOf({ username: { $regex: '(?:a)(?=b)(?!c)' } })).toBe('');
     expect(errorOf({ username: { $regex: '.{1,3}.{1,3}.{1,3}.{1,3}.{1,3}' } })).toMatch(/too many quantifiers/);
   });
 
@@ -312,7 +315,7 @@ describe('docstore: $where, a small PARSED subset of JavaScript (never evaluated
     for (const bad of [
       "this.username == 'pilgrim", 'this.username ==', '(', ')', 'this.', 'this..username', 'this.username.', "this.username = 'x'", 'a == b',
       'this.username & 1', 'this.username | 1', '1 +', '1 + 1', "'a' 'b'", '/* open', '@', '#', '{}', '[]', '`x`', "this.username == 'x';", 'this', '!', '1 2',
-      'this.username.toLowerCase', 'this.username.toLowerCase(1)', "this.username.startsWith('p')", "this.username.substr(0)",
+      'this.username.toLowerCase', 'this.username.toLowerCase(1)', "this.username.startsWith('p')", "this.username.substr(0)", 'this.username.valueOf()', 'this.username.toString()', 'this.username.constructor()', 'this.valueOf()',
       'this.username["x"]', 'this["username"]', 'process', 'globalThis', 'eval("1")', 'Function("return 1")()', 'require("fs")', 'x => x',
     ]) {
       const e = errorOf({ $where: bad });
@@ -386,25 +389,60 @@ describe('docstore: the source never evaluates code', () => {
     expect(base).toEqual(expect.arrayContaining(['docstore.ts', 'model.ts', 'challenge.ts', 'levels/acolyte.ts', 'levels/templar.ts', 'levels/inquisitor.ts', 'levels/divine.ts']));
   });
 
-  it('has no eval, Function, vm, dynamic import, require, child process, worker or .constructor access (parsed, so comments and strings do not count)', () => {
-    const BAD_IDS = new Set(['eval', 'Function', 'AsyncFunction', 'GeneratorFunction', 'vm', 'require', 'globalThis', 'Reflect', 'Proxy', 'WebAssembly']);
-    const BAD_MODULES = /^(node:)?(vm|child_process|worker_threads|cluster|repl|module|inspector)$/;
+  it('has no eval, Function, vm, dynamic import, require, child process, worker or any use of the name constructor (parsed, so comments do not count)', () => {
     const found: string[] = [];
-    for (const f of files) {
-      const sf = ts.createSourceFile(f, readFileSync(f, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      const visit = (node: ts.Node): void => {
-        if (ts.isIdentifier(node) && BAD_IDS.has(node.text)) found.push(`${f}: identifier ${node.text}`);
-        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) found.push(`${f}: dynamic import()`);
-        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier) && BAD_MODULES.test(node.moduleSpecifier.text)) {
-          found.push(`${f}: module ${node.moduleSpecifier.text}`);
-        }
-        if (ts.isPropertyAccessExpression(node) && node.name.text === 'constructor') found.push(`${f}: .constructor`);
-        if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression) && node.argumentExpression.text === 'constructor') found.push(`${f}: ['constructor']`);
-        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && (node.expression.text === 'setTimeout' || node.expression.text === 'setInterval') && node.arguments[0] !== undefined && ts.isStringLiteralLike(node.arguments[0])) found.push(`${f}: string timer`);
-        ts.forEachChild(node, visit);
-      };
-      visit(sf);
-    }
+    for (const f of files) found.push(...unsafeUses(f, readFileSync(f, 'utf8')));
     expect(found).toEqual([]);
   });
+
+  it('the guard itself sees the evasions: destructuring, a property descriptor lookup, a string key, a bracket access, a plain property access', () => {
+    const bad = (code: string): string[] => unsafeUses('probe.ts', code);
+    expect(bad('const { constructor: F } = fn; F("x");')).not.toEqual([]);
+    expect(bad('const { constructor } = fn;')).not.toEqual([]);
+    expect(bad('const d = Object.getOwnPropertyDescriptor(x, "constructor");')).not.toEqual([]);
+    expect(bad('const o = { constructor: 1 };')).not.toEqual([]);
+    expect(bad('const o = { "constructor": 1 };')).not.toEqual([]);
+    expect(bad('x["constructor"]("y");')).not.toEqual([]);
+    expect(bad('x.constructor("y");')).not.toEqual([]);
+    expect(bad('Reflect.get(x, "constructor");')).not.toEqual([]);
+    expect(bad('eval("1");')).not.toEqual([]);
+    expect(bad('new Function("return 1");')).not.toEqual([]);
+    expect(bad('import("node:vm");')).not.toEqual([]);
+    expect(bad('import vm from "node:vm";')).not.toEqual([]);
+    expect(bad('setTimeout("x()", 1);')).not.toEqual([]);
+    // What is allowed: the SKIPPED list of keys the store ignores, and nothing else.
+    expect(bad('const SKIPPED = new Set(["__proto__", "constructor", "prototype"]);')).toEqual([]);
+    expect(bad('const OTHER = new Set(["constructor"]);')).not.toEqual([]);
+    expect(bad('const x = 1; // constructor eval Function')).toEqual([]);
+  });
 });
+
+/** Every use in the code of something that could reach dynamic code, as readable strings (empty when clean). Parsed, so comments never count. */
+function unsafeUses(file: string, code: string): string[] {
+  const BAD_IDS = new Set(['eval', 'Function', 'AsyncFunction', 'GeneratorFunction', 'vm', 'require', 'globalThis', 'Reflect', 'Proxy', 'WebAssembly']);
+  const BAD_MODULES = /^(node:)?(vm|child_process|worker_threads|cluster|repl|module|inspector)$/;
+  const found: string[] = [];
+  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  /** The only place the name constructor may appear: the string list the store skips (const SKIPPED = new Set([...])). */
+  const inSkippedList = (node: ts.Node): boolean => {
+    const arr = node.parent;
+    if (arr === undefined || !ts.isArrayLiteralExpression(arr)) return false;
+    const call = arr.parent;
+    if (!ts.isNewExpression(call) || !ts.isIdentifier(call.expression) || call.expression.text !== 'Set') return false;
+    const decl = call.parent;
+    return ts.isVariableDeclaration(decl) && ts.isIdentifier(decl.name) && decl.name.text === 'SKIPPED';
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && BAD_IDS.has(node.text)) found.push(file + ': identifier ' + node.text);
+    if (ts.isIdentifier(node) && node.text === 'constructor') found.push(file + ': the name constructor (property, binding or key)');
+    if (ts.isStringLiteralLike(node) && node.text === 'constructor' && !inSkippedList(node)) found.push(file + ': the string "constructor"');
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) found.push(file + ': dynamic import()');
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier) && BAD_MODULES.test(node.moduleSpecifier.text)) {
+      found.push(file + ': module ' + node.moduleSpecifier.text);
+    }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && (node.expression.text === 'setTimeout' || node.expression.text === 'setInterval') && node.arguments[0] !== undefined && ts.isStringLiteralLike(node.arguments[0])) found.push(file + ': string timer');
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
