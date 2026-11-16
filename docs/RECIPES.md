@@ -869,8 +869,13 @@ router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', 
 
 - **`uploadGate()` first**, before the body is read: at most `UPLOADS_IN_FLIGHT` (4) uploads at once, across every
   upload route of every lab, so their bodies and parses stay bounded together (about 16 MiB with four near-2 MiB
-  uploads alive, measured). The fifth gets a 503 (`Retry-After: 2`, `Connection: close`) with a plain message; a slot is
-  freed when the response finishes or closes (a client that hangs up) or the request fails.
+  uploads alive, measured). The fifth gets a 503 (`Retry-After: 2`, `Connection: close`) with a plain message, at once:
+  its body is never read or buffered. A slot is freed when the response finishes or closes (a client that hangs up) or
+  the request fails, and when the body stalls: no bytes for `UPLOAD_BODY_TIMEOUT_MS` (30 s; `uploadGate({ bodyTimeoutMs
+  })`) answers 408 and drops the connection. That is an idle timeout, so a client trickling a byte now and then (or
+  slowly sending a huge declared body that `express.raw` drains before its 413) still holds its slot until Node's own
+  `requestTimeout` (300 s). On a loopback, single-player lab the only such client is the player's own, so this is
+  accepted rather than defended further.
 - **`express.raw` on the upload route only** (owner decision Q6), with `limit: UPLOAD_LIMITS.maxBytes` (2 MiB). The
   app-wide `express.json()`/`urlencoded()` ignore multipart. A bigger body gets 413 before the lab's handler runs, and
   the limit counts the *inflated* body, so a small gzip of a large one gets 413 too. Without the optional error handler

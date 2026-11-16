@@ -307,6 +307,9 @@ export function uploadsInFlight(): number {
   return inFlight;
 }
 
+/** How long an upload's body may stall (no bytes arriving) before the gate gives its slot back: an idle timeout. */
+export const UPLOAD_BODY_TIMEOUT_MS = 30_000;
+
 /**
  * Middleware for an upload route, mounted BEFORE express.raw so a slot is held while the body streams in:
  *
@@ -314,9 +317,15 @@ export function uploadsInFlight(): number {
  *
  * At most UPLOADS_IN_FLIGHT uploads pass at once, across every upload route of every lab. Beyond that it answers
  * 503 (Retry-After: 2, Connection: close) with a plain message, without reading the body. A slot is freed exactly
- * once, when the response finishes or closes (the client hung up) or the request fails.
+ * once, when the response finishes or closes (the client hung up) or the request fails, or when the body stalls:
+ * no bytes for `bodyTimeoutMs` (default UPLOAD_BODY_TIMEOUT_MS) answers 408 and drops the connection. That timeout is
+ * idle time, so a client trickling a byte now and then can still hold a slot (until Node's own requestTimeout,
+ * 300 s): acceptable for a loopback, single-player lab, where the only such client is the player's own.
  */
-export function uploadGate(): RequestHandler {
+export function uploadGate(opts: { readonly bodyTimeoutMs?: number } = {}): RequestHandler {
+  const timeoutMs = opts.bodyTimeoutMs ?? UPLOAD_BODY_TIMEOUT_MS;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error(`uploadGate: bodyTimeoutMs must be a positive integer (got ${String(timeoutMs)})`);
+  const stalled = `The upload stalled (no data for ${Math.ceil(timeoutMs / 1000)} s): send it again.`;
   return (req, res, next) => {
     if (inFlight >= UPLOADS_IN_FLIGHT) {
       res.status(503).set('Retry-After', '2').set('Connection', 'close').type('text/plain').send(BUSY);
@@ -324,12 +333,22 @@ export function uploadGate(): RequestHandler {
     }
     inFlight++;
     let held = true;
+    const onTimeout = (): void => {
+      if (!res.headersSent) res.status(408).set('Connection', 'close').type('text/plain').send(stalled);
+      release();
+      req.destroy();
+    };
     const release = (): void => {
-      if (held) { held = false; inFlight--; }
+      if (!held) return;
+      held = false;
+      inFlight--;
+      req.off('timeout', onTimeout);
+      req.setTimeout(0); // nothing fires later on a socket kept alive for the next request
     };
     res.once('finish', release);
     res.once('close', release);
     req.once('error', release);
+    req.setTimeout(timeoutMs, onTimeout);
     next();
   };
 }

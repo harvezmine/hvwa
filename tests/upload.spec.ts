@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
 import { DIVINE_DB_ERROR, field, tryDb } from '../src/core/lab.js';
 import {
-  UPLOADS_IN_FLIGHT, UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, placeholderImage, settle, sniffImage, uploadGate, uploadsInFlight,
+  UPLOADS_IN_FLIGHT, UPLOAD_BODY_TIMEOUT_MS, UPLOAD_LIMITS, UploadError, looksLikeImage, parseMultipart, placeholderImage, settle, sniffImage, uploadGate, uploadsInFlight,
   type ImageSniff, type ParsedUpload,
 } from '../src/core/upload.js';
 import { multipart, uploadReq, type Part } from './support/uploads.js';
@@ -461,10 +461,19 @@ class FakeRes extends EventEmitter {
   status(code: number): this { this.statusCode = code; return this; }
   set(name: string, value: string): this { this.headers[name.toLowerCase()] = value; return this; }
   type(t: string): this { this.headers['content-type'] = t; return this; }
+  get headersSent(): boolean { return this.body !== undefined; }
   send(body: string): this { this.body = body; this.emit('finish'); return this; }
 }
+/** A request as the gate uses it: an emitter with setTimeout (recorded; the callback runs when a test fires it) and destroy. */
+class FakeReq extends EventEmitter {
+  timeouts: number[] = [];
+  onTimeout: (() => void) | undefined;
+  destroyed = false;
+  setTimeout(ms: number, cb?: () => void): this { this.timeouts.push(ms); if (cb) this.onTimeout = cb; return this; }
+  destroy(): this { this.destroyed = true; return this; }
+}
 const through = (gate: ReturnType<typeof uploadGate>) => {
-  const req = new EventEmitter();
+  const req = new FakeReq();
   const res = new FakeRes();
   let passed = false;
   gate(req as never, res as never, () => { passed = true; });
@@ -505,6 +514,42 @@ describe('uploadGate: at most UPLOADS_IN_FLIGHT uploads at once, process-wide', 
     e.req.emit('error', new Error('aborted'));
     e.res.emit('close');
     expect(uploadsInFlight()).toBe(0);
+  });
+});
+
+describe('uploadGate: a body that stalls frees its slot (UPLOAD_BODY_TIMEOUT_MS), so stalled clients cannot hold every slot', () => {
+  it('arms an idle timeout of UPLOAD_BODY_TIMEOUT_MS on the request; firing it answers 408, frees the slot and drops the connection', () => {
+    expect(UPLOAD_BODY_TIMEOUT_MS).toBe(30_000);
+    const t = through(uploadGate());
+    expect(t.passed).toBe(true);
+    expect(t.req.timeouts).toEqual([UPLOAD_BODY_TIMEOUT_MS]);
+    expect(uploadsInFlight()).toBe(1);
+    t.req.onTimeout?.();
+    expect(t.res.statusCode).toBe(408);
+    expect(t.res.body).toBe('The upload stalled (no data for 30 s): send it again.');
+    expect(t.res.headers).toMatchObject({ connection: 'close', 'content-type': 'text/plain' });
+    expect(t.req.destroyed).toBe(true);
+    expect(uploadsInFlight()).toBe(0);
+  });
+
+  it('a finished upload clears its timeout (setTimeout(0)), so nothing fires later on a kept-alive socket', () => {
+    const t = through(uploadGate({ bodyTimeoutMs: 5000 }));
+    expect(t.req.timeouts).toEqual([5000]);
+    t.res.emit('finish');
+    expect(t.req.timeouts).toEqual([5000, 0]);
+    expect(t.req.listenerCount('timeout')).toBe(0);
+    expect(uploadsInFlight()).toBe(0);
+  });
+
+  it('a timeout after the response started frees the slot without a second answer', () => {
+    const t = through(uploadGate());
+    t.res.body = 'already answering';
+    t.req.onTimeout?.();
+    expect([t.res.statusCode, t.res.body, t.req.destroyed, uploadsInFlight()]).toEqual([200, 'already answering', true, 0]);
+  });
+
+  it('refuses a body timeout that is not a positive integer (a lab bug)', () => {
+    for (const bodyTimeoutMs of [0, -1, 1.5, Number.NaN]) expect(() => uploadGate({ bodyTimeoutMs }), String(bodyTimeoutMs)).toThrow(/bodyTimeoutMs/);
   });
 });
 
