@@ -142,8 +142,11 @@ describe('RM-10 currency rounding', () => {
     expect(goalLine(res.text)).toMatch(/^Goal: net worth \$11\.00 or more\. Goal reached\. Flag: HVWA\{[0-9a-f]{32}\}$/);
     expect(res.text).toContain('Net worth: $11.00');
     const flag = flagOf(res.text);
-    await ex(c, 'CRN', 'USD', 2); // trading on does not take the recorded proof away
-    expect(flagOf((await home(c)).text)).toBe(flag);
+    const after = await ex(c, 'USD', 'CRN', 49); // a LOSING trade: worth is $10.51 now, below the goal
+    expect(worth(c) < START + 32_500n).toBe(true);
+    expect(after.text).toContain('Net worth: $10.51');
+    expect(flagOf(after.text)).toBe(flag); // the goal was recorded, not recomputed
+    expect(goalLine(after.text)).toContain('Goal reached.');
     const submit = await c.agent.post('/api/submit').send({ challengeId: 'RM-10', submission: flag });
     expect(submit.body).toMatchObject({ solved: true, level: 'acolyte' });
   });
