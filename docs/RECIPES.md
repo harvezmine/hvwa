@@ -62,14 +62,16 @@ src/districts/index.ts              imports each district index
 - **Plumbing for every district: `src/districts/_shared/`.** A district never imports another district's `_shared/`;
   what two districts need lives here. Like any `_shared/`, it never holds a flaw.
   - `result.ts`: `Result` (`{ ok, text }`), the lab message a view shows as `lab-message lab-success|lab-error`.
-  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form? })` → `CurlView`, `shellQuote(text)`,
+  - `curl.ts`: `curlFor(req, res, { path, method?, headers?, cookies?, data?, form?, signIn? })` → `CurlView`, `shellQuote(text)`,
     with the partial `views/curl-note.ejs`: a curl line that can work. It carries the full quoted URL, `-X <method>`
     (PUT, PATCH ...), the headers it needs, `-d '<json>'` and/or `--data-urlencode 'name=value'` (values are
     shell-quoted), and `-b "hvwa_sid=<copy from devtools>"`. Never print the sid: a lab belongs to the browser session,
     so curl without that cookie plays in another session whose flags `/api/submit` from the browser would reject. The
     partial also says the line is bash syntax and that Windows PowerShell needs `curl.exe` (plain `curl` there is
     `Invoke-WebRequest`). A lab view at `src/districts/<district>/<lab>/views/` (or `<district>/_shared/views/`)
-    includes it with `<%- include('../../../_shared/views/curl-note', { curl: curl }) %>`.
+    includes it with `<%- include('../../../_shared/views/curl-note', { curl: curl }) %>`. The note tells the player to
+    sign in first; a lab nobody signs in to (the Relic Market shops, whose customer is already signed in) passes
+    `signIn: false`, and the note says to open the page instead.
   - `collections.ts`: bounded maps and ids for lab state (section 4, "Bound every map"): `newId()` (16 CSPRNG bytes,
     32 hex), `putBounded(map, key, value, max, keep?)` (store newest last; beyond `max` the oldest key `keep` does not
     pin goes) and `trimBounded(map, { max, pin?, spare? })` for a lab that inserts elsewhere and trims later (`pin`:
@@ -81,6 +83,8 @@ src/districts/index.ts              imports each district index
   - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
+- **The Relic Market shop shell** (`relic-market/_shared/`: money, cart, orders, intents, the shop page, its test kit)
+  is section 10; its race and time primitives are sections 11 and 12.
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
   all in `gatekeeper/_shared/`:
   - `pilgrimLogin(req)` + the `views/pilgrim-form.ejs` partial: the sign-in check, form and message.
@@ -337,7 +341,8 @@ string, not a 500.
   that the designed bypass, not patience, is the practical path. Re-signing-in, resending a code or any other
   convenience flow must not hand the budget back either (add a "re-sign-in" scenario to the spec).
 - **Time-dependent behaviour uses an injectable clock** (`state.now`, a test seam on the lab state), never
-  `setTimeout`, `sleep` or real minutes: tests move the clock (`state.now = () => t`) and stay fast.
+  `setTimeout`, `sleep` or real minutes: tests move the clock (`state.now = () => t`) and stay fast. A lab that must
+  really wait (a race window, a simulated delay) waits on the Relic Market clock, clamped and swappable (sections 11, 12).
 
 ## 5. Views, language and hints
 
@@ -1034,3 +1039,163 @@ Real-writer archives are in `tests/fixtures/upload/` (Python `zipfile`, with and
 `labFor({ sessionId: sid, level }).fs.list()`. Add the lab-specific cases: each level's name trick and the next level
 refusing it, names shown escaped, Divine's stored names, the sentinel unchanged after a refused extraction, and an
 upload served back as an inert download.
+
+## 10. The Relic Market shop shell (`relic-market/_shared/`)
+
+The shop labs (RM-05, 06, 07, 08, 09, 10, 13, 14) share a shell of plumbing. Every parse rule, check, rounding rule,
+lock and price decision stays in the lab's `levels/*.ts`; the shell stores what the level decided and enforces only
+platform bounds. Worked examples: RM-05 (cart lines and returns), RM-09 (level-made hidden form fields, a public JSON
+API), RM-14 (cart totals computed by the level's own arithmetic).
+
+**Money** is integer minor units in JS numbers that are always safe integers: US cents, whole crowns or whole rupiah.
+`formatMoney(amount, currency = 'USD')` is the one formatter (`$1,000.00`, `-$10.00`, `₡5`, `IDR 162,500`), exact for
+every integer (BigInt), and it throws on a fractional, NaN or infinite amount. No level formats money itself: a level
+that names an amount calls `formatMoney`, or `insufficientFunds(total, wallet)` for the usual checkout refusal.
+
+**State.** `newShop({ catalog, wallet })` is a `ShopState`: `catalog`, `startWallet`, `wallet`, `cart`, `discounts`,
+`orders`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
+in `perShop`:
+
+```ts
+// model.ts
+export interface LabState extends ShopState { readonly owned: Map<string, number> }
+const labs = perShop((): LabState => ({ ...newShop({ catalog: CATALOG, wallet: 5000 }), owned: new Map() }));
+export const labFor = (req: { sessionId: string; level: Level }): LabState => labs.for(req);
+export const labState = (sessionId: string, level: Level): LabState => labs.for({ sessionId, level }); // test seam
+export const resetLab = (req: { sessionId: string; level: Level }): void => { labs.reset(req); };
+```
+
+- `perShop(factory, opts?)` is `perSession` with `maxEntries: SHOP_MAX_ENTRIES` (1000) unless the lab passes its own.
+  A fully used shop is about 20-25 KB, so the engine's default 5000 entries would be about 125 MB a lab. Every RM
+  shop lab uses it.
+- `catalogOf(products)` is frozen and looked up in a `Map`, so `constructor` is no product. Every route checks the
+  SKU against it (`Unknown product.`) before a level sees it, so maps keyed by SKU only ever hold catalog SKUs.
+- The shopper is already signed in as `pilgrim` (`CUSTOMER`, customer `C-1042`): no sign-in form (decision Q9).
+
+**Cart and orders.**
+
+- `setLine(state, line)` **sets** the quantity of that SKU's line (a return line, `kind: 'return'`, is a line of its
+  own); 0 removes it. It stores the level's decision as given, negative quantities and prices included. Platform
+  bounds: |qty| ≤ 9 999 999 999 (`Quantity too large for this shop.`) and 20 lines (`Your cart is full (20 lines).`);
+  a fractional quantity or an unsafe unit price is a programming error and throws. A lab that adds up (RM-05's
+  returns) computes the new quantity itself and sets it.
+- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged })` debits `charged` (a negative charge
+  credits), stamps the order with `state.clock.now()`, empties the cart and the discounts and keeps the newest 30
+  orders (`pushOrder`). A charge or wallet outside the safe integers is refused (`OUT_OF_RANGE`) and changes nothing.
+  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...).
+- An `OrderLine` keeps `qty`, `unitPrice` (what was charged) and `listPrice` (the catalog's, then), so a proof never
+  reads the current catalog. `exactValue(lines)` is their real worth in BigInt.
+- `exactTotals(state)` (and `cartTotal`) are exact cart totals, `OUT_OF_RANGE` beyond the safe integers. A lab whose
+  lesson is the arithmetic (RM-14) builds its `CartTotals` with its levels instead.
+- More bounds: `addDiscount(state, d)` (10 discounts, `Too many promotions on this cart (10).`), `pushHistory(list,
+  entry)` (the newest 30), and `clipText(s)` for every free-text field a lab **stores** (100 characters, a copy made
+  with the engine's copying clip). `sql.ts` `clip` slices, and a slice can keep its whole parent string alive, so it
+  is for display cells only.
+
+**Routes: intents.** Every form on `GET /` posts back with no `action` and a hidden `intent`; each intent also has a
+named path for curl and scripts:
+
+```ts
+// challenge.ts
+const INTENTS: Readonly<Record<string, Intent>> = {
+  add: { path: '/cart', fields: ['sku', 'qty'], run: add }, // run(req, res) => Outcome { result, status? }
+  remove: removeLineIntent(labFor),                          // the cart's Remove button, the same at every level
+  checkout: { path: '/checkout', run: checkout },
+};
+// in mount(router):
+router.get('/', async (req, res) => { await render(req, res, { result: null }); });
+mountIntents(router, INTENTS, render);
+```
+
+- `mountIntents` mounts `POST /` (dispatch on `field(req, 'intent')`; a missing, unknown or non-string intent is 200
+  `Unknown action.`, never a 500) and `POST <path>` per intent, then calls `render(req, res, outcome)` with
+  `outcome.intent` set to the intent that ran. It throws at mount time on a relative or repeated path, on `/`, and on
+  the engine's `/_reset` and `/victim/...`. `fields` is documentation for the endpoint list.
+- `refusal(text)` and `success(text)` build an `Outcome`.
+
+**The page.** `render` builds the view data with `shopView(req, res, state, spec)`:
+
+```ts
+await sendPage(res, view, shopView(req, res, state, {
+  challenge: RM05, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves,
+  removable: true, endpoints: endpointsOf(INTENTS), curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' }, signIn: false },
+  // fields: (p) => level.formFields(p), api: [{ path: '/api/price-lists', description: '...' }], extra: { ... },
+}));
+```
+
+- `shopView` is `baseView` (header data, message, `kept`, curl, endpoint list, API box) plus `catalogView`,
+  `cartView` and `ordersView`. A page without a cart (store credit, an exchange, an API landing page) uses
+  `baseView(req, res, { result, curl, endpoints?, api?, wallet?, intent?, extra? })` and the parts it has.
+- `kept` is what was posted (`intent`, `sku`, `qty`): a product's quantity field keeps it only after an `add` of
+  that product, and a lab's own form keeps its value only after its own intent.
+- Views compose the partials in `relic-market/_shared/views/` (`shop-header`, `message`, `catalog`, `cart`, `orders`,
+  `api`, `endpoints`, `staff-code`) with the curl note, e.g. `<%- include('../../_shared/views/cart') %>`. `served`
+  is the level (`level` is a reserved view key); `heading` goes to `shop-header` only (a page-level `title` would
+  replace the page's `<title>`).
+- The header always says `Signed in as <code>pilgrim</code>` (the `account` regex of `describeLabView`); pass
+  `signIn: false` to `curlFor`. Machine-readable hooks for tests: `data-testid="wallet" data-cents`,
+  `<li data-order data-total data-charged data-status>`, `<tr data-sku data-qty data-line data-kind>`,
+  `data-testid="cart-total"`, `data-testid="endpoints"`.
+
+**The proof and the flag.** The flag is shown only for a recorded fact that proves the flaw: a paid order, a balance,
+a result row. Each lab defines it as `proves(order)` (or a predicate on its state) in `model.ts`: it is the oracle,
+not the flaw, so it is never in a level file, and it reads the order, never the current catalog. `ordersView` adds
+`flagLine(req, challenge)` (`Flag: …`, or `''` at Divine) to every order it holds for, outside any `tryDb`, so the
+proof stays visible on the order row after the action that made it. Divine never shows a flag.
+
+**Restart (decision Q8).** No RM lab has a limiter, lockout or attempt budget. The labs whose wallet, voucher or
+workflow can be spent into a dead end (RM-05, 06, 07, 08, 09, 10, 13, 14) pass `reset: (req) => { resetLab(req); }`;
+RM-01 to 04, 11 and 12 mutate nothing and have none (`POST <lab>/_reset` is 404). Every proof is measured against the
+current instance (its own `startWallet`, its own voucher), so a reset never helps an exploit. Each spec asserts that
+Restart restores the start wallet and empties the cart and the orders, and that the flag can still be earned after it.
+
+**Testing: `shop-lab.testkit.ts`.**
+
+- `shopClient(path)`: `ctx(level)`, `home(c)`, `form(c, body)` (a page form), `post(c, sub, body?)` (a named path),
+  `add(c, sku, qty, extra?)`, `checkout(c)`, `restart(c)`. The matrix's `send` hands a script its `ShopCtx`:
+  `send: (agent, level, script, _url, { sid, app }) => script({ agent, level, sid, app })`.
+- `describeShopBasics({ challenge, path, labState, hasRestart, purchase?, hasCart? })`: GET at every level, a purchase
+  isolated per player and per level, Restart (and its 429 cooldown) or a 404, the 21st cart line, the newest 30
+  orders, money formatting. The default purchase is the cheapest product with its own form, then checkout; a lab
+  without a cart passes its own `purchase` and `hasCart: false`.
+- Readers: `walletOf`, `ordersOf`, `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
+  them), `pricesOf`, `endpointsShown`.
+- Exploit scripts end on checkout, and Divine's answer to each is `Insufficient funds: …` (`resisted` is the text, or
+  a map keyed by the exploit's level when the totals differ).
+- A defense no Divine request can reach over HTTP (RM-14's exact multiply past INT32) is unit-tested on the level
+  module, or the mutant that drops it survives.
+
+## 11. Race labs (RM-07, RM-08)
+
+Real in production, deterministic in tests (`relic-market/_shared/race.ts` and the test kit).
+
+- A racy level is `check -> await state.gate.pass(WINDOW_MS) -> update`. In production `state.gate` is
+  `waitGate(realClock)`: `pass(ms)` is a real timer (clamped to 0-5000 ms), so two requests that arrive within the
+  window really interleave on the event loop. Nothing about the race itself is simulated.
+- **The route calls `state.gate.arrive()` as its first statement, right before the level**, and before any
+  `state.locks.run(...)`, so a request queued on a lock still counts. **A racy level function does no `await` before
+  its check**: arrival, check and the await then run in one synchronous segment.
+- Locks: `state.locks` is a `KeyedMutex` (FIFO per key, idle keys deleted) on the shop, so it is per player and level,
+  and a Restart or an eviction drops it. Callers pass constant keys only. Never a module-level mutex.
+- Tests install `barrierGate(n, fallbackMs = 2000)` on one session's state (`labState(sid, level).gate =
+  barrier.gate`) and fire the race with `Promise.all`. `pass()` resolves once n requests have **arrived** (not reached
+  `pass`), so every request has done its check before any does its update, and a Divine request refused before `pass`
+  still counts, so the barrier never deadlocks. Assert `timedOut() === false`: the fallback fires only on a regression.
+  - **Install the barrier right before the race**, after the set-up requests: a set-up request that goes through a
+    racy route counts as an arrival and spends the barrier before the race starts.
+  - **Install it again after a Restart**: Restart builds a fresh state, whose gate is the real `waitGate` again.
+  - Legit and other non-race cases run with `useInstantWaits()` in their describe block, so no test waits real time.
+
+## 12. Time-based labs (RM-03)
+
+- A delay is simulated on the injectable clock (`relic-market/_shared/clock.ts`), never a `setTimeout` in a level and
+  never genuinely slow SQL (rule (g)). The route evaluates the injected condition synchronously (e.g. a `sleep()` SQL
+  function that only adds to an accumulator, capped), then `await realClock.wait(delayMs)` and answers.
+- `realClock.wait(ms)` is a real `setTimeout` **clamped to 0-5000 ms** (`MAX_WAIT_MS`; NaN is 0), so no request can be
+  parked longer, and `realClock.now()` is `Date.now()`. Both delegate to whatever `setClockForTests` installed, so
+  holders made at import time follow a swap.
+- Tests call `useFakeClock()` in their describe block: `realClock.wait(ms)` then advances virtual time by the clamped
+  ms and resolves at once, and the returned `now()` reads it. An exploit script measures `now()` before and after each
+  request: the delay is exact and the test instant (decide with `dt >= 1000`). `useInstantWaits()` makes waits instant
+  without moving time.
+- Players measure real time with `curl -o /dev/null -s -w '%{time_total}\n' …`.

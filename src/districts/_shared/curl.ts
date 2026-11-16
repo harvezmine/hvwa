@@ -14,6 +14,8 @@ export interface CurlView {
   readonly data: string;
   /** Form fields, each already shell-quoted: `--data-urlencode '<field>'`. */
   readonly form: readonly string[];
+  /** false for a lab the player never signs in to: the note says to open the page instead. Absent otherwise. */
+  readonly signIn?: false;
 }
 
 export interface CurlSpec {
@@ -29,6 +31,8 @@ export interface CurlSpec {
   readonly data?: string;
   /** Form fields, sent with `--data-urlencode 'name=value'` (curl encodes them). */
   readonly form?: Readonly<Record<string, string>>;
+  /** false for a lab the player never signs in to (a shop whose customer is already signed in). Default true. */
+  readonly signIn?: boolean;
 }
 
 /** Text for inside single quotes in a shell line: each `'` closes the quote, adds an escaped quote and reopens. */
@@ -47,5 +51,6 @@ export function curlFor(req: Request, res: Response, spec: CurlSpec): CurlView {
     url: `${origin}${labPath(res)}${spec.path}?level=${req.level}`,
     method: spec.method ?? '', headers: spec.headers ?? [], cookies: spec.cookies ?? [],
     data: shellQuote(spec.data ?? ''), form: Object.entries(spec.form ?? {}).map(([k, v]) => shellQuote(`${k}=${v}`)),
+    ...(spec.signIn === false ? { signIn: false as const } : {}),
   };
 }
