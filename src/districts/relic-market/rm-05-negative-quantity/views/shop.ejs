@@ -1,0 +1,30 @@
+<%# RM-05 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market' }) %>
+  <p class="lab-note">Prices come from our catalog. Your order total is the quantity times the price of every line, and checkout takes it from your wallet. Returns are credited at checkout.</p>
+<%- include('../../_shared/views/message') %>
+<%- include('../../_shared/views/catalog') %>
+<%- include('../../_shared/views/cart') %>
+  <h2>Return an item for store credit</h2>
+<% if (owned.length === 0) { -%>
+  <p class="lab-note">Items you buy can be returned here for store credit.</p>
+<% } else { -%>
+  <ul>
+<% owned.forEach(function (o) { -%>
+    <li>You bought <%= o.name %> × <%= o.owned %><% if (o.returned) { %> and returned <%= o.returned %><% } %>.</li>
+<% }); -%>
+  </ul>
+  <form method="post">
+    <input type="hidden" name="intent" value="return">
+    <label>Item <select name="sku">
+<% owned.forEach(function (o) { -%>
+      <option value="<%= o.sku %>"<% if (o.sku === kept.sku) { %> selected<% } %>><%= o.name %></option>
+<% }); -%>
+    </select></label>
+    <label>Quantity to return <input name="qty" type="text" autocomplete="off" spellcheck="false" value="<%= returnQty %>"></label>
+    <button type="submit">Return for store credit</button>
+  </form>
+<% } -%>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>
