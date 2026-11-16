@@ -14,7 +14,7 @@ import { flagFor } from '../src/core/mount.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import { sendPage } from '../src/core/render.js';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, VICTIM_LABELS, sendSimRedirect, simWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, checkMailAction, sendLinkAction, sendSimRedirect, simWorld,
   type SimBrowser, type SimRedirectStatus, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 import {
@@ -48,6 +48,10 @@ function citadel(level: Level, lab: Courier, r: SimRequest): SimResponse {
       headers: { ...(next ? { Refresh: `0; url=${next}` } : {}), ...(policy ? { 'Referrer-Policy': policy } : {}) },
     };
   }
+  if (r.path === '/logout') return { status: 200, headers: { 'Set-Cookie': 'courier_session=; Max-Age=0; Path=/' }, body: 'Signed out.' };
+  if (r.path === '/crumbs') { // a page that sets more cookies than the jar holds: the oldest (the admin's session) goes
+    return { status: 200, headers: { 'Set-Cookie': Array.from({ length: 25 }, (_, i) => `crumb${i}=${i}; Path=/`) }, body: 'Crumbs.' };
+  }
   if (r.path === '/') return { status: 200, body: 'Courier home' };
   return { status: 404, body: 'Not found' };
 }
@@ -68,6 +72,8 @@ const labs = perSession((level): Courier => {
   return lab;
 });
 const labFor = (req: { sessionId: string; level: Level }): Courier => labs.for(req);
+/** The admin starts every action signed in, whatever the player's last link did (no Restart on this lab). */
+const rearm = (_req: Request, admin: SimBrowser): void => { admin.cookies.set('courier_session', 'admin'); };
 
 const COURIER = register(defineChallenge({
   id: 'SV-01', district: 'sim-test', slug: 'courier', dir: process.cwd(),
@@ -76,17 +82,8 @@ const COURIER = register(defineChallenge({
   victim: {
     sim: (req) => labFor(req).world,
     actions: [
-      {
-        name: 'check-mail', label: VICTIM_LABELS.checkMail,
-        run: (req) => {
-          const lab = labFor(req);
-          const link = lab.world.inbox.newest(ADMIN_MAILBOX)?.links[0];
-          if (link === undefined) return 'The admin has no mail with a link.';
-          lab.admin.follow(link);
-          return 'The admin opened the newest mail and clicked its first link.';
-        },
-      },
-      { name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url', run: (req, { url }) => { labFor(req).admin.follow(url); } },
+      checkMailAction({ browser: (req) => labFor(req).admin, mailbox: ADMIN_MAILBOX, rearm }),
+      sendLinkAction((req) => labFor(req).admin, { rearm }),
     ],
   },
   mount: (router) => {
@@ -235,7 +232,8 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     const page = await labPage(agent, 'acolyte');
     expect(page.text).not.toContain(lab.key);
     const panel = panelOf(page.text);
-    expect(panel).toContain('The admin opened the newest mail and clicked its first link.');
+    expect(panel).toContain('<p class="sim-action-description">opens the newest mail and clicks its first link</p>');
+    expect(panel).not.toContain('class="sim-note"'); // the summary says it all
     expect(panel).toContain('Visit 1: 3 request(s); ended on a citadel.test page (HTTP 200).');
     expect(panel).toContain('No requests yet.');
   });
@@ -264,6 +262,17 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     expect(panelOf((await labPage(b.agent, 'acolyte')).text)).not.toContain('only-a');
     expect(panelOf((await labPage(a.agent, 'divine')).text)).not.toContain('only-a');
     expect(panelOf((await labPage(a.agent, 'acolyte')).text)).toContain('only-a');
+  });
+
+  it('a link that signs the admin out (/logout, or a cookie flood) never leaves the lab stuck: every action re-arms', async () => {
+    const { agent, sid } = await freshSession();
+    const lab = labFor({ sessionId: sid, level: 'acolyte' });
+    for (const signOut of ['http://citadel.test/logout', 'http://citadel.test/crumbs']) {
+      await sendLink(agent, 'acolyte', signOut);
+      expect(lab.admin.cookies.get('courier_session'), signOut).toBeUndefined(); // signed out (or evicted from the jar)
+      const res = await exploit(agent, 'acolyte', sid); // the next action signs the admin back in first
+      expect(res.text, signOut).toMatch(FLAG_RE);
+    }
   });
 
   it('every action is a no-JS POST form to <lab>/victim/<name>?level=<level> on the canonical path', async () => {
@@ -325,7 +334,7 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
   it('platform strings come in both languages', async () => {
     const { agent } = await freshSession();
     const id = panelOf((await labPage(agent, 'acolyte', 'id')).text);
-    for (const s of ['Korban tersimulasi', 'Kotak surat Anda (pilgrim@citadel.test)', 'Server Anda (attacker.test) menerima…', 'Minta admin memeriksa email', 'Kirim tautan ke admin', 'buka di lab', 'Belum ada permintaan.']) {
+    for (const s of ['Korban tersimulasi', 'Kotak surat Anda (pilgrim@citadel.test)', 'Server Anda (attacker.test) menerima…', 'Minta admin memeriksa email', 'Kirim tautan ke admin', 'buka di lab', 'Belum ada permintaan.', 'membuka surat terbaru dan mengklik tautan pertamanya', 'membuka tautan apa pun yang Anda kirim']) {
       expect(id).toContain(s);
     }
     expect(id).toContain(`(lab ini: http://citadel.test/&lt;path&gt; adalah ${LAB}/&lt;path&gt;)`);

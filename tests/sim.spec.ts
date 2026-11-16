@@ -8,8 +8,9 @@ import ts from 'typescript';
 import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
 import { NewSessionLimitError, insidePerSessionFactory, perSession, setPerSessionDefaults } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
+import type { Request } from 'express';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, SIM_USER_AGENT, attackerLog, simInbox, simWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, SIM_USER_AGENT, VICTIM_LABELS, attackerLog, checkMailAction, sendLinkAction, simInbox, simWorld,
   type SimHandler, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 
@@ -672,6 +673,83 @@ describe('SimWorld: the victim\'s recent visits', () => {
     const v = b.follow('http://citadel.test/big');
     expect(v.page?.body).toBe('b'.repeat(SIM_LIMITS.bodyLength));
     expect(w.visits[0].page?.body).toBe('b'.repeat(SIM_LIMITS.bodyLength));
+  });
+});
+
+describe('victim action presets', () => {
+  const req = {} as Request; // the presets hand it to the lab's own accessors only
+  const mail = (w: SimWorld, to: string, links: string[]) => w.inbox.deliver({ from: 'ops@citadel.test', to, subject: 's', body: 'b', links });
+
+  it('checkMailAction: the victim opens the newest mail in its mailbox and clicks one link (default the first)', () => {
+    const w = world();
+    const s = site({ '/a': { status: 200 }, '/b': { status: 200 } });
+    const b = inSession(() => w.browser(s.handler));
+    const first = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX });
+    expect(first).toMatchObject({ name: 'check-mail', label: VICTIM_LABELS.checkMail });
+    expect(first.input).toBeUndefined();
+    expect(first.description?.en).toBe('opens the newest mail and clicks its first link');
+    expect(first.description?.id).toBe('membuka surat terbaru dan mengklik tautan pertamanya');
+    expect(first.run(req, { url: '' })).toEqual({ id: 'Kotak surat korban kosong.', en: "The victim's mailbox is empty." });
+    mail(w, ADMIN_MAILBOX, ['http://citadel.test/old']);
+    mail(w, ADMIN_MAILBOX, ['http://citadel.test/a', 'http://citadel.test/b']);
+    mail(w, PLAYER_MAILBOX, ['http://citadel.test/mine']);
+    expect(first.run(req, { url: '' })).toBeUndefined();
+    const second = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 1, name: 'check-second' });
+    expect(second.name).toBe('check-second');
+    expect(second.description?.en).toBe('opens the newest mail and clicks link 2 in it');
+    second.run(req, { url: '' });
+    expect(s.seen.map((r) => [r.path, r.headers.referer])).toEqual([['/a', undefined], ['/b', undefined]]); // from a mail client
+    const third = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 2 });
+    expect(third.run(req, { url: '' })).toEqual({ id: 'Surat terbaru korban tidak punya tautan ke-3.', en: "The victim's newest mail has no link 3." });
+    expect(s.seen).toHaveLength(2);
+  });
+
+  it('sendLinkAction: the victim opens whatever link the player sent', () => {
+    const w = world();
+    const s = site({ '/x': { status: 200 } });
+    const b = inSession(() => w.browser(s.handler));
+    const send = sendLinkAction(() => b);
+    expect(send).toMatchObject({ name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url' });
+    expect(send.description?.en).toBe('opens any link you send');
+    expect(send.run(req, { url: 'http://citadel.test/x?y=1' })).toBeUndefined();
+    send.run(req, { url: 'http://attacker.test/z' });
+    expect(s.seen.map((r) => r.url)).toEqual(['http://citadel.test/x?y=1']);
+    expect(w.attackerLog.entries().map((e) => e.url)).toEqual(['http://attacker.test/z']);
+    expect(sendLinkAction(() => b, { name: 'share', label: { id: 'Bagikan', en: 'Share' } })).toMatchObject({ name: 'share', label: { en: 'Share' } });
+  });
+
+  it('the re-arm step runs at the start of EVERY action, before the victim browses (a link may have signed it out)', () => {
+    const w = world();
+    const s = site({ '/me': (r) => ({ status: 200, body: r.cookies.sid ?? 'signed out' }), '/logout': { status: 200, headers: { 'set-cookie': 'sid=; Max-Age=0' } } });
+    const b = inSession(() => w.browser(s.handler));
+    const calls: string[] = [];
+    const rearm = (r: Request, browser: typeof b): void => {
+      calls.push(`${r === req} ${browser === b} ${browser.cookies.get('sid') ?? 'none'}`);
+      browser.cookies.set('sid', 'admin');
+    };
+    const send = sendLinkAction(() => b, { rearm });
+    const check = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, rearm });
+    send.run(req, { url: 'http://citadel.test/logout' });
+    expect(b.cookies.get('sid')).toBeUndefined(); // the player's link signed the victim out...
+    expect(send.run(req, { url: 'http://citadel.test/me' })).toBeUndefined();
+    expect(w.visits.at(-1)?.page?.body).toBe('admin'); // ...and the next action re-armed it first
+    check.run(req, { url: '' }); // even an action that ends up doing nothing (no mail)
+    expect(calls).toEqual(['true true none', 'true true none', 'true true admin']);
+  });
+
+  it('refuses bad options when the lab is defined, and a mailbox the world does not have when it runs', () => {
+    const browser = () => { throw new Error('not called'); };
+    expect(() => checkMailAction({ browser: 'x' as never, mailbox: ADMIN_MAILBOX })).toThrow(/browser/);
+    expect(() => checkMailAction({ browser, mailbox: 5 as never })).toThrow(/mailbox/);
+    for (const link of [-1, SIM_LIMITS.linksPerMail, 1.5, Number.NaN]) {
+      expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, link }), String(link)).toThrow(/link/);
+    }
+    expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, rearm: 'x' as never })).toThrow(/rearm/);
+    expect(() => sendLinkAction('x' as never)).toThrow(/browser/);
+    expect(() => sendLinkAction(browser, { rearm: 5 as never })).toThrow(/rearm/);
+    const w = world([]);
+    const b = inSession(() => w.browser(site({}).handler));
+    expect(() => checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX }).run(req, { url: '' })).toThrow(/no mailbox/);
   });
 });
 

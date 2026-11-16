@@ -107,6 +107,7 @@ case (g)). Divine resists every exploit.
 | `simWorld({ mailboxes })`, `world.browser(handler)` | `core/sim` | victim-driven labs: one player's inbox, attacker log and the victim's browser, made inside the lab's `perSession` factory (section 8) |
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
+| `checkMailAction({ browser, mailbox, link?, rearm? })`, `sendLinkAction(browserFor, { rearm? })` | `core/sim` | the two usual victim actions, with a re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
@@ -522,25 +523,40 @@ router.get('/idp/authorize', async (req, res) => { // the player authorizes in t
 
 ### Scripting the victim
 
+The two usual actions are presets; use them unless the victim's script is different:
+
 ```ts
+/** The admin starts every action signed in to Pilgrim-ID, whatever the player's last link did. */
+const rearm = (req: Request, admin: SimBrowser) => { admin.cookies.set('pid_session', adminSession(labFor(req))); };
+
 register(defineChallenge({
   /* id, district, slug, dir, title, summary, maps, levels, hints, mount */
   victim: {
     sim: (req) => labFor(req).world,
     actions: [
-      { name: 'check-mail', label: VICTIM_LABELS.checkMail,
-        description: { id: 'membuka surat terbaru dan mengklik tautan pertamanya', en: 'opens the newest mail and clicks its first link' },
-        run: (req) => {
-          const s = labFor(req);
-          const link = s.world.inbox.newest(ADMIN_MAILBOX)?.links[0];
-          if (link === undefined) return { id: 'Admin tidak punya surat baru.', en: 'The admin has no new mail.' }; // a note
-          s.admin.follow(link);
-      } },
-      { name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url',
-        run: (req, { url }) => { labFor(req).admin.follow(url); } },
+      // opens the newest mail in its mailbox and clicks links[link] (default 0), from a mail client (no Referer)
+      checkMailAction({ browser: (req) => labFor(req).admin, mailbox: ADMIN_MAILBOX, rearm }),
+      // opens whatever link the player types in (input: 'url')
+      sendLinkAction((req) => labFor(req).admin, { rearm, description: { id: '...', en: 'opens any link you send, while signed in to Pilgrim-ID' } }),
     ],
   },
 }));
+```
+
+Both take `name`, `label`, `description` (platform defaults fit) and `rearm`; `checkMailAction` answers with a
+bilingual note when the mailbox is empty or the newest mail has no such link. A custom action is
+`{ name, label, description?, input?: 'url', run: (req, { url }) => note | void }`:
+
+```ts
+{ name: 'open-inbox', label: { id: 'Minta admin membuka kotak masuk', en: 'Ask the admin to open the inbox' },
+  description: { id: 'membuka /inbox dan mengklik tautan pertama di sana', en: 'opens /inbox and clicks the first link on it' },
+  run: (req) => {
+    const s = labFor(req);
+    rearm(req, s.admin);
+    const link = firstLinkOn(s.admin.follow('http://citadel.test/inbox').page?.body ?? '');
+    if (link === undefined) return { id: 'Kotak masuk admin kosong.', en: "The admin's inbox is empty." };
+    s.admin.follow(link, { referrer: 'http://citadel.test/inbox' }); // a click on a citadel page: pass its URL
+  } },
 ```
 
 The engine mounts `POST <lab>/victim/<name>?level=<level>` per action **before** the lab's own routes (the
@@ -562,6 +578,11 @@ or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLin
 - **A click on a citadel page passes `referrer` explicitly**: `follow(link, { referrer: 'http://citadel.test/inbox' })`.
   Without it the request carries no Referer, as for a link opened from a mail client, and a Referer-based lab would
   silently test nothing.
+- **Re-arm the victim at the start of every action.** The player's link can undo the victim's standing state: a link
+  to `/logout`, or a page whose `Set-Cookie`s overflow the 20-cookie jar and evict the admin's session. A lab without
+  Restart would then stay stuck until the 26 h TTL. Pass `rearm` to the presets (call it first in a custom `run`): it
+  restores that state by setting cookies (`browser.cookies.set`), as the factory did, and never browses (a visit would
+  show in the report). Re-arm only the standing state, never what the exploit itself changes.
 
 Restart: a victim-driven lab whose state can get stuck may pass `reset: (req) => labs.reset(req)`; that drops the
 world (inbox, attacker log, victim cookies) with the rest. The usual rule applies: no Restart on a lab with limiters.

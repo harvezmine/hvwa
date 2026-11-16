@@ -605,6 +605,8 @@ export interface SimNavigateOptions {
 
 /** A victim's browser: a cookie jar plus a navigation loop. */
 export interface SimBrowser {
+  /** The world it lives in (its inbox, its attacker log). */
+  readonly world: SimWorld;
   readonly cookies: SimCookieJar;
   /** Open a link (GET). */
   follow(url: string, opts?: SimNavigateOptions): SimVisit;
@@ -701,7 +703,7 @@ const encodeForm = (form: Readonly<Record<string, string>>): string => new URLSe
 class Browser implements SimBrowser {
   private readonly jar: Jar;
 
-  constructor(private readonly world: World, private readonly handler: SimHandler) {
+  constructor(readonly world: World, private readonly handler: SimHandler) {
     this.jar = new Jar(() => world.now());
   }
 
@@ -913,7 +915,8 @@ export interface VictimConfig {
   readonly actions: readonly VictimAction[];
 }
 
-const textOf = (key: string): Text => Object.freeze({ id: t(key, 'id'), en: t(key, 'en') });
+const textOf = (key: string, vars: Readonly<Record<string, string | number>> = {}): Text =>
+  Object.freeze({ id: fmt(t(key, 'id'), vars), en: fmt(t(key, 'en'), vars) });
 
 /** Platform labels (ID/EN) for the two usual actions. */
 export const VICTIM_LABELS = Object.freeze({
@@ -922,6 +925,87 @@ export const VICTIM_LABELS = Object.freeze({
   /** "Send link to the admin" (use with input: 'url') */
   sendLink: textOf('sim.action.send_link'),
 });
+
+/** A preset's re-arm step (see VictimPresetOptions.rearm). */
+export type VictimRearm = (req: Request, browser: SimBrowser) => void;
+
+/** What every action preset takes besides its own options. */
+export interface VictimPresetOptions {
+  /** The route name, kebab-case (default 'check-mail' / 'send-link'). */
+  readonly name?: string;
+  /** The button (default VICTIM_LABELS.checkMail / .sendLink). */
+  readonly label?: Text;
+  /** What the victim does, under the button (a platform default fits the preset). */
+  readonly description?: Text;
+  /**
+   * Runs at the start of EVERY action, before the victim browses: restore the victim's standing state, which the
+   * player's last link may have undone (a link to /logout, or a page whose cookies overflow the jar and evict the
+   * admin's session). Sign in by setting the cookie (`browser.cookies.set`), as the lab's factory does; never browse
+   * here (that visit would show in the report). Without it a lab with no Restart can stay stuck until the 26 h TTL.
+   */
+  readonly rearm?: VictimRearm;
+}
+
+/** checkMailAction()'s options. */
+export interface CheckMailOptions extends VictimPresetOptions {
+  /** The victim's browser for this request, e.g. `(req) => labFor(req).admin`. Its world's inbox is read. */
+  readonly browser: (req: Request) => SimBrowser;
+  /** The mailbox the victim reads, e.g. ADMIN_MAILBOX (one of its world's). */
+  readonly mailbox: string;
+  /** Which link of the newest mail the victim clicks: 0 (the default) is the first. */
+  readonly link?: number;
+}
+
+function checkPreset(what: string, browser: unknown, opts: VictimPresetOptions): void {
+  if (typeof browser !== 'function') throw new Error(`${what}: browser must be a function (req) => SimBrowser`);
+  if (opts.rearm !== undefined && typeof opts.rearm !== 'function') throw new Error(`${what}: rearm must be a function (req, browser) => void`);
+}
+
+/**
+ * "Ask the admin to check mail": the victim opens the newest mail in `mailbox` and clicks its link number `link`
+ * (from a mail client: no Referer). A bilingual note says when there is no mail or no such link.
+ */
+export function checkMailAction(opts: CheckMailOptions): VictimAction {
+  const { browser, mailbox, link = 0, rearm } = opts;
+  checkPreset('checkMailAction', browser, opts);
+  if (typeof mailbox !== 'string') throw new Error('checkMailAction: mailbox must be a mail address');
+  if (!Number.isInteger(link) || link < 0 || link >= SIM_LIMITS.linksPerMail) {
+    throw new Error(`checkMailAction: link must be an integer from 0 to ${SIM_LIMITS.linksPerMail - 1} (got ${String(link)})`);
+  }
+  const n = link + 1;
+  return Object.freeze({
+    name: opts.name ?? 'check-mail',
+    label: opts.label ?? VICTIM_LABELS.checkMail,
+    description: opts.description ?? (link === 0 ? textOf('sim.describe.check_mail') : textOf('sim.describe.check_mail_link', { n })),
+    run: (req: Request): Text | void => {
+      const b = browser(req);
+      rearm?.(req, b);
+      if (!b.world.inbox.has(mailbox)) throw new Error(`checkMailAction: the world has no mailbox "${clip(mailbox, 60)}"`);
+      const mail = b.world.inbox.newest(mailbox);
+      if (mail === undefined) return textOf('sim.note.mailbox_empty');
+      const url = mail.links[link];
+      if (url === undefined) return textOf('sim.note.no_link', { n });
+      b.follow(url);
+    },
+  });
+}
+
+/** "Send link to the admin": the victim opens whatever link the player sends (the form's link field). */
+export function sendLinkAction(browser: (req: Request) => SimBrowser, opts: VictimPresetOptions = {}): VictimAction {
+  checkPreset('sendLinkAction', browser, opts);
+  const { rearm } = opts;
+  return Object.freeze({
+    name: opts.name ?? 'send-link',
+    label: opts.label ?? VICTIM_LABELS.sendLink,
+    description: opts.description ?? textOf('sim.describe.send_link'),
+    input: 'url',
+    run: (req: Request, { url }: { readonly url: string }): void => {
+      const b = browser(req);
+      rearm?.(req, b);
+      b.follow(url);
+    },
+  });
+}
 
 const ACTION_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
