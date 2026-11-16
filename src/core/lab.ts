@@ -102,6 +102,12 @@ export interface HolderCaps {
  */
 export const CAPPED_BUDGET_BYTES = 96 * 1024 * 1024;
 
+/** The most one store may weigh: a sixteenth of the budget, so no single store can empty it (the built-ins are under 1/32). */
+export const MAX_STORE_WEIGHT = CAPPED_BUDGET_BYTES / 16;
+
+/** The rate cap of capped holders that declare no other (declareLabWeight); the sim stores use the same 30 a minute. */
+export const CAPPED_NEW_PER_MINUTE = 30;
+
 /** One running perSession factory: its holder's own options, and what the capped stores it built or used ask. */
 interface FactoryFrame {
   readonly asked: { readonly maxNewPerMinute?: number };
@@ -189,10 +195,21 @@ function capFrames(what: string, caps: HolderCaps): void {
 export function capPerSessionHolder(what: string, caps: HolderCaps): void {
   if (frames.length === 0) throw new Error(`${what}: create it inside a perSession() factory`);
   if (!Number.isInteger(caps.weight) || caps.weight < 1) throw new Error(`${what}: weight must be a positive integer of bytes (got ${String(caps.weight)})`);
+  if (caps.weight > MAX_STORE_WEIGHT) throw new Error(`${what}: weight ${caps.weight} is over the per-store ceiling of ${MAX_STORE_WEIGHT} bytes`);
   if (!Number.isInteger(caps.maxNewPerMinute) || caps.maxNewPerMinute < 1) {
     throw new Error(`${what}: maxNewPerMinute must be a positive integer (got ${String(caps.maxNewPerMinute)})`);
   }
   capFrames(what, caps);
+}
+
+/**
+ * A lab's OWN per-session state (its bounded maps of sessions, codes, links...) weighs `bytes` in the shared budget,
+ * next to the sim stores it builds: call it in the perSession factory. `bytes` is that state filled to every cap with
+ * its longest values, measured (tests/lab-state-weights.spec.ts), plus a margin; every stored player string must be a
+ * bounded copy (clip) for the measurement to hold. It caps the holder at CAPPED_NEW_PER_MINUTE, like a sim store.
+ */
+export function declareLabWeight(bytes: number, what = 'lab state'): void {
+  capPerSessionHolder(what, { maxNewPerMinute: CAPPED_NEW_PER_MINUTE, weight: bytes });
 }
 
 /** Thrown by perSession().for() when new instances are being created too fast. The error handler answers 429. */

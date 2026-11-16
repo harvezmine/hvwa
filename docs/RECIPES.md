@@ -145,6 +145,7 @@ case (g)). Divine resists every exploit.
 | `field(req, name)` | `core/lab` | a body field as a string, `''` for missing or non-string values |
 | `flagFor(req, challenge)` | `core/mount` | this session's flag at the served level; throws at Divine |
 | `sendPage(res, viewFile, data)` | `core/render` | the only way to render (absolute `.ejs` path) |
+| `declareLabWeight(bytes, what?)` | `core/lab` | in a victim-driven (or upload) lab's `perSession` factory: what the lab's own bounded maps hold at worst, weighed in the shared byte budget (section 8) |
 | `simWorld({ mailboxes })`, `world.browser(handler)` | `core/sim` | victim-driven labs: one player's inbox, attacker log and the victim's browser, made inside the lab's `perSession` factory (section 8) |
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
@@ -564,7 +565,18 @@ the container has 512 MB:
   browser 1.47 MiB; a simulated file system (section 9) weighs 352 KiB. An instance weighs everything its factory built
   or used. Creating one that does not fit evicts the least recently used capped instances, whichever lab they belong
   to, as many as it takes; the new one is never refused. A reset, an idle-TTL expiry or the holder's own `maxEntries`
-  gives the bytes back. Adding a victim-driven lab does not raise the bound.
+  gives the bytes back. No single store may weigh more than `MAX_STORE_WEIGHT` (1/16 of the budget; the built-ins are
+  all under 1/32).
+- **The lab's own state counts too: clip it, and declare it.** The budget only sees what is declared. A lab's own maps
+  (sessions, codes, return URLs, flows...) are NOT in the sim stores' weights, so a victim-driven lab must (a) store every
+  player string through the copying `clip` at a bounded length (a URL: `clip(s, SIM_LIMITS.urlLength + 1)`, one past the
+  cap so an over-long value stays too long to follow), never the raw request value or a view of it, and (b) declare
+  what its maps hold at worst with `declareLabWeight(STATE_WEIGHT, '<ID> lab state')` in its `perSession` factory:
+  the maps filled to every cap with their longest values, measured with a full GC, plus a margin. Add the lab to
+  `tests/lab-state-weights.spec.ts`, which keeps every declaration at or above its measurement (GK-10 declares
+  736 KiB for ~662 KiB measured, GK-11 288 KiB for ~239, GK-16 128 KiB for ~99). **Only then does adding a
+  victim-driven lab leave the 96 MiB bound intact**; an unclipped 16 KB string in a map of 50 is 1.6 MB the budget never
+  sees. `declareLabWeight` caps the holder at `CAPPED_NEW_PER_MINUTE` (30) new instances a minute, like a sim store.
 - **Eviction is a reset** of that player's instance at that level (section 4), and a shared budget turns over in
   minutes: keep no limiter, lockout or attempt budget in victim-driven state.
 - At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may

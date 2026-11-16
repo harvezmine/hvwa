@@ -1,6 +1,6 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, onTestFinished, vi } from 'vitest';
-import { CAPPED_BUDGET_BYTES, cappedBudgetUsage, setCappedBudget, setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { CAPPED_BUDGET_BYTES, CAPPED_NEW_PER_MINUTE, MAX_STORE_WEIGHT, cappedBudgetUsage, declareLabWeight, setCappedBudget, setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import { fixtureLines, sendLines } from '../src/core/fixtures.js';
 import type { Level } from '../src/core/levels.js';
 
@@ -398,6 +398,35 @@ describe('perSession(factory, opts?)', () => {
     expect([h.size, cappedBudgetUsage().bytes - base]).toEqual([1, 100]);
     for (const sid of ['r4', 'r5', 'r6']) h.for(req(sid)); // maxEntries 3: r3 goes by the holder's own LRU
     expect([h.size, cappedBudgetUsage().bytes - base]).toEqual([3, 300]);
+  });
+
+  it('a store may weigh at most MAX_STORE_WEIGHT (a sixteenth of the budget): one store must never empty it', () => {
+    expect(MAX_STORE_WEIGHT).toBe(CAPPED_BUDGET_BYTES / 16);
+    const make = (weight: number) => perSession(() => { capPerSessionHolder('big', { maxNewPerMinute: 30, weight }); return {}; });
+    expect(() => make(MAX_STORE_WEIGHT).for(req('ok'))).not.toThrow();
+    expect(() => make(MAX_STORE_WEIGHT + 1).for(req('no'))).toThrow(/big: weight 6291457 is over the per-store ceiling of 6291456/);
+  });
+
+  it('declareLabWeight: a lab weighs its own state too, at the capped rate, inside its factory only', () => {
+    expect(() => declareLabWeight(1000)).toThrow(/lab state: create it inside a perSession\(\) factory/);
+    const before = cappedBudgetUsage().bytes;
+    const lab = perSession(() => { declareLabWeight(2000, 'XX-01 lab state'); return {}; });
+    lab.for(req('lw'));
+    expect(cappedBudgetUsage().bytes - before).toBe(2000);
+    lab.reset(req('lw'));
+    expect(cappedBudgetUsage().bytes).toBe(before);
+    expect(CAPPED_NEW_PER_MINUTE).toBe(30);
+    expect(() => perSession(() => { declareLabWeight(10, 'XX-02 lab state'); return {}; }, { maxNewPerMinute: 31 }).for(req('f')))
+      .toThrow(/XX-02 lab state: .*at most 30 new instances/);
+    expect(() => perSession(() => { declareLabWeight(MAX_STORE_WEIGHT + 1); return {}; }).for(req('g'))).toThrow(/ceiling/);
+  });
+
+  it('a capped holder making an instance that keeps NOTHING capped, inside another factory, still passes its rate out', () => {
+    // A holder capped by an earlier instance (its factory built a capped store only for "cap" sessions).
+    const inner = perSession((_l, sid) => { if (sid.startsWith('cap')) capPerSessionHolder('inner', { maxNewPerMinute: 5, weight: 1 }); return {}; });
+    inner.for(req('cap-first'));
+    const outer = perSession((_l, sid) => ({ inner: inner.for(req(`plain-${sid}`)) }), { maxNewPerMinute: 1000 });
+    expect(() => outer.for(req('o'))).toThrow(/inner: .*at most 5 new instances.*maxNewPerMinute: 1000/);
   });
 
   it('capPerSessionHolder needs a positive integer weight and rate', () => {
