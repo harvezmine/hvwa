@@ -819,3 +819,11 @@ The only cross-cutting change is optional and districts-level, not engine: see Q
 - **Shell (landing with RM-A fixes):** `KeyedMutex` lives on `ShopState.locks` (per player+level; never module-level); `formatMoney(cents, currency)` throws on non-integers; `addDiscount` / bounded history enforce `LIMITS`; `shopView` splits into base + optional cart/orders parts; shop holders default to `maxEntries: 1000` (~25 KB/instance).
 - **Batch D prerequisites (RM-11 / RM-13), to do in batch D's first commit:** `shopView` lists only orders with `owner === CUSTOMER.id`; seeded orders of other customers live in a PINNED store (never evicted by the player's own 30); `Order` ids may be strings (RM-11 UUID-like ids); the API listing supports example paths with parameters (`/api/orders/:id`) without a broken link; `placeOrder` takes a status (RM-13 needs states other than `paid`).
 - **Race labs (batch C):** install `barrierGate` right before the race (set-up requests through a racy route count as arrivals); reinstall it after Restart.
+
+## Amendments after the RM-C / RM-D reviews (2026-11-17, binding)
+
+- **RM-07:** the voucher minimum is re-checked at CHECKOUT at every level (applying on a big item, then swapping it for a cheap one, must not charge $0.00).
+- **RM-11 Templar:** the activity feed shows the plain order NUMBER (`#1002`); the doors take base64url ids, so the player encodes it (the lesson: encoded ids are not secret).
+- **RM-12:** the "unbounded export" is unbounded only in the lab's simulated cost model; the real response is capped (largest API body ~16 KB, Try-it page ~56 KB). `plan()` receives `{ limit, offset, expand }`; one strict canonical cursor parser lives in the model.
+- **RM-13:** the flag proof is `confirmed && charged < total`, where `charged` is the PROVIDER's ledger (`received`), not the shop's `paid` (the design's "paid < total" can never hold at Inquisitor, whose forged return sets `paid = total`). The provider charge is idempotent (a checkout is never charged twice). RM-13 builds its confirmed order by hand (`placeOrder` would debit twice).
+- **Races (RM-07/08):** `barrierGate` releases passes in a MACROTASK (`setImmediate`), not a microtask; Divine's synchronous reserve/debit is pinned by a level-module unit test with no await.

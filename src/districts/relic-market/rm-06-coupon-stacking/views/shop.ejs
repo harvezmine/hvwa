@@ -1,0 +1,36 @@
+<%# RM-06 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market' }) %>
+  <p class="lab-note">Spring promotions are on. The rule: one promotion per order. Promotions are taken off the running total in the order you apply them. The promotion form also accepts a JSON body.</p>
+<%- include('../../_shared/views/message') %>
+<%- include('../../_shared/views/catalog') %>
+<%- include('../../_shared/views/cart') %>
+  <h2>Promotions</h2>
+  <ul class="shop-promotions">
+<% promotions.forEach(function (p) { -%>
+    <li><code><%= p.code %></code>: <%= p.blurb %></li>
+<% }); -%>
+  </ul>
+  <form method="post">
+    <input type="hidden" name="intent" value="coupon">
+    <label>Promotion code <input name="code" type="text" autocomplete="off" spellcheck="false" value="<%= codeKept %>"></label>
+    <button type="submit">Apply</button>
+  </form>
+<% if (applied.length === 0) { -%>
+  <p class="lab-note">No promotion applied.</p>
+<% } else { -%>
+  <ul class="shop-applied">
+<% applied.forEach(function (a) { -%>
+    <li data-promo="<%= a.code %>" data-amount="<%= a.amount.cents %>"><code><%= a.code %></code>: -<%= a.amount.text %></li>
+<% }); -%>
+  </ul>
+  <form method="post">
+    <input type="hidden" name="intent" value="uncoupon">
+    <button type="submit">Remove promotions</button>
+  </form>
+<% } -%>
+  <p class="lab-note">Total after promotions: <strong data-testid="payable" data-cents="<%= payable.cents %>"><%= payable.text %></strong></p>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>

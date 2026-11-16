@@ -25,10 +25,12 @@ export interface Barrier {
 /**
  * A deterministic race window: every `pass()` resolves once `n` requests have ARRIVED (gate.arrive(), the route's
  * first statement), not once n reached pass: a Divine request refused before pass still counts, so the barrier never
- * deadlocks. Released waiters resume as microtasks after the current synchronous segment, so with
- * `Promise.all([post, post])` every request has done its check before any request does its update. Install it on one
- * session's state (`labState(sid, level).gate = barrierGate(2).gate`). A pass still waiting after `fallbackMs` is
- * released and timedOut() turns true.
+ * deadlocks. Released passes resume in a later MACROTASK (setImmediate), after every microtask the last arrival
+ * queued: a check that starts a microtask after arrive() (a `state.locks.run(...)` hop, the first thing a locking
+ * level does) therefore still runs before any update. So with `Promise.all([post, post])` every request has done its
+ * check before any request does its update. Install it on one session's state
+ * (`labState(sid, level).gate = barrierGate(2).gate`). A pass still waiting after `fallbackMs` is released and
+ * timedOut() turns true.
  */
 export function barrierGate(n: number, fallbackMs = 2000): Barrier {
   let count = 0;
@@ -38,7 +40,8 @@ export function barrierGate(n: number, fallbackMs = 2000): Barrier {
   const release = () => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
-    for (const w of waiters.splice(0)) w();
+    const now = waiters.splice(0);
+    setImmediate(() => { for (const w of now) w(); });
   };
   const gate: Gate = {
     arrive: () => {
@@ -46,7 +49,7 @@ export function barrierGate(n: number, fallbackMs = 2000): Barrier {
       if (count >= n) release();
     },
     pass: () => {
-      if (count >= n) return Promise.resolve();
+      if (count >= n) return new Promise<void>((resolve) => { setImmediate(resolve); });
       return new Promise<void>((resolve) => {
         waiters.push(resolve);
         timer ??= setTimeout(() => { timedOut = true; release(); }, fallbackMs);
@@ -100,6 +103,11 @@ export function ordersOf(html: string): ShownOrder[] {
     const flag = FLAG_RE.exec(inner)?.[0];
     return { no: Number(no), total: Number(total), charged: Number(charged), status, ...(flag === undefined ? {} : { flag }) };
   });
+}
+
+/** The ids of the orders the page lists, newest first, as text: numbers and string ids alike (ordersOf reads numbers only). */
+export function orderIdsOf(html: string): string[] {
+  return [...html.matchAll(/<li data-order="([^"]*)" data-total=/g)].map((m) => unescapeHtml(m[1]));
 }
 
 /** A cart line as the page shows it: `line` is its total in cents, null when the lab could not price it. */
