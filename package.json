@@ -15,6 +15,8 @@
     "start": "node dist/server.js",
     "verify:dist": "node scripts/verify-dist.mjs",
     "verify:docker": "node scripts/verify-docker.mjs",
+    "gen:catalog": "tsx src/tools/gen-catalog.ts",
+    "gate:catalog": "tsx src/tools/gate-catalog.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit"

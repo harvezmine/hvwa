@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import '../src/districts/index.js'; // registers everything
 import { allChallenges } from '../src/core/registry.js';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CATALOG, DISTRICTS } from '../src/catalog.js';
+import { renderCatalog } from '../src/tools/gen-catalog.js';
+import { evaluateGate } from '../src/tools/gate-catalog.js';
 
 const HEADER_COUNTS: Record<string, number> = {
   gatekeeper: 18, 'relic-market': 14, scriptorium: 20, 'forum-of-pilgrims': 12, 'archive-api': 15,
@@ -56,5 +61,37 @@ describe('catalog vs registry', () => {
       if (row?.levels.length === 0) continue;
       expect([...c.levels].sort(), c.id).toEqual([...(row?.levels ?? [])].sort());
     }
+  });
+});
+
+describe('docs/CATALOG.md generator', () => {
+  const norm = (s: string) => s.replace(/\r\n/g, '\n');
+
+  it('is deterministic and covers every row, with per-district and overall totals', () => {
+    const a = renderCatalog();
+    expect(renderCatalog()).toBe(a);
+    for (const r of CATALOG) expect(a).toContain(`| ${r.id} |`);
+    expect(a).toContain('**Total: 18/122 registered**');
+    expect(a).toContain('## Gatekeeper\n');
+    expect(a).not.toContain('\r');
+  });
+
+  it('marks registered rows and leaves the rest planned', () => {
+    const md = renderCatalog();
+    expect(md).toMatch(/\| GK-01 \|.*\| ✅ registered \|/);
+    expect(md).toMatch(/\| RM-01 \|.*\| planned \|/);
+  });
+
+  it('committed docs/CATALOG.md is current (run `npm run gen:catalog`)', () => {
+    const file = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'CATALOG.md');
+    expect(norm(readFileSync(file, 'utf8'))).toBe(renderCatalog());
+  });
+});
+
+describe('release gate (npm run gate:catalog)', () => {
+  it('passes at >= 100 registered and fails below, reporting N/122', () => {
+    expect(evaluateGate(99)).toEqual({ ok: false, registered: 99, total: 122, message: '99/122 registered' });
+    expect(evaluateGate(100).ok).toBe(true);
+    expect(evaluateGate(122).message).toBe('122/122 registered');
   });
 });
