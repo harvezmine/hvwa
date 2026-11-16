@@ -36,7 +36,7 @@ export const SIM_USER_AGENT = 'CitadelBrowser/1.0 (simulated victim)';
 export const SIM_LIMITS = Object.freeze({
   /** Longest URL the browser follows, before and after WHATWG serialization (percent-encoding can grow it). */
   urlLength: 2048,
-  /** Most redirects (3xx with Location, or a page's Refresh) one visit follows. */
+  /** Most redirects (301/302/303/307/308 with Location, or a page's Refresh) one visit follows. */
   maxRedirects: 10,
   /** Longest mail address (and From line). */
   addressLength: 254,
@@ -554,7 +554,7 @@ export interface SimRequest {
 export interface SimResponse {
   readonly status: number;
   /**
-   * `Location` (followed on a 3xx), `Set-Cookie` (one line or a list), `Refresh` ("0; url=..": the page moves the
+   * `Location` (followed on 301, 302, 303, 307 and 308 only), `Set-Cookie` (one line or a list), `Refresh` ("0; url=..": the page moves the
    * browser on, sending ITS URL as Referer: the stand-in for a meta refresh or script navigation) and
    * `Referrer-Policy` (what the next hop's Referer may contain). Others are ignored.
    */
@@ -573,7 +573,7 @@ export interface SimHop {
   readonly method: 'GET' | 'POST';
   /** The URL requested (for an unreachable hop: the URL that could not be reached, clipped). */
   readonly url: string;
-  /** How the browser got here: the link itself, a 3xx Location, or a page's Refresh. */
+  /** How the browser got here: the link itself, a redirect's Location, or a page's Refresh. */
   readonly via: 'start' | 'redirect' | 'refresh';
   readonly referer?: string;
   /** The citadel's status (citadel hops only). */
@@ -613,6 +613,9 @@ export interface SimBrowser {
   /** Submit a form (POST, urlencoded). */
   submit(url: string, form: Readonly<Record<string, string>>, opts?: SimNavigateOptions): SimVisit;
 }
+
+/** Fetch's redirect statuses: the only ones whose Location a browser follows. */
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 
 type ReferrerPolicy = 'no-referrer' | 'no-referrer-when-downgrade' | 'same-origin' | 'origin' | 'strict-origin'
   | 'origin-when-cross-origin' | 'strict-origin-when-cross-origin' | 'unsafe-url';
@@ -772,7 +775,9 @@ class Browser implements SimBrowser {
       const h = headerMap(res);
       for (const line of h.get('set-cookie') ?? []) this.jar.store(line, target);
       hop({ site: 'citadel', method, url: target.url, via, ...withReferer, status: res.status });
-      const location = res.status >= 300 && res.status < 400 ? h.get('location')?.[0] : undefined;
+      // Only Fetch's redirect statuses follow Location. Any other response (a 300 or 304 with a Location, a 302
+      // without one) is a page, so its Refresh, if any, moves the browser on as for any page.
+      const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;
       const refresh = location === undefined ? refreshTarget(h.get('refresh')?.[0]) : undefined;
       if (location === undefined && refresh === undefined) {
         return finish('page', { url: target.url, status: res.status, body: clip(res.body ?? '', SIM_LIMITS.bodyLength) });
@@ -1134,9 +1139,8 @@ function noteOf(note: unknown, action: string): Text | string {
   throw new Error(`victim action "${action}": run must return a string, bilingual text { id, en } or nothing`);
 }
 
-/** The redirect statuses sendSimRedirect answers with. */
+/** The redirect statuses sendSimRedirect answers with (Fetch's redirect statuses). */
 export type SimRedirectStatus = 301 | 302 | 303 | 307 | 308;
-const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 const awayView = join(dirname(fileURLToPath(import.meta.url)), 'views', 'sim-away.ejs');
 
 /**

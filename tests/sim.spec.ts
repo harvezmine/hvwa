@@ -510,6 +510,35 @@ describe('SimBrowser: redirects and Referer', () => {
     expect(long.hops[1].url.length).toBeLessThanOrEqual(SIM_LIMITS.urlLength);
   });
 
+  it('follows Location only on 301, 302, 303, 307 and 308 (Fetch); with any other status it is a page', () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+      const s = site({ '/a': { status, headers: { location: '/b' } }, '/b': { status: 200 } });
+      const v = inSession(() => world().browser(s.handler)).follow('http://citadel.test/a');
+      expect(v.page?.url, String(status)).toBe('http://citadel.test/b');
+    }
+    for (const status of [300, 304, 305, 306, 399, 200, 201, 404, 500]) {
+      const s = site({ '/a': { status, headers: { location: '/b' } }, '/b': { status: 200 } });
+      const v = inSession(() => world().browser(s.handler)).follow('http://citadel.test/a');
+      expect(v, String(status)).toMatchObject({ outcome: 'page', page: { url: 'http://citadel.test/a', status } });
+      expect(s.seen, String(status)).toHaveLength(1);
+    }
+  });
+
+  it('a 3xx that is not followed is a page: its Refresh moves the browser on, sending the page as Referer', () => {
+    for (const headers of [{ refresh: '0;url=http://attacker.test/x' }, { location: '/b', refresh: '0;url=http://attacker.test/x' }]) {
+      const w = world();
+      const status = 'location' in headers ? 300 : 302;
+      const v = inSession(() => w.browser(site({ '/a': { status, headers } }).handler)).follow('http://citadel.test/a?k=1');
+      expect(v.hops.map((h) => [h.via, h.status]), String(status)).toEqual([['start', status], ['refresh', undefined]]);
+      expect(w.attackerLog.entries()[0].referer, String(status)).toBe('http://citadel.test/a?k=1');
+    }
+    // A redirect that IS followed is not a page: its Refresh is never used.
+    const w = world();
+    const s = site({ '/a': { status: 302, headers: { location: '/b', refresh: '0;url=http://attacker.test/x' } }, '/b': { status: 200 } });
+    expect(inSession(() => w.browser(s.handler)).follow('http://citadel.test/a').page?.url).toBe('http://citadel.test/b');
+    expect(w.attackerLog.entries()).toEqual([]);
+  });
+
   it('header names are case-insensitive; a 3xx without Location is a page', () => {
     const w = world();
     const s = site({ '/a': { status: 302, headers: { LOCATION: '/b' } }, '/b': { status: 304 } });

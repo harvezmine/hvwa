@@ -438,10 +438,11 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   real ones and never sent to attacker.test; `cookies.set()` signs the victim in up front. Every citadel request calls
   `handler(req: SimRequest): SimResponse` synchronously: `req` has `method`, `url`, `path`, `query`
   (URLSearchParams), lower-case `headers`, `cookies` and form `body` (null prototypes; `field()` and `header()` work on
-  it); the response is `{ status, headers?, body? }`, where `Location` (3xx), `Set-Cookie`, `Refresh` and
-  `Referrer-Policy` are honoured. At most 10 redirects; the same request again with the jar unchanged is a loop.
+  it); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
+  any other status, a 300 or 304 with a Location included, is a page), `Set-Cookie`, `Refresh` and `Referrer-Policy`
+  are honoured. At most 10 redirects; the same request again with the jar unchanged is a loop.
 - **Referer, as real browsers send it**: a link opened from mail has none; `follow(url, { referrer })` is a click on a
-  citadel page. **A 3xx keeps the referrer of the page that started the navigation** (an open redirect does not leak
+  citadel page. **A redirect keeps the referrer of the page that started the navigation** (an open redirect does not leak
   its own URL). **A citadel page that moves the browser on by itself sends its own URL**: answer
   `200` with `Refresh: 0; url=<next>` (the stand-in for a meta refresh or a script; the sim does not parse HTML).
   `Referrer-Policy` on that page (or on a redirect) applies; the default is the legacy full URL
