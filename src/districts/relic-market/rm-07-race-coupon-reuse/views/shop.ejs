@@ -1,0 +1,28 @@
+<%# RM-07 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market' }) %>
+  <p class="lab-note">New pilgrims get <code>FIRSTRELIC</code>: $15.00 off an order of $20.00 or more, once per account.</p>
+<%- include('../../_shared/views/message') %>
+<%- include('../../_shared/views/catalog') %>
+<%- include('../../_shared/views/cart') %>
+  <h2>Voucher</h2>
+  <p class="lab-note">Vouchers are checked with the promotions service; this takes about a second. Requests that arrive together can interleave. Burp Repeater can send a group in parallel, and a shell can run background jobs.</p>
+  <form method="post">
+    <input type="hidden" name="intent" value="voucher">
+    <label>Voucher code <input name="code" type="text" autocomplete="off" spellcheck="false" value="<%= codeKept %>"></label>
+    <button type="submit">Apply voucher</button>
+  </form>
+<% if (discounts.length === 0) { -%>
+  <p class="lab-note">No voucher applied.</p>
+<% } else { -%>
+  <ul class="shop-discounts">
+<% discounts.forEach(function (d) { -%>
+    <li data-discount="<%= d.code %>" data-amount="<%= d.amount.cents %>"><code><%= d.code %></code>: -<%= d.amount.text %></li>
+<% }); -%>
+  </ul>
+<% } -%>
+  <p class="lab-note">Total after vouchers: <strong data-testid="payable" data-cents="<%= payable.cents %>"><%= payable.text %></strong></p>
+<%- include('../../_shared/views/orders') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>

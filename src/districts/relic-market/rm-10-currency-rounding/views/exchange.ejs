@@ -1,0 +1,54 @@
+<%# RM-10 lab view. Lab content is English by design. The shop partials live in relic-market/_shared/views. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<%- include('../../_shared/views/shop-header', { heading: 'Relic Market Money Changer' }) %>
+  <p class="lab-note">Pilgrims from three lands trade here. Rates are posted below; every exchange goes through the changer's table.</p>
+<%- include('../../_shared/views/message') %>
+  <h2>Your balances</h2>
+  <table class="shop-balances">
+    <tbody>
+<% balances.forEach(function (b) { -%>
+      <tr><th><%= b.name %></th><td data-testid="balance-<%= b.code %>" data-units="<%= b.units %>"><%= b.text %></td></tr>
+<% }); -%>
+    </tbody>
+  </table>
+  <p class="lab-note" data-testid="worth">Net worth: <%= worth.text %> (exactly <%= worth.exact %>).</p>
+  <p class="lab-note" data-testid="goal">Goal: net worth <%= goal.text %> or more. <% if (goal.reached) { %>Goal reached.<% if (goal.flag) { %> <%= goal.flag %><% } %><% } else { %>Goal not reached yet.<% } %></p>
+  <h2>Exchange</h2>
+  <p class="lab-note">Crowns (₡) are the market's own coin, 1 crown = $1.00, in whole units. Rupiah are whole units too. Amounts are in the minor units of what you give: cents, crowns or rupiah.</p>
+  <form method="post">
+    <input type="hidden" name="intent" value="exchange">
+    <label>From <select name="from">
+<% choices.forEach(function (c) { -%>
+      <option value="<%= c %>"<% if (c === kept.from) { %> selected<% } %>><%= c %></option>
+<% }); -%>
+    </select></label>
+    <label>To <select name="to">
+<% choices.forEach(function (c) { -%>
+      <option value="<%= c %>"<% if (c === kept.to) { %> selected<% } %>><%= c %></option>
+<% }); -%>
+    </select></label>
+    <label>Amount <input name="amount" type="text" autocomplete="off" spellcheck="false" value="<%= kept.amount %>"></label>
+    <button type="submit">Exchange</button>
+  </form>
+  <h2>Posted rates</h2>
+  <table class="shop-rates">
+    <tbody>
+<% rates.forEach(function (r) { -%>
+      <tr><th><%= r.code %></th><td><% r.cols.forEach(function (c, i) { %><%= i ? ', ' : '' %><code><%= c[0] %></code> = <%= c[1] %><% }); %></td></tr>
+<% }); -%>
+    </tbody>
+  </table>
+  <h2>Exchange history</h2>
+<% if (history.length === 0) { -%>
+  <p class="lab-note">No exchanges yet.</p>
+<% } else { -%>
+  <ul class="shop-orders">
+<% history.forEach(function (h) { -%>
+    <li data-order="<%= h.no %>" data-total="<%= h.debit %>" data-charged="<%= h.debit %>" data-status="exchanged"><p>#<%= h.no %>: <%= h.text %></p></li>
+<% }); -%>
+  </ul>
+<% } -%>
+<%- include('../../_shared/views/api') %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+<%- include('../../_shared/views/endpoints') %>
+</section>
