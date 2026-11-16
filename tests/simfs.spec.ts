@@ -367,6 +367,21 @@ describe('memory: a filled file system is bounded and keeps only its own bytes',
     expect(perInstance).toBeLessThan(SIMFS_LIMITS.weight); // its weight in the shared budget: ~10% over the measurement
   });
 
+  it('a resolved path is its own copy: a short path cut from a 1 MiB string does not keep that string alive', () => {
+    const gc = fullGc();
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    const keys = ((): string[] => {
+      // One segment, sliced from a large flat parent: split and join hand back a slice of the parent itself.
+      const parents = Array.from({ length: 40 }, (_, i) => `/${i}-`.padEnd(1024 * KiB, 'q'));
+      return parents.map((p) => resolveSimPath(p.slice(0, 400)));
+    })();
+    gc(); gc();
+    // As views: 40 x 1 MiB (two-byte: 2 MiB) pinned. As copies: 40 x ~400 characters.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(4 * 1024 * KiB);
+    expect(keys[39]).toBe(`/39-${'q'.repeat(396)}`);
+  });
+
   it('a file written from a slice of a large buffer keeps only the slice', () => {
     const gc = fullGc();
     const labs = Array.from({ length: 40 }, () => fresh());

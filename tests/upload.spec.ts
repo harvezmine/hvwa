@@ -278,6 +278,23 @@ describe('parseMultipart: malformed or non-multipart requests are UploadError (4
     }
   });
 
+  it('a lone boundary parameter in upper case is still the one boundary', async () => {
+    expect((await parseMultipart(uploadReq(good, 'multipart/form-data; BOUNDARY=hvwa-test-boundary'))).fields).toEqual({ a: 'v' });
+  });
+
+  it('a quoted boundary with an escape is unescaped for the part-count scan, as the parser reads it', async () => {
+    const ct = 'multipart/form-data; boundary="a\\"b"'; // the boundary is a"b
+    expect((await parseMultipart(uploadReq(multipart([{ name: 'k', value: 'v' }], 'a"b'), ct))).fields).toEqual({ k: 'v' });
+    const formData = vi.spyOn(Response.prototype, 'formData');
+    try {
+      const flood = multipart(Array.from({ length: 2000 }, () => ({ name: 'a', value: '' })), 'a"b');
+      expect((await uploadError(parseMultipart(uploadReq(flood, ct)))).message).toBe('too many parts (at most 32)');
+      expect(formData).not.toHaveBeenCalled(); // the scan, not the parse, refused it
+    } finally {
+      formData.mockRestore();
+    }
+  });
+
   it('the media type is matched case-insensitively, with a quoted boundary too', async () => {
     expect((await parseMultipart(uploadReq(good, `Multipart/Form-Data; boundary="${B}"`))).fields).toEqual({ a: 'v' });
   });
