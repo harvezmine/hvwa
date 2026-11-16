@@ -29,7 +29,7 @@ const show = (req: Request, res: Response, result: Result | null, lines: readonl
   base: labPath(res), result, lines, caption, restoreDir: RESTORE_DIR, sentinel: SENTINEL,
   welcome: welcomeText(req),
   files: labFor(req).fs.list(RESTORE_DIR).map((f) => visible(f.path)),
-  upload: uploadCurl(req, res, 'archive'),
+  curl: uploadCurl(req, res, 'archive'),
 });
 
 export const SC10 = register(defineChallenge({

@@ -14,8 +14,24 @@ export interface CurlView {
   readonly data: string;
   /** Form fields, each already shell-quoted: `--data-urlencode '<field>'`. */
   readonly form: readonly string[];
+  /**
+   * Multipart parts, each already shell-quoted: `-F '<part>'`. Files first (in the order given), then the form
+   * fields. Present only when the spec has files; then `form` is empty and the fields are here instead.
+   */
+  readonly multipart?: readonly string[];
   /** false for a lab the player never signs in to: the note says to open the page instead. Absent otherwise. */
   readonly signIn?: false;
+}
+
+/** A file part of a multipart example: `-F 'field=@filename;filename=sendAs;type=type'`. */
+export interface CurlFile {
+  readonly field: string;
+  /** The local file (curl's `@path`), e.g. './local-file'. */
+  readonly filename: string;
+  /** The name the server receives, when it differs from the local one (`;filename=`). */
+  readonly sendAs?: string;
+  /** The content type to claim (`;type=`). */
+  readonly type?: string;
 }
 
 export interface CurlSpec {
@@ -31,6 +47,8 @@ export interface CurlSpec {
   readonly data?: string;
   /** Form fields, sent with `--data-urlencode 'name=value'` (curl encodes them). */
   readonly form?: Readonly<Record<string, string>>;
+  /** Files to upload: the example becomes multipart (`-F`), and `form` fields are sent as `-F 'name=value'` too. */
+  readonly files?: readonly CurlFile[];
   /** false for a lab the player never signs in to (a shop whose customer is already signed in). Default true. */
   readonly signIn?: boolean;
 }
@@ -46,11 +64,16 @@ export function shellQuote(text: string): string {
  * without it starts another session whose state and flags the browser cannot submit. Never prints the real session id.
  */
 export function curlFor(req: Request, res: Response, spec: CurlSpec): CurlView {
+  const files = (spec.files ?? []).map((f) =>
+    shellQuote(`${f.field}=@${f.filename}${f.sendAs === undefined ? '' : `;filename=${f.sendAs}`}${f.type === undefined ? '' : `;type=${f.type}`}`));
+  const fields = Object.entries(spec.form ?? {}).map(([k, v]) => shellQuote(`${k}=${v}`));
+  const multipart = files.length > 0;
   const origin = `${req.protocol}://${req.get('host') ?? '127.0.0.1'}`;
   return {
     url: `${origin}${labPath(res)}${spec.path}?level=${req.level}`,
     method: spec.method ?? '', headers: spec.headers ?? [], cookies: spec.cookies ?? [],
-    data: shellQuote(spec.data ?? ''), form: Object.entries(spec.form ?? {}).map(([k, v]) => shellQuote(`${k}=${v}`)),
+    data: shellQuote(spec.data ?? ''), form: multipart ? [] : fields,
+    ...(multipart ? { multipart: [...files, ...fields] } : {}),
     ...(spec.signIn === false ? { signIn: false as const } : {}),
   };
 }

@@ -3,7 +3,7 @@
 // shown, and the curl example for a multipart upload. Plumbing only: which names are refused, where a file lands and
 // what "runs" are decided in each lab's levels/*.ts, never here. Not a challenge: nothing here is served by View Source.
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
-import { curlFor } from '../../_shared/curl.js';
+import { curlFor, type CurlView } from '../../_shared/curl.js';
 import { tryDb } from '../../../core/lab.js';
 import {
   UPLOAD_LIMITS, parseMultipart, settle, uploadGate, type UploadLimits, type UploadedFile,
@@ -56,13 +56,10 @@ export function mountUpload(
     });
 }
 
-/** The data `views/upload-curl.ejs` renders: a multipart curl example a player can use (full URL, level, placeholders). */
-export interface UploadCurl {
-  readonly url: string;
-  /** The form field the file goes in (`scroll`, `archive`). */
-  readonly field: string;
-}
-
-export function uploadCurl(req: Request, res: Response, field: string): UploadCurl {
-  return { url: curlFor(req, res, { path: '' }).url, field };
+/** The multipart curl example of an upload form (the shared curl-note partial): the file's name and type spelled out. */
+export function uploadCurl(req: Request, res: Response, field: string): CurlView {
+  return curlFor(req, res, {
+    path: '', signIn: false, form: { caption: '<text>' },
+    files: [{ field, filename: './local-file', sendAs: '<name>', type: '<content type>' }],
+  });
 }
