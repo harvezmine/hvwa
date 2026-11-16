@@ -186,7 +186,7 @@ describe('simFs: files', () => {
 
 describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like the sim drops its oldest mail', () => {
   it('the defaults', () => {
-    expect(SIMFS_LIMITS).toEqual({ files: 64, fileBytes: 256 * KiB, totalBytes: 512 * KiB, pathLength: 512, contentTypeLength: 255 });
+    expect(SIMFS_LIMITS).toEqual({ files: 32, fileBytes: 128 * KiB, totalBytes: 256 * KiB, pathLength: 512, contentTypeLength: 255 });
     expect(Object.isFrozen(SIMFS_LIMITS)).toBe(true);
   });
 
@@ -221,15 +221,15 @@ describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like t
     const fs = fresh();
     fs.write('/sentinel', 's', { pinned: true });
     for (let i = 0; i < SIMFS_LIMITS.files - 1; i++) fs.write(`/f${i}`, 'x');
-    expect(fs.size).toBe(64);
+    expect(fs.size).toBe(SIMFS_LIMITS.files);
     fs.write('/new', 'n');
-    expect(fs.size).toBe(64);
+    expect(fs.size).toBe(SIMFS_LIMITS.files);
     expect([fs.has('/sentinel'), fs.has('/f0'), fs.has('/f1'), fs.has('/new')]).toEqual([true, false, true, true]);
   });
 
   it('over the total size, the oldest unpinned files go until the new one fits; an overwrite counts its old size out', () => {
     const fs = fresh();
-    const q = SIMFS_LIMITS.fileBytes / 2; // 128 KiB: four fill the 512 KiB total
+    const q = SIMFS_LIMITS.fileBytes / 2; // 64 KiB: four fill the 256 KiB total
     fs.write('/pinned', Buffer.alloc(q), { pinned: true });
     fs.write('/a', Buffer.alloc(q));
     fs.write('/b', Buffer.alloc(q));
@@ -237,7 +237,7 @@ describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like t
     expect(fs.bytes).toBe(SIMFS_LIMITS.totalBytes);
     fs.write('/c', Buffer.alloc(q)); // replaces itself: fits, nothing else goes
     expect(fs.list().map((f) => f.path)).toEqual(['/pinned', '/a', '/b', '/c']);
-    fs.write('/d', Buffer.alloc(SIMFS_LIMITS.fileBytes)); // needs 256 KiB: a and b go
+    fs.write('/d', Buffer.alloc(SIMFS_LIMITS.fileBytes)); // needs 128 KiB: a and b go
     expect(fs.list().map((f) => f.path)).toEqual(['/pinned', '/c', '/d']);
     expect(fs.bytes).toBe(SIMFS_LIMITS.totalBytes);
   });
@@ -279,7 +279,7 @@ describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like t
 });
 
 describe('memory: a filled file system is bounded and keeps only its own bytes', () => {
-  /** Fill to every cap at once: 64 files, 512-character two-byte paths, 255-character content types, 512 KiB of data. */
+  /** Fill to every cap at once: 32 files, 512-character two-byte paths, 255-character content types, 256 KiB of data. */
   const fill = (fs: SimFs, tag: number): void => {
     for (let i = 0; i < SIMFS_LIMITS.files; i++) {
       const path = `/${tag}-${i}-`.padEnd(SIMFS_LIMITS.pathLength, '✓');
@@ -287,7 +287,7 @@ describe('memory: a filled file system is bounded and keeps only its own bytes',
     }
   };
 
-  it('worst case per instance: the 512 KiB of data plus ~1.8 KiB per file of names and bookkeeping (~630 KiB measured)', () => {
+  it('worst case per instance: the 256 KiB of data plus ~1.8 KiB per file of names and bookkeeping (~315 KiB measured)', () => {
     const gc = fullGc();
     const labs = Array.from({ length: 10 }, () => fresh());
     gc(); gc();
@@ -298,7 +298,7 @@ describe('memory: a filled file system is bounded and keeps only its own bytes',
     const perInstance = ((after.heapUsed - before.heapUsed) + (after.arrayBuffers - before.arrayBuffers)) / labs.length;
     expect(labs.every((fs) => fs.size === SIMFS_LIMITS.files && fs.bytes === SIMFS_LIMITS.totalBytes)).toBe(true);
     expect(perInstance).toBeGreaterThan(SIMFS_LIMITS.totalBytes);
-    expect(perInstance).toBeLessThan(700 * KiB);
+    expect(perInstance).toBeLessThan(352 * KiB); // ~10% over the measured worst case
   });
 
   it('a file written from a slice of a large buffer keeps only the slice', () => {

@@ -18,17 +18,17 @@ import { ownBytes } from './upload.js';
 
 /**
  * Bounds of one simulated file system. Worst case per instance, measured with a full GC (tests/simfs.spec.ts): the
- * 512 KiB of data plus about 1.8 KiB per file of path, content type and bookkeeping, ~630 KiB (512-character
- * two-byte paths; short ASCII names: ~540 KiB). Instances share the budget of SIM_LIMITS.worldsTotal (150) with the
- * victim worlds: 150 full file systems are ~92 MiB.
+ * 256 KiB of data plus about 1.8 KiB per file of path, content type and bookkeeping, ~315 KiB (512-character
+ * two-byte paths; short ASCII names: ~270 KiB). Instances share the budget of SIM_LIMITS.worldsTotal (150) with the
+ * victim worlds: 150 full file systems are ~46 MiB.
  */
 export const SIMFS_LIMITS = Object.freeze({
   /** Most files; beyond it the oldest unpinned file is dropped. */
-  files: 64,
+  files: 32,
   /** Largest file, in bytes (a bigger write is refused). */
-  fileBytes: 256 * 1024,
+  fileBytes: 128 * 1024,
   /** All files together, in bytes; beyond it the oldest unpinned files are dropped. */
-  totalBytes: 512 * 1024,
+  totalBytes: 256 * 1024,
   /** Longest path handed to any call, in UTF-16 code units (it bounds the nesting depth too). */
   pathLength: 512,
   /** Longest content type kept (a longer one is clipped). */
