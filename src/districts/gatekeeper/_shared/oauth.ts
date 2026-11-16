@@ -33,9 +33,15 @@ export interface Exchange {
   readonly verifier?: string;
 }
 
-/** `uri` with `params` appended to its query, as an authorization server does (the uri itself is left as given). */
+/**
+ * `uri` with `params` appended to its query, as an authorization server does: the uri is otherwise left as given, and a
+ * fragment stays last (params after the `#` would be part of the fragment, which a browser never sends).
+ */
 export function withParams(uri: string, params: Readonly<Record<string, string>>): string {
-  return `${uri}${uri.includes('?') ? '&' : '?'}${new URLSearchParams(params).toString()}`;
+  const hash = uri.indexOf('#');
+  const before = hash === -1 ? uri : uri.slice(0, hash);
+  const fragment = hash === -1 ? '' : uri.slice(hash);
+  return `${before}${before.includes('?') ? '&' : '?'}${new URLSearchParams(params).toString()}${fragment}`;
 }
 
 /** Store under `key`, newest last; beyond `max` entries the oldest key that `keep` does not pin goes. */
