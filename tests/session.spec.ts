@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
-import { createServer } from 'node:http';
 import { sessionMiddleware } from '../src/core/session.js';
 import { setCookieHeader, setCookieValue } from './helpers.js';
 
@@ -53,8 +52,7 @@ describe('session', () => {
   describe('issuance limit (new sessions per rolling minute)', () => {
     it('60 new sessions are issued per minute, the 61st request is a 429 with no cookie; existing sessions are unaffected', async () => {
       let t = 0;
-      const server = createServer(app({ now: () => t })).listen(0, '127.0.0.1'); // one listener: no port churn
-      const a = server;
+      const a = app({ now: () => t }); // request(a) and request.agent(a) share its one listener (tests/support/supertest.ts)
       const keeper = request.agent(a);
       expect((await keeper.get('/me')).status).toBe(200);
       for (let i = 1; i < 60; i++) expect((await request(a).get('/me')).status, `#${i + 1}`).toBe(200);
@@ -67,7 +65,6 @@ describe('session', () => {
       expect((await request(a).get('/me')).status).toBe(429);
       t = 60_001; // the window rolls: the first issuance has aged out
       expect((await request(a).get('/me')).status).toBe(200);
-      server.close();
     });
 
     it('the limit is configurable, and /healthz is never limited or counted', async () => {

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { createServer } from 'node:http';
 import { createApp } from '../src/app.js';
 import { perSession } from '../src/core/lab.js';
 import { register, defineChallenge } from '../src/core/registry.js';
@@ -166,13 +165,13 @@ describe('mountChallenges', () => {
     const app = createApp({ flagSecret: TEST_SECRET, maxNewSessionsPerMinute: 30, sessionClock: () => 0 });
     const victim = await freshSession(app);
     await victim.agent.post('/d/mount-test/flood/lock');
-    const server = createServer(app).listen(0, '127.0.0.1'); // one listener for the whole flood (no port churn)
-    try {
+    // request(app) reuses the app's one listener and its keep-alive sockets (tests/support/supertest.ts); no cookie
+    // jar, so every flood request is cookieless or carries only its forged cookie.
     // 1. cookieless flood: only the first few get a session, the rest are 429 before reaching any lab
     let ok = 0;
     let refused = 0;
     for (let i = 0; i < 200; i++) {
-      const r = await request(server).post('/d/mount-test/flood/lock');
+      const r = await request(app).post('/d/mount-test/flood/lock');
       if (r.status === 429) refused += 1; else if (r.status === 200) ok += 1;
     }
     expect(ok).toBeLessThanOrEqual(29);
@@ -180,11 +179,10 @@ describe('mountChallenges', () => {
     // 2. forged-UUID flood: the app cannot tell them from real sessions, the holder's own limit stops it
     for (let i = 0; i < 200; i++) {
       const forged = `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
-      await request(server).post('/d/mount-test/flood/lock').set('Cookie', `hvwa_sid=${forged}`);
+      await request(app).post('/d/mount-test/flood/lock').set('Cookie', `hvwa_sid=${forged}`);
     }
     const still = await victim.agent.get('/d/mount-test/flood/state');
     expect(still.body).toEqual({ locked: true });
-    } finally { server.close(); }
   });
 
   it('mounts what is registered when createApp() runs', async () => {

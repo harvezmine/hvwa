@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
@@ -141,5 +143,30 @@ describe('test servers', () => {
     expect(ports.size).toBe(1);
     expect(sockets.size).toBe(1); // keep-alive: five requests, one connection
     app.locals.db.close();
+  });
+
+  it('a hand-made server that is not listening yet is refused, not listened and closed again on every request', async () => {
+    // listen(port, host) binds a tick later (the host is resolved first). Real supertest, seeing no address, would
+    // listen(0) itself and close the server after each request: a new port and connection per request.
+    const { default: request } = await import('supertest');
+    const { createApp } = await import('../src/app.js');
+    const app = createApp();
+    const server = createServer(app);
+    const listens: number[] = [];
+    server.on('listening', () => { listens.push((server.address() as { port: number }).port); });
+    server.listen(0, '127.0.0.1');
+    try {
+      expect(server.address()).toBeNull();
+      expect(() => request(server)).toThrow(/not listening yet/);
+      expect(() => request.agent(server)).toThrow(/not listening yet/);
+      await once(server, 'listening');
+      for (let i = 0; i < 3; i++) await request(server).get('/healthz').expect(200);
+      expect(listens).toHaveLength(1); // once listening, the one listener serves every request
+      expect(server.listening).toBe(true);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      app.locals.db.close();
+    }
   });
 });

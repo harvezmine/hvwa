@@ -368,6 +368,8 @@ One server per app: `import request from 'supertest'` in a spec is aliased (`vit
 (closed when the test ends) and reuse keep-alive sockets. Plain supertest starts a server and a connection per request,
 which leaves thousands of sockets in TIME_WAIT and exhausts ephemeral ports (`EADDRINUSE` in unrelated specs). Keep
 using `request` / `freshSession` / `bare` as usual; `serve(app)` (from `tests/helpers.ts`) returns the http.Server.
+Pass the app, not a hand-made `http.Server`: `listen(port, host)` binds a tick later, and supertest would listen and
+close a server with no address again on every request, so `request(server)` refuses one that is not listening yet.
 Never deep-import or `require` the real supertest (`tests/tooling.spec.ts` fails if a spec does). Test servers listen on a random port on all interfaces for the length of a test (see `docs/SECURITY.md`): run tests on a trusted network.
 
 One cookie jar per sweep: a request without `hvwa_sid` mints a new session, and the app issues at most 60 a minute

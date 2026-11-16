@@ -1,6 +1,7 @@
 // src/districts/gatekeeper/gk-02-brute-force/gk-02.spec.ts
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
-import { freshSession, describeExploitMatrix, describeLabView, runWarmupThenFinal, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
+import { bare, freshSession, describeExploitMatrix, describeLabView, runWarmupThenFinal, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { GK02 } from './challenge.js'; // registers GK-02 before createApp() inside freshSession
 import { adminPassword, labState, wordlist } from './model.js';
@@ -15,7 +16,7 @@ const wrong = (username: string, n: number): Creds => ({ username, password: `no
 const wrongs = (username: string, count: number) => Array.from({ length: count }, (_, i) => wrong(username, i));
 const PILGRIM: Creds = { username: 'pilgrim', password: 'pilgrim' };
 
-async function post(agent: Agent, level: Level, creds: Creds, sid: string) {
+async function post(agent: Pick<Agent, 'post'>, level: Level, creds: Creds, sid: string) {
   const password = creds.password === REAL ? adminPassword(sid, level) : creds.password;
   return agent.post(`${LAB}?level=${level}`).type('form').send({ username: creds.username, password });
 }
@@ -138,15 +139,44 @@ describe('GK-02 lockouts', () => {
     expect(other).toMatch(FLAG_RE);
   });
 
+  /** The page's message line (undefined when it has none). */
+  const messageOf = (html: string) => /data-testid="lab-message">([^<]*)<\/p>/.exec(html)?.[1];
+  /**
+   * What the lab itself writes on a page: the form echoes what was typed back into its inputs (the real admin
+   * password included, and 'welcome' is a possible pick), so wording checks blank those values first.
+   */
+  const labWords = (html: string) => html.replace(/(<input\b[^>]*?\bvalue=")[^"]*"/g, '$1"');
+
+  /** Five failures under five spellings of the admin, then the real password and an unknown user. */
+  async function divineSpellingsLock(send: (c: Creds) => Promise<{ text: string }>) {
+    const spellings = ['citadel_admin', 'CITADEL_ADMIN', 'Citadel_Admin', ' citadel_admin ', 'citadel_admin'];
+    for (const [i, u] of spellings.entries()) await send(wrong(u, i));
+    const locked = (await send(FINAL)).text;
+    const plain = (await send(wrong('nobody', 1))).text;
+    expect(messageOf(locked)).toBe('Invalid username or password.');
+    expect(labWords(locked)).not.toMatch(/locked|too many|Welcome/i);
+    expect(locked).not.toMatch(FLAG_RE);
+    expect(messageOf(plain)).toBe('Invalid username or password.');
+  }
+
   it('divine: spellings share one counter; a locked answer is the uniform message', async () => {
     const { agent, sid } = await freshSession();
-    const spellings = ['citadel_admin', 'CITADEL_ADMIN', 'Citadel_Admin', ' citadel_admin ', 'citadel_admin'];
-    for (const [i, u] of spellings.entries()) await post(agent, 'divine', wrong(u, i), sid);
-    const locked = (await post(agent, 'divine', FINAL, sid)).text;
-    const plain = (await post(agent, 'divine', wrong('nobody', 1), sid)).text;
-    expect(locked).toContain('Invalid username or password.');
-    expect(locked).not.toMatch(/locked|too many|Welcome/i);
-    expect(plain).toContain('Invalid username or password.');
+    await divineSpellingsLock((c) => post(agent, 'divine', c, sid));
+  });
+
+  it('divine: the locked answer is uniform whatever the admin password is, even one that reads like a welcome', async () => {
+    // The form echoes what was typed, the real password included, and the password is a random wordlist pick:
+    // 'welcome' and 'welcome1' are in the list. Draw sessions until the Divine pick is one of those, then assert.
+    const tricky = wordlist().filter((w) => /locked|too many|welcome/i.test(w));
+    expect(tricky.length).toBeGreaterThan(0); // otherwise this case would prove nothing
+    const { app } = await freshSession();
+    for (let i = 0; i < 2000; i++) {
+      const sid = randomUUID(); // a well-formed hvwa_sid is a session (the platform has no session table)
+      if (!tricky.includes(adminPassword(sid, 'divine'))) continue;
+      await divineSpellingsLock((c) => post(bare(app, sid), 'divine', c, sid));
+      return;
+    }
+    throw new Error(`2000 sessions and no Divine pick among ${tricky.join(', ')}: the pick is not random`);
   });
 
   it('divine: backoff grows with every failure past the threshold, and the lock expires', async () => {
