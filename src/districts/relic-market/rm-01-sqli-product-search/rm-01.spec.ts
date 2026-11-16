@@ -70,12 +70,18 @@ describe('RM-01 product search', () => {
     }
   });
 
-  it('the echo of the search term is not a result cell: searching for the real key proves nothing', async () => {
+  it('the echo of the search term is not a result cell: searching for the real key proves nothing, even when rows come back', async () => {
     const { agent } = await freshSession();
     for (const level of LEVELS) {
-      const text = (await search(agent, level, { q: vaultKey(level) })).text;
-      expect(text, level).toContain(vaultKey(level)); // echoed in the q field
-      expect(text, level).not.toMatch(FLAG_RE);
+      const key = vaultKey(level);
+      const plain = (await search(agent, level, { q: key })).text;
+      expect(plain, level).toContain(key); // echoed in the q field
+      expect(plain, level).not.toMatch(FLAG_RE);
+      // At Acolyte and Templar this injects into the SQL: every visible relic comes back (rows) AND the key is in q.
+      const withRows = (await search(agent, level, { q: `' OR '${key}'='${key}' OR '1'='1` })).text;
+      expect(withRows, level).toContain(key);
+      if (level === 'acolyte' || level === 'templar') expect(rowsOf(withRows).length, `${level} must return rows`).toBeGreaterThan(5);
+      expect(withRows, level).not.toMatch(FLAG_RE);
     }
   });
 
