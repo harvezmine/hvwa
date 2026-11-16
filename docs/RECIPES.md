@@ -107,7 +107,7 @@ case (g)). Divine resists every exploit.
 | `simWorld({ mailboxes })`, `world.browser(handler)` | `core/sim` | victim-driven labs: one player's inbox, attacker log and the victim's browser, made inside the lab's `perSession` factory (section 8) |
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
-| `checkMailAction({ browser, mailbox, link?, rearm? })`, `sendLinkAction(browserFor, { rearm? })` | `core/sim` | the two usual victim actions, with a re-arm step at the start of each (section 8) |
+| `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
@@ -559,7 +559,7 @@ register(defineChallenge({
 }));
 ```
 
-Both take `name`, `label`, `description` (platform defaults fit) and `rearm`; `checkMailAction` answers with a
+Both take `name`, `label`, `description` (platform defaults fit) and a REQUIRED `rearm`; `checkMailAction` answers with a
 bilingual note when the mailbox is empty or the newest mail has no such link. A custom action is
 `{ name, label, description?, input?: 'url', run: (req, { url }) => note | void }`:
 
@@ -597,9 +597,11 @@ or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLin
   silently test nothing.
 - **Re-arm the victim at the start of every action.** The player's link can undo the victim's standing state: a link
   to `/logout`, or a page whose `Set-Cookie`s overflow the 20-cookie jar and evict the admin's session. A lab without
-  Restart would then stay stuck until the 26 h TTL. Pass `rearm` to the presets (call it first in a custom `run`): it
+  Restart would then stay stuck until the 26 h TTL. The presets require `rearm` (call it first in a custom `run`): it
   restores that state by setting cookies (`browser.cookies.set`), as the factory did, and never browses (a visit would
-  show in the report). Re-arm only the standing state, never what the exploit itself changes.
+  show in the report). Re-arm only the standing state, never what the exploit itself changes. A victim with no
+  standing state (nobody signed in, nothing to restore) passes an explicit no-op, `rearm: () => {}`, so the choice is
+  made on purpose and a forgotten re-arm is an error, not a lab that silently gets stuck.
 
 Restart: a victim-driven lab whose state can get stuck may pass `reset: (req) => labs.reset(req)`; that drops the
 world (inbox, attacker log, victim cookies) with the rest. The usual rule applies: no Restart on a lab with limiters.

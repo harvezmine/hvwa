@@ -723,13 +723,14 @@ describe('SimWorld: the victim\'s recent visits', () => {
 
 describe('victim action presets', () => {
   const req = {} as Request; // the presets hand it to the lab's own accessors only
+  const noRearm = (): void => {}; // these victims have no standing state to restore
   const mail = (w: SimWorld, to: string, links: string[]) => w.inbox.deliver({ from: 'ops@citadel.test', to, subject: 's', body: 'b', links });
 
   it('checkMailAction: the victim opens the newest mail in its mailbox and clicks one link (default the first)', () => {
     const w = world();
     const s = site({ '/a': { status: 200 }, '/b': { status: 200 } });
     const b = inSession(() => w.browser(s.handler));
-    const first = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX });
+    const first = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, rearm: noRearm });
     expect(first).toMatchObject({ name: 'check-mail', label: VICTIM_LABELS.checkMail });
     expect(first.input).toBeUndefined();
     expect(first.description?.en).toBe('opens the newest mail and clicks its first link');
@@ -739,12 +740,12 @@ describe('victim action presets', () => {
     mail(w, ADMIN_MAILBOX, ['http://citadel.test/a', 'http://citadel.test/b']);
     mail(w, PLAYER_MAILBOX, ['http://citadel.test/mine']);
     expect(first.run(req, { url: '' })).toBeUndefined();
-    const second = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 1, name: 'check-second' });
+    const second = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 1, name: 'check-second', rearm: noRearm });
     expect(second.name).toBe('check-second');
     expect(second.description?.en).toBe('opens the newest mail and clicks link 2 in it');
     second.run(req, { url: '' });
     expect(s.seen.map((r) => [r.path, r.headers.referer])).toEqual([['/a', undefined], ['/b', undefined]]); // from a mail client
-    const third = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 2 });
+    const third = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 2, rearm: noRearm });
     expect(third.run(req, { url: '' })).toEqual({ id: 'Surat terbaru korban tidak punya tautan ke-3.', en: "The victim's newest mail has no link 3." });
     expect(s.seen).toHaveLength(2);
   });
@@ -753,14 +754,14 @@ describe('victim action presets', () => {
     const w = world();
     const s = site({ '/x': { status: 200 } });
     const b = inSession(() => w.browser(s.handler));
-    const send = sendLinkAction(() => b);
+    const send = sendLinkAction(() => b, { rearm: noRearm });
     expect(send).toMatchObject({ name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url' });
     expect(send.description?.en).toBe('opens any link you send');
     expect(send.run(req, { url: 'http://citadel.test/x?y=1' })).toBeUndefined();
     send.run(req, { url: 'http://attacker.test/z' });
     expect(s.seen.map((r) => r.url)).toEqual(['http://citadel.test/x?y=1']);
     expect(w.attackerLog.entries().map((e) => e.url)).toEqual(['http://attacker.test/z']);
-    expect(sendLinkAction(() => b, { name: 'share', label: { id: 'Bagikan', en: 'Share' } })).toMatchObject({ name: 'share', label: { en: 'Share' } });
+    expect(sendLinkAction(() => b, { name: 'share', label: { id: 'Bagikan', en: 'Share' }, rearm: noRearm })).toMatchObject({ name: 'share', label: { en: 'Share' } });
   });
 
   it('the re-arm step runs at the start of EVERY action, before the victim browses (a link may have signed it out)', () => {
@@ -784,17 +785,25 @@ describe('victim action presets', () => {
 
   it('refuses bad options when the lab is defined, and a mailbox the world does not have when it runs', () => {
     const browser = () => { throw new Error('not called'); };
-    expect(() => checkMailAction({ browser: 'x' as never, mailbox: ADMIN_MAILBOX })).toThrow(/browser/);
-    expect(() => checkMailAction({ browser, mailbox: 5 as never })).toThrow(/mailbox/);
+    expect(() => checkMailAction({ browser: 'x' as never, mailbox: ADMIN_MAILBOX, rearm: noRearm })).toThrow(/browser/);
+    expect(() => checkMailAction({ browser, mailbox: 5 as never, rearm: noRearm })).toThrow(/mailbox/);
     for (const link of [-1, SIM_LIMITS.linksPerMail, 1.5, Number.NaN]) {
-      expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, link }), String(link)).toThrow(/link/);
+      expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, link, rearm: noRearm }), String(link)).toThrow(/link/);
     }
     expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, rearm: 'x' as never })).toThrow(/rearm/);
-    expect(() => sendLinkAction('x' as never)).toThrow(/browser/);
+    expect(() => sendLinkAction('x' as never, { rearm: noRearm })).toThrow(/browser/);
     expect(() => sendLinkAction(browser, { rearm: 5 as never })).toThrow(/rearm/);
     const w = world([]);
     const b = inSession(() => w.browser(site({}).handler));
-    expect(() => checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX }).run(req, { url: '' })).toThrow(/no mailbox/);
+    expect(() => checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, rearm: noRearm }).run(req, { url: '' })).toThrow(/no mailbox/);
+  });
+
+  it('rearm is required: a victim with no standing state to restore passes an explicit no-op', () => {
+    const browser = () => { throw new Error('not called'); };
+    expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX } as never)).toThrow(/checkMailAction: rearm is required/);
+    expect(() => sendLinkAction(browser, {} as never)).toThrow(/sendLinkAction: rearm is required/);
+    expect(() => sendLinkAction(browser, undefined as never)).toThrow(/sendLinkAction: rearm is required/);
+    expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, rearm: () => {} })).not.toThrow();
   });
 });
 

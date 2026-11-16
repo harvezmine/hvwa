@@ -68,12 +68,14 @@ export interface VictimPresetOptions {
   /** What the victim does, under the button (a platform default fits the preset). */
   readonly description?: Text;
   /**
-   * Runs at the start of EVERY action, before the victim browses: restore the victim's standing state, which the
-   * player's last link may have undone (a link to /logout, or a page whose cookies overflow the jar and evict the
-   * admin's session). Sign in by setting the cookie (`browser.cookies.set`), as the lab's factory does; never browse
-   * here (that visit would show in the report). Without it a lab with no Restart can stay stuck until the 26 h TTL.
+   * REQUIRED. Runs at the start of EVERY action, before the victim browses: restore the victim's standing state,
+   * which the player's last link may have undone (a link to /logout, or a page whose cookies overflow the jar and
+   * evict the admin's session). Sign in by setting the cookie (`browser.cookies.set`), as the lab's factory does;
+   * never browse here (that visit would show in the report). Without it a lab with no Restart can stay stuck until
+   * the 26 h TTL. A victim with no standing state passes an explicit no-op (`rearm: () => {}`): the choice is made
+   * on purpose, never by omission.
    */
-  readonly rearm?: VictimRearm;
+  readonly rearm: VictimRearm;
 }
 
 /** checkMailAction()'s options. */
@@ -86,9 +88,13 @@ export interface CheckMailOptions extends VictimPresetOptions {
   readonly link?: number;
 }
 
-function checkPreset(what: string, browser: unknown, opts: VictimPresetOptions): void {
+function checkPreset(what: string, browser: unknown, opts: VictimPresetOptions | undefined): void {
   if (typeof browser !== 'function') throw new Error(`${what}: browser must be a function (req) => SimBrowser`);
-  if (opts.rearm !== undefined && typeof opts.rearm !== 'function') throw new Error(`${what}: rearm must be a function (req, browser) => void`);
+  const rearm: unknown = opts?.rearm;
+  if (rearm === undefined) {
+    throw new Error(`${what}: rearm is required (restore the victim's standing state, or pass () => {} if it has none)`);
+  }
+  if (typeof rearm !== 'function') throw new Error(`${what}: rearm must be a function (req, browser) => void`);
 }
 
 /**
@@ -109,7 +115,7 @@ export function checkMailAction(opts: CheckMailOptions): VictimAction {
     description: opts.description ?? (link === 0 ? textOf('sim.describe.check_mail') : textOf('sim.describe.check_mail_link', { n })),
     run: (req: Request): Text | void => {
       const b = browser(req);
-      rearm?.(req, b);
+      rearm(req, b);
       if (!b.world.inbox.has(mailbox)) throw new Error(`checkMailAction: the world has no mailbox "${clip(mailbox, 60)}"`);
       const mail = b.world.inbox.newest(mailbox);
       if (mail === undefined) return textOf('sim.note.mailbox_empty');
@@ -121,7 +127,7 @@ export function checkMailAction(opts: CheckMailOptions): VictimAction {
 }
 
 /** "Send link to the admin": the victim opens whatever link the player sends (the form's link field). */
-export function sendLinkAction(browser: (req: Request) => SimBrowser, opts: VictimPresetOptions = {}): VictimAction {
+export function sendLinkAction(browser: (req: Request) => SimBrowser, opts: VictimPresetOptions): VictimAction {
   checkPreset('sendLinkAction', browser, opts);
   const { rearm } = opts;
   return Object.freeze({
@@ -131,7 +137,7 @@ export function sendLinkAction(browser: (req: Request) => SimBrowser, opts: Vict
     input: 'url',
     run: (req: Request, { url }: { readonly url: string }): void => {
       const b = browser(req);
-      rearm?.(req, b);
+      rearm(req, b);
       b.follow(url);
     },
   });
