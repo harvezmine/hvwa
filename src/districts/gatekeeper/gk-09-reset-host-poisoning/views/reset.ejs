@@ -1,0 +1,13 @@
+<%# GK-09 reset page: the form a reset link opens. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel Gate — Choose a new password</h1>
+  <p class="lab-note">The token comes from the link in a reset mail. <a href="<%= base %>?level=<%= level %>">Back to sign in</a></p>
+  <form method="post">
+    <label>Token <input name="token" type="text" autocomplete="off" spellcheck="false" value="<%= token %>"></label>
+    <label>New password <input name="password" type="text" autocomplete="off" spellcheck="false" value=""></label>
+    <button type="submit">Set password</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+</section>

@@ -1,0 +1,9 @@
+<%# GK-10 lab view: Citadel's home and the Pilgrim-ID sign-in. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel — Sign in with Pilgrim-ID</h1>
+  <p class="lab-note">Your account at Pilgrim-ID: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the Citadel account of <code><%= target %></code>, who is signed in to Pilgrim-ID and opens any link you send (the button below the lab). Citadel is registered at Pilgrim-ID as client <code>citadel</code> with the redirect URI <code><%= redirect %></code>; Pilgrim-ID's pages are under <code>http://citadel.test/idp/</code>.</p>
+  <p class="lab-note" data-testid="who">Pilgrim-ID: <% if (idp) { %>signed in as <%= idp %>.<% } else { %>not signed in.<% } %> Citadel: <% if (client) { %><%= client %><% } else { %>not signed in.<% } %></p>
+  <p class="lab-note"><a href="<%= base %>/login?next=%2F&amp;level=<%= level %>">Sign in to Citadel with Pilgrim-ID</a></p>
+  <h2>Pilgrim-ID sign-in</h2>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+</section>

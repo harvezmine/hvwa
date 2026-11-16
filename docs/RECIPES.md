@@ -29,7 +29,10 @@ src/districts/<district>/index.ts   imports each challenge.ts (registration side
 src/districts/index.ts              imports each district index
 ```
 
-- Level files import types from `../model.js`, never from `../challenge.js`.
+- Level files import types from `../model.js`, never from `../challenge.js`. A victim-driven lab may gather its level
+  modules (`byLevel`) in `model.ts`, because its citadel handler needs them (section 8); its level files then import
+  ONLY types from `model.ts` (a runtime import would be an ESM cycle), and take shared values from `_shared/` or local
+  constants.
 - Everything the vulnerability needs lives in the level file, so View Source
   and the Diff tell the whole story. `challenge.ts` and `model.ts` are plumbing.
   **One deliberate exception: error verbosity.** `tryDb` in `challenge.ts`
@@ -229,7 +232,7 @@ the real secret is still refused with no flag (GK-02, GK-03, GK-15). GK-17 keeps
 
 **Every lab answers `GET /` at every implemented level** with 200, rendered
 with `sendPage` (so it has the lab bar); the `labs.spec.ts` smoke test and
-`verify:dist` request it. **API-only labs** (the Archive API district) still
+`verify:dist` request it, each through one cookie jar like a browser (section 6). **API-only labs** (the Archive API district) still
 serve an HTML landing page at `GET /` describing their endpoints (method, path,
 an example request), and mount the API itself on sub-paths.
 
@@ -367,13 +370,19 @@ which leaves thousands of sockets in TIME_WAIT and exhausts ephemeral ports (`EA
 using `request` / `freshSession` / `bare` as usual; `serve(app)` (from `tests/helpers.ts`) returns the http.Server.
 Never deep-import or `require` the real supertest (`tests/tooling.spec.ts` fails if a spec does). Test servers listen on a random port on all interfaces for the length of a test (see `docs/SECURITY.md`): run tests on a trusted network.
 
+One cookie jar per sweep: a request without `hvwa_sid` mints a new session, and the app issues at most 60 a minute
+(429 beyond). A spec that sweeps many pages of one app (the `tests/labs.spec.ts` smoke test: every lab at every level)
+keeps one `request.agent(app)`, like a browser and `verify:dist`, instead of a cookieless `request(app)` per page.
+
 **Mutation self-check** before committing (revert by rewriting the file, not
 `git checkout` over uncommitted work):
 
 1. Make one exploitable level secure: its exploit case goes red.
 2. Make Divine fall for an exploit: its resist case goes red.
 3. Make Divine leak an error message: the Divine malformed case goes red.
-4. Make Divine show a flag to the privileged user: the privileged case goes red.
+4. Make Divine show a flag to the privileged user: the privileged case goes red. `flagFor` and `issueFlag` throw at
+   Divine, so the mutant must emit a real flag string, e.g. `flagFor({ ...req, level: 'acolyte' }, C)` or a literal
+   matching `FLAG_RE`; otherwise case (f) goes red on the 500, not on "no flag", and proves less.
 5. Copy the level below over a level: its step-up case goes red.
 
 If a mutation stays green, the matrix is missing a case.
@@ -387,7 +396,8 @@ If a mutation stays green, the matrix is missing a case.
 4. `levels/*.ts`: Acolyte no defense, Templar naive filter, Inquisitor flawed defense, Divine correct
    for the weakness; `divine.ts`'s comment notes generic errors and any gaps left out of scope.
 5. `challenge.ts`: `byLevel<M>`, `register(defineChallenge({ ..., dir: challengeDir(import.meta.url), levels: impl.levels }))`,
-   bilingual title/summary/3 hints, routes using `field`, `tryDb`, `flagFor`, `sendPage`.
+   bilingual title/summary/3 hints, routes using `field`, `tryDb`, `flagFor`, `sendPage`. A victim-driven lab may keep
+   `byLevel` in `model.ts` instead (its level files then import only types from it; section 8).
 6. `views/*.ejs`: `.lab` markup, escaped output, English lab content (API-only labs: an HTML landing page).
 7. Import `challenge.js` from the district `index.ts` (and the district from `src/districts/index.ts`).
 8. Mutation self-check (section 6). For a stateful lab also: use `labPath` for links and cookie paths,
@@ -485,16 +495,24 @@ Keep the world and the victim's browser in the lab's own per-session state, next
 
 ```ts
 // model.ts
-export interface LabState { readonly world: SimWorld; admin: SimBrowser; /* accounts, tokens ... */ now: () => number }
+export interface LabState { readonly world: SimWorld; readonly admin: SimBrowser; readonly adminPid: string; /* accounts, tokens ... */ }
 const labs = perSession((level): LabState => {
   const world = simWorld({ mailboxes: [ADMIN_MAILBOX] });
-  const state = { world, now: () => world.now() } as LabState;
-  state.admin = world.browser((r) => citadel(level, state, r)); // the victim's view of the lab
-  state.admin.cookies.set('pid_session', signInAdmin(state));   // already signed in to Pilgrim-ID
+  const adminPid = newId();
+  // Typed, not `as LabState`: an assertion silently accepts a missing required field. The handler reads `state` only
+  // when the victim browses, after the const is assigned.
+  const state: LabState = { world, admin: world.browser((r) => citadel(level, state, r)), adminPid /* , ... */ };
+  state.admin.cookies.set('pid_session', adminPid); // already signed in to Pilgrim-ID
   return state;
 });
 export const labFor = (req: { sessionId: string; level: Level }) => labs.for(req);
 ```
+
+The handler needs the level modules, and it lives where the factory does. So a victim-driven lab may gather them in
+`model.ts` (`export const impl = byLevel<M>({ acolyte, templar, inquisitor, divine })`), and `challenge.ts` passes
+`impl.levels` to `defineChallenge`. Its level files then import ONLY types from `model.ts`: a runtime import would close
+an ESM cycle (model imports the levels). Shared values come from `_shared/` (e.g. `gatekeeper/_shared/oauth.ts`) or
+are local constants in the level file. Worked examples: GK-10, GK-11, GK-16.
 
 ### How levels plug in
 
@@ -504,7 +522,7 @@ Paths are twins: `http://citadel.test/<path>` is the real route `<labPath>/<path
 use the same path for the same page (`/idp/authorize` in both examples below):
 
 ```ts
-// challenge.ts (or model.ts)
+// model.ts (with `impl`, so the factory above can build the handler)
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
   const impl = byLevelImpl.for(level);
   if (r.path === '/idp/authorize') return impl.authorize(state, r.query, r.cookies.pid_session, ''); // { status: 302, headers: { Location } }
@@ -534,6 +552,17 @@ goes to the same place in the lab at the served level (the IdP's `302 http://cit
 that shows the URL as text and says that in this lab the simulated victim's browser goes there. It never links to it.
 An empty or blank Location (an empty `redirect_uri`) gets a "this redirect has no target" page, never a redirect to
 the route itself.
+
+**A page that moves on by itself is as much a redirect.** A level page that forwards (the sim's `200` + `Refresh`, e.g.
+GK-10 Inquisitor's callback forwarding to `next=`) must never send the player's real browser a real `Refresh` to a
+level-made URL either, and a silent 302 would hide the very forward the lab teaches. Render the page instead, with a
+note saying where it moves the browser on to: a link to the same place in the lab for a citadel target, the URL as
+escaped text otherwise. `gatekeeper/_shared/twin.ts` does both directions from one `Reply` (`status`, `location`,
+`forward`, `referrerPolicy`, `cookies`, `text`): `toSim(reply)` for the citadel handler, and
+`sendReply(res, reply, render)` for the real route, which sets the cookies, sends a `location` through
+`sendSimRedirect` only on a redirect status (a Location on any other status is a page, as in the sim), and otherwise
+calls `render(forward?)`, handing a forward's `ForwardNote` to the view (`<%- include('../../_shared/views/forward-note',
+{ forward: forward }) %>`). The page's own message, and a flag it carries, stay visible.
 
 ```ts
 router.get('/idp/authorize', async (req, res) => { // the twin of http://citadel.test/idp/authorize, in the player's own browser
@@ -609,7 +638,10 @@ or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLin
   restores that state by setting cookies (`browser.cookies.set`), as the factory did, and never browses (a visit would
   show in the report). Re-arm only the standing state, never what the exploit itself changes. A victim with no
   standing state (nobody signed in, nothing to restore) passes an explicit no-op, `rearm: () => {}`, so the choice is
-  made on purpose and a forgotten re-arm is an error, not a lab that silently gets stuck.
+  made on purpose and a forgotten re-arm is an error, not a lab that silently gets stuck. `browser.cookies.clear()` is
+  a valid re-arm for a victim whose standing state is "a fresh browser" (GK-16: the admin opens your link in a fresh
+  browser, then signs in), but only when the action's `description` says so ("in a fresh browser"), and only when no
+  exploit relies on the victim's cookies surviving from one action to the next.
 
 Restart: a victim-driven lab whose state can get stuck may pass `reset: (req) => labs.reset(req)`; that drops the
 world (inbox, attacker log, victim cookies) with the rest. The usual rule applies: no Restart on a lab with limiters.

@@ -263,8 +263,9 @@ export class World implements SimWorld {
  *
  *   const labs = perSession((level): LabState => {
  *     const world = simWorld({ mailboxes: [ADMIN_MAILBOX] });
- *     const state = { world } as LabState;
- *     state.admin = world.browser((r) => citadel(level, state, r));
+ *     // Typed, not `as LabState` (that silently accepts a missing field); the handler reads `state` only when the
+ *     // victim browses, after the const is assigned.
+ *     const state: LabState = { world, admin: world.browser((r) => citadel(level, state, r)) };
  *     return state;
  *   });
  */

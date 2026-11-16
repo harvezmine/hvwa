@@ -1,0 +1,7 @@
+<%# GK-10 Citadel callback page: the outcome of a sign-in with Pilgrim-ID. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel — Sign in with Pilgrim-ID</h1>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<%- include('../../_shared/views/forward-note', { forward: forward }) %>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to Citadel</a></p>
+</section>

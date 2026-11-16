@@ -1,0 +1,6 @@
+<%# GK-11 Pilgrim-ID page: its own sign-in form. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Pilgrim-ID — Sign in</h1>
+  <p class="lab-note">The identity provider Citadel trusts. <a href="<%= base %>?level=<%= level %>">Back to Citadel</a></p>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+</section>
