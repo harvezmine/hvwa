@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import { firstRows } from '../../_shared/sql.js';
+import { firstRows } from '../../../_shared/sql.js';
 import { MAX_ROWS, type Row } from '../model.js';
 
 // DIVINE — secure reference: the stored name is trusted nowhere. Names are validated on input (3-24 letters, digits and

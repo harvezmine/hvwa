@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import { firstRows } from '../../_shared/sql.js';
+import { firstRows } from '../../../_shared/sql.js';
 import { MAX_ROWS, type Row } from '../model.js';
 
 // INQUISITOR — the lesson from Acolyte was learned: registration binds the name, and so does the activity query. But a

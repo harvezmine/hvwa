@@ -1,5 +1,5 @@
 import type { ChallengeDb } from '../../../../core/challenge-db.js';
-import { firstRows } from '../../_shared/sql.js';
+import { firstRows } from '../../../_shared/sql.js';
 import { MAX_ROWS, type Row } from '../model.js';
 
 // ACOLYTE — registration is SAFE: the name is bound as a parameter, so a quote in it is just data and a direct injection

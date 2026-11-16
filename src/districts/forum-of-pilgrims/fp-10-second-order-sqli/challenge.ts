@@ -7,7 +7,7 @@ import { flagFor } from '../../../core/mount.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { curlFor, type Result } from '../_shared/forum.js';
-import { cell } from '../_shared/sql.js';
+import { cell } from '../../_shared/sql.js';
 import { MAX_COLUMNS, MAX_NAME, MAX_ROWS, labFor, storedName, trimTables, type Row, type SqliLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as inquisitor from './levels/inquisitor.js';
