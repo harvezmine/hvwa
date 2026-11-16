@@ -8,9 +8,12 @@ import {
   CITADEL_ORIGIN, cookiePath, simVisitOf, simWorld, toSim,
   type Reply, type SimBrowser, type SimRequest, type SimResponse, type SimWorld, type TwinCookie, type Visit,
 } from '../../../core/sim.js';
-import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
+import { ADMIN_NAME } from '../_shared/lab.js';
 import { newId, putBounded } from '../../_shared/collections.js';
-import { CLIENT_ID, newVerifier, s256, withParams, type Exchange, type IssuedCode } from '../_shared/oauth.js';
+import {
+  CLIENT_ID, newVerifier, pilgrimIdAuthorize, pilgrimIdSignIn, pilgrimIdUser, s256,
+  type Exchange, type IssuedCode, type PilgrimId,
+} from '../_shared/oauth.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -67,27 +70,27 @@ export interface LabState {
 }
 
 const MAX_ENTRIES = 50;
-const CODE_TTL_MS = 10 * 60 * 1000;
 /** A sign-in's `next` lasts as long as a sign-in may take: a stale one never moves a later sign-in on. */
 const RETURN_TTL_MS = 10 * 60 * 1000;
 const put = <V>(m: Map<string, V>, key: string, value: V, keep?: (k: string) => boolean): void => putBounded(m, key, value, MAX_ENTRIES, keep);
 
-const accountOf = (state: LabState, username: string, password: string): string | undefined =>
-  username === ADMIN_NAME && password === state.adminPassword ? ADMIN_NAME
-    : username === PLAYER.username && password === PLAYER.password ? PLAYER.username : undefined;
+/**
+ * Pilgrim-ID in this lab (gatekeeper/_shared/oauth.ts): the admin's session is pinned, and the LEVEL decides where a code
+ * may go and what PKCE it asks for (levels/*.ts allowRedirect and checkPkce).
+ */
+const PILGRIM_ID: PilgrimId<LabState> = {
+  cookie: pidCookie, adminPassword: (s) => s.adminPassword, pinnedSession: (s) => s.adminPid, maxEntries: MAX_ENTRIES,
+  policy: (level) => impl.for(level),
+};
 
 /** Who this browser is signed in as at Pilgrim-ID and at Citadel. */
 export function whoIs(v: Visit, state: LabState): { readonly idp?: string; readonly client?: string } {
-  return { idp: state.idpSessions.get(v.cookies[pidCookie(v.level)] ?? ''), client: state.clientSessions.get(v.cookies[clientCookie(v.level)] ?? '') };
+  return { idp: pilgrimIdUser(PILGRIM_ID, v, state), client: state.clientSessions.get(v.cookies[clientCookie(v.level)] ?? '') };
 }
 
 /** POST / (the player's browser only): sign in to Pilgrim-ID. */
 export function idpSignIn(v: Visit, state: LabState, username: string, password: string): Reply & { readonly ok: boolean } {
-  const user = accountOf(state, username, password);
-  if (user === undefined) return { status: 200, ok: false, text: 'Invalid username or password.' };
-  const sid = newId();
-  put(state.idpSessions, sid, user, (k) => k === state.adminPid);
-  return { status: 200, ok: true, text: `Signed in to Pilgrim-ID as ${user}.`, cookies: [{ name: pidCookie(v.level), value: sid, path: cookiePath(v.base) }] };
+  return pilgrimIdSignIn(PILGRIM_ID, v, state, username, password);
 }
 
 /** GET /login (Citadel): start "Sign in with Pilgrim-ID", remembering where to go afterwards. */
@@ -116,25 +119,7 @@ export function startLogin(v: Visit, state: LabState): Reply {
 
 /** GET /idp/authorize (Pilgrim-ID): a signed-in user's code goes to the redirect_uri, if the level lets it. */
 export function authorize(v: Visit, state: LabState): Reply {
-  const level = impl.for(v.level);
-  const user = whoIs(v, state).idp;
-  if (user === undefined) return { status: 200, text: 'Pilgrim-ID: sign in first, then open this link again.' };
-  if (v.query.get('client_id') !== CLIENT_ID) return { status: 400, text: 'Pilgrim-ID: unknown client.' };
-  if (v.query.get('response_type') !== 'code') return { status: 400, text: 'Pilgrim-ID: unsupported response_type.' };
-  const redirectUri = v.query.get('redirect_uri') ?? '';
-  if (redirectUri === '' || !level.allowRedirect(redirectUri)) {
-    return { status: 400, text: 'Pilgrim-ID: this redirect_uri is not registered for the client.' };
-  }
-  const challenge = v.query.get('code_challenge') ?? undefined;
-  const pkceError = level.checkPkce(challenge, v.query.get('code_challenge_method') ?? undefined);
-  if (pkceError !== undefined) return { status: 400, text: `Pilgrim-ID: ${pkceError}` };
-  const code = newId();
-  put(state.codes, code, {
-    user, clientId: CLIENT_ID, redirectUri, ...(challenge === undefined ? {} : { challenge }),
-    expiresAt: state.world.now() + CODE_TTL_MS, used: false,
-  });
-  const st = v.query.get('state');
-  return { status: 302, location: withParams(redirectUri, { code, ...(st === null ? {} : { state: st }) }), text: '' };
+  return pilgrimIdAuthorize(PILGRIM_ID, v, state);
 }
 
 export const SIGN_IN_FAILED = 'Sign-in failed';

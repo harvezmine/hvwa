@@ -6,7 +6,7 @@ import { field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { sendLinkAction, sendReply, visitOf, type SimBrowser, type Visit } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
-import { ADMIN_NAME, PLAYER, welcome, type Result } from '../_shared/lab.js';
+import { ADMIN_NAME, PLAYER, roleOf, welcome, type Result } from '../_shared/lab.js';
 import {
   REGISTERED_REDIRECT, authorize, callback, clientCookie, idpSignIn, impl, labFor, loginCookie, nextCookie, pidCookie,
   startLogin, whoIs,
@@ -18,8 +18,6 @@ const view = (name: string): string => join(dir, 'views', `${name}.ejs`);
 /** The real request as a Visit: the raw query and only this level's lab cookies. */
 const visit = (req: Request, res: Response): Visit =>
   visitOf(req, res, [pidCookie, clientCookie, nextCookie, loginCookie].map((f) => f(req.level)));
-
-const roleOf = (user: string): 'admin' | 'user' => (user === ADMIN_NAME ? 'admin' : 'user');
 
 /** The admin starts every action signed in to Pilgrim-ID, whatever the player's last link did. Never browses. */
 const rearm = (req: Request, admin: SimBrowser): void => { admin.cookies.set(pidCookie(req.level), labFor(req).adminPid); };

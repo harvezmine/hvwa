@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Response } from 'express';
 import { FLAG_RE, TEST_SECRET } from '../../../../tests/helpers.js';
 import { setFlagSecret } from '../../../core/flags.js';
-import { ADMIN_NAME, PLAYER, accountsFor, flagLine, sendAdminPage, welcome } from './lab.js';
+import { ADMIN_NAME, PLAYER, accountOf, accountsFor, flagLine, roleOf, sendAdminPage, welcome } from './lab.js';
 
 // sendAdminPage renders through sendPage: capture what it is given instead of rendering a whole page.
 const rendered = vi.hoisted(() => ({ data: undefined as Record<string, unknown> | undefined }));
@@ -26,6 +26,20 @@ describe('gatekeeper _shared', () => {
       { username: ADMIN_NAME, password: 'pw', role: 'admin' },
       { username: PLAYER.username, password: PLAYER.password, role: 'user' },
     ]);
+  });
+
+  it('accountOf: the admin with this lab\'s password, pilgrim/pilgrim, nobody else', () => {
+    expect(accountOf(ADMIN_NAME, 'pw', 'pw')).toBe(ADMIN_NAME);
+    expect(accountOf('pilgrim', 'pilgrim', 'pw')).toBe('pilgrim');
+    for (const [u, p] of [[ADMIN_NAME, 'pilgrim'], [ADMIN_NAME, ''], ['pilgrim', 'pw'], ['nobody', 'pw'], ['', '']]) {
+      expect(accountOf(u, p, 'pw'), `${u}/${p}`).toBeUndefined();
+    }
+  });
+
+  it('roleOf: the citadel admin is the admin, everyone else a user', () => {
+    expect(roleOf(ADMIN_NAME)).toBe('admin');
+    expect(roleOf('pilgrim')).toBe('user');
+    expect(roleOf('CITADEL_ADMIN')).toBe('user');
   });
 
   it('welcome: a user never gets the flag, the admin does below Divine, Divine never', () => {

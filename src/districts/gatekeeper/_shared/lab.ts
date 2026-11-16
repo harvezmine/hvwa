@@ -30,6 +30,15 @@ export function accountsFor(adminPassword: string): readonly Account[] {
   ];
 }
 
+/** The account these credentials sign in as: the admin (with this lab's admin password), pilgrim/pilgrim, or undefined. */
+export function accountOf(username: string, password: string, adminPassword: string): string | undefined {
+  if (username === ADMIN_NAME && password === adminPassword) return ADMIN_NAME;
+  return username === PLAYER.username && password === PLAYER.password ? PLAYER.username : undefined;
+}
+
+/** An account's role, for welcome(): the citadel admin is the admin, everyone else a user. */
+export const roleOf = (username: string): 'admin' | 'user' => (username === ADMIN_NAME ? 'admin' : 'user');
+
 /**
  * The message for someone who is signed in: only the admin holds the flag, and Divine never issues one.
  * Call it OUTSIDE tryDb (flagFor throws at Divine by design).
