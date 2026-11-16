@@ -75,6 +75,9 @@ src/districts/index.ts              imports each district index
     pin goes) and `trimBounded(map, { max, pin?, spare? })` for a lab that inserts elsewhere and trims later (`pin`:
     never evicted, e.g. the admin's session; `spare`: evicted only when nothing else can go, e.g. signed-in sessions
     after anonymous ones). Each lab states its own rule: GK-10/11 pin the admin's session, GK-16 spares signed-in ones.
+  - `url.ts`: `withParams(uri, params)`: `uri` with `params` appended to its query, as an authorization server
+    appends a code (the uri otherwise left as given, a fragment kept last). Build such URLs with it, never by
+    concatenating `${uri}?code=` (that breaks a uri that already has a query or a fragment).
   - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
@@ -97,7 +100,8 @@ src/districts/index.ts              imports each district index
   Views include the Gatekeeper partials with `<%- include('../../_shared/views/pilgrim-form', { ... }) %>` and the curl
   partial with `<%- include('../../../_shared/views/curl-note', { curl: curl }) %>`.
 - **Pilgrim-ID, the identity provider of the OAuth labs** (GK-10, GK-11), in `gatekeeper/_shared/oauth.ts`: besides
-  `CLIENT_ID`, `CODE_TTL_MS`, `newVerifier()`, `s256()`, `IssuedCode`, `Exchange` and `withParams()`, its sign-in and
+  `CLIENT_ID`, `CODE_TTL_MS`, `newVerifier()`, `s256()`, `IssuedCode`, `Exchange` and `withParams()` (re-exported
+  from `src/districts/_shared/url.ts`), its sign-in and
   `/idp/authorize` are shared as a shell driven by callbacks, like `mountJwtPortal`: a lab declares
   `const PILGRIM_ID: PilgrimId<LabState> = { cookie, adminPassword, pinnedSession?, maxEntries, policy }` and calls
   `pilgrimIdSignIn(PILGRIM_ID, v, state, username, password)`, `pilgrimIdAuthorize(PILGRIM_ID, v, state)` and
@@ -147,7 +151,7 @@ case (g)). Divine resists every exploit.
 | `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 | `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
-| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
+| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r, cookieNames?)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
 | `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
@@ -226,11 +230,16 @@ fully attacker-chosen SQL must also cap result size.
 `zeroblob(n)` make blobs of up to 1 GB in one call: one injected `randomblob(900000000)` allocates 900 MB, and the app
 container has 512 MB. `challengeDb` therefore registers capped overrides of both on EVERY challenge DB, before the schema
 and seed run (an application-defined function takes precedence over the built-in): they return at most
-`CHALLENGE_BLOB_CAP` (64 KiB) and behave like the built-ins below it. Labs need do nothing, and must not depend on
-bigger blobs. **Accepted residual gap:** growth that takes a width or several steps (`printf`/`format` widths such as
-`printf('%.*c', n, 'x')`, `replace()`, a recursive CTE that doubles a string) can still exhaust memory. In a loopback,
-single-player lab that is a self-DoS (the player stops their own app), so it is documented, not mitigated. Rule (g)
-still applies on top: a lab that runs fully attacker-chosen SQL caps what it returns (rows read, text shown).
+`CHALLENGE_BLOB_CAP` (64 KiB) and behave like the built-ins below it. Labs need do nothing, must not depend on bigger
+blobs, and a seed must never re-register either function uncapped. **What the cap does and does not do:** it removes
+the textbook payload (`randomblob(900000000)`) and the heavy-query timing trick built on it (a big `randomblob` as a
+delay in blind SQLi). It does NOT make a single injected call memory-safe in general. Measured on Node 22.22 / SQLite
+3.50.4, each of these is ONE statement: `printf('%0900000000d', 1)` adds about 1.7 GB, `replace(hex(zeroblob(65536)),
+'0', hex(zeroblob(4000)))` about 1 GB (one `replace()` call), and `group_concat` over a 4000-row recursive CTE about
+1 GB. `PRAGMA hard_heap_limit` does nothing in Node's bundled SQLite (and `prepare()` refuses PRAGMA anyway). These
+remain an **accepted self-DoS gap of a loopback, single-player lab**: the only player who can send them stops their
+own app (restart the container), so they are documented, not mitigated. Rule (g) still applies on top: a lab that runs
+fully attacker-chosen SQL caps what it returns (rows read, text shown).
 
 **Lab state: `perLevel` or `perSession`.** Never a bare module-level
 `challengeDb` for a lab that holds a secret or state.
@@ -639,32 +648,39 @@ browser's answer:
   `cookiePath(base)` (`base || '/'`). The defaults are HttpOnly and `SameSite=Lax` (as `hvwa_sid`), not Secure; both
   browsers get the same attributes. `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
   `sameSite: 'Strict' | 'Lax' | 'None'`: a lab whose lesson is SameSite (CSRF) sets it per level IN THE LEVEL FILE, so
-  View Source and the Diff show it (Acolyte's `'None'` is the realistic misconfiguration); any other value throws.
-  `secure: true` adds Secure. Mind the open edge: today the simulated browser on `http://citadel.test` refuses a
-  Secure cookie (as a browser does on plain http), and its jar ignores SameSite, while real browsers drop
-  `SameSite=None` without Secure. How the sim treats `None` is engine task E1's SameSite jar; a CSRF lab builds on that.
-  `maxAgeSec` is in seconds (Express's `maxAge` is milliseconds: `sendReply` converts).
+  View Source and the Diff show it (Acolyte's `sameSite: 'None'` with `secure: true` is the realistic
+  misconfiguration). Any other value throws, and so does `'None'` without `secure: true`, set or cleared: browsers
+  drop a `SameSite=None` cookie that is not Secure, so the lab would test nothing. `secure: true` adds Secure. The
+  open edge: today the simulated browser on `http://citadel.test` refuses a Secure cookie (as a browser does on plain
+  http) and its jar ignores SameSite; engine task E1 will make the sim jar accept Secure cookies from
+  `http://citadel.test` and apply SameSite. The player's own browser treats `http://127.0.0.1` as a secure context and
+  keeps a Secure cookie from it in Chromium and Firefox, but maybe not in Safari. `maxAgeSec` is in seconds (Express's
+  `maxAge` is milliseconds: `sendReply` converts).
 - **Requests** (`Visit`: `level`, `query` (the raw query string as `URLSearchParams`, never Express's parsed
-  `req.query`), `cookies` (only the lab's own, as strings), `base`): `visitOf(req, res, cookieNames)` on a real route
-  (pass this level's cookie names; `base` is `labPath(res)`), `simVisitOf(level, r)` in the citadel handler (`base` is
-  `''`). The page function takes the `Visit` and never sees Express or the sim.
+  `req.query`; everything after the first `?`), `cookies` (only the lab's own, as strings), `base`):
+  `visitOf(req, res, cookieNames)` on a real route (`base` is `labPath(res)`), `simVisitOf(level, r, cookieNames)` in
+  the citadel handler (`base` is `''`). Give both the same names, one `labCookies(level)` list in `model.ts`, so a
+  page function sees the same cookies in both browsers. (`simVisitOf` without names keeps every cookie the simulated
+  browser sent: the behaviour before the filter, kept so older callers still compile; GK-10, 11 and 16 pass names.)
+  The page function takes the `Visit` and never sees Express or the sim.
 
 ```ts
 // model.ts: one page function, both browsers
+export const labCookies = (level: Level): readonly string[] => [pidCookie(level)];
 export function authorize(v: Visit, state: LabState): Reply {
   const user = state.sessions.get(v.cookies[pidCookie(v.level)] ?? '');
   if (user === undefined) return { status: 200, text: 'Sign in first.' };
   const to = v.query.get('redirect_uri') ?? '';
   if (!impl.for(v.level).allowRedirect(to)) return { status: 400, text: 'Unregistered redirect_uri.' }; // the flaw: levels/*.ts
-  return { status: 302, location: `${to}?code=${issueCode(state, user)}`, text: '' };
+  return { status: 302, location: withParams(to, { code: issueCode(state, user) }), text: '' }; // districts/_shared/url.ts
 }
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  if (r.path === '/idp/authorize') return toSim(authorize(simVisitOf(level, r), state));
+  if (r.path === '/idp/authorize') return toSim(authorize(simVisitOf(level, r, labCookies(level)), state));
   return { status: 404, body: 'Not found' };
 }
 
 // challenge.ts: the twin of http://citadel.test/idp/authorize, in the player's own browser
-const visit = (req: Request, res: Response): Visit => visitOf(req, res, [pidCookie(req.level)]);
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 router.get('/idp/authorize', (req, res) => {
   const r = authorize(visit(req, res), labFor(req));
   return sendReply(res, r, () => sendPage(res, view('idp'), { base: labPath(res), text: r.text })); // never res.redirect

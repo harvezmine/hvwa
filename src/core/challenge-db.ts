@@ -35,7 +35,8 @@ function blobSize(arg: unknown, min: number): number {
 /**
  * Capped randomblob(n) and zeroblob(n), registered on every challenge DB: an application-defined function takes
  * precedence over SQLite's built-in of the same name and arity (verified on Node 22.22 / SQLite 3.50.4). Below the cap
- * they answer as the built-ins do; randomblob is not deterministic, so it is never constant-folded.
+ * they answer as the built-ins do; randomblob is not deterministic, so it is never constant-folded. A later
+ * registration of the same name wins, so a seed must never re-register either one uncapped.
  */
 function capBlobFunctions(raw: DatabaseSync): void {
   raw.function('randomblob', { useBigIntArguments: true, deterministic: false }, (n: unknown) => randomBytes(blobSize(n, 1)));
@@ -138,16 +139,23 @@ function scan(sql: string): { kw: string; word: () => string } {
  * must simulate delay (e.g. `await` a timer when a condition holds) instead
  * of running heavy queries.
  *
- * GUARANTEED (memory, one call): randomblob(n) and zeroblob(n) return at most
- * CHALLENGE_BLOB_CAP (64 KiB) bytes. node:sqlite (Node 22) has no
- * sqlite3_limit(), so the built-ins make blobs up to SQLITE_MAX_LENGTH (1 GB):
- * one injected `randomblob(900000000)` allocates 900 MB, and the app container
- * has 512 MB. Capped overrides are registered on every challenge DB before the
- * schema and seed run, so every lab and level is covered (the seed may
- * register its own functions after them). NOT covered, an accepted self-DoS of
- * a loopback single-player lab (docs/RECIPES.md section 4 (g)): growth through
- * printf()/format() widths, replace(), or a recursive CTE that doubles a
- * string. Labs that run fully attacker-chosen SQL still cap their result size.
+ * GUARANTEED: randomblob(n) and zeroblob(n) return at most CHALLENGE_BLOB_CAP
+ * (64 KiB) bytes. node:sqlite (Node 22) has no sqlite3_limit(), so the
+ * built-ins make blobs up to SQLITE_MAX_LENGTH (1 GB): one injected
+ * `randomblob(900000000)` allocates 900 MB, and the app container has 512 MB.
+ * Capped overrides are registered on every challenge DB before the schema and
+ * seed run, so every lab and level is covered. A seed may register functions
+ * of its own (e.g. a simulated sleep()), but must NEVER re-register randomblob
+ * or zeroblob uncapped: the later registration wins, and the cap is gone.
+ *
+ * NOT GUARANTEED: memory in general. The cap removes the textbook payload and
+ * the heavy-query timing trick built on randomblob; other single statements
+ * still allocate gigabytes (measured: printf('%0900000000d', 1) about 1.7 GB;
+ * replace(hex(zeroblob(65536)), '0', hex(zeroblob(4000))) about 1 GB;
+ * group_concat over a 4000-row recursive CTE about 1 GB), and PRAGMA
+ * hard_heap_limit does nothing in Node's bundled SQLite. An accepted self-DoS
+ * of a loopback single-player lab (docs/RECIPES.md section 4). Labs that run
+ * fully attacker-chosen SQL still cap their result size (rule g).
  *
  * Create it in the challenge's model.ts and close over the facade in handlers
  * and in a custom check(). Use perLevel() (core/lab.ts) when a secret in it
