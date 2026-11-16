@@ -5,12 +5,12 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 22/122 registered**
+**Total: 23/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
-| Relic Market | 4 | 10 |
+| Relic Market | 5 | 9 |
 | Scriptorium | 0 | 20 |
 | Forum of Pilgrims | 0 | 12 |
 | Archive API | 0 | 15 |
@@ -46,12 +46,12 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Relic Market
 
-4/14 registered
+5/14 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
 | RM-01 | SQLi product search (UNION) | A05 | A T I D | 2 | ✅ registered |
-| RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | planned |
+| RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | ✅ registered |
 | RM-03 | Blind time-based SQLi | A05 | A T I D | 2 | planned |
 | RM-04 | NoSQL injection (`$ne` login) | A05 | A T I D | 2 | planned |
 | RM-05 | Negative quantity logic flaw | A06 | A T I D | 2 | ✅ registered |
