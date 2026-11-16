@@ -165,6 +165,7 @@ describe('memory: QuickJS\'s allocation limit and the WASM memory maximum', () =
   const memory = { ok: false, limit: 'memory', error: 'The template ran out of memory.' };
 
   it('an unbounded allocation is stopped by the memory limit', async () => {
+    expect(await render(js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), LONG)).toMatchObject(memory);
     expect(await render(js("var a = []; while (true) a.push('x'.repeat(1000000) + a.length)"), LONG)).toMatchObject(memory);
   });
 
@@ -393,7 +394,7 @@ describe('isolation between renders, and health after every bound', () => {
   it('after a timeout, an allocation bomb, a stack overflow, an output overflow or a template error, the next render is healthy', async () => {
     const failing: readonly [string, string | undefined][] = [
       [js('while (true) {}'), 'timeout'],
-      [js("var a = []; while (true) a.push('x'.repeat(1000000) + a.length)"), 'memory'],
+      [js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), 'memory'],
       [js('(function f() { f() })()'), 'stack'],
       [js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a)'), 'stack'],
       [`{% for i in range(0, 3000) %}xxxxxxxxxx{% endfor %}`, 'output'],

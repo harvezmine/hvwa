@@ -76,6 +76,8 @@ export interface WorkerTransportOptions {
   readonly queue?: number;
   /** The watchdog for one render, in ms (default bootMs + timeoutMs + watchdogSlackMs). */
   readonly watchdogMs?: (job: SandboxJob) => number;
+  /** How long a new worker may take to get ready, in ms (default SSTI_LIMITS.spawnTimeoutMs). */
+  readonly spawnTimeoutMs?: number;
   /** The worker script (default: engine.ts from src/, engine.js from dist/). Tests pass misbehaving fixtures. */
   readonly workerUrl?: URL;
 }
@@ -103,6 +105,7 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
     throw new RangeError(`workerTransport: queue must be an integer from 0 to ${SSTI_LIMITS.queue} (got ${String(maxQueue)})`);
   }
   const watchdogMs = opts.watchdogMs ?? ((job: SandboxJob) => SSTI_LIMITS.bootMs + job.timeoutMs + SSTI_LIMITS.watchdogSlackMs);
+  const spawnTimeoutMs = opts.spawnTimeoutMs ?? SSTI_LIMITS.spawnTimeoutMs;
   const url = opts.workerUrl ?? ENGINE_URL;
   const queue: Pending[] = [];
   const exiting = new Set<Promise<void>>();
@@ -185,7 +188,7 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
     const l: Live = {
       worker,
       ready: false,
-      spawnTimer: setTimeout(() => lost(l), SSTI_LIMITS.spawnTimeoutMs).unref(),
+      spawnTimer: setTimeout(() => lost(l), spawnTimeoutMs).unref(),
       statsWaiters: new Map(),
     };
     worker.on('message', (m: FromWorker) => onMessage(l, m));
