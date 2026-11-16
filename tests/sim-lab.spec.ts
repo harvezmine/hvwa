@@ -14,8 +14,8 @@ import { flagFor } from '../src/core/mount.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import { sendPage } from '../src/core/render.js';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, VICTIM_LABELS, simWorld,
-  type SimBrowser, type SimRequest, type SimResponse, type SimWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, VICTIM_LABELS, sendSimRedirect, simWorld,
+  type SimBrowser, type SimRedirectStatus, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 import { FLAG_RE, bare, describeExploitMatrix, describeLabView, freshSession, type Agent } from './helpers.js';
 
@@ -91,6 +91,10 @@ const COURIER = register(defineChallenge({
     const show = (res: Response, result: { ok: boolean; text: string } | null, key: string) =>
       sendPage(res, view, { account: { username: 'pilgrim', password: 'pilgrim' }, result, key });
     router.get('/', (_req, res) => show(res, null, ''));
+    // A real route answering with a Location a level function made (a sim URL): sendSimRedirect, never res.redirect.
+    router.get('/go', (req, res) => sendSimRedirect(
+      res, typeof req.query.to === 'string' ? req.query.to : '', (Number(req.query.status) || 302) as SimRedirectStatus,
+    ));
     router.post('/', async (req: Request, res) => {
       const key = field(req, 'key');
       const ok = key !== '' && key === labFor(req).key;
@@ -336,6 +340,75 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     const res = await bare(app, sid).post(`${LAB}/victim/send-link?level=acolyte`).type('form').send({ url: 'http://attacker.test/curl' });
     expect(res.status).toBe(303);
     expect(panelOf((await bare(app, sid).get(`${LAB}?level=acolyte&lang=en`)).text)).toContain('http://attacker.test/curl');
+  });
+});
+
+describe('sendSimRedirect: the player\'s real browser never leaves the lab', () => {
+  const go = (agent: Agent, level: Level, to: string, lang = 'en', status?: number) =>
+    agent.get(`${LAB}/go?level=${level}&lang=${lang}&to=${encodeURIComponent(to)}${status ? `&status=${status}` : ''}`);
+  const awayOf = (html: string): string => /<section class="sim-away"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
+
+  it('a citadel URL (absolute, relative, or a lab path a level built) goes to the same place in the lab, at the served level', async () => {
+    const { agent } = await freshSession();
+    const want = `${LAB}/callback?code=abc&level=acolyte`;
+    for (const [to, location] of [
+      ['http://citadel.test/callback?code=abc', want],
+      ['HTTP://CITADEL.TEST/callback?code=abc#frag', want],
+      ['/callback?code=abc', want],
+      ['callback?code=abc', want], // relative to the citadel twin of this route (/go)
+      [`${LAB}/callback?code=abc&level=divine`, want], // built with base labPath(res): the served level wins
+      [`${LAB}?tab=home`, `${LAB}?tab=home&level=acolyte`],
+      ['http://citadel.test/', `${LAB}?level=acolyte`],
+      [`${LAB}/../../evil`, `${LAB}/evil?level=acolyte`],
+    ]) {
+      const res = await go(agent, 'acolyte', to);
+      expect(res.status, to).toBe(302);
+      expect(res.headers.location, to).toBe(location);
+    }
+    const divine = await go(agent, 'divine', 'http://citadel.test/callback?code=abc', 'en', 303);
+    expect(divine.status).toBe(303);
+    expect(divine.headers.location).toBe(`${LAB}/callback?code=abc&level=divine`);
+  });
+
+  it('an attacker.test URL gets a page saying where the browser would go, as escaped text, never followed', async () => {
+    const { agent } = await freshSession();
+    const res = await go(agent, 'acolyte', 'http://attacker.test/collect?code=abc&x="><b>x</b>');
+    expect(res.status).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.headers.refresh).toBeUndefined();
+    expect(res.text).not.toMatch(/http-equiv|<b>x/i);
+    const away = awayOf(res.text);
+    expect(away).toContain('<code>http://attacker.test/collect?code=abc&amp;x=%22%3E%3Cb%3Ex%3C/b%3E</code>');
+    expect(away).not.toMatch(/<a\b|href=|<form|<script/);
+    expect(away).toContain('Your browser would now go to');
+    expect(away).toContain('simulated victim&#39;s browser goes there, not yours');
+    expect(res.text).toContain('data-testid="sim-panel"'); // the attacker log is right below
+    const id = awayOf((await go(agent, 'acolyte', 'http://attacker.test/x', 'id')).text);
+    expect(id).toContain('Peramban Anda sekarang akan menuju');
+    expect(id).toContain('<code>http://attacker.test/x</code>');
+  });
+
+  it('no attacker or other URL ever answers a real redirect off the lab', async () => {
+    const { agent } = await freshSession();
+    const tricks = [
+      'http://attacker.test/x', 'https://evil.attacker.test:8443/x', '//attacker.test/x', '/\\attacker.test/x', '\\\\attacker.test/x',
+      'http://citadel.test@attacker.test/', 'http://attacker.test\\@citadel.test/', ' http://attacker.test/', 'http:\t//attacker.test/',
+      'javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'http://localhost:3000/', 'http://127.0.0.1/',
+      'http://[::1]/', 'http://citadel.test:8080/', 'http://citadel.test.attacker.test/', 'https://example.com/', `http://attacker.test/${'a'.repeat(5000)}`,
+      `${LAB}@attacker.test/`, `${LAB}.attacker.test/`, '/d/sim-test/courierx/x', '',
+    ];
+    for (const to of tricks) {
+      const res = await go(agent, 'acolyte', to);
+      if (res.status >= 300 && res.status < 400) {
+        const loc = String(res.headers.location);
+        expect(loc, to).toMatch(new RegExp(`^${LAB}[/?]`));
+        expect(new URL(loc, 'http://127.0.0.1:1/').origin, to).toBe('http://127.0.0.1:1');
+      } else {
+        expect(res.status, to).toBe(200);
+        expect(res.headers.location, to).toBeUndefined();
+        expect(awayOf(res.text), to).not.toMatch(/href=/);
+      }
+    }
   });
 });
 

@@ -107,6 +107,7 @@ case (g)). Divine resists every exploit.
 | `simWorld({ mailboxes })`, `world.browser(handler)` | `core/sim` | victim-driven labs: one player's inbox, attacker log and the victim's browser, made inside the lab's `perSession` factory (section 8) |
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
+| `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -480,7 +481,7 @@ the real routes call**, so the flaw lives in `levels/*.ts` once and View Source 
 // challenge.ts (or model.ts)
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
   const impl = byLevelImpl.for(level);
-  if (r.path === '/authorize') return impl.authorize(state, r.query, r.cookies.pid_session); // { status: 302, headers: { Location } }
+  if (r.path === '/authorize') return impl.authorize(state, r.query, r.cookies.pid_session, ''); // { status: 302, headers: { Location } }
   if (r.path === '/reset') return { status: 200, body: 'Choose a new password' };
   return { status: 404, body: 'Not found' };
 }
@@ -490,6 +491,31 @@ Real routes serve the player's real browser (Express, `sendPage`); the handler s
 never HTTP). Links the lab builds for mails are sim URLs (`http://citadel.test/reset?token=...`, or whatever host a
 flawed level put there); the panel turns citadel links in the player's own mailbox into "open in lab" links
 (`labHref`), and shows every other link as text.
+
+**Where the lab lives is a parameter.** One level function answers both browsers, the player's at
+`/d/<district>/<slug>/...` and the victim's at `http://citadel.test/...`, so it never hard-codes either: it takes a
+`base` and builds every lab-local `Location` (`${base}/idp/login`) and cookie `Path` (`base || '/'`) from it. Real
+routes pass `labPath(res)`; the citadel handler passes `''` (use `CITADEL_ORIGIN` where a sim URL must be absolute, e.g.
+a link in a mail or a registered `redirect_uri`). A hard-coded `Path=/d/...` never matches in the victim's jar (its
+requests are for `/callback`), and a hard-coded `/callback` leaves the lab on a real route.
+
+**A real route never answers a sim URL with `res.redirect`.** URLs that are data (the registered
+`http://citadel.test/callback`, a player's `redirect_uri` or `next=`) are sim URLs: the player's own browser cannot reach
+citadel.test, and `res.redirect(redirect_uri)` from a lab route would be a REAL open redirect off the loopback lab.
+Answer a level's 3xx with `sendSimRedirect(res, location, status?)`: a citadel URL (or a path under `labPath(res)`)
+goes to the same place in the lab at the served level (the IdP's `302 http://citadel.test/callback?code=...` becomes
+`302 <lab>/callback?code=...&level=<level>`); anything else (attacker.test, another host, `javascript:`) gets a page
+that shows the URL as text and says that in this lab the simulated victim's browser goes there. It never links to it.
+
+```ts
+router.get('/idp/authorize', async (req, res) => { // the player authorizes in their own browser
+  const params = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
+  const out = impl.for(req.level).authorize(labFor(req), params, req.cookies.pid_session, labPath(res));
+  const location = out.headers?.Location;
+  if (typeof location === 'string') return sendSimRedirect(res, location); // never res.redirect(location)
+  await sendPage(res, view('consent'), { message: out.body ?? '' });
+});
+```
 
 ### Scripting the victim
 

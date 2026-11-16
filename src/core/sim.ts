@@ -10,10 +10,13 @@
 // All state is per player AND level: every store below must be created inside a perSession() factory (they
 // check), as part of the lab's own per-session state, so it is bounded and inherits the new-instance limits.
 import { Buffer } from 'node:buffer';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Request, Response, Router } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
 import { capPerSessionHolder, field, insidePerSessionFactory, labPath } from './lab.js';
 import type { Level } from './levels.js';
+import { sendPage } from './render.js';
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 
 /** The lab itself, as the victim's browser sees it: http://citadel.test/<path> is the lab route <labPath>/<path>. */
@@ -1015,6 +1018,38 @@ function panelModel(v: VictimConfig, req: Request, res: Response): SimPanel {
       ...(h.referer === undefined ? {} : { referer: h.referer }), ...(h.body === undefined ? {} : { body: h.body }),
     })),
   };
+}
+
+/** The redirect statuses sendSimRedirect answers with. */
+export type SimRedirectStatus = 301 | 302 | 303 | 307 | 308;
+const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
+const awayView = join(dirname(fileURLToPath(import.meta.url)), 'views', 'sim-away.ejs');
+
+/**
+ * Answer the player's REAL browser with a Location a level function made, never sending it off the lab (a lab route
+ * that answered `res.redirect(redirect_uri)` would be a real open redirect). `location` is resolved as the victim's
+ * browser would resolve it on the citadel twin of this route (`http://citadel.test<req.path>`); a path under
+ * labPath(res) (a level function given base labPath(res)) is that path on the citadel.
+ *
+ * - A citadel URL: `status` (default 302) to the same place in the lab (labHref: `<labPath>/<path>?<query>` at the
+ *   served level), e.g. the IdP's `302 http://citadel.test/callback?code=..` lands on `<lab>/callback?code=..`.
+ * - Anything else (attacker.test, another host, `javascript:` ...): a 200 page (sendPage) that shows the URL as
+ *   escaped text and says the simulated victim's browser goes there in this lab. It never links to it or follows it.
+ */
+export async function sendSimRedirect(res: Response, location: string, status: SimRedirectStatus = 302): Promise<void> {
+  if (!REDIRECT_STATUSES.has(status)) throw new Error(`sendSimRedirect: status must be 301, 302, 303, 307 or 308 (got ${String(status)})`);
+  const base = labPath(res);
+  const raw = str(location);
+  const local = raw === base || ['/', '?', '#'].some((c) => raw.startsWith(`${base}${c}`));
+  const u = local
+    ? classifySimUrl(`${CITADEL_ORIGIN}${raw.slice(base.length)}`)
+    : classifySimUrl(raw, `${CITADEL_ORIGIN}${res.req.path}`);
+  const href = labHref(u, base, res.req.level);
+  if (href !== undefined) {
+    res.redirect(status, href);
+    return;
+  }
+  await sendPage(res, awayView, { away: u.url || clip(raw, SIM_LIMITS.urlLength) });
 }
 
 /**

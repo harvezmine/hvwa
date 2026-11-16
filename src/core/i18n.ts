@@ -85,6 +85,12 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'sim.log': { id: 'Server Anda (attacker.test) menerima…', en: 'Your server (attacker.test) received…' },
   'sim.log_empty': { id: 'Belum ada permintaan.', en: 'No requests yet.' },
   'sim.body': { id: 'Isi', en: 'Body' },
+  'sim.away.heading': { id: 'Peramban Anda tetap di lab', en: 'Your browser stays in the lab' },
+  'sim.away.lead': { id: 'Peramban Anda sekarang akan menuju:', en: 'Your browser would now go to:' },
+  'sim.away.why': {
+    id: 'Di lab ini, peramban korban tersimulasi yang pergi ke sana, bukan peramban Anda: pantau log server Anda (attacker.test).',
+    en: 'In this lab the simulated victim\'s browser goes there, not yours: watch your server\'s log (attacker.test).',
+  },
   'diff.vulnerable': { id: 'Rentan', en: 'Vulnerable' },
   'diff.secure': { id: 'Aman (Divine)', en: 'Secure (Divine)' },
   'safety.warning': {

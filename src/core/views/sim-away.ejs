@@ -1,0 +1,7 @@
+<%# sendSimRedirect (core/sim.ts): a level function sent the player's real browser to a URL outside the lab. Show it as escaped text only: no link, no form, no refresh, so the player's browser never follows it. %>
+<section class="sim-away" data-testid="sim-away" role="status">
+  <h1><%= t('sim.away.heading') %></h1>
+  <p><%= t('sim.away.lead') %></p>
+  <p><code><%= away %></code></p>
+  <p><%= t('sim.away.why') %></p>
+</section>
