@@ -10,6 +10,9 @@
 //   core/xss/oracle.ts   xssOracle (sinks, marker reachability, mXSS round trip), roundTrip, linkSinks
 //   core/xss/preview.ts  previewFrame: the sandboxed iframe the player watches the payload fire in
 //
+//   core/victim.ts       the victim side: newMarker() per player and level, xssBrowser (the admin views a page ->
+//                        the oracle -> the stolen canary in the attacker log), XSS_STEAL_URL
+//
 // core/xss/ imports only parse5 and the sim's copying clip (tests/xss.spec.ts guards it); it is never reachable from
 // core/sim/, whose no-network guard stays as it was.
 export { XSS_LIMITS } from './xss/limits.js';
@@ -19,3 +22,7 @@ export {
   type LinkSink, type Sink, type SinkKind, type SinkTrigger, type XssInsertion, type XssLimit, type XssOracleOptions, type XssVerdict,
 } from './xss/oracle.js';
 export { PREVIEW_CSP, PREVIEW_SANDBOX, previewFrame, type PreviewOptions } from './xss/preview.js';
+export {
+  XSS_STEAL_URL, newMarker, xssBrowser,
+  type XssBrowser, type XssDomWrite, type XssMarker, type XssPage, type XssPageVerdict, type XssVictimOptions,
+} from './victim.js';

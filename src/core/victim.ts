@@ -1,17 +1,26 @@
 // src/core/victim.ts — the engine side of a simulated victim (core/sim/): `defineChallenge({ victim })`'s config and
 // its validation, the action presets, the inbox / attacker-log panel under every lab page, the
-// `POST <lab>/victim/<name>` routes, and sendSimRedirect for real routes that get a sim URL back.
+// `POST <lab>/victim/<name>` routes, sendSimRedirect for real routes that get a sim URL back, and the XSS sink
+// interpreter (xssBrowser: the admin's browser "runs" the pages it renders through the static oracle, core/xss/).
+import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Request, Response, Router } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
-import { field, labPath } from './lab.js';
+import { field, insidePerSessionFactory, labPath } from './lab.js';
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 import { sendPage } from './render.js';
-import { REDIRECT_STATUSES, isThenable, type SimBrowser, type SimOutcome, type SimVisit } from './sim/browser.js';
+import {
+  REDIRECT_STATUSES, isThenable, type SimBrowser, type SimHandler, type SimNavigateOptions, type SimOutcome, type SimRequest,
+  type SimResponse, type SimVisit,
+} from './sim/browser.js';
+import type { SimCookieJar } from './sim/cookies.js';
 import { SIM_LIMITS, clip, str } from './sim/limits.js';
 import { ATTACKER_ORIGIN, CITADEL_ORIGIN, classifySimUrl, labHref, type SimUnreachable } from './sim/url.js';
 import { PLAYER_MAILBOX, World, type SimWorld } from './sim/world.js';
+import { markerCall, markerNonce } from './xss/marker.js';
+import { xssOracle, type XssInsertion, type XssOracleOptions, type XssVerdict } from './xss/oracle.js';
+import { DOCUMENT_MIME_TYPES } from './xss/rules.js';
 
 /**
  * One button under the lab. `POST <lab>/victim/<name>?level=<level>` runs `run` synchronously (the scripted
@@ -354,4 +363,210 @@ export function mountVictim(router: Router, v: VictimConfig): void {
       res.redirect(303, `${labPath(res)}?level=${req.level}`);
     });
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// XSS: the sink interpreter (docs/RECIPES.md, "XSS labs"). The victim's browser runs no JavaScript; the static oracle
+// (core/xss/) decides, for every page the admin's browser renders, whether attacker bytes would have run the player's
+// marker call. If so, the payload "sends the admin's cookie home": one request to the player's attacker log.
+
+/** Where a payload that ran sends what it stole: `GET <XSS_STEAL_URL>?c=<canary>` in the player's attacker log. */
+export const XSS_STEAL_URL = `${ATTACKER_ORIGIN}/steal`;
+
+/** One player's marker at one level (newMarker()): the nonce, and the call a payload makes, `hvwa('<nonce>')`. */
+export interface XssMarker { readonly nonce: string; readonly call: string }
+
+/**
+ * A fresh marker (16 CSPRNG hex digits). Make it in the lab's perSession factory, next to the world: one per player
+ * and level, so a payload proves one player's exploit at one level. Throws outside a factory.
+ */
+export function newMarker(): XssMarker {
+  if (!insidePerSessionFactory()) {
+    throw new Error('newMarker: create it inside a perSession() factory (a marker belongs to one player at one level)');
+  }
+  const nonce = randomBytes(8).toString('hex');
+  return Object.freeze({ nonce, call: markerCall(nonce) });
+}
+
+/** A page the admin's browser rendered, as a client-side twin sees it (XssVictimOptions.dom). Frozen. */
+export interface XssPage {
+  readonly url: string;
+  readonly path: string;
+  readonly query: URLSearchParams;
+  /** `location.hash` as the browser has it ('#...', percent-encoded as WHATWG URLs encode a fragment, or ''). Never sent to the server. */
+  readonly hash: string;
+  readonly status: number;
+  /** The page as the citadel answered it (the whole body, not the visit's clip). */
+  readonly body: string;
+}
+
+/** What the page's own script writes into the DOM: the HTML, and how (default 'innerHTML': its scripts never run). */
+export interface XssDomWrite { readonly html: string; readonly insertion?: XssInsertion }
+
+export interface XssVictimOptions {
+  /** The player's marker call (the lab's newMarker().call): only a payload that calls it counts. */
+  readonly marker: string;
+  /**
+   * What the payload steals when it runs, e.g. the admin's session value. A function is read at that moment (a
+   * signed-out admin has nothing to steal: `() => admin.cookies.get('session') ?? ''`). Sent URL-encoded.
+   */
+  readonly canary: string | (() => string);
+  /** Sinks that need the admin to click, hover or focus count too (default true: the admin reads the page and uses it). */
+  readonly interact?: boolean;
+  /**
+   * Client-rendered sinks (DOM XSS, prototype pollution): a twin of the page's own script, run for every page the
+   * admin's browser renders, returns the HTML that script would write into the DOM (or undefined). The oracle judges
+   * it too. The twin is lab code in the level file: the flaw lives there, the engine only judges its output.
+   */
+  readonly dom?: (page: XssPage) => XssDomWrite | undefined;
+}
+
+/** The oracle's verdict on one rendered page (and on the twin's DOM write). Frozen; its URL is a copy. */
+export interface XssPageVerdict {
+  readonly url: string;
+  readonly page: XssVerdict;
+  readonly dom?: XssVerdict;
+  /** The payload ran: the canary went to the attacker log. */
+  readonly fired: boolean;
+}
+
+/** A victim's browser whose rendered pages run through the XSS oracle. */
+export interface XssBrowser extends SimBrowser {
+  /** The verdicts on the last SIM_LIMITS.visits pages it rendered, newest last (a test seam, and a lab's note). */
+  readonly verdicts: readonly XssPageVerdict[];
+}
+
+/** Response headers by lower-case name. */
+function headerLists(res: SimResponse): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const [k, v] of Object.entries(res.headers ?? {})) {
+    const list = typeof v === 'string' ? [v] : Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
+    if (list.length > 0) m.set(k.toLowerCase(), [...(m.get(k.toLowerCase()) ?? []), ...list]);
+  }
+  return m;
+}
+
+/** Whether a browser renders the response as a document that can run script: HTML, XHTML, SVG or XML (or no type), not a download. */
+function rendersDocument(h: Map<string, string[]>): boolean {
+  if (/^\s*attachment\b/i.test(h.get('content-disposition')?.[0] ?? '')) return false;
+  const type = h.get('content-type')?.[0];
+  if (type === undefined) return true; // labs answer HTML by default
+  const essence = type.split(';')[0].trim().toLowerCase();
+  return essence === '' || DOCUMENT_MIME_TYPES.has(essence);
+}
+
+/**
+ * A `Content-Security-Policy: sandbox ...` on the response, as the tokens the page keeps (several policies all apply,
+ * so only the tokens every one allows), or undefined when no policy sandboxes it. Only sandbox is modelled: other CSP
+ * directives are not evaluated (a Divine level escapes; CSP is defence in depth, not the fix).
+ */
+function cspSandbox(values: readonly string[] | undefined): string | undefined {
+  let allowed: Set<string> | undefined;
+  for (const policy of (values ?? []).join(',').split(',')) {
+    for (const directive of policy.split(';')) {
+      const [name, ...tokens] = directive.trim().split(/[\t\n\f\r ]+/);
+      if (name?.toLowerCase() !== 'sandbox') continue;
+      const own = new Set(tokens.map((x) => x.toLowerCase()));
+      allowed = allowed === undefined ? own : new Set([...allowed].filter((x) => own.has(x)));
+    }
+  }
+  return allowed === undefined ? undefined : [...allowed].join(' ');
+}
+
+/** The fragment of a URL as `location.hash` gives it ('' when there is none or the URL does not parse). A copy. */
+function fragmentOf(url: unknown, base?: string): string {
+  if (typeof url !== 'string' || url.length > SIM_LIMITS.urlLength) return '';
+  try {
+    return clip(base === undefined ? new URL(url).hash : new URL(url, base).hash, SIM_LIMITS.urlLength);
+  } catch {
+    return '';
+  }
+}
+
+class XssVictimBrowser implements XssBrowser {
+  private readonly inner: SimBrowser;
+  /** The fragment of the navigation in progress: the link's, inherited across redirects that carry none (as browsers do). */
+  private hash = '';
+  private recent: XssPageVerdict[] = [];
+
+  constructor(readonly world: SimWorld, handler: SimHandler, private readonly opts: XssVictimOptions) {
+    this.inner = world.browser((r) => this.render(r, handler(r)));
+  }
+
+  get cookies(): SimCookieJar { return this.inner.cookies; }
+  get verdicts(): readonly XssPageVerdict[] { return Object.freeze([...this.recent]); }
+
+  follow(url: string, opts?: SimNavigateOptions): SimVisit {
+    this.hash = fragmentOf(url);
+    return this.inner.follow(url, opts);
+  }
+
+  submit(url: string, form: Readonly<Record<string, string>>, opts?: SimNavigateOptions): SimVisit {
+    this.hash = fragmentOf(url);
+    return this.inner.submit(url, form, opts);
+  }
+
+  /** Every citadel answer passes here on its way to the browser, unchanged. A rendered page is judged first. */
+  private render(r: SimRequest, res: SimResponse): SimResponse {
+    if (res === null || typeof res !== 'object' || isThenable(res)) return res; // the browser reports it
+    const h = headerLists(res);
+    const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;
+    if (location !== undefined) { // a redirect is not a page; a Location with its own fragment replaces the link's
+      const own = fragmentOf(location, r.url);
+      if (own !== '') this.hash = own;
+      return res;
+    }
+    if (rendersDocument(h)) this.judge(r, res, h);
+    if (h.has('refresh')) this.hash = ''; // the next page is a new navigation
+    return res;
+  }
+
+  private judge(r: SimRequest, res: SimResponse, h: Map<string, string[]>): void {
+    const { marker, interact = true, dom } = this.opts;
+    const sandbox = cspSandbox(h.get('content-security-policy'));
+    const options: XssOracleOptions = { interact, ...(sandbox === undefined ? {} : { sandbox }) };
+    const body = typeof res.body === 'string' ? res.body : '';
+    const page = xssOracle(body, marker, options);
+    let written: XssVerdict | undefined;
+    if (dom !== undefined) {
+      const w: unknown = dom(Object.freeze({
+        url: r.url, path: r.path, query: new URLSearchParams(r.query), hash: this.hash, status: res.status, body,
+      }));
+      if (w !== undefined) {
+        const { html, insertion } = (w ?? {}) as Partial<XssDomWrite>;
+        if (w === null || typeof w !== 'object' || typeof html !== 'string') {
+          throw new Error('xssBrowser dom: the twin must return { html, insertion? } or undefined');
+        }
+        written = xssOracle(html, marker, { ...options, insertion: insertion ?? 'innerHTML' });
+      }
+    }
+    const fired = page.executes || written?.executes === true;
+    if (fired) {
+      const { canary } = this.opts;
+      const stolen = typeof canary === 'function' ? str(canary()) : canary;
+      this.world.attackerLog.record({ method: 'GET', url: `${XSS_STEAL_URL}?c=${encodeURIComponent(stolen)}` });
+    }
+    this.recent.push(Object.freeze({ url: clip(r.url, SIM_LIMITS.urlLength), page, ...(written === undefined ? {} : { dom: written }), fired }));
+    if (this.recent.length > SIM_LIMITS.visits) this.recent.shift();
+  }
+}
+
+/**
+ * The admin's browser for an XSS lab: `world.browser(handler)`, except that every page it renders (any answer but a
+ * followed redirect, of a type a browser renders as a document, not a download) goes through `xssOracle(body, marker)`
+ * first, and through the `dom` twin's output when the lab has one. When the oracle says the payload runs, one request
+ * lands in the player's attacker log: `GET http://attacker.test/steal?c=<canary>` (no Referer). The page itself is
+ * unchanged: the visit, the panel and the presets (checkMailAction, sendLinkAction) work as for any victim.
+ * Create it in the lab's perSession factory (world.browser checks).
+ */
+export function xssBrowser(world: SimWorld, handler: SimHandler, opts: XssVictimOptions): XssBrowser {
+  if (opts === null || typeof opts !== 'object') throw new Error('xssBrowser: options { marker, canary } are required');
+  markerNonce(opts.marker); // throws for anything but a marker call
+  if (typeof opts.canary !== 'string' && typeof opts.canary !== 'function') {
+    throw new Error('xssBrowser: canary must be a string or a function () => string');
+  }
+  if (opts.interact !== undefined && typeof opts.interact !== 'boolean') throw new Error('xssBrowser: interact must be a boolean');
+  if (opts.dom !== undefined && typeof opts.dom !== 'function') throw new Error('xssBrowser: dom must be a function (page) => { html } | undefined');
+  if (typeof handler !== 'function') throw new Error('xssBrowser: handler must be a function');
+  return new XssVictimBrowser(world, handler, Object.freeze({ ...opts }));
 }
