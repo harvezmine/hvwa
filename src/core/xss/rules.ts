@@ -3,6 +3,7 @@
 // Rules read parse5 elements (namespace, tag name, attributes as the tree builder left them: entities decoded, HTML
 // names lower-cased, SVG names adjusted). Nothing here runs or parses JavaScript.
 import type { DefaultTreeAdapterTypes } from 'parse5';
+import { XSS_LIMITS } from './limits.js';
 import { NS } from './ns.js';
 import { readXml } from './xml.js';
 
@@ -91,6 +92,21 @@ export interface PageFacts {
   readonly scriptElements: boolean;
   /** The page has a @keyframes rule (so an inline animation runs by itself). */
   readonly keyframes: boolean;
+  /**
+   * Whether a source loads, per element kind and URL, shared by every walk of one oracle call: a data: image is decoded
+   * once, not once per handler (onload, onerror) and per walk (the page, the select pass, the round trips).
+   */
+  readonly loads?: Map<string, boolean | undefined>;
+}
+
+/** `<` followed by a letter, `!`, `/` or `?`: every tag, comment or doctype starts with one (an upper bound on tokens). */
+export function tagOpens(s: string): number {
+  let n = 0;
+  for (let i = s.indexOf('<'); i !== -1 && i < s.length - 1; i = s.indexOf('<', i + 1)) {
+    const c = s.charCodeAt(i + 1);
+    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 33 || c === 47 || c === 63) n++;
+  }
+  return n;
 }
 
 /** A link's rel tokens, lower case. */
@@ -132,8 +148,12 @@ function sourceOf(el: Element, scripts: boolean): string | undefined {
 const LOADING_ELEMENTS: ReadonlySet<string> = new Set(['img', 'input', 'script', 'link', 'object', 'track', 'svg:image', 'svg:script', 'svg:feImage']);
 const IMAGE_ELEMENTS: ReadonlySet<string> = new Set(['img', 'input', 'source', 'svg:image', 'svg:feImage']);
 
-/** Whether image bytes decode: a complete GIF, PNG, JPEG or WebP, or a well-formed SVG document (a broken one errors). */
-function imageLoads(d: { readonly mime: string; readonly text: string; readonly bytes: Uint8Array }): boolean {
+/**
+ * Whether image bytes decode: a complete GIF, PNG, JPEG or WebP, or a well-formed SVG document (a broken one errors).
+ * Undefined: not judged (an SVG over the oracle's size or tag cap, a tree over its caps, a DTD): neither its load nor
+ * its error event counts.
+ */
+function imageLoads(d: { readonly mime: string; readonly text: string; readonly bytes: Uint8Array }): boolean | undefined {
   const b = d.bytes;
   const n = b.length;
   const ascii = (at: number, s: string): boolean => [...s].every((c, k) => b[at + k] === c.charCodeAt(0));
@@ -142,7 +162,9 @@ function imageLoads(d: { readonly mime: string; readonly text: string; readonly 
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return b[n - 2] === 0xff && b[n - 1] === 0xd9;
   if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return (b[4] | (b[5] << 8) | (b[6] << 16) | (b[7] << 24)) + 8 === n;
   if (d.mime === 'image/svg+xml') {
+    if (d.text.length > XSS_LIMITS.htmlLength || tagOpens(d.text) > XSS_LIMITS.tags) return undefined;
     const read = readXml(d.text);
+    if (read.limited !== undefined) return undefined;
     const root = read.document.childNodes.find((c): c is Element => 'tagName' in c);
     return read.wellFormed && root !== undefined && root.namespaceURI === NS.SVG && root.tagName === 'svg';
   }
@@ -153,19 +175,24 @@ function imageLoads(d: { readonly mime: string; readonly text: string; readonly 
  * Whether a source loads (so onload fires and onerror does not). In the simulation only a data: URL can: every other
  * fetch fails (the citadel answers 404 for `src=x`, attacker.test serves nothing). A data: image must decode; a
  * script runs; a style sheet must be CSS; an object must be a document or an image; media is never judged playable.
+ * Undefined: not judged (imageLoads). Cached in `page.loads` for the rest of the oracle call.
  */
-function sourceLoads(el: Element, src: string): boolean {
+function sourceLoads(el: Element, src: string, page: PageFacts): boolean | undefined {
   const url = urlText(src);
   if (schemeOf(url) !== 'data') return false;
-  const d = dataUrl(url);
-  if (d === undefined) return false;
   const name = label(el);
-  if (IMAGE_ELEMENTS.has(name)) return imageLoads(d);
-  if (name === 'script' || name === 'svg:script') return true;
-  if (name === 'link') return d.mime === 'text/css';
-  if (name === 'object') return DOCUMENT_MIME_TYPES.has(d.mime) || imageLoads(d);
-  if (name === 'track') return d.text.startsWith('WEBVTT');
-  return false;
+  const key = `${name}\n${url}`;
+  if (page.loads?.has(key) === true) return page.loads.get(key);
+  const d = dataUrl(url);
+  let loads: boolean | undefined = false;
+  if (d === undefined) loads = false;
+  else if (IMAGE_ELEMENTS.has(name)) loads = imageLoads(d);
+  else if (name === 'script' || name === 'svg:script') loads = true;
+  else if (name === 'link') loads = d.mime === 'text/css';
+  else if (name === 'object') loads = DOCUMENT_MIME_TYPES.has(d.mime) || imageLoads(d) === true;
+  else if (name === 'track') loads = d.text.startsWith('WEBVTT');
+  page.loads?.set(key, loads);
+  return loads;
 }
 
 /** Whether the victim can focus the element (by clicking or tabbing to it). */
@@ -202,11 +229,11 @@ export function handlerTrigger(el: Element, name: string, page: PageFacts): Trig
     // (not its children); and an element whose source loads (sourceLoads: only a data: URL that decodes).
     if (windowish || isHtml(el, 'iframe', 'frame', 'style') || isSvg(el, 'svg')) return 'load';
     const src = sourceOf(el, scripts);
-    return src !== undefined && LOADING_ELEMENTS.has(label(el)) && sourceLoads(el, src) ? 'load' : undefined;
+    return src !== undefined && LOADING_ELEMENTS.has(label(el)) && sourceLoads(el, src, page) === true ? 'load' : undefined;
   }
   if (name === 'onerror') {
     const src = sourceOf(el, scripts);
-    if (src !== undefined) return sourceLoads(el, src) ? undefined : 'load'; // `src=x` fails by itself; a valid data: image does not
+    if (src !== undefined) return sourceLoads(el, src, page) === false ? 'load' : undefined; // `src=x` fails by itself; a valid data: image does not
     return windowish ? 'interaction' : undefined; // window.onerror needs some other script to fail
   }
   if (ANIMATION_EVENTS.has(name)) return page.keyframes && /animation/i.test(attr(el, 'style') ?? '') ? 'load' : 'interaction';

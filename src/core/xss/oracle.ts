@@ -9,7 +9,7 @@ import { markerNonce, markerPattern } from './marker.js';
 import { readXml } from './xml.js';
 import {
   DOCUMENT_MIME_TYPES, NS, attr, canHostShadow, dataUrl, handlerTrigger, hrefAnimation, hrefOf, javascriptSource, label,
-  navAttributes, sandboxOf, schemeOf, scriptKind, scriptMimeRuns, shadowRootMode, urlText, type Trigger,
+  navAttributes, sandboxOf, schemeOf, scriptKind, scriptMimeRuns, shadowRootMode, tagOpens, urlText, type Trigger,
 } from './rules.js';
 
 type Node = DefaultTreeAdapterTypes.Node;
@@ -106,6 +106,8 @@ interface Frame {
   readonly dsd: boolean;
   /** The document has a @keyframes rule: an inline animation runs by itself. */
   readonly keyframes: boolean;
+  /** Whether a source loads, cached for the whole oracle call (every frame and walk shares the one map). */
+  readonly loads: Map<string, boolean | undefined>;
   readonly prefix: string;
   readonly srcdocDepth: number;
 }
@@ -130,15 +132,6 @@ interface Context {
   readonly timed: boolean;
 }
 
-/** `<` followed by a letter, `!`, `/` or `?`: every tag, comment or doctype starts with one (an upper bound on tokens). */
-function tagOpens(s: string): number {
-  let n = 0;
-  for (let i = s.indexOf('<'); i !== -1 && i < s.length - 1; i = s.indexOf('<', i + 1)) {
-    const c = s.charCodeAt(i + 1);
-    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 33 || c === 47 || c === 63) n++;
-  }
-  return n;
-}
 
 function limit(b: Budget, why: XssLimit): undefined {
   b.limited ??= why;
@@ -328,7 +321,7 @@ function elementSinks(el: Element, f: Frame, ctx: Context, w: Walk): void {
     }
     walkInto(doc, {
       isolated: f.isolated || (sandbox !== undefined && !sandbox.sameOrigin), live: true, scriptElements: true, dsd: true,
-      keyframes: hasKeyframes(srcdoc),
+      keyframes: hasKeyframes(srcdoc), loads: f.loads,
       prefix: `${f.prefix}iframe[srcdoc] > `, srcdocDepth: f.srcdocDepth + 1,
     }, ctx, w);
   }
@@ -429,7 +422,7 @@ function xmlVerdict(page: string, re: RegExp, opts: XssOracleOptions, budget: Bu
   const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
   const top: Frame = {
     isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
-    scriptElements: true, dsd: false, keyframes: hasKeyframes(page), prefix: '', srcdocDepth: 0,
+    scriptElements: true, dsd: false, keyframes: hasKeyframes(page), loads: new Map(), prefix: '', srcdocDepth: 0,
   };
   const w = walk(read.document, top, { re, interact: opts.interact !== false, budget, timed: false });
   return Object.freeze({
@@ -478,7 +471,8 @@ export function xssOracle(html: string, marker: string, opts: XssOracleOptions =
   const sandbox = opts.sandbox === undefined ? undefined : sandboxOf(opts.sandbox);
   const top: Frame = {
     isolated: sandbox !== undefined && !sandbox.sameOrigin, live: sandbox === undefined || sandbox.scripts,
-    scriptElements: insertion === 'document', dsd: insertion === 'document', keyframes: hasKeyframes(page), prefix: '', srcdocDepth: 0,
+    scriptElements: insertion === 'document', dsd: insertion === 'document', keyframes: hasKeyframes(page), loads: new Map(),
+    prefix: '', srcdocDepth: 0,
   };
   const ctx: Context = { re, interact: opts.interact !== false, budget, timed: false };
   const first = walk(tree, top, ctx);
@@ -513,7 +507,7 @@ export function roundTrip(html: string, opts: { readonly insertion?: XssInsertio
   const tree = parseBounded(html, insertion, true, budget, { checkTags: true, timed: false });
   if (tree === undefined) return undefined;
   const ctx: Context = { re: /(?!)/, interact: true, budget, timed: false };
-  if (walk(tree, { isolated: false, live: false, scriptElements: false, dsd: false, keyframes: false, prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
+  if (walk(tree, { isolated: false, live: false, scriptElements: false, dsd: false, keyframes: false, loads: new Map(), prefix: '', srcdocDepth: 0 }, ctx).deep) return undefined;
   return serialize(tree);
 }
 

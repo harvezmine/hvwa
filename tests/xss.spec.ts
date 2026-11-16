@@ -592,6 +592,44 @@ describe('xssOracle: bounds (size, tags, depth, srcdoc, budget, time)', () => {
     }
   });
 
+  it('stays linear on XML with many namespace prefixes: a data: SVG image (read for onload and onerror), an XML document', { timeout: 60_000 }, () => {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const b64 = (s: string): string => Buffer.from(s, 'utf8').toString('base64');
+    const prefix = (i: number): string => { let s = ''; let k = i; do { s += String.fromCharCode(97 + (k % 26)); k = Math.floor(k / 26); } while (k > 0); return s; };
+    const prefixes = (n: number): string => Array.from({ length: n }, (_, i) => ` xmlns:${prefix(i)}="u"`).join('');
+    for (const wrap of ['', '<select></select>', '<select></select><noscript></noscript>']) {
+      for (const p of [200, 400, 600]) {
+        const head = `<svg xmlns="${SVG}"${prefixes(p)}>`;
+        const page = (e: number): string => `${wrap}<img src="data:image/svg+xml;base64,${b64(`${head}${'<g/>'.repeat(e)}</svg>`)}" onload=${M} onerror=${M}>`;
+        let e = 0;
+        while (page(e + 50).length <= XSS_LIMITS.htmlLength && e + 50 < XSS_LIMITS.tags - 4) e += 50; // judged: within the tag cap
+        quick(`data: SVG ${wrap} p=${p} e=${e}`, () => expect(xssOracle(page(e), M).executes).toBe(true)); // it decodes: onload
+      }
+    }
+    const head = `<svg xmlns="${SVG}"${prefixes(900)}>`;
+    let doc = `${head}<script>${M}</script>`;
+    while (doc.length + 4 + 6 <= XSS_LIMITS.htmlLength && (doc.match(/</g) ?? []).length < XSS_LIMITS.tags - 2) doc += '<g/>';
+    doc += '</svg>';
+    quick('XML document, 900 prefixes', () => expect(xssOracle(doc, M, { syntax: 'xml' }).executes).toBe(true));
+
+    // Load-independent: at the same page size, namespace prefixes must not multiply the cost (copying the namespace map
+    // per element made it prefixes x elements: ~15x slower than no prefixes, for the same 16 KiB).
+    const best = (f: () => unknown): number => { let m = Infinity; for (let i = 0; i < 3; i++) { const t = performance.now(); f(); m = Math.min(m, performance.now() - t); } return m; };
+    const sized = (p: number): string => {
+      const h = `<svg xmlns="${SVG}"${prefixes(p)}>`;
+      const pg = (e: number): string => `<select></select><noscript></noscript><img src="data:image/svg+xml;base64,${b64(`${h}${'<g/>'.repeat(e)}</svg>`)}" onload=${M} onerror=${M}>`;
+      let e = 0;
+      while (pg(e + 50).length <= XSS_LIMITS.htmlLength && e + 50 < XSS_LIMITS.tags - 4) e += 50;
+      return pg(e);
+    };
+    const none = sized(0);
+    const many = sized(500);
+    expect(xssOracle(many, M).executes).toBe(true);
+    expect(best(() => xssOracle(many, M))).toBeLessThan(4 * best(() => xssOracle(none, M)) + 20);
+    const xmlDoc = (p: number): string => `<svg xmlns="${SVG}"${prefixes(p)}>${'<g/>'.repeat(XSS_LIMITS.tags - 4)}</svg>`;
+    expect(best(() => xssOracle(xmlDoc(900), M, { syntax: 'xml' }))).toBeLessThan(4 * best(() => xssOracle(xmlDoc(0), M, { syntax: 'xml' })) + 20);
+  });
+
   it('stays linear on long whitespace runs wherever an attribute is trimmed or scanned (URL, script type, CSS url(), data:)', { timeout: 60_000 }, () => {
     const spaces = ' '.repeat(XSS_LIMITS.htmlLength - 64);
     const inputs = [

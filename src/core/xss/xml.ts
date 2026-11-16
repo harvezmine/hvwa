@@ -187,8 +187,11 @@ class Reader {
     const selfClosing = this.at('/>');
     this.i += selfClosing ? 2 : 1;
     // Namespaces: declarations first, then the element's and its attributes' prefixes.
-    const scope = new Map(this.scope());
-    for (const a of raw) {
+    // Copy on write: an element that declares no namespace shares its parent's scope (copying the map for every element
+    // made a document with many prefixes cost prefixes x elements).
+    const declares = raw.some((a) => a.qname === 'xmlns' || a.qname.startsWith('xmlns:'));
+    const scope = declares ? new Map(this.scope()) : this.scope() as Map<string, string>;
+    for (const a of declares ? raw : []) {
       if (a.qname === 'xmlns') scope.set('', a.value);
       else if (a.qname.startsWith('xmlns:')) {
         const p = a.qname.slice(6);
@@ -303,7 +306,8 @@ class Reader {
 
 /** Remove what never ran because the parse stopped: unclosed scripts, and load handlers whose load never came. */
 function afterError(r: Reader): void {
-  const visit = (parent: ParentNode): void => {
+  const stack: ParentNode[] = [r.document]; // iterative: the tree can be thousands deep
+  for (let parent = stack.pop(); parent !== undefined; parent = stack.pop()) {
     for (const child of [...parent.childNodes]) {
       if (!('tagName' in child)) continue;
       const el = child as Element;
@@ -312,10 +316,9 @@ function afterError(r: Reader): void {
       if (el.namespaceURI === NS.SVG && el.tagName === 'svg' && (!r.closed.has(el) || el === r.root)) {
         el.attrs = el.attrs.filter((a) => !(a.namespace === undefined && a.name === 'onload'));
       }
-      visit(childrenOf(el));
+      stack.push(childrenOf(el));
     }
-  };
-  visit(r.document);
+  }
 }
 
 /**
