@@ -23,7 +23,7 @@ export const REGISTERED_REDIRECT = `${CITADEL_ORIGIN}/callback`;
 /** One cookie name per level (levels share the lab path). */
 export const pidCookie = (level: Level): string => `pid_session_${level}`;
 export const clientCookie = (level: Level): string => `citadel_session_${level}`;
-/** Where Citadel goes after a sign-in (the `next` the sign-in started with). */
+/** Where Citadel goes after a sign-in: the id of the `next` the sign-in started with (kept on the server, 10 minutes). */
 export const nextCookie = (level: Level): string => `citadel_next_${level}`;
 /** Divine: the sign-in this browser started (its state and PKCE verifier stay on the server). */
 export const loginCookie = (level: Level): string => `citadel_login_${level}`;
@@ -61,10 +61,14 @@ export interface LabState {
   readonly logins: Map<string, { readonly state: string; readonly verifier: string }>;
   /** Authorization codes: code -> what it was issued for. Bounded. */
   readonly codes: Map<string, IssuedCode>;
+  /** Where sign-ins return to: id (the next cookie) -> the `next` and until when it holds (world clock). Bounded. */
+  readonly returns: Map<string, { readonly next: string; readonly until: number }>;
 }
 
 const MAX_ENTRIES = 50;
 const CODE_TTL_MS = 10 * 60 * 1000;
+/** A sign-in's `next` lasts as long as a sign-in may take: a stale one never moves a later sign-in on. */
+const RETURN_TTL_MS = 10 * 60 * 1000;
 const put = <V>(m: Map<string, V>, key: string, value: V, keep?: (k: string) => boolean): void => putBounded(m, key, value, MAX_ENTRIES, keep);
 
 /** What a page needs from a browser's request. `base`: labPath(res) for real routes, '' on the citadel. */
@@ -98,7 +102,12 @@ export function startLogin(v: Visit, state: LabState): Reply {
   const level = impl.for(v.level);
   const path = cookiePath(v.base);
   const next = v.query.get('next');
-  const cookies: TwinCookie[] = [next ? { name: nextCookie(v.level), value: next, path } : { name: nextCookie(v.level), value: '', path, clear: true }];
+  const cookies: TwinCookie[] = [{ name: nextCookie(v.level), value: '', path, clear: true }];
+  if (next) {
+    const id = newId();
+    put(state.returns, id, { next, until: state.world.now() + RETURN_TTL_MS });
+    cookies[0] = { name: nextCookie(v.level), value: id, path, maxAgeSec: RETURN_TTL_MS / 1000 };
+  }
   const params = new URLSearchParams({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: REGISTERED_REDIRECT });
   if (level.pkce) {
     const login = newId();
@@ -161,8 +170,14 @@ export function callback(v: Visit, state: LabState): Reply & { readonly user?: s
   const sid = newId();
   put(state.clientSessions, sid, issued.user);
   cookies.push({ name: clientCookie(v.level), value: sid, path });
-  const next = v.cookies[nextCookie(v.level)];
-  if (next !== undefined) cookies.push({ name: nextCookie(v.level), value: '', path, clear: true });
+  // The sign-in's `next`, once, and only while it holds (a stale one is dropped, never followed).
+  const returnId = v.cookies[nextCookie(v.level)];
+  const back = returnId === undefined ? undefined : state.returns.get(returnId);
+  if (returnId !== undefined) {
+    state.returns.delete(returnId);
+    cookies.push({ name: nextCookie(v.level), value: '', path, clear: true });
+  }
+  const next = back !== undefined && state.world.now() < back.until ? back.next : undefined;
   const { forward, referrerPolicy } = level.landing(next);
   return {
     status: 200, cookies, text: `Signed in to Citadel as ${issued.user}.`, user: issued.user,
@@ -188,7 +203,7 @@ const labs = perSession((level: Level): LabState => {
   // The handler reads `state` only when the admin browses, after it is assigned.
   const state: LabState = {
     world, admin: world.browser((r) => citadel(level, state, r)), adminPassword: newId(), adminPid,
-    idpSessions: new Map([[adminPid, ADMIN_NAME]]), clientSessions: new Map(), logins: new Map(), codes: new Map(),
+    idpSessions: new Map([[adminPid, ADMIN_NAME]]), clientSessions: new Map(), logins: new Map(), codes: new Map(), returns: new Map(),
   };
   return state;
 });

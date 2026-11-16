@@ -88,7 +88,8 @@ export const GK10 = register(defineChallenge({
     router.get('/callback', (req, res) => {
       const r = callback(visitOf(req, res), labFor(req));
       const result = r.user === undefined ? { ok: false, text: r.text } : welcome(req, GK10, { username: r.user, role: roleOf(r.user) });
-      return sendReply(res, r, () => sendPage(res, view('callback'), { base: labPath(res), result }));
+      // A forward (Inquisitor's next=) is rendered with a note, the welcome and its flag included: never followed here.
+      return sendReply(res, r, (forward) => sendPage(res, view('callback'), { base: labPath(res), result, forward: forward ?? null }));
     });
   },
 }));

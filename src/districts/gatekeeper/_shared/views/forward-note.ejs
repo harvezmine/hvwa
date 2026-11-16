@@ -1,0 +1,4 @@
+<%# Shared note of the victim-driven labs: a page that moves the browser on by itself (twin.ts forwardNote), shown to the player's real browser instead of following it. A citadel target is a link into the lab; any other is text only. Include it with forward (a ForwardNote, or null). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<% if (forward) { -%>
+  <p class="lab-note" data-testid="forward-note"><%= forward.lead %> <code><%= forward.url %></code>. <% if (forward.href) { %><a href="<%= forward.href %>"><%= forward.action %></a><% } else { %><%= forward.action %><% } %></p>
+<% } -%>

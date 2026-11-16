@@ -9,7 +9,7 @@ import { LEVELS, type Level } from '../../../core/levels.js';
 import { s256, type Exchange, type IssuedCode } from '../_shared/oauth.js';
 import { GK10 } from './challenge.js'; // registers GK-10 before createApp() inside freshSession
 import * as divine from './levels/divine.js';
-import { clientCookie, labState, pidCookie } from './model.js';
+import { clientCookie, labState, nextCookie, pidCookie } from './model.js';
 
 const LAB = '/d/gatekeeper/oauth-redirect-uri';
 const ADMIN = 'citadel_admin';
@@ -32,6 +32,8 @@ async function browse(a: Agent, url: string): Promise<request.Response> {
   return res;
 }
 const codeIn = (url: string | undefined): string => (url === undefined ? '' : new URL(url).searchParams.get('code') ?? '');
+/** The forward note a callback page shows your real browser instead of moving on ('' when it does not forward). */
+const forwardNoteOf = (html: string): string => /<p class="lab-note" data-testid="forward-note">[\s\S]*?<\/p>/.exec(html)?.[0] ?? '';
 /** Present a code at the lab's real callback, as the browser would after Pilgrim-ID sent it there. */
 const replay = (a: Agent, l: Level, code: string) => a.get(`${LAB}/callback?code=${encodeURIComponent(code || 'none')}&level=${l}`);
 const signInWithPilgrimId = (a: Agent, l: Level) => browse(a, `${LAB}/login?level=${l}`);
@@ -313,14 +315,80 @@ describe('GK-10 your real browser never leaves the lab (sendSimRedirect)', () =>
     }
   });
 
-  it('inquisitor: a forward to another host in your own browser is that page too, never a Refresh or Location', async () => {
+  it('inquisitor: a forward to another host in your own browser is the callback page with a note, never a Refresh or Location', async () => {
     const { agent } = await freshSession();
     await pidSignIn(agent, 'inquisitor', 'pilgrim', 'pilgrim');
-    const res = await browse(agent, `${LAB}/login?level=inquisitor&next=${encodeURIComponent('http://attacker.test/x')}`);
+    const res = await browse(agent, `${LAB}/login?level=inquisitor&lang=en&next=${encodeURIComponent('http://attacker.test/x')}`);
     expect(res.status).toBe(200);
     expect(res.headers.location).toBeUndefined();
     expect(res.headers.refresh).toBeUndefined();
-    expect(res.text).toContain('<code>http://attacker.test/x</code>');
+    expect(res.text).toContain('Welcome, pilgrim'); // the page itself, not only where it would go
+    const note = forwardNoteOf(res.text);
+    expect(note).toContain('This page moves the browser on by itself to: <code>http://attacker.test/x</code>.');
+    expect(note).not.toMatch(/href=/);
+  });
+
+  it('inquisitor: a forward to a citadel page is shown with a link into the lab', async () => {
+    const { agent } = await freshSession();
+    await pidSignIn(agent, 'inquisitor', 'pilgrim', 'pilgrim');
+    const res = await browse(agent, `${LAB}/login?next=%2F&level=inquisitor&lang=en`); // the home page's own link
+    expect(res.status).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.text).toContain('Welcome, pilgrim');
+    expect(forwardNoteOf(res.text)).toContain(`<code>http://citadel.test/</code>. <a href="${LAB}?level=inquisitor">Continue there in the lab</a>`);
+  });
+
+  it('the other levels never forward: no note on the callback page', async () => {
+    for (const level of ['acolyte', 'templar', 'divine'] as const) {
+      const { agent } = await freshSession();
+      await pidSignIn(agent, level, 'pilgrim', 'pilgrim');
+      const res = await browse(agent, `${LAB}/login?level=${level}&next=${encodeURIComponent('http://attacker.test/x')}`);
+      expect(res.text, level).toContain('Welcome, pilgrim');
+      expect(forwardNoteOf(res.text), level).toBe('');
+    }
+  });
+});
+
+describe('GK-10 inquisitor: a stale next never swallows the flag', () => {
+  // The reviewer's repro: a sign-in started with next= while signed out of Pilgrim-ID leaves the next behind; a stolen
+  // code replayed later must still sign you in as the admin and show the flag.
+  const stealAtInquisitor = async (a: Agent): Promise<string> => {
+    await sendLink(a, 'inquisitor', `http://citadel.test/login?next=${encodeURIComponent('http://attacker.test/')}`);
+    return codeIn(attackerHits((await home(a, 'inquisitor')).text).at(-1)?.referer);
+  };
+
+  it('a stolen code replayed after a sign-in left a next behind: the flag, and the forward as a note', async () => {
+    const { agent } = await freshSession();
+    const left = await browse(agent, `${LAB}/login?level=inquisitor&next=${encodeURIComponent('http://attacker.test/')}`);
+    expect(left.text).toContain('Pilgrim-ID: sign in first'); // signed out of Pilgrim-ID: the flow stopped there
+    const res = await replay(agent, 'inquisitor', await stealAtInquisitor(agent));
+    expect(res.status).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.text).toContain('Welcome, citadel_admin (role: admin).');
+    expect(res.text).toMatch(FLAG_RE);
+    expect(forwardNoteOf(res.text)).toContain('<code>http://attacker.test/</code>');
+  });
+
+  it('the next a sign-in left behind expires after 10 minutes of the lab clock', async () => {
+    const { agent, sid } = await freshSession();
+    const world = labState(sid, 'inquisitor').world;
+    const t0 = Date.UTC(2026, 10, 16, 12, 0, 0);
+    world.now = () => t0;
+    const start = await agent.get(`${LAB}/login?level=inquisitor&next=${encodeURIComponent('http://attacker.test/')}`);
+    expect(setCookieHeader(start, nextCookie('inquisitor'))).toMatch(/Max-Age=600;/);
+    world.now = () => t0 + 10 * 60_000;
+    const res = await replay(agent, 'inquisitor', await stealAtInquisitor(agent));
+    expect(res.text).toMatch(FLAG_RE);
+    expect(forwardNoteOf(res.text)).toBe('');
+  });
+
+  it('a next is used once: the callback forgets it', async () => {
+    const { agent } = await freshSession();
+    await pidSignIn(agent, 'inquisitor', 'pilgrim', 'pilgrim');
+    await browse(agent, `${LAB}/login?level=inquisitor&next=${encodeURIComponent('http://attacker.test/')}`);
+    const again = await replay(agent, 'inquisitor', await stealAtInquisitor(agent));
+    expect(again.text).toMatch(FLAG_RE);
+    expect(forwardNoteOf(again.text)).toBe('');
   });
 });
 
