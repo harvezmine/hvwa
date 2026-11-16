@@ -4,25 +4,18 @@ import type { Request, Response } from 'express';
 import { defineChallenge, register } from '../../../core/registry.js';
 import { field, labPath } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
-import { classifySimUrl, labHref } from '../../../core/sim.js';
+import { classifySimUrl, labHref, sendReply, visitOf, type Visit } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
 import { ADMIN_NAME, PLAYER, curlFor, sendAdminPage } from '../_shared/lab.js';
-import { sendReply } from '../_shared/twin.js';
 import {
-  adminOpens, cookieName, impl, labFor, portalHome, portalResume, portalSignIn, portalWho, type Portal, type Visit,
+  adminOpens, cookieName, impl, labCookies, labFor, portalHome, portalResume, portalSignIn, portalWho, type Portal,
 } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = (name: string): string => join(dir, 'views', `${name}.ejs`);
 
-/** The real request as a portal Visit: the raw query (first value per name) and this level's portal cookie. */
-function visitOf(req: Request, res: Response): Visit {
-  const cookie: unknown = (req.cookies as Record<string, unknown> | undefined)?.[cookieName(req.level)];
-  return {
-    level: req.level, query: new URLSearchParams(req.originalUrl.split('?')[1] ?? ''),
-    cookie: typeof cookie === 'string' ? cookie : undefined, base: labPath(res),
-  };
-}
+/** The real request as a portal Visit: the raw query and this level's portal cookie. */
+const visit = (req: Request, res: Response): Visit => visitOf(req, res, labCookies(req.level));
 
 export const GK16 = register(defineChallenge({
   id: 'GK-16', district: 'gatekeeper', slug: 'session-fixation', dir,
@@ -62,23 +55,23 @@ export const GK16 = register(defineChallenge({
         result: p.text === '' ? null : { ok: p.ok, text: p.text }, username, password,
       }));
 
-    router.get('/', (req, res) => home(req, res, portalHome(visitOf(req, res), labFor(req)), '', ''));
+    router.get('/', (req, res) => home(req, res, portalHome(visit(req, res), labFor(req)), '', ''));
 
     router.post('/', async (req, res) => {
       const username = field(req, 'username');
       const password = field(req, 'password');
-      await home(req, res, portalSignIn(visitOf(req, res), labFor(req), username, password), username, password);
+      await home(req, res, portalSignIn(visit(req, res), labFor(req), username, password), username, password);
     });
 
     // The twin of http://citadel.test/resume: its 302 goes through sendSimRedirect (sendReply), never res.redirect.
     router.get('/resume', (req, res) => {
-      const r = portalResume(visitOf(req, res), labFor(req));
+      const r = portalResume(visit(req, res), labFor(req));
       return sendReply(res, r, () => sendPage(res, view('notice'), { base: labPath(res), text: r.text }));
     });
 
     router.get('/admin', async (req, res) => {
       // Probing the console never creates a session: it only reads the cookie.
-      const admin = portalWho(visitOf(req, res), labFor(req)) === ADMIN_NAME;
+      const admin = portalWho(visit(req, res), labFor(req)) === ADMIN_NAME;
       await sendAdminPage(res, {
         admin, granted: 'Citadel admin console.', flag: { req, challenge: GK16 },
         denial: 'Admin only. This console opens for a session the citadel admin signed in on.',

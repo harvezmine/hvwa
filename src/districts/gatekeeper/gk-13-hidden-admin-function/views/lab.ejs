@@ -2,6 +2,6 @@
 <section class="lab">
   <h1>Citadel Console</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the admin-only member export. The citadel publishes <a href="<%= base %>/robots.txt?level=<%= level %>">robots.txt</a> and an API description, <a href="<%= base %>/openapi.json?level=<%= level %>">openapi.json</a>.</p>
-  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+  <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
 <%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
 </section>

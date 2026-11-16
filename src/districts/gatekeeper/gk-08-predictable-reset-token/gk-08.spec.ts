@@ -2,10 +2,9 @@
 import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import {
-  FLAG_RE, describeExploitMatrix, describeLabView, freshSession, unescapeHtml, type Agent,
-} from '../../../../tests/helpers.js';
+import { FLAG_RE, describeExploitMatrix, freshSession, unescapeHtml, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import { describeOddBodies, describeSignInView } from '../../_shared/victim-lab.testkit.js';
 import { GK08 } from './challenge.js'; // registers GK-08 before createApp() inside freshSession
 import { ADMIN_EMAIL, PLAYER_EMAIL, labState } from './model.js';
 
@@ -97,16 +96,8 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK08,
-  path: LAB,
-  account: /pilgrim<\/code> \/ <code>pilgrim/,
-  echoField: 'username',
-  extra: { password: 'x' },
-  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
-  ok: (agent, level) => signIn(agent, level, 'pilgrim', 'pilgrim'),
-  bad: (agent, level) => signIn(agent, level, 'pilgrim', 'nope'),
-});
+describeSignInView({ challenge: GK08, path: LAB });
+describeOddBodies({ challenge: GK08, path: LAB, forms: ['/forgot', '/reset'] });
 
 describe('GK-08 token schemes', () => {
   it('acolyte: the token is base64url(address)', async () => {
@@ -283,19 +274,6 @@ describe('GK-08 flows', () => {
     expect(state.mailbox.length).toBeLessThanOrEqual(10);
     expect(state.resets.size).toBeLessThanOrEqual(20);
     expect(mailLinks((await home(agent, 'inquisitor')).text).length).toBeLessThanOrEqual(10);
-  });
-
-  it('odd bodies on the forgot and reset forms are a failed request, never a 500 or a flag', async () => {
-    const { agent } = await freshSession();
-    for (const level of LEVELS) {
-      for (const path of ['/forgot', '/reset']) {
-        for (const body of [{ email: { toString: 1 }, token: ['a'], password: { a: 1 } }, [1, 2], {}]) {
-          const res = await agent.post(`${LAB}${path}?level=${level}`).send(body as object);
-          expect(res.status, `${level} ${path}`).toBe(200);
-          expect(res.text, `${level} ${path}`).not.toMatch(FLAG_RE);
-        }
-      }
-    }
   });
 });
 

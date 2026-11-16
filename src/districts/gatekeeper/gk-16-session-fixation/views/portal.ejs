@@ -2,7 +2,7 @@
 <section class="lab">
   <h1>Citadel Portal — Sign in</h1>
   <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>. Target: the <a href="<%= base %>/admin?level=<%= level %>">admin console</a>, which opens only for a session <code><%= target %></code> signed in on. The admin signs in through a link you send (the button below the lab). The lab cookie is <code><%= cookie %></code>; it is HttpOnly, so edit it in the browser devtools (storage panel) or send it with curl.</p>
-  <%- include('../../_shared/views/curl-note', { curl: curl }) %>
+  <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
   <p class="lab-note">Your session: <code><%= sid %></code>. <% if (who) { %>Signed in as <%= who %>.<% } else { %>Not signed in.<% } %></p>
 <% if (share) { -%>
   <p class="lab-note">Continue this session on another device: <span data-testid="share-link"><code><%= share %></code></span><% if (shareHref) { %> (<a href="<%= shareHref %>">open in lab</a>)<% } %></p>

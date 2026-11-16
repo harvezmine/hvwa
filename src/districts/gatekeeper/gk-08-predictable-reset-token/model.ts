@@ -1,8 +1,8 @@
 // model.ts — GK-08's lab state and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts, and nothing here has a route.
-import { randomBytes } from 'node:crypto';
 import { perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
+import { newId, putBounded } from '../../_shared/collections.js';
 import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
 
 export const ADMIN_EMAIL = 'citadel_admin@citadel.test';
@@ -69,9 +69,7 @@ export function memberByEmail(state: LabState, email: string): Member | undefine
 
 /** Store an outstanding link under `key`, newest last; beyond MAX_RESETS the oldest is forgotten. */
 export function remember(state: LabState, key: string, record: ResetRecord): void {
-  state.resets.delete(key);
-  state.resets.set(key, record);
-  while (state.resets.size > MAX_RESETS) state.resets.delete(state.resets.keys().next().value as string);
+  putBounded(state.resets, key, record, MAX_RESETS);
 }
 
 /** Deliver a reset mail to the player's mailbox (newest first, bounded). */
@@ -83,7 +81,7 @@ export function deliverToPlayer(state: LabState, mail: Mail): void {
 // Per player AND per level: passwords change and links are used up, so nothing may cross players or levels.
 const labs = perSession((): LabState => ({
   members: [
-    { username: ADMIN_NAME, email: ADMIN_EMAIL, password: randomBytes(16).toString('hex'), role: 'admin' },
+    { username: ADMIN_NAME, email: ADMIN_EMAIL, password: newId(), role: 'admin' },
     { username: PLAYER.username, email: PLAYER_EMAIL, password: PLAYER.password, role: 'user' },
   ],
   resets: new Map(),

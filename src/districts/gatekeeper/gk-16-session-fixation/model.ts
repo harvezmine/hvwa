@@ -1,13 +1,15 @@
 // model.ts — GK-16's lab state, the portal pages both browsers open, and the contract every levels/<level>.ts implements.
 // Not served: View Source shows only levels/*.ts. The level modules are gathered here (not in challenge.ts) because
 // the admin's simulated browser needs them too; they import only types from this file, so there is no import cycle.
-import { randomBytes } from 'node:crypto';
 import { byLevel, field, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import type { Text } from '../../../core/registry.js';
-import { CITADEL_ORIGIN, simWorld, type SimBrowser, type SimRequest, type SimResponse, type SimWorld } from '../../../core/sim.js';
+import {
+  CITADEL_ORIGIN, cookiePath, simVisitOf, simWorld, toSim,
+  type Reply, type SimBrowser, type SimRequest, type SimResponse, type SimWorld, type TwinCookie, type Visit,
+} from '../../../core/sim.js';
+import { newId, trimBounded } from '../../_shared/collections.js';
 import { ADMIN_NAME, PLAYER } from '../_shared/lab.js';
-import { cookiePath, toSim, type Reply, type TwinCookie } from '../_shared/twin.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -15,6 +17,8 @@ import * as divine from './levels/divine.js';
 
 /** The portal's session cookie. One name per level: levels share the lab path and must not overwrite each other. */
 export const cookieName = (level: Level): string => `portal_sid_${level}`;
+/** Every cookie this lab's pages read at `level`: what visitOf and simVisitOf keep, so both browsers show the same. */
+export const labCookies = (level: Level): readonly string[] => [cookieName(level)];
 
 /** One portal session: who signed in on it (null: nobody yet). */
 export interface Session { user: string | null }
@@ -54,23 +58,15 @@ export const impl = byLevel<FixationLevel>({ acolyte, templar, inquisitor, divin
 
 const MAX_ENTRIES = 100;
 
+/** Platform safety, not the lesson: anonymous sessions go before signed-in ones; aliases and resume links oldest first. */
 function bound(state: LabState): void {
-  while (state.sessions.size > MAX_ENTRIES) {
-    const anonymous = [...state.sessions].find(([, s]) => s.user === null)?.[0];
-    state.sessions.delete(anonymous ?? (state.sessions.keys().next().value as string));
-  }
-  while (state.aliases.size > MAX_ENTRIES) state.aliases.delete(state.aliases.keys().next().value as string);
-  while (state.resumes.size > MAX_ENTRIES) state.resumes.delete(state.resumes.keys().next().value as string);
+  trimBounded(state.sessions, { max: MAX_ENTRIES, spare: (_id, s) => s.user !== null });
+  trimBounded(state.aliases, { max: MAX_ENTRIES });
+  trimBounded(state.resumes, { max: MAX_ENTRIES });
 }
 
-/** What a portal page needs from a browser's request. `base`: labPath(res) for real routes, '' on the citadel. */
-export interface Visit {
-  readonly level: Level;
-  readonly query: URLSearchParams;
-  /** The portal cookie the request carried. */
-  readonly cookie: string | undefined;
-  readonly base: string;
-}
+/** The portal cookie a browser's request carried (a Visit holds the lab's cookies by name). */
+const portalCookie = (v: Visit): string | undefined => v.cookies[cookieName(v.level)];
 
 /** A portal page: the Reply, plus what the page shows about the browser's session. */
 export interface Portal extends Reply {
@@ -87,8 +83,8 @@ const cookieFor = (v: Visit, sid: string): TwinCookie => ({ name: cookieName(v.l
 function sessionOf(v: Visit, state: LabState): { sid: string; cookies: TwinCookie[] } {
   const level = impl.for(v.level);
   const fromUrl = level.sidFromUrl(state, v.query);
-  if (fromUrl !== undefined) return { sid: fromUrl, cookies: fromUrl === v.cookie ? [] : [cookieFor(v, fromUrl)] };
-  const c = v.cookie;
+  if (fromUrl !== undefined) return { sid: fromUrl, cookies: fromUrl === portalCookie(v) ? [] : [cookieFor(v, fromUrl)] };
+  const c = portalCookie(v);
   if (c !== undefined && (state.sessions.has(c) || level.whoIs(state, c, state.world.now()) !== undefined)) return { sid: c, cookies: [] };
   const sid = state.openSession(null);
   return { sid, cookies: [cookieFor(v, sid)] };
@@ -127,7 +123,8 @@ export function portalResume(v: Visit, state: LabState): Reply {
 
 /** Who the browser's portal cookie is signed in as (GET /admin). Never creates a session. */
 export function portalWho(v: Visit, state: LabState): string | undefined {
-  return v.cookie === undefined ? undefined : impl.for(v.level).whoIs(state, v.cookie, state.world.now());
+  const c = portalCookie(v);
+  return c === undefined ? undefined : impl.for(v.level).whoIs(state, c, state.world.now());
 }
 
 /** How the citadel's sign-in page starts, as the admin's browser sees it. */
@@ -135,7 +132,7 @@ export const SIGN_IN_PAGE = 'Citadel portal — Sign in';
 
 /** The lab as the admin's browser sees it at http://citadel.test: the twins of the real routes, from the same functions. */
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
-  const v: Visit = { level, query: r.query, cookie: r.cookies[cookieName(level)], base: '' };
+  const v = simVisitOf(level, r, labCookies(level));
   if (r.path === '/') {
     const p = r.method === 'POST' ? portalSignIn(v, state, field(r, 'username'), field(r, 'password')) : portalHome(v, state);
     return toSim({ ...p, text: p.text === '' ? SIGN_IN_PAGE : `${SIGN_IN_PAGE}\n${p.text}` });
@@ -181,12 +178,12 @@ const labs = perSession((level: Level): LabState => {
   const state: LabState = {
     world,
     admin: world.browser((r) => citadel(level, state, r)),
-    adminPassword: randomBytes(16).toString('hex'),
+    adminPassword: newId(),
     sessions,
     aliases: new Map(),
     resumes: new Map(),
     openSession(user: string | null): string {
-      const id = randomBytes(16).toString('hex');
+      const id = newId();
       sessions.set(id, { user });
       return id;
     },

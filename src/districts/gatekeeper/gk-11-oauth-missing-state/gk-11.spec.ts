@@ -1,10 +1,11 @@
 // src/districts/gatekeeper/gk-11-oauth-missing-state/gk-11.spec.ts
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
-import {
-  FLAG_RE, attackerHits, describeExploitMatrix, describeLabView, freshSession, panelOf, setCookieHeader, type Agent,
-} from '../../../../tests/helpers.js';
+import { FLAG_RE, attackerHits, describeExploitMatrix, freshSession, panelOf, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import {
+  browse, describeLabCookies, describeOddBodies, describeSignInView, describeVictimAction, expectInLab, victimClient,
+} from '../../_shared/victim-lab.testkit.js';
 import { GK11 } from './challenge.js'; // registers GK-11 before createApp() inside freshSession
 import * as divine from './levels/divine.js';
 import { clientCookie, labState, pidCookie } from './model.js';
@@ -21,17 +22,7 @@ const citadelSignIn = (a: Agent, l: Level, username: string, password: string) =
   a.post(`${LAB}?level=${l}`).type('form').send({ username, password });
 const pidSignIn = (a: Agent, l: Level, username: string, password: string) =>
   a.post(`${LAB}/idp?level=${l}`).type('form').send({ username, password });
-const sendLink = (a: Agent, l: Level, url: string) => a.post(`${LAB}/victim/send-link?level=${l}`).type('form').send({ url });
-/** Your real browser: follow redirects (sendSimRedirect keeps them in the lab); the last answer and its URL. */
-async function browse(a: Agent, url: string): Promise<{ res: request.Response; at: string }> {
-  let at = url;
-  let res = await a.get(at);
-  for (let i = 0; i < 6 && res.status >= 300 && res.status < 400; i++) {
-    at = String(res.headers.location);
-    res = await a.get(at);
-  }
-  return { res, at };
-}
+const { sendLink } = victimClient(LAB);
 const signInWithPilgrimId = async (a: Agent, l: Level) => (await browse(a, `${LAB}/login?level=${l}`)).res;
 const directAuthorize = (l: Level, state: string) =>
   `${LAB}/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(LINK_CB)}&state=${state}&level=${l}`;
@@ -103,15 +94,18 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK11,
-  path: LAB,
-  account: /pilgrim<\/code> \/ <code>pilgrim/,
-  echoField: 'username',
-  extra: { password: 'x' },
-  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
-  ok: (agent, level) => citadelSignIn(agent, level, 'pilgrim', 'pilgrim'),
-  bad: (agent, level) => citadelSignIn(agent, level, 'pilgrim', 'nope'),
+describeSignInView({ challenge: GK11, path: LAB });
+describeOddBodies({ challenge: GK11, path: LAB, forms: ['/idp'] }); // the Pilgrim-ID sign-in form
+describeVictimAction({
+  challenge: GK11, path: LAB,
+  description: { en: 'opens any link you send, while signed in to Citadel', id: 'membuka tautan apa pun yang Anda kirim, saat masuk ke Citadel' },
+});
+describeLabCookies({
+  challenge: GK11, path: LAB,
+  cookies: [
+    { name: clientCookie, set: (agent, level, base) => agent.get(`${base}?level=${level}`) },
+    { name: pidCookie, set: (agent, level, base) => agent.post(`${base}/IDP?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }) },
+  ],
 });
 
 describe('GK-11 what each level does with state', () => {
@@ -283,6 +277,21 @@ describe('GK-11 Pilgrim-ID itself is sound', () => {
     expect((await agent.get(at)).text).toContain('Linking failed');
   });
 
+  it('a PKCE challenge must be S256 at every level: plain, or no method, gets "only S256 is supported." and no code', async () => {
+    for (const level of LEVELS) {
+      const { agent, sid } = await freshSession();
+      await pidSignIn(agent, level, 'pilgrim', 'pilgrim');
+      for (const method of ['&code_challenge_method=plain', '']) {
+        const res = await agent.get(`${LAB}/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(LINK_CB)}&code_challenge=abc${method}&level=${level}`);
+        expect(res.status, `${level} ${method}`).toBe(400);
+        expect(res.text, `${level} ${method}`).toContain('Pilgrim-ID: only S256 is supported.');
+      }
+      expect(labState(sid, level).codes.size, level).toBe(0);
+      const s256 = await agent.get(`${LAB}/idp/authorize?response_type=code&client_id=citadel&redirect_uri=${encodeURIComponent(LINK_CB)}&code_challenge=abc&code_challenge_method=S256&level=${level}`);
+      expect(s256.status, level).toBe(302); // S256 itself is accepted
+    }
+  });
+
   it('a code for the link callback does not sign anyone in at the sign-in callback', async () => {
     const { agent } = await freshSession();
     const { code } = await ownLinkCode(agent, 'acolyte', 'direct');
@@ -300,30 +309,20 @@ describe('GK-11 your real browser never leaves the lab (sendSimRedirect)', () =>
       for (const start of ['/link', '/login']) {
         const first = await agent.get(`${LAB}${start}?level=${level}`);
         expect(first.status, `${level} ${start}`).toBe(302);
-        expect(String(first.headers.location), `${level} ${start}`).toMatch(new RegExp(`^${LAB}/idp/authorize\\?.*&level=${level}$`));
+        expect(expectInLab(first, LAB, level, `${level} ${start}`), `${level} ${start}`).toMatch(new RegExp(`^${LAB}/idp/authorize\\?.*&level=${level}$`));
         const second = await agent.get(String(first.headers.location));
         expect(second.status, `${level} ${start}`).toBe(302);
-        expect(String(second.headers.location), `${level} ${start}`).toMatch(new RegExp(`^${LAB}/(link/)?callback\\?code=[0-9a-f]{32}.*&level=${level}$`));
+        expect(expectInLab(second, LAB, level, `${level} ${start}`), `${level} ${start}`).toMatch(new RegExp(`^${LAB}/(link/)?callback\\?code=[0-9a-f]{32}.*&level=${level}$`));
       }
       const out = await agent.get(`${LAB}/logout?level=${level}`);
       expect(out.status, level).toBe(302);
-      expect(out.headers.location, level).toBe(`${LAB}?level=${level}`);
+      expect(expectInLab(out, LAB, level, level), level).toBe(`${LAB}?level=${level}`);
     }
   });
 });
 
 describe('GK-11 the lab state', () => {
-  it('cookies are named per level, on the canonical lab path, HttpOnly', async () => {
-    const { agent } = await freshSession();
-    for (const level of LEVELS) {
-      const c = setCookieHeader(await agent.get(`${LAB.toUpperCase()}?level=${level}`), clientCookie(level));
-      expect(c, level).toContain(`Path=${LAB}`);
-      expect(c, level).toMatch(/HttpOnly/i);
-      const p = setCookieHeader(await agent.post(`${LAB.toUpperCase()}/IDP?level=${level}`).type('form').send({ username: 'pilgrim', password: 'pilgrim' }), pidCookie(level));
-      expect(p, level).toContain(`Path=${LAB}`);
-    }
-  });
-
+  // The cookie names, paths and HttpOnly: describeLabCookies above.
   it('flows, codes and sessions stay bounded; the admin\'s Citadel session is never pushed out', async () => {
     const { agent, sid } = await freshSession();
     await pidSignIn(agent, 'templar', 'pilgrim', 'pilgrim');
@@ -365,11 +364,5 @@ describe('GK-11 lab view specifics', () => {
     const forms = [...page.text.matchAll(/<form[^>]*>/g)].map((m) => m[0]).filter((f) => !f.includes('class="sim-action"'));
     expect(forms).toHaveLength(1);
     expect(forms[0]).not.toMatch(/\saction=/);
-  });
-
-  it('the victim action says what the admin does, in both languages', async () => {
-    const { agent } = await freshSession();
-    expect(panelOf((await home(agent, 'acolyte')).text)).toContain('opens any link you send, while signed in to Citadel');
-    expect(panelOf((await home(agent, 'acolyte', 'id')).text)).toContain('membuka tautan apa pun yang Anda kirim, saat masuk ke Citadel');
   });
 });
