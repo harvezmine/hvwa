@@ -440,6 +440,8 @@ for labs with no such errors or no privileged identity. Add challenge-specific
 tests next to the matrix (GK-01: per-level isolation, view escaping, kept
 values, non-string fields). `FLAG_RE` and `DB_ERROR_RE` are exported for them.
 
+The matrix scans every response for a flag in its page text, and, when a response has no text (an `application/octet-stream` download: supertest keeps only `res.body`, a Buffer), in its bytes as Latin-1 too. So a flag leaked in a download body goes red like one in a page (`tests/helpers.spec.ts` proves both ways).
+
 Test plumbing for stateful labs (all in `tests/helpers.ts`): `send(..., { sid, app })` for per-session test seams;
 `bare(app, sid, 'name=value')` for requests that carry only the session cookie plus a cookie the lab did not
 give you (the agent's jar always wins over a hand-set Cookie header, so never reach into supertest internals);
@@ -886,6 +888,7 @@ router.post('/upload', uploadGate(), express.raw({ type: 'multipart/form-data', 
 });
 ```
 
+- **The route is `POST /`, not `/upload`, in the Scriptorium labs.** `mountUpload` (`scriptorium/_shared/lab.ts`) and the scroll desk mount the upload on the lab root, because `describeLabView` requires every form to have no `action` (it posts back to the page URL) and posts a urlencoded form to the lab root to check the echoed field. The snippet above shows the plain-route shape of UP-01; a lab whose view is checked by `describeLabView` takes the upload at `POST /`, and the same handler answers a non-multipart post with the upload error.
 - **`uploadGate()` first**, before the body is read: at most `UPLOADS_IN_FLIGHT` (4) uploads at once, across every
   upload route of every lab, so their bodies and parses stay bounded together (about 16 MiB with four near-2 MiB
   uploads alive, measured). The fifth gets a 503 (`Retry-After: 2`, `Connection: close`) with a plain message, at once:

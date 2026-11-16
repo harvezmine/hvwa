@@ -1,0 +1,21 @@
+<%# Scriptorium scroll desk (SC-07, SC-08). Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1><%= heading %></h1>
+  <p class="lab-note">You are signed in as <code>pilgrim</code>. <%= blurb %> Stored scrolls are listed below and served at <code><%= base %>/uploads?name=...</code> (add <code>&amp;level=<%= level %></code>).</p>
+  <form method="post" enctype="multipart/form-data">
+    <label>Scroll <input name="scroll" type="file"></label>
+    <label>Caption <input name="caption" type="text" value="<%= caption %>" autocomplete="off"></label>
+    <button type="submit">Upload</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+  <%- include('statement-note') %>
+  <%- include('upload-curl', { upload: upload }) %>
+  <h2>Stored scrolls</h2>
+  <ul class="desk-files" data-testid="desk-files">
+<% for (const f of files) { -%>
+    <li data-path="<%= f.shown %>"><a href="<%= base %>/uploads?level=<%= level %>&amp;name=<%= f.href %>"><%= f.shown %></a></li>
+<% } -%>
+  </ul>
+</section>
