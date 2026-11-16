@@ -69,6 +69,53 @@ export function bare(app: Express, sid: string, extraCookies = '') {
   };
 }
 
+// --- The simulated-victim panel (src/core/views/sim-panel.ejs), as a player script reads it -----------------------
+
+/** The simulated-victim panel's HTML on a lab page ('' when the page has none). */
+export function panelOf(html: string): string {
+  return /<section class="sim-panel"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
+}
+
+/** Undo the escaped output tag (&lt; &gt; &#34; &quot; &#39; &amp;), e.g. before parsing a URL shown on a page. */
+export function unescapeHtml(s: string): string {
+  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#34;|&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+}
+
+/** One request "Your server (attacker.test) received…" shows, values unescaped. */
+export interface PanelHit {
+  readonly seq: number;
+  /** ISO time, as shown. */
+  readonly at: string;
+  readonly method: string;
+  readonly url: string;
+  readonly referer?: string;
+  readonly body?: string;
+}
+
+/**
+ * The attacker log on a lab page, one entry per `<li data-seq>`, oldest first (like world.attackerLog.entries()).
+ * Only the panel's log is read: never the lab's own content or the player's mailbox.
+ */
+export function attackerHits(html: string): PanelHit[] {
+  const log = /<ol class="sim-log"[\s\S]*?<\/ol>/.exec(panelOf(html))?.[0] ?? '';
+  return [...log.matchAll(/<li data-seq="(\d+)">([\s\S]*?)<\/li>/g)].map(([, seq, li]): PanelHit => {
+    const request = /<code>([^<]*)<\/code>/.exec(li)?.[1] ?? '';
+    const space = request.indexOf(' ');
+    const referer = /<br>Referer: <code>([^<]*)<\/code>/.exec(li)?.[1];
+    const body = /<br>(?!Referer:)[^<:]*: <code>([^<]*)<\/code>/.exec(li)?.[1]; // the label is translated (Body / Isi)
+    return {
+      seq: Number(seq), at: /<time datetime="([^"]*)"/.exec(li)?.[1] ?? '',
+      method: unescapeHtml(request.slice(0, space)), url: unescapeHtml(request.slice(space + 1)),
+      ...(referer === undefined ? {} : { referer: unescapeHtml(referer) }), ...(body === undefined ? {} : { body: unescapeHtml(body) }),
+    };
+  }).sort((a, b) => a.seq - b.seq);
+}
+
+/** Every Referer the player's server received, as the lab page shows them (unescaped, oldest first). */
+export function referers(html: string): string[] {
+  return attackerHits(html).flatMap((h) => (h.referer === undefined ? [] : [h.referer]));
+}
+
 /** A supertest agent with an established session (from freshSession). */
 export type Agent = Awaited<ReturnType<typeof freshSession>>['agent'];
 /** Expected response text: a substring, or a pattern. */

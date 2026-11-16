@@ -1,11 +1,14 @@
-// The simulated victim's stores and browser (src/core/sim.ts): inbox, attacker log, cookie jar, SimBrowser.
-import { readFileSync } from 'node:fs';
+// The simulated victim's stores and browser (src/core/sim/): inbox, attacker log, cookie jar, SimBrowser.
+import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { describe, it, expect, vi } from 'vitest';
-import { NewSessionLimitError, insidePerSessionFactory, perSession } from '../src/core/lab.js';
+import net from 'node:net';
+import ts from 'typescript';
+import { afterAll, describe, it, expect, onTestFinished, vi } from 'vitest';
+import { NewSessionLimitError, insidePerSessionFactory, perSession, setCappedBudget, setPerSessionDefaults } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
+import type { Request } from 'express';
 import {
-  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, SIM_USER_AGENT, attackerLog, simInbox, simWorld,
+  ADMIN_MAILBOX, PLAYER_MAILBOX, SIM_LIMITS, SIM_USER_AGENT, VICTIM_LABELS, attackerLog, checkMailAction, classifySimUrl, sendLinkAction, simInbox, simWorld,
   type SimHandler, type SimRequest, type SimResponse, type SimWorld,
 } from '../src/core/sim.js';
 
@@ -14,6 +17,13 @@ let n = 0;
 function inSession<T>(make: () => T, level: Level = 'acolyte'): T {
   return perSession(() => make()).for({ sessionId: `sim-${++n}`, level });
 }
+/** A full GC: vitest.config.ts starts the test workers with --expose-gc (poolOptions.forks.execArgv). */
+function fullGc(): () => void {
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (typeof gc !== 'function') throw new Error('globalThis.gc is missing: run the specs with --expose-gc (vitest.config.ts)');
+  return gc;
+}
+
 /** A world whose clock tests can move (world.now = ...). */
 const world = (mailboxes: readonly string[] = [ADMIN_MAILBOX]): SimWorld => inSession(() => simWorld({ mailboxes }));
 
@@ -30,6 +40,49 @@ function site(routes: Record<string, SimResponse | ((r: SimRequest) => SimRespon
 }
 const redirect = (location: string, status = 302, extra: Record<string, string | string[]> = {}): SimResponse =>
   ({ status, headers: { location, ...extra } });
+
+// Every TCP connection (http, https, http2, tls, fetch/undici, net) goes through net.Socket.prototype.connect: this
+// whole file runs with it spied, and nothing in it may open one.
+const socketConnect = vi.spyOn(net.Socket.prototype, 'connect');
+afterAll(() => {
+  const calls = socketConnect.mock.calls.length;
+  socketConnect.mockRestore();
+  expect(calls, 'a socket was opened while the sim specs ran').toBe(0);
+});
+
+/** The pure simulation: every module in src/core/sim/ (the engine side, core/victim.ts, is Express integration). */
+const SIM_DIR = new URL('../src/core/sim/', import.meta.url);
+const SIM_FILES = readdirSync(SIM_DIR).filter((f) => f.endsWith('.ts')).sort();
+/** Runtime imports those modules may have; type-only imports are erased. Anything else fails the guard. */
+const SIM_ALLOWED_IMPORTS: ReadonlySet<string> = new Set(['node:buffer', '../lab.js', ...SIM_FILES.map((f) => `./${f.replace(/\.ts$/, '.js')}`)]);
+/** Globals that reach the network or load code, however the call site spells the rest. */
+const SIM_DENIED_GLOBALS: ReadonlySet<string> = new Set([
+  'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'globalThis', 'global', 'window', 'self', 'process', 'require',
+  'module', 'eval', 'Function', 'Deno', 'Bun',
+]);
+
+/** A module's runtime imports, and what it must never do (dynamic import, require, a denied global), parsed by tsc. */
+function simSourceCheck(src: string): { runtime: string[]; problems: string[] } {
+  const sf = ts.createSourceFile('sim.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const runtime: string[] = [];
+  const problems: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.importClause?.isTypeOnly) runtime.push(node.moduleSpecifier.text);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.isTypeOnly) runtime.push(node.moduleSpecifier.text);
+    } else if (ts.isImportEqualsDeclaration(node)) {
+      problems.push('import = require');
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      problems.push('dynamic import()');
+    } else if (ts.isIdentifier(node) && SIM_DENIED_GLOBALS.has(node.text)) {
+      problems.push(`${node.text} (line ${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1})`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return { runtime, problems };
+}
 
 describe('sim state lives in perSession (per player and level)', () => {
   it('every sim store refuses to be created outside a perSession factory', () => {
@@ -70,6 +123,57 @@ describe('sim state lives in perSession (per player and level)', () => {
     labs.for({ sessionId: '2', level: 'acolyte' });
     expect(() => labs.for({ sessionId: '3', level: 'acolyte' })).toThrow(NewSessionLimitError);
   });
+
+  it(`every holder that keeps sim state shares ONE budget of ${SIM_LIMITS.worldsTotal} instances, process-wide`, () => {
+    expect(SIM_LIMITS.worldsTotal).toBe(150);
+    const r = (sessionId: string) => ({ sessionId, level: 'acolyte' as Level });
+    const worlds = perSession(() => ({ world: simWorld() })); // two labs' holders...
+    const inboxes = perSession(() => simInbox()); // ...every sim store counts, not only the world
+    const plain = perSession((_l, sid) => ({ sid }));
+    for (let i = 0; i < 100; i++) worlds.for(r(`w${i}`));
+    for (let i = 0; i < 100; i++) { inboxes.for(r(`i${i}`)); plain.for(r(`p${i}`)); }
+    expect(worlds.size + inboxes.size).toBe(SIM_LIMITS.worldsTotal);
+    expect(inboxes.size).toBe(100); // the least recently used went: the other holder's oldest
+    expect(plain.size).toBe(100); // uncapped holders are unaffected
+    const fewer = perSession(() => simWorld(), { maxEntries: 7 }); // a lab may still keep fewer
+    for (let i = 0; i < 20; i++) fewer.for(r(`f${i}`));
+    expect(fewer.size).toBe(7);
+  });
+
+  it('an instance evicted by the budget comes back fresh on its next use (eviction is a reset)', () => {
+    const prev = setCappedBudget(2);
+    onTestFinished(() => { setCappedBudget(prev); });
+    const labs = perSession(() => simWorld());
+    const a = { sessionId: 'A', level: 'acolyte' as Level };
+    labs.for(a).inbox.deliver({ from: 'x@citadel.test', to: PLAYER_MAILBOX, subject: 'kept?', body: '' });
+    labs.for({ sessionId: 'B', level: 'acolyte' });
+    labs.for({ sessionId: 'C', level: 'acolyte' }); // evicts A, the least recently used
+    expect(labs.size).toBe(2);
+    expect(labs.for(a).inbox.list(PLAYER_MAILBOX)).toEqual([]);
+  });
+
+  it(`creates at most ${SIM_LIMITS.newWorldsPerMinute} new instances a minute by default; a lab may set fewer`, () => {
+    expect(SIM_LIMITS.newWorldsPerMinute).toBe(30);
+    const prev = setPerSessionDefaults({ maxNewPerMinute: 120 }); // the engine default (tests lift it to Infinity)
+    onTestFinished(() => { setPerSessionDefaults(prev); });
+    let t = 0;
+    const labs = perSession(() => simWorld(), { now: () => t });
+    for (let i = 0; i < SIM_LIMITS.newWorldsPerMinute; i++) labs.for({ sessionId: `n${i}`, level: 'acolyte' });
+    expect(() => labs.for({ sessionId: 'one-more', level: 'acolyte' })).toThrow(NewSessionLimitError);
+    t = 60_000;
+    expect(() => labs.for({ sessionId: 'one-more', level: 'acolyte' })).not.toThrow();
+  });
+
+  it('fails fast, at the first factory run, when the lab asks for a faster rate (entries: the shared budget bounds them)', () => {
+    const req = { sessionId: 'x', level: 'acolyte' as Level };
+    const fast = perSession(() => ({ world: simWorld() }), { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute + 1 });
+    expect(() => fast.for(req)).toThrow(/simWorld: .*at most 30 new.*maxNewPerMinute: 31/);
+    expect(fast.size).toBe(0);
+    expect(() => perSession(() => simWorld(), { maxNewPerMinute: Infinity }).for(req)).toThrow(/simWorld: .*at most 30 new/);
+    expect(() => perSession(() => simInbox(), { maxNewPerMinute: 1000 }).for(req)).toThrow(/simInbox: .*at most 30 new/);
+    expect(perSession(() => simWorld(), { maxEntries: 5000, maxNewPerMinute: 30 }).for(req)).toBeDefined();
+  });
+
 });
 
 describe('simInbox: mailboxes keyed by address', () => {
@@ -135,7 +239,10 @@ describe('simInbox: mailboxes keyed by address', () => {
     expect(m).toMatchObject({ from: '', subject: '', body: '', links: [] });
   });
 
-  it(`refuses bad mailbox lists: more than ${SIM_LIMITS.mailboxes}, or an address that is not one`, () => {
+  it(`refuses bad mailbox lists: more than ${SIM_LIMITS.mailboxes} (the player's included), or an address that is not one`, () => {
+    expect(SIM_LIMITS.mailboxes).toBe(3); // the player's, the admin's, and one spare
+    expect(inSession(() => simInbox({ mailboxes: [ADMIN_MAILBOX, 'other@citadel.test'] })).addresses).toHaveLength(3);
+    expect(() => inSession(() => simInbox({ mailboxes: [ADMIN_MAILBOX, 'a@citadel.test', 'b@citadel.test'] }))).toThrow(/at most 3 mailboxes/);
     const many = Array.from({ length: SIM_LIMITS.mailboxes }, (_, i) => `u${i}@citadel.test`);
     expect(() => inSession(() => simInbox({ mailboxes: many }))).toThrow(/mailboxes/);
     expect(() => inSession(() => simInbox({ mailboxes: ['no-at-sign'] }))).toThrow(/address/);
@@ -424,6 +531,35 @@ describe('SimBrowser: redirects and Referer', () => {
     expect(long.hops[1].url.length).toBeLessThanOrEqual(SIM_LIMITS.urlLength);
   });
 
+  it('follows Location only on 301, 302, 303, 307 and 308 (Fetch); with any other status it is a page', () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+      const s = site({ '/a': { status, headers: { location: '/b' } }, '/b': { status: 200 } });
+      const v = inSession(() => world().browser(s.handler)).follow('http://citadel.test/a');
+      expect(v.page?.url, String(status)).toBe('http://citadel.test/b');
+    }
+    for (const status of [300, 304, 305, 306, 399, 200, 201, 404, 500]) {
+      const s = site({ '/a': { status, headers: { location: '/b' } }, '/b': { status: 200 } });
+      const v = inSession(() => world().browser(s.handler)).follow('http://citadel.test/a');
+      expect(v, String(status)).toMatchObject({ outcome: 'page', page: { url: 'http://citadel.test/a', status } });
+      expect(s.seen, String(status)).toHaveLength(1);
+    }
+  });
+
+  it('a 3xx that is not followed is a page: its Refresh moves the browser on, sending the page as Referer', () => {
+    for (const headers of [{ refresh: '0;url=http://attacker.test/x' }, { location: '/b', refresh: '0;url=http://attacker.test/x' }]) {
+      const w = world();
+      const status = 'location' in headers ? 300 : 302;
+      const v = inSession(() => w.browser(site({ '/a': { status, headers } }).handler)).follow('http://citadel.test/a?k=1');
+      expect(v.hops.map((h) => [h.via, h.status]), String(status)).toEqual([['start', status], ['refresh', undefined]]);
+      expect(w.attackerLog.entries()[0].referer, String(status)).toBe('http://citadel.test/a?k=1');
+    }
+    // A redirect that IS followed is not a page: its Refresh is never used.
+    const w = world();
+    const s = site({ '/a': { status: 302, headers: { location: '/b', refresh: '0;url=http://attacker.test/x' } }, '/b': { status: 200 } });
+    expect(inSession(() => w.browser(s.handler)).follow('http://citadel.test/a').page?.url).toBe('http://citadel.test/b');
+    expect(w.attackerLog.entries()).toEqual([]);
+  });
+
   it('header names are case-insensitive; a 3xx without Location is a page', () => {
     const w = world();
     const s = site({ '/a': { status: 302, headers: { LOCATION: '/b' } }, '/b': { status: 304 } });
@@ -580,26 +716,232 @@ describe('SimWorld: the victim\'s recent visits', () => {
     expect(w.visits).toHaveLength(SIM_LIMITS.visits);
     expect(w.visits.at(-1)?.hops[0].url).toBe(`http://citadel.test/p?i=${SIM_LIMITS.visits + 2}`);
   });
+
+  it(`keeps a page body clipped to ${SIM_LIMITS.bodyLength} chars`, () => {
+    const w = world();
+    const b = inSession(() => w.browser(site({ '/big': { status: 200, body: `${'b'.repeat(100_000)}END` } }).handler));
+    const v = b.follow('http://citadel.test/big');
+    expect(v.page?.body).toBe('b'.repeat(SIM_LIMITS.bodyLength));
+    expect(w.visits[0].page?.body).toBe('b'.repeat(SIM_LIMITS.bodyLength));
+  });
+});
+
+describe('victim action presets', () => {
+  const req = {} as Request; // the presets hand it to the lab's own accessors only
+  const noRearm = (): void => {}; // these victims have no standing state to restore
+  const mail = (w: SimWorld, to: string, links: string[]) => w.inbox.deliver({ from: 'ops@citadel.test', to, subject: 's', body: 'b', links });
+
+  it('checkMailAction: the victim opens the newest mail in its mailbox and clicks one link (default the first)', () => {
+    const w = world();
+    const s = site({ '/a': { status: 200 }, '/b': { status: 200 } });
+    const b = inSession(() => w.browser(s.handler));
+    const first = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, rearm: noRearm });
+    expect(first).toMatchObject({ name: 'check-mail', label: VICTIM_LABELS.checkMail });
+    expect(first.input).toBeUndefined();
+    expect(first.description?.en).toBe('opens the newest mail and clicks its first link');
+    expect(first.description?.id).toBe('membuka surat terbaru dan mengklik tautan pertamanya');
+    expect(first.run(req, { url: '' })).toEqual({ id: 'Kotak surat korban kosong.', en: "The victim's mailbox is empty." });
+    mail(w, ADMIN_MAILBOX, ['http://citadel.test/old']);
+    mail(w, ADMIN_MAILBOX, ['http://citadel.test/a', 'http://citadel.test/b']);
+    mail(w, PLAYER_MAILBOX, ['http://citadel.test/mine']);
+    expect(first.run(req, { url: '' })).toBeUndefined();
+    const second = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 1, name: 'check-second', rearm: noRearm });
+    expect(second.name).toBe('check-second');
+    expect(second.description?.en).toBe('opens the newest mail and clicks link 2 in it');
+    second.run(req, { url: '' });
+    expect(s.seen.map((r) => [r.path, r.headers.referer])).toEqual([['/a', undefined], ['/b', undefined]]); // from a mail client
+    const third = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, link: 2, rearm: noRearm });
+    expect(third.run(req, { url: '' })).toEqual({ id: 'Surat terbaru korban tidak punya tautan ke-3.', en: "The victim's newest mail has no link 3." });
+    expect(s.seen).toHaveLength(2);
+  });
+
+  it('sendLinkAction: the victim opens whatever link the player sent', () => {
+    const w = world();
+    const s = site({ '/x': { status: 200 } });
+    const b = inSession(() => w.browser(s.handler));
+    const send = sendLinkAction(() => b, { rearm: noRearm });
+    expect(send).toMatchObject({ name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url' });
+    expect(send.description?.en).toBe('opens any link you send');
+    expect(send.run(req, { url: 'http://citadel.test/x?y=1' })).toBeUndefined();
+    send.run(req, { url: 'http://attacker.test/z' });
+    expect(s.seen.map((r) => r.url)).toEqual(['http://citadel.test/x?y=1']);
+    expect(w.attackerLog.entries().map((e) => e.url)).toEqual(['http://attacker.test/z']);
+    expect(sendLinkAction(() => b, { name: 'share', label: { id: 'Bagikan', en: 'Share' }, rearm: noRearm })).toMatchObject({ name: 'share', label: { en: 'Share' } });
+  });
+
+  it('the re-arm step runs at the start of EVERY action, before the victim browses (a link may have signed it out)', () => {
+    const w = world();
+    const s = site({ '/me': (r) => ({ status: 200, body: r.cookies.sid ?? 'signed out' }), '/logout': { status: 200, headers: { 'set-cookie': 'sid=; Max-Age=0' } } });
+    const b = inSession(() => w.browser(s.handler));
+    const calls: string[] = [];
+    const rearm = (r: Request, browser: typeof b): void => {
+      calls.push(`${r === req} ${browser === b} ${browser.cookies.get('sid') ?? 'none'}`);
+      browser.cookies.set('sid', 'admin');
+    };
+    const send = sendLinkAction(() => b, { rearm });
+    const check = checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, rearm });
+    send.run(req, { url: 'http://citadel.test/logout' });
+    expect(b.cookies.get('sid')).toBeUndefined(); // the player's link signed the victim out...
+    expect(send.run(req, { url: 'http://citadel.test/me' })).toBeUndefined();
+    expect(w.visits.at(-1)?.page?.body).toBe('admin'); // ...and the next action re-armed it first
+    check.run(req, { url: '' }); // even an action that ends up doing nothing (no mail)
+    expect(calls).toEqual(['true true none', 'true true none', 'true true admin']);
+  });
+
+  it('refuses bad options when the lab is defined, and a mailbox the world does not have when it runs', () => {
+    const browser = () => { throw new Error('not called'); };
+    expect(() => checkMailAction({ browser: 'x' as never, mailbox: ADMIN_MAILBOX, rearm: noRearm })).toThrow(/browser/);
+    expect(() => checkMailAction({ browser, mailbox: 5 as never, rearm: noRearm })).toThrow(/mailbox/);
+    for (const link of [-1, SIM_LIMITS.linksPerMail, 1.5, Number.NaN]) {
+      expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, link, rearm: noRearm }), String(link)).toThrow(/link/);
+    }
+    expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, rearm: 'x' as never })).toThrow(/rearm/);
+    expect(() => sendLinkAction('x' as never, { rearm: noRearm })).toThrow(/browser/);
+    expect(() => sendLinkAction(browser, { rearm: 5 as never })).toThrow(/rearm/);
+    const w = world([]);
+    const b = inSession(() => w.browser(site({}).handler));
+    expect(() => checkMailAction({ browser: () => b, mailbox: ADMIN_MAILBOX, rearm: noRearm }).run(req, { url: '' })).toThrow(/no mailbox/);
+  });
+
+  it('rearm is required: a victim with no standing state to restore passes an explicit no-op', () => {
+    const browser = () => { throw new Error('not called'); };
+    expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX } as never)).toThrow(/checkMailAction: rearm is required/);
+    expect(() => sendLinkAction(browser, {} as never)).toThrow(/sendLinkAction: rearm is required/);
+    expect(() => sendLinkAction(browser, undefined as never)).toThrow(/sendLinkAction: rearm is required/);
+    expect(() => checkMailAction({ browser, mailbox: ADMIN_MAILBOX, rearm: () => {} })).not.toThrow();
+  });
+});
+
+describe('memory: what the sim keeps is bounded by SIM_LIMITS', () => {
+  it('a clipped field is a real copy: an attacker-sized parent string is not kept alive', () => {
+    // V8's slice() of a long string may be a view that keeps the WHOLE parent alive; measured with a full GC
+    // (exposed at runtime), the margin is about 50x either way, so this is not timing- or GC-noise-sensitive.
+    const gc = fullGc();
+    const big = (tag: string) => `${tag}`.padEnd(100_000, 'x');
+    const logs = Array.from({ length: 4 }, () => inSession(() => attackerLog()));
+    // Cookies parsed from Set-Cookie lines with a long (ignored) attribute: a stored value must not pin its line.
+    const browsers = Array.from({ length: 4 }, (_, j) => inSession(() => world().browser(site({
+      '/set': () => ({ status: 200, headers: { 'set-cookie': Array.from({ length: SIM_LIMITS.cookies }, (_, i) => `c${i}=${`v${j}-${i}`.padEnd(40, 'v')}; Expires=${big(`e${j}-${i}`)}`) } }),
+    }).handler)));
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    logs.forEach((log, l) => {
+      for (let i = 0; i < SIM_LIMITS.logEntries; i++) {
+        log.record({ method: 'GET', url: big(`u${l}-${i}`), referer: big(`r${l}-${i}`), body: big(`b${l}-${i}`) });
+      }
+    });
+    for (const b of browsers) b.follow('http://citadel.test/set');
+    gc(); gc();
+    const retained = process.memoryUsage().heapUsed - before;
+    // As slices: 4 logs x 30 entries x 3 fields x 100 KB = 36 MB, plus 4 jars x 20 lines x 100 KB = 8 MB. As copies: < 1 MB.
+    expect(retained).toBeLessThan(4 * 1024 * 1024);
+    expect(browsers.every((b) => b.cookies.size === SIM_LIMITS.cookies)).toBe(true);
+  });
+
+  it('a mail keeps the mailbox\'s own address as `to`: a padded address (from a form) is not kept alive', () => {
+    const gc = fullGc();
+    const worlds = Array.from({ length: 4 }, () => world());
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    worlds.forEach((w, i) => {
+      for (let m = 0; m < SIM_LIMITS.mailsPerMailbox; m++) {
+        const mail = w.inbox.deliver({ from: 'x@citadel.test', to: `${' '.repeat(200_000 + i * 10 + m)}${ADMIN_MAILBOX}`, subject: 's', body: 'b' });
+        expect(mail?.to).toBe(ADMIN_MAILBOX);
+      }
+    });
+    gc(); gc();
+    // As trim()/toLowerCase() views: 4 x 10 x 200 KB = 8 MB. As the mailbox's own address: nothing new.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(1024 * 1024);
+    expect(worlds[0].inbox.addresses).toEqual([PLAYER_MAILBOX, ADMIN_MAILBOX]);
+  });
+
+  it('a URL the sim keeps (classifySimUrl fields, hops, pages) is its own text: a long fragment does not pin the href', () => {
+    const gc = fullGc();
+    // Each URL is short, but its href carries a fragment that percent-encodes to ~16 KB (1800 x 9 chars).
+    const long = (i: number) => `http://citadel.test/p${i}/a-long-path-segment?q=${i}-a-long-query-value#${'✓'.repeat(1800)}`;
+    const worlds = Array.from({ length: 40 }, () => { const w = world(); return { w, b: inSession(() => w.browser(() => ({ status: 200 }))) }; });
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    const fields = Array.from({ length: 300 }, (_, i) => { const u = classifySimUrl(long(i)); return [u.url, u.origin, u.host, u.path, u.search]; });
+    worlds.forEach(({ b }, j) => { for (let v = 0; v < SIM_LIMITS.visits; v++) b.follow(long(j * 10 + v)); });
+    gc(); gc();
+    // Pinned hrefs: 300 + 40 x 5 URLs x ~16 KB = ~8 MB. As copies of their own text: well under 1 MB.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(1024 * 1024);
+    expect(fields[0]).toEqual(['http://citadel.test/p0/a-long-path-segment?q=0-a-long-query-value', 'http://citadel.test', 'citadel.test', '/p0/a-long-path-segment', '?q=0-a-long-query-value']);
+    expect(worlds[0].w.visits[0].page?.url).toBe('http://citadel.test/p0/a-long-path-segment?q=0-a-long-query-value');
+  });
+
+  it('clipping keeps every UTF-16 code unit exactly, lone surrogates included', () => {
+    const log = inSession(() => attackerLog());
+    const odd = `a\uD800b\uDFFFc􏰀é✓${'\uD800'.repeat(SIM_LIMITS.urlLength)}`;
+    expect(log.record({ method: 'GET', url: odd.slice(0, 20) }).url).toBe(odd.slice(0, 20));
+    expect(log.record({ method: 'GET', url: odd }).url).toBe(odd.slice(0, SIM_LIMITS.urlLength));
+    expect(log.record({ method: 'GET', url: '' }).url).toBe('');
+  });
+
+  it('a cookie Path attribute over 1024 chars is ignored (RFC 6265bis): the default path applies', () => {
+    const w = world();
+    const s = site({ '/x/login': { status: 200, headers: { 'set-cookie': `a=1; Path=/${'p'.repeat(1024)}` } } });
+    const b = inSession(() => w.browser(s.handler));
+    b.follow('http://citadel.test/x/login');
+    expect(b.cookies.list().map((c) => c.path)).toEqual(['/x']);
+    expect(() => b.cookies.set('b', '1', { path: `/${'p'.repeat(1024)}` })).toThrow(/path/);
+    b.cookies.set('c', '1', { path: `/${'p'.repeat(1023)}` });
+    expect(b.cookies.size).toBe(2);
+  });
 });
 
 describe('no real network', () => {
-  it('src/core/sim.ts imports no networking module and never calls fetch', () => {
-    const src = readFileSync(new URL('../src/core/sim.ts', import.meta.url), 'utf8');
-    const imports = [...src.matchAll(/(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g)].map((m) => m[1]);
-    const net = /^(node:)?(http|https|http2|net|tls|dns|dgram|child_process|worker_threads)(\/|$)|^undici/;
-    expect(imports.filter((m) => net.test(m))).toEqual([]);
-    expect(src).not.toMatch(/\bfetch\s*\(/);
-    expect(src).not.toMatch(/\b(XMLHttpRequest|WebSocket|EventSource)\b/);
+  it('the guard flags every way to reach a module or a global it does not allow (self-test)', () => {
+    const evasions = [
+      "import 'node:http';", "import * as h from 'node:https';", 'const m = await import(`node:http`);', "export * from 'node:tls';",
+      "export { connect } from 'node:net';", "import d = require('node:dns');", "const r = require('node:dgram');",
+      "globalThis['fe' + 'tch']('http://x');", "fetch('http://x');", "new WebSocket('ws://x');", 'process.binding("tcp_wrap");',
+      "(0, eval)('1');", "Function('return this')();", "import { request } from 'undici';", "import x from './render.js'; import y from 'express';",
+    ];
+    for (const src of evasions) {
+      const { runtime, problems } = simSourceCheck(src);
+      expect([...runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m)), ...problems], src).not.toEqual([]);
+    }
+    expect(simSourceCheck("import type { Request } from 'express'; import { t } from './i18n.js';")).toEqual({ runtime: ['./i18n.js'], problems: [] });
   });
 
-  it('a full visit (citadel redirect -> attacker) touches no fetch, http, https, net or dns function', () => {
+  it('src/core/sim/ imports only what the allow-list names, never loads code dynamically, and names no network global', () => {
+    expect(SIM_FILES).toEqual(['browser.ts', 'cookies.ts', 'limits.ts', 'url.ts', 'world.ts']);
+    for (const file of SIM_FILES) {
+      const { runtime, problems } = simSourceCheck(readFileSync(new URL(file, SIM_DIR), 'utf8'));
+      expect(runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m)), file).toEqual([]);
+      expect(problems, file).toEqual([]);
+    }
+  });
+
+  it('everything src/core/sim/ loads at runtime, transitively, reaches only node:buffer and node:fs (no Express, no network)', () => {
+    const seen = new Set<string>();
+    const outside = new Set<string>();
+    const walk = (file: URL): void => {
+      if (seen.has(file.href)) return;
+      seen.add(file.href);
+      for (const m of simSourceCheck(readFileSync(file, 'utf8')).runtime) {
+        if (m.startsWith('.')) walk(new URL(m.replace(/\.js$/, '.ts'), file));
+        else outside.add(m);
+      }
+    };
+    for (const file of SIM_FILES) walk(new URL(file, SIM_DIR));
+    expect([...outside].sort()).toEqual(['node:buffer', 'node:fs']);
+    const core = new URL('../src/core/', import.meta.url).href;
+    expect([...seen].map((h) => h.slice(core.length)).sort()).toEqual(['lab.ts', 'levels.ts', ...SIM_FILES.map((f) => `sim/${f}`)]);
+  });
+
+  it('a full visit (citadel redirect -> attacker, an unreachable host) touches no network function', () => {
     const require = createRequire(import.meta.url);
+    const on = (id: string, fns: readonly string[]) => fns.map((f) => vi.spyOn(require(id) as Record<string, () => unknown>, f));
+    const dns = require('node:dns') as { promises: Record<string, () => unknown> };
     const spies = [
       vi.spyOn(globalThis, 'fetch'),
-      ...(['request', 'get'] as const).map((f) => vi.spyOn(require('node:http') as Record<string, () => unknown>, f)),
-      ...(['request', 'get'] as const).map((f) => vi.spyOn(require('node:https') as Record<string, () => unknown>, f)),
-      ...(['connect', 'createConnection'] as const).map((f) => vi.spyOn(require('node:net') as Record<string, () => unknown>, f)),
-      ...(['lookup', 'resolve'] as const).map((f) => vi.spyOn(require('node:dns') as Record<string, () => unknown>, f)),
+      ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
+      ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
+      ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
+      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
     ];
     try {
       const w = world();
@@ -613,3 +955,4 @@ describe('no real network', () => {
     }
   });
 });
+

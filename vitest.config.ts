@@ -12,5 +12,7 @@ export default defineConfig({
     exclude: [...configDefaults.exclude, '.worktrees/**', '.claude/**'],
     environment: 'node',
     setupFiles: ['tests/support/setup.ts'],
+    // globalThis.gc for the memory specs (tests/sim.spec.ts measure retention with a full GC).
+    poolOptions: { forks: { execArgv: ['--expose-gc'] } },
   },
 });

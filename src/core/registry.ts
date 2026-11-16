@@ -3,7 +3,7 @@ import type { Request, Router } from 'express';
 import { isAbsolute } from 'node:path';
 import { verifyFlag } from './flags.js';
 import { isLevel, type Level } from './levels.js';
-import { assertVictimConfig, type VictimConfig } from './sim.js';
+import { assertVictimConfig, type VictimConfig } from './victim.js';
 
 export type { Level } from './levels.js';
 

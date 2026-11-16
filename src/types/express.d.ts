@@ -3,7 +3,7 @@
 import type { Level } from '../core/levels.js';
 import type { Lang } from '../core/i18n.js';
 import type { Challenge } from '../core/registry.js';
-import type { SimPanel } from '../core/sim.js';
+import type { SimPanel } from '../core/victim.js';
 
 declare global {
   namespace Express {

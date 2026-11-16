@@ -1,4 +1,4 @@
-<%# The simulated-victim panel (core/sim.ts), shown by the layout under a victim-driven lab. Platform strings come from t; mail, URLs and headers are lab or attacker content: every value goes through the escaped output tag, and only citadel links (mapped into the lab) become hrefs. %>
+<%# The simulated-victim panel (core/victim.ts), shown by the layout under a victim-driven lab. Platform strings come from t; mail, URLs and headers are lab or attacker content: every value goes through the escaped output tag, and only citadel links (mapped into the lab) become hrefs. %>
     <section class="sim-panel" data-testid="sim-panel" aria-labelledby="sim-panel-heading">
       <h2 id="sim-panel-heading"><%= t('sim.heading') %></h2>
       <p class="sim-hosts"><%= simPanel.hosts %></p>
@@ -8,17 +8,28 @@
         <label><%= t('sim.link') %> <input name="url" type="text" autocomplete="off" spellcheck="false" value="<%= simPanel.lastLink %>"></label>
 <% } -%>
         <button type="submit"><%= a.label %></button>
+<% if (a.description) { -%>
+        <p class="sim-action-description"><%= a.description %></p>
+<% } -%>
       </form>
 <% }); -%>
 <% if (simPanel.report) { -%>
       <div class="sim-report" data-testid="sim-report" role="status">
         <h3><%= t('sim.report') %></h3>
+<% if (simPanel.report.failed) { -%>
+        <p class="sim-note sim-failed"><%= simPanel.report.failed %></p>
+<% } -%>
 <% if (simPanel.report.note) { -%>
         <p class="sim-note"><%= simPanel.report.note %></p>
 <% } -%>
 <% if (simPanel.report.visits.length === 0) { -%>
+<% if (!simPanel.report.failed) { -%>
         <p class="sim-meta"><%= t('sim.opened_nothing') %></p>
+<% } -%>
 <% } else { -%>
+<% if (simPanel.report.dropped) { -%>
+        <p class="sim-meta"><%= simPanel.report.dropped %></p>
+<% } -%>
         <ul class="sim-visits">
 <% simPanel.report.visits.forEach(function (line) { -%>
           <li><%= line %></li>
