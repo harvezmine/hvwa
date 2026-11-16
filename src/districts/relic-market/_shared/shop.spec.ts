@@ -439,6 +439,40 @@ describe('race primitives', () => {
     expect(b.timedOut()).toBe(false);
   });
 
+  it('barrierGate: a check that waits a lock\'s microtask hop still runs before any update (requests arrive in separate macrotasks)', async () => {
+    const b = barrierGate(2);
+    const locks = new KeyedMutex();
+    const log: string[] = [];
+    const request = (name: string, key: string) => {
+      b.gate.arrive();
+      return locks.run(key, async () => { // the lock starts its function a microtask later than arrive()
+        log.push(`${name} check`);
+        await b.gate.pass(1000);
+        log.push(`${name} update`);
+      });
+    };
+    const one = request('one', 'a');
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); // the second request comes off the network later
+    const two = request('two', 'b'); // another key: runs concurrently with the first
+    await Promise.all([one, two]);
+    expect(log.slice(0, 2).sort()).toEqual(['one check', 'two check']);
+    expect(b.timedOut()).toBe(false);
+  });
+
+  it('barrierGate(3): a pass stays pending after 2 arrivals and is released by the third', async () => {
+    const b = barrierGate(3);
+    let released = false;
+    b.gate.arrive();
+    b.gate.arrive();
+    const p = b.gate.pass(1000).then(() => { released = true; });
+    await new Promise<void>((resolve) => { setTimeout(resolve, 10); }); // well past any microtask or immediate
+    expect(released).toBe(false);
+    b.gate.arrive();
+    await p;
+    expect(released).toBe(true);
+    expect(b.timedOut()).toBe(false);
+  });
+
   it('barrierGate: the fallback releases a stuck pass and sets timedOut', async () => {
     const b = barrierGate(2, 20);
     b.gate.arrive();

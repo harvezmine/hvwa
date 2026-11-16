@@ -1163,6 +1163,12 @@ await sendPage(res, view, shopView(req, res, state, {
   `baseView(req, res, { result, curl, endpoints?, api?, wallet?, intent?, extra? })` and the parts it has.
 - `kept` is what was posted (`intent`, `sku`, `qty`): a product's quantity field keeps it only after an `add` of
   that product, and a lab's own form keeps its value only after its own intent.
+- A lab without a cart (RM-08 store credit, RM-10 money changer) renders `{ ...baseView(...), ...ordersView(...) }` (or
+  only `baseView`) with its own view. Its history keeps the shell's hooks, so `describeShopBasics({ hasCart: false,
+  purchase })` reads it: RM-08's purchases are real orders (`pushOrder`), RM-10's exchanges are `<li data-order
+  data-total data-charged data-status="exchanged">` numbered with `nextOrderNo` and kept to the newest 30 with
+  `pushHistory`. The flag of a lab whose proof is a balance sits in the page's own line (`flagLine(req, challenge)`),
+  and a proof that a later action could undo (RM-10's net worth) is recorded once, in the state, when it first holds.
 - Views compose the partials in `relic-market/_shared/views/` (`shop-header`, `message`, `catalog`, `cart`, `orders`,
   `api`, `endpoints`, `staff-code`) with the curl note, e.g. `<%- include('../../_shared/views/cart') %>`. `served`
   is the level (`level` is a reserved view key); `heading` goes to `shop-header` only (a page-level `title` would
@@ -1215,7 +1221,15 @@ Real in production, deterministic in tests (`relic-market/_shared/race.ts` and t
 - Tests install `barrierGate(n, fallbackMs = 2000)` on one session's state (`labState(sid, level).gate =
   barrier.gate`) and fire the race with `Promise.all`. `pass()` resolves once n requests have **arrived** (not reached
   `pass`), so every request has done its check before any does its update, and a Divine request refused before `pass`
-  still counts, so the barrier never deadlocks. Assert `timedOut() === false`: the fallback fires only on a regression.
+  still counts, so the barrier never deadlocks. Released passes resume in a later **macrotask** (`setImmediate`), after
+  every microtask the last arrival queued: a locking level's check starts one microtask after `arrive()` (the
+  `state.locks.run` hop), and a barrier that resumed in a microtask would let the first request write before the second
+  one's check (RM-08 Inquisitor's buy against gift). Assert `timedOut() === false`: the fallback fires only on a
+  regression.
+  - **Atomic Divine, two ways.** RM-07 reserves in the check's own synchronous step (mark the voucher used before the
+    first `await`, give it back in `finally`); RM-08 funnels every spending path through one synchronous `debit`
+    (check and subtract, refund on failure). Both need no lock, and the same barrier test proves them: exactly one of
+    N parallel requests succeeds. A mutant that moves the write after the await goes red.
   - **Install the barrier right before the race**, after the set-up requests: a set-up request that goes through a
     racy route counts as an arrival and spends the barrier before the race starts.
   - **Install it again after a Restart**: Restart builds a fresh state, whose gate is the real `waitGate` again.
