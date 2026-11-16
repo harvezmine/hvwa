@@ -424,7 +424,9 @@ export interface XssVictimOptions {
   /**
    * Client-rendered sinks (DOM XSS, prototype pollution): a twin of the page's own script, run for every page the
    * admin's browser renders, returns the HTML that script would write into the DOM (or undefined). The oracle judges
-   * it too. The twin is lab code in the level file: the flaw lives there, the engine only judges its output.
+   * it too. The twin is lab code in the level file: the flaw lives there, the engine only judges its output. A twin
+   * that throws wrote nothing, as a client script that throws writes nothing (the verdict says domFailed); one that
+   * answers anything but { html, insertion? } or undefined is a programming error.
    */
   readonly dom?: (page: XssPage) => XssDomWrite | undefined;
 }
@@ -434,6 +436,8 @@ export interface XssPageVerdict {
   readonly url: string;
   readonly page: XssVerdict;
   readonly dom?: XssVerdict;
+  /** The dom twin threw (on hostile input, say a malformed escape in the hash): it wrote nothing. */
+  readonly domFailed?: true;
   /** The payload ran: the canary went to the attacker log. */
   readonly fired: boolean;
 }
@@ -501,6 +505,12 @@ class XssVictimBrowser implements XssBrowser {
   /** The fragment of the navigation in progress: the link's, inherited across redirects that carry none (as browsers do). */
   private hash = '';
   private recent: XssPageVerdict[] = [];
+  /**
+   * Pages whose payload ran and whose steal is not logged yet: the canary is read once the browser has stored that
+   * page's Set-Cookie, at the visit's next request or when the visit ends (a script reads document.cookie after the
+   * response's cookies are set). A Refresh hop to attacker.test is logged by the browser first.
+   */
+  private fired = 0;
 
   constructor(readonly world: SimWorld, handler: SimHandler, private readonly opts: XssVictimOptions) {
     this.inner = world.browser((r) => this.render(r, handler(r)));
@@ -511,16 +521,34 @@ class XssVictimBrowser implements XssBrowser {
 
   follow(url: string, opts?: SimNavigateOptions): SimVisit {
     this.hash = fragmentOf(url);
-    return this.inner.follow(url, opts);
+    try {
+      return this.inner.follow(url, opts);
+    } finally {
+      this.steal();
+    }
   }
 
   submit(url: string, form: Readonly<Record<string, string>>, opts?: SimNavigateOptions): SimVisit {
     this.hash = fragmentOf(url);
-    return this.inner.submit(url, form, opts);
+    try {
+      return this.inner.submit(url, form, opts);
+    } finally {
+      this.steal();
+    }
+  }
+
+  /** Log the steals of the pages that fired, reading the canary now (the browser has stored their cookies). */
+  private steal(): void {
+    for (; this.fired > 0; this.fired--) {
+      const { canary } = this.opts;
+      const stolen = typeof canary === 'function' ? str(canary()) : canary;
+      this.world.attackerLog.record({ method: 'GET', url: `${XSS_STEAL_URL}?c=${encodeURIComponent(stolen)}` });
+    }
   }
 
   /** Every citadel answer passes here on its way to the browser, unchanged. A rendered page is judged first. */
   private render(r: SimRequest, res: SimResponse): SimResponse {
+    this.steal(); // a page that fired earlier in this visit: its cookies are stored by now
     if (res === null || typeof res !== 'object' || isThenable(res)) return res; // the browser reports it
     const h = headerLists(res);
     const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;
@@ -542,10 +570,14 @@ class XssVictimBrowser implements XssBrowser {
     const body = typeof res.body === 'string' ? res.body : '';
     const page = xssOracle(body, marker, { ...options, syntax });
     let written: XssVerdict | undefined;
+    let domFailed = false;
     if (dom !== undefined) {
-      const w: unknown = dom(Object.freeze({
-        url: r.url, path: r.path, query: new URLSearchParams(r.query), hash: this.hash, status: res.status, body,
-      }));
+      let w: unknown;
+      try {
+        w = dom(Object.freeze({ url: r.url, path: r.path, query: new URLSearchParams(r.query), hash: this.hash, status: res.status, body }));
+      } catch {
+        domFailed = true; // the client script threw on this input: it wrote nothing
+      }
       if (w !== undefined) {
         const { html, insertion } = (w ?? {}) as Partial<XssDomWrite>;
         if (w === null || typeof w !== 'object' || typeof html !== 'string') {
@@ -555,12 +587,14 @@ class XssVictimBrowser implements XssBrowser {
       }
     }
     const fired = page.executes || written?.executes === true;
-    if (fired) {
-      const { canary } = this.opts;
-      const stolen = typeof canary === 'function' ? str(canary()) : canary;
-      this.world.attackerLog.record({ method: 'GET', url: `${XSS_STEAL_URL}?c=${encodeURIComponent(stolen)}` });
-    }
-    this.recent.push(Object.freeze({ url: clip(r.url, SIM_LIMITS.urlLength), page, ...(written === undefined ? {} : { dom: written }), fired }));
+    if (fired) this.fired++;
+    // Bounded: SIM_LIMITS.visits verdicts of at most XSS_LIMITS.sinks sinks each (page and DOM write), every string a copy.
+    // TODO(E2): when capPerSessionHolder takes per-store byte weights, add an XSS browser's verdicts (at most about
+    // 5 x 2 x 16 x 80 chars, ~30 KiB) to the world's weight.
+    this.recent.push(Object.freeze({
+      url: clip(r.url, SIM_LIMITS.urlLength), page, ...(written === undefined ? {} : { dom: written }),
+      ...(domFailed ? { domFailed: true as const } : {}), fired,
+    }));
     if (this.recent.length > SIM_LIMITS.visits) this.recent.shift();
   }
 }

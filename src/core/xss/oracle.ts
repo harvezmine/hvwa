@@ -590,7 +590,7 @@ function cssUrls(text: string): string[] {
 }
 
 /**
- * Every link and resource URL in `html`, in document order (at most XSS_LIMITS.sinks), for a lab whose victim runs
+ * Every link and resource URL in `html`, in document order (at most XSS_LIMITS.links), for a lab whose victim runs
  * no script: an HTML mail (FP-12: an attacker `<a href>` the admin clicks, an `<img>` its client loads). Parses as a
  * mail client does, with scripting off (`scripting: true` parses as a browser page). Template content is inert. CSS
  * `url()` and `@import` in style elements and attributes are resources. Over the bounds: no URLs.
@@ -603,7 +603,7 @@ export function linkSinks(html: string, opts: { readonly scripting?: boolean } =
   if (doc === undefined) return Object.freeze(out);
   const add = (kind: LinkSink['kind'], element: string, attribute: string, raw: string): void => {
     const url = urlText(raw);
-    if (url === '' || out.length >= XSS_LIMITS.sinks) return;
+    if (url === '' || out.length >= XSS_LIMITS.links) return;
     out.push(Object.freeze({
       kind, element: clip(element, XSS_LIMITS.detailLength), attribute: clip(attribute, XSS_LIMITS.detailLength),
       url: clip(url, SIM_LIMITS.urlLength + 1), trigger: kind === 'link' ? 'interaction' : 'load',
@@ -613,7 +613,7 @@ export function linkSinks(html: string, opts: { readonly scripting?: boolean } =
     for (const url of cssUrls(text)) add('resource', element, attribute, url);
   };
   const stack: Node[] = [...doc.childNodes].reverse();
-  for (let node = stack.pop(); node !== undefined && out.length < XSS_LIMITS.sinks; node = stack.pop()) {
+  for (let node = stack.pop(); node !== undefined && out.length < XSS_LIMITS.links; node = stack.pop()) {
     if (!('tagName' in node)) continue;
     const el = node as Element;
     const name = label(el);

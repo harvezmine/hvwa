@@ -266,13 +266,76 @@ describe('xssBrowser dom: client-rendered sinks through a twin of the page\'s ow
     expect(pages.map((p) => p.hash)).toEqual(['#kept', '#own']);
   });
 
+  it('a twin that throws on hostile input (M1) wrote nothing: the page is still judged, the action does not fail', () => {
+    const l = lab((m) => ({ '/view': page(`<img src=x onerror=${m}>`), '/quiet': page('<p>x</p>') }), {
+      dom: (p) => ({ html: decodeURIComponent(p.hash.slice(1)) }), // throws URIError on a malformed escape
+    });
+    expect(() => l.admin.follow('http://citadel.test/quiet#%E0%A4%A')).not.toThrow();
+    expect(l.admin.verdicts[0]).toMatchObject({ fired: false, domFailed: true });
+    expect(l.admin.verdicts[0].dom).toBeUndefined();
+    l.admin.follow('http://citadel.test/view#%E0%A4%A');
+    expect(steals(l)).toEqual([STOLEN]); // the server page itself still ran
+  });
+
   it('a twin answer must be { html, insertion? }', () => {
     const l = lab(() => ({ '/view': page('') }), { dom: () => ({ html: 5 }) as never });
     expect(() => l.admin.follow('http://citadel.test/view')).toThrow(/dom/);
   });
 });
 
+describe('xssBrowser: the canary is read once the browser has the page\'s cookies (M6)', () => {
+  /** A lab whose payload steals the admin's live session cookie. */
+  const cookieLab = (routes: (m: string) => Record<string, Route>) => perSession(() => {
+    const world = simWorld();
+    const marker = newMarker();
+    const table = routes(marker.call);
+    const admin: XssBrowser = xssBrowser(world, (r) => {
+      const route = table[r.path];
+      return route === undefined ? { status: 404 } : typeof route === 'function' ? route(r) : route;
+    }, { marker: marker.call, canary: () => admin.cookies.get('session') ?? '' });
+    admin.cookies.set('session', 'old');
+    return { world, admin };
+  }).for({ sessionId: `cookie-lab-${++n}`, level: 'acolyte' });
+  const stolen = (l: { world: SimWorld }) => l.world.attackerLog.entries().map((h) => h.url);
+
+  it('a page that sets the session and runs the payload steals the new value', () => {
+    const l = cookieLab((m) => ({ '/p': page(`<img src=x onerror=${m}>`, { 'Set-Cookie': 'session=fresh; Path=/' }) }));
+    l.admin.follow('http://citadel.test/p');
+    expect(stolen(l)).toEqual([`${XSS_STEAL_URL}?c=fresh`]);
+  });
+
+  it('a page that moves on (Refresh) to a sign-out: the value the page had, read before the next page answers', () => {
+    const l = cookieLab((m) => ({
+      '/p': page(`<img src=x onerror=${m}>`, { 'Set-Cookie': 'session=fresh; Path=/', Refresh: '0; url=/logout' }),
+      '/logout': page('bye', { 'Set-Cookie': 'session=; Max-Age=0; Path=/' }),
+    }));
+    l.admin.follow('http://citadel.test/p');
+    expect(stolen(l)).toEqual([`${XSS_STEAL_URL}?c=fresh`]);
+    expect(l.admin.cookies.get('session')).toBeUndefined();
+  });
+
+  it('a form post that fires steals once, after the visit', () => {
+    const l = cookieLab((m) => ({ '/f': page(`<svg onload=${m}>`, { 'Set-Cookie': 'session=posted; Path=/' }) }));
+    l.admin.submit('http://citadel.test/f', { a: '1' });
+    expect(stolen(l)).toEqual([`${XSS_STEAL_URL}?c=posted`]);
+  });
+});
+
 describe('memory: what xssBrowser keeps is its own copy', () => {
+  it(`keeps at most ${SIM_LIMITS.visits} page verdicts of at most ${XSS_LIMITS.sinks} sinks each (M4)`, () => {
+    expect(XSS_LIMITS.sinks).toBeLessThanOrEqual(16);
+    expect(XSS_LIMITS.detailLength).toBeLessThanOrEqual(80);
+    const many = (m: string) => `${'<iframe srcdoc="&lt;iframe srcdoc=&quot;&lt;svg onload=x&gt;&quot;&gt;&lt;/iframe&gt;"></iframe>'.repeat(30)}<img src=x onerror=${m}>`;
+    const l = lab((m) => ({ '/p': page(many(m)) }), { dom: () => ({ html: '<img src=x onerror=x>'.repeat(40) }) });
+    for (let i = 0; i < SIM_LIMITS.visits + 2; i++) l.admin.follow(`http://citadel.test/p?i=${i}`);
+    const verdicts = l.admin.verdicts.flatMap((v) => [v.page, ...(v.dom === undefined ? [] : [v.dom])]);
+    expect(verdicts).toHaveLength(2 * SIM_LIMITS.visits);
+    for (const v of verdicts) {
+      expect(v.sinks.length).toBeLessThanOrEqual(XSS_LIMITS.sinks);
+      for (const s of v.sinks) expect(s.detail.length).toBeLessThanOrEqual(XSS_LIMITS.detailLength);
+    }
+  });
+
   it('verdicts do not pin the pages they judged', () => {
     const gc = fullGc();
     const labs = Array.from({ length: 20 }, () => lab((m) => ({

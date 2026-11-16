@@ -44,8 +44,13 @@ export const XSS_LIMITS = Object.freeze({
    * they are always read whole (the bounds above make that finish), so `executes` and `sinks` never depend on load.
    */
   timeMs: 250,
-  /** Most sinks a verdict lists (and most URLs linkSinks returns). `executes` and `mxss` still consider all of them. */
-  sinks: 64,
+  /**
+   * Most sinks a verdict lists (`executes` and `mxss` still consider all of them). Small on purpose: an XSS browser keeps
+   * its last verdicts in the world, so 5 pages x (page + DOM write) x 16 sinks x 80 chars bounds that.
+   */
+  sinks: 16,
+  /** Most URLs linkSinks returns. */
+  links: 64,
   /** Longest sink detail kept ('iframe[srcdoc] > svg:a[xlink:href=javascript:]'). */
-  detailLength: 120,
+  detailLength: 80,
 });

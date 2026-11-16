@@ -743,9 +743,9 @@ describe('linkSinks: links and resources a mail client or page would request (no
     expect(linkSinks(`<a href="http://attacker.test/">x</a>`.padEnd(XSS_LIMITS.htmlLength + 1, 'x'))).toEqual([]);
   });
 
-  it(`lists at most ${XSS_LIMITS.sinks} URLs, each frozen`, () => {
-    const links = linkSinks('<a href="http://attacker.test/x">x</a>'.repeat(XSS_LIMITS.sinks + 5));
-    expect(links).toHaveLength(XSS_LIMITS.sinks);
+  it(`lists at most ${XSS_LIMITS.links} URLs, each frozen`, () => {
+    const links = linkSinks('<a href="http://attacker.test/x">x</a>'.repeat(XSS_LIMITS.links + 5));
+    expect(links).toHaveLength(XSS_LIMITS.links);
     expect(Object.isFrozen(links) && Object.isFrozen(links[0])).toBe(true);
   });
 });
