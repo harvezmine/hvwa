@@ -4,7 +4,7 @@ import type request from 'supertest';
 import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tests/helpers.js';
 import { LEVELS } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
-import { cartOf, describeShopBasics, ordersOf, productForm, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, endpointsShown, ordersOf, productForm, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM05 } from './challenge.js'; // registers RM-05 before createApp() inside freshSession
 import { labState } from './model.js';
 
@@ -65,6 +65,18 @@ describeLabView({
 describeCurlExample({ challenge: RM05, path: LAB, curl: () => ({ path: '/cart', form: ['sku=ROSARY', 'qty=1'] }) });
 
 describe('RM-05 negative quantity', () => {
+  it('every level: the page lists each endpoint with its fields, and the curl note needs no sign-in', async () => {
+    for (const level of LEVELS) {
+      const html = (await home(await ctx(level))).text;
+      expect(endpointsShown(html), level).toEqual([
+        `POST ${LAB}/cart?level=${level} (sku, qty)`, `POST ${LAB}/cart/return?level=${level} (sku, qty)`,
+        `POST ${LAB}/cart/remove?level=${level} (sku, kind)`, `POST ${LAB}/checkout?level=${level}`,
+      ]);
+      expect(html, level).toContain('open this page in your browser, then copy');
+      expect(html, level).not.toContain('sign in here first');
+    }
+  });
+
   it('acolyte: the exploit is a paid $0.00 order with the reliquary, and the flag stays on the order row', async () => {
     const c = await ctx('acolyte');
     const res = await acolyteExploit(c);

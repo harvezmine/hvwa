@@ -5,7 +5,7 @@ import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tes
 import { LEVELS } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
 import { exactValue } from '../_shared/shop.js';
-import { cartOf, describeShopBasics, ordersOf, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, endpointsShown, ordersOf, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM14 } from './challenge.js'; // registers RM-14 before createApp() inside freshSession
 import { labState } from './model.js';
 
@@ -14,7 +14,8 @@ const INT32_MAX = 2_147_483_647;
 type Ctx = ShopCtx;
 type Script = (c: Ctx) => Promise<request.Response>;
 
-const { add, checkout, form, home, ctx, restart } = shopClient(LAB);
+const shop = shopClient(LAB);
+const { add, checkout, form, home, ctx, restart } = shop;
 const cartTotal = (html: string) => Number(/data-testid="cart-total" data-cents="(-?\d+)"/.exec(html)?.[1]);
 
 // Acolyte: Math.imul(999900, 3000) wraps to -1 295 267 296, which is "affordable" and credits the wallet.
@@ -65,6 +66,27 @@ describeLabView({
 describeCurlExample({ challenge: RM14, path: LAB, curl: () => ({ path: '/cart', form: ['sku=SLIP', 'qty=1'] }) });
 
 describe('RM-14 integer overflow in cart total', () => {
+  it('every level: the page lists each endpoint with its fields, and the curl note needs no sign-in', async () => {
+    for (const level of LEVELS) {
+      const html = (await home(await ctx(level))).text;
+      expect(endpointsShown(html), level).toEqual([
+        `POST ${LAB}/cart?level=${level} (sku, qty)`, `POST ${LAB}/cart/remove?level=${level} (sku, kind)`, `POST ${LAB}/checkout?level=${level}`,
+      ]);
+      expect(html, level).toContain('open this page in your browser, then copy');
+      expect(html, level).not.toContain('sign in here first');
+    }
+  });
+
+  it('a cart line can be removed, and the total is computed again without it', async () => {
+    const c = await ctx('inquisitor');
+    await add(c, 'ALTAR', '107');
+    await add(c, 'CANDLE', '2');
+    const res = await shop.post(c, '/cart/remove', { sku: 'ALTAR' });
+    expect(res.text).toContain('Removed Golden Altar from your cart.');
+    expect(cartOf(res.text)).toEqual([{ sku: 'CANDLE', qty: 2, line: 500, kind: '' }]);
+    expect(cartTotal(res.text)).toBe(500);
+  });
+
   it('every level: the cart shows the INT32 range the order service stores cents in', async () => {
     for (const level of LEVELS) {
       expect((await home(await ctx(level))).text, level).toContain('INT32 range: -2,147,483,648 … 2,147,483,647 cents');

@@ -123,6 +123,12 @@ export function productForm(html: string, sku: string): Record<string, string> {
   return fields;
 }
 
+/** The page's endpoint list (views/endpoints), one entry per door: 'POST <href>', plus ' (fields)' when it names any. */
+export function endpointsShown(html: string): string[] {
+  const line = /<p class="lab-note" data-testid="endpoints">Endpoints: ([\s\S]*?)\. The forms on this page/.exec(html)?.[1];
+  return line === undefined ? [] : line.split('; ').map((e) => unescapeHtml(e.replace(/<\/?code>/g, '')));
+}
+
 /** The catalog's SKUs with their prices in cents, as the page lists them. */
 export function pricesOf(html: string): { readonly sku: string; readonly price: number }[] {
   return [...html.matchAll(/<li data-product="([^"]*)" data-price="(-?\d+)">/g)].map(([, sku, price]) => ({ sku: unescapeHtml(sku), price: Number(price) }));

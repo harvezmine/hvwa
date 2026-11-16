@@ -6,7 +6,9 @@ import { byLevel, field } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { formatMoney, orderLines, placeOrder, setLine, type CartTotals } from '../_shared/shop.js';
-import { mountIntents, refusal, shopView, success, type Outcome } from '../_shared/shop-lab.js';
+import {
+  endpointsOf, mountIntents, refusal, removeLineIntent, shopView, success, type Intent, type Outcome,
+} from '../_shared/shop-lab.js';
 import { CATALOG, labFor, proves, resetLab, type IntLevel, type LabState } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -56,11 +58,18 @@ function checkout(req: Request): Outcome {
   return success(`Order #${order.no} placed. Charged ${formatMoney(order.charged)}; your wallet now holds ${formatMoney(state.wallet)}.`);
 }
 
+/** The page's actions: POST / with a hidden intent, or each one's own path. */
+const INTENTS: Readonly<Record<string, Intent>> = {
+  add: { path: '/cart', fields: ['sku', 'qty'], run: add },
+  remove: removeLineIntent(labFor),
+  checkout: { path: '/checkout', run: checkout },
+};
+
 async function render(req: Request, res: Response, outcome: Outcome): Promise<void> {
   const state = labFor(req);
   await sendPage(res, view, shopView(req, res, state, {
-    challenge: RM14, result: outcome.result, totals: totalsOf(impl.for(req.level), state), proves,
-    curl: { path: '/cart', form: { sku: 'SLIP', qty: '1' } },
+    challenge: RM14, result: outcome.result, intent: outcome.intent, totals: totalsOf(impl.for(req.level), state), proves,
+    removable: true, endpoints: endpointsOf(INTENTS), curl: { path: '/cart', form: { sku: 'SLIP', qty: '1' }, signIn: false },
   }));
 }
 
@@ -85,9 +94,6 @@ export const RM14 = register(defineChallenge({
   reset: (req) => { resetLab(req); },
   mount: (router) => {
     router.get('/', async (req, res) => { await render(req, res, { result: null }); });
-    mountIntents(router, {
-      add: { path: '/cart', run: add },
-      checkout: { path: '/checkout', run: checkout },
-    }, render);
+    mountIntents(router, INTENTS, render);
   },
 }));

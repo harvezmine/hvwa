@@ -5,7 +5,7 @@ import type request from 'supertest';
 import { describeExploitMatrix, describeLabView, FLAG_RE } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
-import { cartOf, describeShopBasics, ordersOf, productForm, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
+import { cartOf, describeShopBasics, endpointsShown, ordersOf, productForm, shopClient, walletOf, type ShopCtx } from '../_shared/shop-lab.testkit.js';
 import { RM09 } from './challenge.js'; // registers RM-09 before createApp() inside freshSession
 import { PRICE_LISTS, labState } from './model.js';
 
@@ -74,6 +74,30 @@ const candleFields: Record<Level, readonly string[]> = {
 describeCurlExample({ challenge: RM09, path: LAB, curl: (level) => ({ path: '/cart', form: ['sku=CANDLE', 'qty=1', ...candleFields[level]] }) });
 
 describe('RM-09 client-side price', () => {
+  it('every level: the page lists each endpoint with its fields (the level\'s hidden ones too), and the curl note needs no sign-in', async () => {
+    const hidden: Record<Level, string> = { acolyte: ', price', templar: ', price, sig', inquisitor: ', price_list', divine: '' };
+    for (const level of LEVELS) {
+      const html = (await home(await ctx(level))).text;
+      expect(endpointsShown(html), level).toEqual([
+        `POST ${LAB}/cart?level=${level} (sku, qty${hidden[level]})`, `POST ${LAB}/cart/remove?level=${level} (sku, kind)`,
+        `POST ${LAB}/checkout?level=${level}`,
+      ]);
+      expect(html, level).toContain('open this page in your browser, then copy');
+      expect(html, level).not.toContain('sign in here first');
+    }
+  });
+
+  it('a cart line can be removed (the same at every level)', async () => {
+    for (const level of LEVELS) {
+      const c = await ctx(level);
+      await addWithOwnForm(c, 'CHALICE');
+      expect(cartOf((await home(c)).text), level).toHaveLength(1);
+      const res = await form(c, { intent: 'remove', sku: 'CHALICE', kind: '' });
+      expect(res.text, level).toContain('Removed Silver Chalice from your cart.');
+      expect(cartOf(res.text), level).toEqual([]);
+    }
+  });
+
   it('each level\'s add-to-cart form carries its hidden fields verbatim (devtools shows them)', async () => {
     const want: Record<Level, Record<string, string>> = {
       acolyte: { price: '50000' },

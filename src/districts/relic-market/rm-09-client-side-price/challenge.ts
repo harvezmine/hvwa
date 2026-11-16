@@ -6,7 +6,9 @@ import { byLevel, field } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { exactTotals, formatMoney, insufficientFunds, orderLines, placeOrder, setLine, type Product } from '../_shared/shop.js';
-import { mountIntents, refusal, shopView, success, type Outcome } from '../_shared/shop-lab.js';
+import {
+  endpointsOf, mountIntents, refusal, removeLineIntent, shopView, success, type Intent, type Outcome,
+} from '../_shared/shop-lab.js';
 import { CATALOG, PRICE_LISTS, labFor, listPrice, parseQty, proves, resetLab, type PriceLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -49,13 +51,23 @@ function checkout(req: Request): Outcome {
   return success(`Order #${order.no} placed. Charged ${formatMoney(order.charged)}; your wallet now holds ${formatMoney(state.wallet)}.`);
 }
 
+/** The page's actions: POST / with a hidden intent, or each one's own path. */
+const INTENTS: Readonly<Record<string, Intent>> = {
+  add: { path: '/cart', fields: ['sku', 'qty'], run: add },
+  remove: removeLineIntent(labFor),
+  checkout: { path: '/checkout', run: checkout },
+};
+
 async function render(req: Request, res: Response, outcome: Outcome): Promise<void> {
   const state = labFor(req);
   const level = impl.for(req.level);
+  // The endpoint list names the add-to-cart form's hidden fields of the served level too.
+  const hidden = Object.keys(level.formFields(CANDLE));
+  const endpoints = endpointsOf(INTENTS).map((e) => (e.intent === 'add' ? { ...e, fields: [...e.fields, ...hidden] } : e));
   await sendPage(res, view, shopView(req, res, state, {
-    challenge: RM09, result: outcome.result, totals: exactTotals(state), proves,
-    fields: (p) => level.formFields(p),
-    curl: { path: '/cart', form: { sku: 'CANDLE', qty: '1', ...level.formFields(CANDLE) } },
+    challenge: RM09, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves, removable: true,
+    fields: (p) => level.formFields(p), endpoints,
+    curl: { path: '/cart', form: { sku: 'CANDLE', qty: '1', ...level.formFields(CANDLE) }, signIn: false },
     api: [{ path: '/api/price-lists', description: 'every price list with its percentage of retail and its prices (JSON)' }],
     extra: { account: state.account },
   }));
@@ -88,9 +100,6 @@ export const RM09 = register(defineChallenge({
         lists: PRICE_LISTS.map((l) => ({ ...l, prices: Object.fromEntries(CATALOG.products.map((p) => [p.sku, listPrice(p, l)])) })),
       });
     });
-    mountIntents(router, {
-      add: { path: '/cart', run: add },
-      checkout: { path: '/checkout', run: checkout },
-    }, render);
+    mountIntents(router, INTENTS, render);
   },
 }));

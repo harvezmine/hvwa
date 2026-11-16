@@ -6,7 +6,9 @@ import { byLevel, field } from '../../../core/lab.js';
 import { sendPage } from '../../../core/render.js';
 import { challengeDir } from '../../../core/source.js';
 import { exactTotals, formatMoney, orderLines, placeOrder, setLine } from '../_shared/shop.js';
-import { mountIntents, refusal, removeLineIntent, shopView, success, type Intent, type Outcome } from '../_shared/shop-lab.js';
+import {
+  endpointsOf, mountIntents, refusal, removeLineIntent, shopView, success, type Intent, type Outcome,
+} from '../_shared/shop-lab.js';
 import { CATALOG, labFor, proves, resetLab, type LabState, type QtyLevel } from './model.js';
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
@@ -84,7 +86,7 @@ async function render(req: Request, res: Response, outcome: Outcome): Promise<vo
   const returnQty = outcome.intent === 'return' && owned.some((o) => o.sku === keptSku) ? field(req, 'qty') : '1';
   await sendPage(res, view, shopView(req, res, state, {
     challenge: RM05, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves, removable: true,
-    curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' } },
+    endpoints: endpointsOf(INTENTS), curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' }, signIn: false },
     extra: { owned, returnQty },
   }));
 }
