@@ -13,7 +13,8 @@ import {
 import { s256, type Exchange, type IssuedCode } from '../_shared/oauth.js';
 import { GK10 } from './challenge.js'; // registers GK-10 before createApp() inside freshSession
 import * as divine from './levels/divine.js';
-import { clientCookie, labState, nextCookie, pidCookie } from './model.js';
+import { SIM_LIMITS } from '../../../core/sim.js';
+import { authorize, clientCookie, labState, nextCookie, pidCookie, startLogin } from './model.js';
 
 const LAB = '/d/gatekeeper/oauth-redirect-uri';
 const ADMIN = 'citadel_admin';
@@ -430,5 +431,42 @@ describe('GK-10 lab view specifics', () => {
     const page = await home(agent, 'templar');
     expect(page.text).toContain(`<code>${REGISTERED}</code>`);
     expect(page.text).toContain(`href="${LAB}/login?next=%2F&amp;level=templar"`);
+  });
+});
+
+describe('GK-10 keeps player strings bounded: one past the URL cap, as copies (memory, not semantics)', () => {
+  const cap = SIM_LIMITS.urlLength + 1; // one past the cap, as for mail links: an over-long value stays too long to follow
+  const long = (tag: string) => `http://attacker.test/${tag}/`.padEnd(16_000, '\u2713'); // ~Node's header cap, two-byte
+  let n = 0;
+
+  it("a 16 KB next (Citadel's return) and redirect_uri and code_challenge (Pilgrim-ID's code) are stored clipped", () => {
+    const state = labState(`clip-${++n}`, 'acolyte');
+    startLogin({ level: 'acolyte', query: new URLSearchParams({ next: long('n') }), cookies: {}, base: '' }, state);
+    const ret = [...state.returns.values()][0];
+    expect(ret.next).toBe(long('n').slice(0, cap));
+    const reply = authorize({
+      level: 'acolyte', base: '', cookies: { [pidCookie('acolyte')]: state.adminPid },
+      query: new URLSearchParams({ response_type: 'code', client_id: 'citadel', redirect_uri: long('r'), code_challenge: long('c'), code_challenge_method: 'S256' }),
+    }, state);
+    const code = [...state.codes.values()][0];
+    expect([code.redirectUri, code.challenge]).toEqual([long('r').slice(0, cap), long('c').slice(0, cap)]);
+    expect(reply.location?.startsWith(long('r'))).toBe(true); // the redirect itself still goes where it was asked
+  });
+
+  it('the stored copies keep no 16 KB request string alive', () => {
+    const gc = (globalThis as { gc?: () => void }).gc as () => void;
+    const states = Array.from({ length: 4 }, () => labState(`clip-${++n}`, 'acolyte'));
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    for (const [i, state] of states.entries()) {
+      for (let k = 0; k < 40; k++) {
+        // Each value is a short view into a fresh 256 KB string: kept as a view, it would pin the whole parent.
+        const parent = `${i}-${k}-`.padEnd(256 * 1024, 'x');
+        startLogin({ level: 'acolyte', query: new URLSearchParams({ next: parent.slice(0, 3000) }), cookies: {}, base: '' }, state);
+      }
+    }
+    gc(); gc();
+    // As views: 160 x 256 KB = 40 MB. As copies: 160 x ~2 KB plus the maps.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(4 * 1024 * 1024);
   });
 });
