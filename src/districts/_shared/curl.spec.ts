@@ -39,6 +39,17 @@ describe('curl-note partial', () => {
     expect(text).toContain(`-b "hvwa_sid=&lt;copy from devtools&gt;" -d '{&#34;a&#34;:&#34;b&#34;}' --data-urlencode 'name=Brother Lamp' --data-urlencode 'bio=it&#39;\&#39;&#39;s'`);
   });
 
+  it('says to sign in first by default; a lab without a sign-in (signIn: false) says to open the page instead', async () => {
+    const SIGN_IN = 'Your lab belongs to your browser session: sign in here first, then copy the (HttpOnly) <code>hvwa_sid</code> cookie from the devtools storage into <code>-b</code>.';
+    expect(await render(view({}))).toContain(SIGN_IN);
+    expect(curlFor(fakeReq('acolyte'), fakeRes(), { path: '/cart' })).not.toHaveProperty('signIn');
+    const shop = curlFor(fakeReq('acolyte'), fakeRes(), { path: '/cart', signIn: false });
+    expect(shop.signIn).toBe(false);
+    const text = await render(shop);
+    expect(text).not.toContain('sign in');
+    expect(text).toContain('Your lab belongs to your browser session: open this page in your browser, then copy the (HttpOnly) <code>hvwa_sid</code> cookie from the devtools storage into <code>-b</code>.');
+  });
+
   it('no method, no body: a plain GET line; always the session placeholder and the PowerShell note', async () => {
     const text = await render(view({}));
     expect(text).toContain('curl "http://127.0.0.1:3000/d/gatekeeper/x/p?level=acolyte" -b "hvwa_sid=&lt;copy from devtools&gt;"');
