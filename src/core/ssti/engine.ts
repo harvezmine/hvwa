@@ -55,7 +55,7 @@ export const SSTI_LIMITS = Object.freeze({
   wasmInitialBytes: 16 * 1024 * 1024,
   wasmMaxBytes: 48 * 1024 * 1024,
   /**
-   * QuickJS's stack limit (rt.setMaxStackSize): about 680 nested JS calls. QuickJS measures the WASM shadow stack;
+   * QuickJS's stack limit (rt.setMaxStackSize): about 730 nested JS calls. QuickJS measures the WASM shadow stack;
    * the native frames behind it are 16 to 32 times larger in its C recursion (the parser, JSON), which this keeps
    * inside the worker's 8 MB stack, and JSON.stringify's quadratic cycle check over a deep value (no interrupt
    * checks) stays near 0.2 s. RECIPES section 14 has the measurements.
