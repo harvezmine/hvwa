@@ -27,11 +27,19 @@ export const SIM_LIMITS = Object.freeze({
   /** Longest note a victim action may leave for the panel. */
   noteLength: 500,
   /**
-   * Most instances that keep sim state, process-wide: every lab's and level's holders share this one budget (a
-   * filled world is up to about a megabyte). At the budget a new one evicts the least recently used, whichever lab
-   * it belongs to (capPerSessionHolder in core/lab.ts).
+   * What each sim store weighs in the process-wide byte budget every lab's capped state shares (CAPPED_BUDGET_BYTES
+   * and capPerSessionHolder in core/lab.ts): its worst case filled to every cap with two-byte text, measured with a
+   * full GC (tests/sim.spec.ts "memory"), plus ~10%, rounded up to 32 KiB. A simWorld() weighs its inbox, its attacker
+   * log and its own visits: 1.25 MiB; each victim browser (its cookie jar) adds 224 KiB.
    */
-  worldsTotal: 150,
+  /** An inbox: 3 mailboxes of 10 mails (~515 KiB measured). */
+  inboxWeight: 576 * 1024,
+  /** An attacker log: 30 entries (~366 KiB measured). */
+  attackerLogWeight: 416 * 1024,
+  /** A world's own state, the victim's recent visits: 5 of up to 11 hops (~252 KiB measured). */
+  visitsWeight: 288 * 1024,
+  /** A victim's browser, its cookie jar: 20 cookies (~183 KiB measured). */
+  browserWeight: 224 * 1024,
   /** Most new instances such a holder creates a rolling minute: its default, and the most it may ask for. */
   newWorldsPerMinute: 30,
 });

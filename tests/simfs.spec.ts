@@ -2,9 +2,9 @@
 // the real disk) and the simulated interpreter (nothing executes: one statement is pattern-matched).
 import { Buffer } from 'node:buffer';
 import { describe, it, expect, vi } from 'vitest';
-import { perSession, setCappedBudget } from '../src/core/lab.js';
+import { CAPPED_BUDGET_BYTES, cappedBudgetUsage, perSession, setCappedBudget } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
-import { SIM_LIMITS } from '../src/core/sim.js';
+import { SIM_LIMITS, simWorld } from '../src/core/sim.js';
 import {
   SIMFS_LIMITS, SIM_SCRIPT_STATEMENT, SimFsError, resolveSimPath, simFs, simInterpret, type SimFs, type SimFsOptions,
 } from '../src/core/simfs.js';
@@ -42,17 +42,58 @@ describe('simFs lives in perSession (per player and level), in the shared budget
     expect(perSession(() => simFs(), { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute }).for({ sessionId: 's', level: 'acolyte' }).size).toBe(0);
   });
 
-  it('shares the process-wide budget (SIM_LIMITS.worldsTotal): at the budget the least recently used instance is reset', () => {
-    const prev = setCappedBudget(2);
+  it('shares the process-wide byte budget: at the budget the least recently used instance is reset', () => {
+    const prev = setCappedBudget(2 * SIMFS_LIMITS.weight);
     try {
       const labs = perSession(() => simFs());
       const fs = (sessionId: string) => labs.for({ sessionId, level: 'acolyte' });
       fs('a').write('/x', 'a');
       fs('b').write('/x', 'b');
-      fs('c').write('/x', 'c'); // the budget is 2: a goes
+      fs('c').write('/x', 'c'); // two file systems fit: a goes
       expect(labs.size).toBe(2);
       expect(fs('a').has('/x')).toBe(false); // rebuilt fresh, which evicts b in turn
       expect(text(fs('c'), '/x')).toBe('c');
+    } finally {
+      setCappedBudget(prev);
+    }
+  });
+
+  it('with the default budget too, every simFs counts its declared weight (and a reset gives it back)', () => {
+    const prev = setCappedBudget(undefined);
+    try {
+      expect(cappedBudgetUsage().budget).toBe(CAPPED_BUDGET_BYTES);
+      const before = cappedBudgetUsage();
+      const labs = perSession(() => simFs());
+      labs.for({ sessionId: 'w', level: 'acolyte' });
+      expect(cappedBudgetUsage()).toEqual({ ...before, bytes: before.bytes + SIMFS_LIMITS.weight, instances: before.instances + 1 });
+      labs.reset({ sessionId: 'w', level: 'acolyte' });
+      expect(cappedBudgetUsage()).toEqual(before);
+    } finally {
+      setCappedBudget(prev);
+    }
+  });
+
+  it('labs with a world, a file system, or both share the one budget: never over it, least recently used first', () => {
+    const WORLD = SIM_LIMITS.inboxWeight + SIM_LIMITS.attackerLogWeight + SIM_LIMITS.visitsWeight;
+    const FS = SIMFS_LIMITS.weight;
+    const prev = setCappedBudget(WORLD + FS + 2 * FS); // room for one victim lab with uploads and two upload labs
+    try {
+      const disposed: string[] = [];
+      const holder = <T>(name: string, make: () => T) => perSession((_l, sid) => ({ sid, ...make() }), { dispose: (v) => { disposed.push(`${name}:${v.sid}`); } });
+      const both = holder('both', () => ({ world: simWorld(), fs: simFs() })); // SC-05/SC-09 style
+      const uploads = holder('uploads', () => ({ fs: simFs() })); // SC-07 style
+      both.for({ sessionId: 'v1', level: 'acolyte' });
+      uploads.for({ sessionId: 'u1', level: 'acolyte' });
+      uploads.for({ sessionId: 'u2', level: 'acolyte' });
+      // Exactly full (WORLD + FS + 2 FS): whatever earlier tests left in the budget made room first.
+      expect([cappedBudgetUsage().bytes, cappedBudgetUsage().instances, disposed]).toEqual([WORLD + 3 * FS, 3, []]);
+      uploads.for({ sessionId: 'u3', level: 'acolyte' }); // no room: the least recently used (the victim lab) goes
+      expect(disposed).toEqual(['both:v1']);
+      both.for({ sessionId: 'v2', level: 'acolyte' }); // needs WORLD + FS with 3 FS in use: the oldest upload lab (u1) is enough
+      expect(disposed).toEqual(['both:v1', 'uploads:u1']);
+      expect(cappedBudgetUsage().bytes).toBe(WORLD + 3 * FS); // exactly full, never over
+      uploads.for({ sessionId: 'u4', level: 'acolyte' }); // needs FS: u2 (an FS) is the least recently used
+      expect(disposed).toEqual(['both:v1', 'uploads:u1', 'uploads:u2']);
     } finally {
       setCappedBudget(prev);
     }
@@ -186,7 +227,7 @@ describe('simFs: files', () => {
 
 describe('simFs: bounds (SIMFS_LIMITS), dropping the oldest unpinned file like the sim drops its oldest mail', () => {
   it('the defaults', () => {
-    expect(SIMFS_LIMITS).toEqual({ files: 32, fileBytes: 128 * KiB, totalBytes: 256 * KiB, pathLength: 512, contentTypeLength: 255 });
+    expect(SIMFS_LIMITS).toEqual({ files: 32, fileBytes: 128 * KiB, totalBytes: 256 * KiB, pathLength: 512, contentTypeLength: 255, weight: 352 * KiB });
     expect(Object.isFrozen(SIMFS_LIMITS)).toBe(true);
   });
 
@@ -298,7 +339,7 @@ describe('memory: a filled file system is bounded and keeps only its own bytes',
     const perInstance = ((after.heapUsed - before.heapUsed) + (after.arrayBuffers - before.arrayBuffers)) / labs.length;
     expect(labs.every((fs) => fs.size === SIMFS_LIMITS.files && fs.bytes === SIMFS_LIMITS.totalBytes)).toBe(true);
     expect(perInstance).toBeGreaterThan(SIMFS_LIMITS.totalBytes);
-    expect(perInstance).toBeLessThan(352 * KiB); // ~10% over the measured worst case
+    expect(perInstance).toBeLessThan(SIMFS_LIMITS.weight); // its weight in the shared budget: ~10% over the measurement
   });
 
   it('a file written from a slice of a large buffer keeps only the slice', () => {

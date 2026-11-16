@@ -1,6 +1,6 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, onTestFinished, vi } from 'vitest';
-import { setCappedBudget, setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { CAPPED_BUDGET_BYTES, cappedBudgetUsage, setCappedBudget, setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import { fixtureLines, sendLines } from '../src/core/fixtures.js';
 import type { Level } from '../src/core/levels.js';
 
@@ -224,7 +224,7 @@ describe('perSession(factory, opts?)', () => {
   });
 
   it('capPerSessionHolder: the rate of what a factory builds is the holder\'s default and ceiling', () => {
-    const caps = { maxNewPerMinute: 6, budget: 10_000 };
+    const caps = { maxNewPerMinute: 6, weight: 1 };
     expect(() => capPerSessionHolder('thing', caps)).toThrow(/thing: create it inside a perSession\(\) factory/);
     let t = 0;
     const capped = perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid }; }, { now: () => t });
@@ -249,7 +249,7 @@ describe('perSession(factory, opts?)', () => {
   it('capped holders share ONE process-wide budget: the least recently used capped instance goes, whichever holder keeps it', () => {
     const prev = setCappedBudget(5);
     onTestFinished(() => { setCappedBudget(prev); });
-    const caps = { maxNewPerMinute: 1000, budget: 10_000 };
+    const caps = { maxNewPerMinute: 1000, weight: 1 }; // weight 1: a budget of 5 bytes holds 5 instances
     const disposed: string[] = [];
     let made = 0;
     const holder = (name: string) => perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid, n: ++made }; },
@@ -279,7 +279,7 @@ describe('perSession(factory, opts?)', () => {
   it('a holder that keeps a capped instance through a nested holder is capped too (every frame on the stack)', () => {
     const prev = setCappedBudget(2);
     onTestFinished(() => { setCappedBudget(prev); });
-    const inner = perSession(() => { capPerSessionHolder('thing', { maxNewPerMinute: 1000, budget: 10_000 }); return {}; });
+    const inner = perSession(() => { capPerSessionHolder('thing', { maxNewPerMinute: 1000, weight: 1 }); return {}; });
     // The outer entries keep the inner instances alive, so they count toward the budget as well.
     const outer = perSession((_l, sid) => ({ sid, inner: inner.for(req(sid)) }));
     for (let i = 0; i < 3; i++) outer.for(req(`n${i}`));
@@ -298,7 +298,7 @@ describe('perSession(factory, opts?)', () => {
     expect(() => fastViaHit.for(req('y'))).toThrow(/thing: .*at most 1000 new/);
   });
 
-  it('setCappedBudget takes a positive integer (undefined: the budget capped holders declare) and returns the previous one', () => {
+  it('setCappedBudget takes a positive integer of bytes (undefined: CAPPED_BUDGET_BYTES) and returns the previous one', () => {
     for (const bad of [0, -1, 1.5, Number.NaN, Infinity]) expect(() => setCappedBudget(bad), String(bad)).toThrow(/budget/);
     const prev = setCappedBudget(7);
     expect(setCappedBudget(prev)).toBe(7);
@@ -323,7 +323,7 @@ describe('perSession(factory, opts?)', () => {
   it('an instance that expires (idle TTL) frees its place in the shared budget', () => {
     const prev = setCappedBudget(2);
     onTestFinished(() => { setCappedBudget(prev); });
-    const caps = { maxNewPerMinute: 1000, budget: 10_000 };
+    const caps = { maxNewPerMinute: 1000, weight: 1 };
     const disposed: string[] = [];
     let t = 0;
     const other = perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid }; }, { dispose: (v) => { disposed.push(v.sid); } });
@@ -336,16 +336,77 @@ describe('perSession(factory, opts?)', () => {
     expect([other.size, idle.size]).toEqual([1, 1]);
   });
 
-  // Declared budgets stay for the life of the process (this file): keep this test last among the capped ones.
-  it('the smallest budget any capped holder declares is the shared budget', () => {
+  it('the budget is BYTES: CAPPED_BUDGET_BYTES (96 MiB) by default, and an instance weighs everything its factory built', () => {
+    expect(CAPPED_BUDGET_BYTES).toBe(96 * 1024 * 1024);
     const prev = setCappedBudget(undefined);
     onTestFinished(() => { setCappedBudget(prev); });
-    const small = perSession((_l, sid) => { capPerSessionHolder('small', { maxNewPerMinute: 1000, budget: 3 }); return { sid }; });
-    const large = perSession((_l, sid) => { capPerSessionHolder('large', { maxNewPerMinute: 1000, budget: 4 }); return { sid }; });
-    small.for(req('s1')); // declares 3 (earlier tests in this file declared only larger budgets)
-    for (let i = 1; i <= 3; i++) large.for(req(`l${i}`)); // declares 4 afterwards: 3 still holds
-    expect(small.size + large.size).toBe(3);
-    expect(small.size).toBe(0);
+    expect(cappedBudgetUsage().budget).toBe(CAPPED_BUDGET_BYTES);
+    const before = cappedBudgetUsage();
+    const both = perSession(() => {
+      capPerSessionHolder('heavy', { maxNewPerMinute: 1000, weight: 3000 });
+      capPerSessionHolder('light', { maxNewPerMinute: 1000, weight: 500 });
+      return {};
+    });
+    both.for(req('w1'));
+    expect(cappedBudgetUsage()).toEqual({ bytes: before.bytes + 3500, instances: before.instances + 1, budget: CAPPED_BUDGET_BYTES });
+    both.reset(req('w1'));
+    expect(cappedBudgetUsage()).toEqual(before);
+  });
+
+  it('mixed weights in different holders never exceed the byte budget; the least recently used go first, as many as it takes', () => {
+    const prev = setCappedBudget(10);
+    onTestFinished(() => { setCappedBudget(prev); });
+    const disposed: string[] = [];
+    const holder = (name: string, weight: number) => perSession((_l, sid) => { capPerSessionHolder(name, { maxNewPerMinute: 1000, weight }); return { sid }; },
+      { dispose: (v) => { disposed.push(`${name}:${v.sid}`); } });
+    const light = holder('light', 3);
+    const heavy = holder('heavy', 4);
+    const live = () => light.size * 3 + heavy.size * 4;
+    light.for(req('a1'));
+    heavy.for(req('b1'));
+    light.for(req('a2')); // 3 + 4 + 3 = 10: full
+    expect([cappedBudgetUsage().bytes, disposed]).toEqual([10, []]);
+    light.for(req('a1')); // used: b1 is now the least recently used
+    heavy.for(req('b2')); // needs 4: b1 goes
+    expect(disposed).toEqual(['heavy:b1']);
+    light.for(req('a3')); // needs 3: a2 goes
+    expect(disposed).toEqual(['heavy:b1', 'light:a2']);
+    heavy.for(req('b3')); // needs 4 with 10 in use: a1 (3) is not enough, b2 (4) goes too
+    expect(disposed).toEqual(['heavy:b1', 'light:a2', 'light:a1', 'heavy:b2']);
+    expect([cappedBudgetUsage().bytes, live()]).toEqual([7, 7]);
+    for (let i = 0; i < 50; i++) {
+      (i % 3 === 0 ? heavy : light).for(req(`m${i}`));
+      expect(cappedBudgetUsage().bytes).toBeLessThanOrEqual(10);
+      expect(cappedBudgetUsage().bytes).toBe(live());
+    }
+  });
+
+  it("a reset, an idle-TTL expiry and a holder's own LRU (maxEntries) each give back that instance's bytes", () => {
+    const prev = setCappedBudget(1000);
+    onTestFinished(() => { setCappedBudget(prev); });
+    let t = 0;
+    const caps = { maxNewPerMinute: 1000, weight: 100 };
+    const h = perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid }; }, { now: () => t, idleTtlMs: 1000, maxEntries: 3 });
+    const base = cappedBudgetUsage().bytes;
+    h.for(req('r1'));
+    h.for(req('r2'));
+    expect(cappedBudgetUsage().bytes - base).toBe(200);
+    h.reset(req('r1'));
+    expect(cappedBudgetUsage().bytes - base).toBe(100);
+    t = 5000; // r2 idles past its TTL: the next use sweeps it, and its bytes, out
+    h.for(req('r3'));
+    expect([h.size, cappedBudgetUsage().bytes - base]).toEqual([1, 100]);
+    for (const sid of ['r4', 'r5', 'r6']) h.for(req(sid)); // maxEntries 3: r3 goes by the holder's own LRU
+    expect([h.size, cappedBudgetUsage().bytes - base]).toEqual([3, 300]);
+  });
+
+  it('capPerSessionHolder needs a positive integer weight and rate', () => {
+    for (const weight of [0, -1, 1.5, Number.NaN, Infinity]) {
+      expect(() => perSession(() => { capPerSessionHolder('w', { maxNewPerMinute: 30, weight }); return {}; }).for(req('v')), String(weight)).toThrow(/weight/);
+    }
+    for (const maxNewPerMinute of [0, 1.5, Number.NaN]) {
+      expect(() => perSession(() => { capPerSessionHolder('w', { maxNewPerMinute, weight: 1 }); return {}; }).for(req('v')), String(maxNewPerMinute)).toThrow(/maxNewPerMinute/);
+    }
   });
 });
 

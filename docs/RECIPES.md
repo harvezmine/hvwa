@@ -490,19 +490,23 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 
 `simWorld()`, `simInbox()`, `attackerLog()` and `world.browser()` throw unless called inside a `perSession` factory, so
 victim state is always per player and level, bounded, and inherits the new-instance limits. They also cap the holder
-whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is up to about a megabyte
-and the container has 512 MB:
+whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is over a megabyte and
+the container has 512 MB:
 
-- **One budget for the whole process.** Every holder that keeps sim state (directly, or through a nested holder whose
-  instance it keeps), in every lab and at every level, shares `SIM_LIMITS.worldsTotal` (150) instances in all (about
-  100-170 MB at worst). Creating one at the budget evicts the
-  least recently used of them, whichever lab it belongs to; the new one is never refused. Adding a victim-driven lab
-  does not raise the bound. A lab's own `maxEntries` still applies within it.
+- **One byte budget for the whole process.** Every instance that keeps sim state (directly, or through a nested holder
+  whose instance it keeps), in every lab and at every level, shares `CAPPED_BUDGET_BYTES` (96 MiB). Each store weighs
+  its measured worst case plus ~10% (`SIM_LIMITS`): an inbox 576 KiB, an attacker log 416 KiB, a world's own visits
+  288 KiB, a victim browser 224 KiB. So a `simWorld()` (its inbox, log and visits) weighs 1.25 MiB, and with one
+  browser 1.47 MiB; a simulated file system (section 9) weighs 352 KiB. An instance weighs everything its factory built
+  or used. Creating one that does not fit evicts the least recently used capped instances, whichever lab they belong
+  to, as many as it takes; the new one is never refused. A reset, an idle-TTL expiry or the holder's own `maxEntries`
+  gives the bytes back. Adding a victim-driven lab does not raise the bound.
 - **Eviction is a reset** of that player's instance at that level (section 4), and a shared budget turns over in
   minutes: keep no limiter, lockout or attempt budget in victim-driven state.
 - At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
   pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
-- Tests may shrink the budget with `setCappedBudget(n)` from `core/lab.ts` (restore the value it returns).
+- Tests may shrink the budget with `setCappedBudget(bytes)` from `core/lab.ts` (restore the value it returns), and read
+  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`).
 
 Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
 (accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
@@ -772,12 +776,12 @@ const labs = perSession((): LabState => {
 - **Every stored Buffer is a copy with memory of its own.** `Buffer.subarray` keeps its whole parent alive, and
   `Buffer.from(x)` of a small `x` is a slice of Node's shared 8 KiB pool (zlib even answers small inflates with a view of
   16 KiB). `simFs` copies with `ownBytes` from `core/upload.ts`; use it for any other Buffer a lab keeps.
-- **Memory.** A full instance is about 630 KiB at worst (measured with a full GC; about 540 KiB with short ASCII names).
-  `simFs` caps its holder like a victim world: at most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute, in
-  the process-wide budget of `SIM_LIMITS.worldsTotal` (150) instances shared with every victim world. That is about
-  92 MiB if every slot is a full file system, and about 1.6 MB for a slot that holds both a world and a file system
-  (SC-05, SC-09). Eviction from that budget is a reset, so keep no limiter in this state. Upload labs have no limiter,
-  so they may offer Restart (`reset: (req) => labs.reset(req)`).
+- **Memory.** A full instance is about 315 KiB at worst (measured with a full GC; about 270 KiB with short ASCII names).
+  `simFs` caps its holder like a victim world: at most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute,
+  and each instance weighs `SIMFS_LIMITS.weight` (352 KiB) in the 96 MiB byte budget shared with every victim world
+  (section 8). A lab state with both a world and a file system (SC-05, SC-09) weighs both, about 1.6 MiB. Eviction
+  from that budget is a reset, so keep no limiter in this state. Upload labs have no limiter, so they may offer
+  Restart (`reset: (req) => labs.reset(req)`).
 
 ### Archives: `readZip(bytes)` (SC-10)
 

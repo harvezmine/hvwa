@@ -1,8 +1,8 @@
 // src/core/simfs.ts — the upload labs' simulated filesystem and simulated interpreter (SC-05, SC-07 ... SC-11).
 //
 // simFs(): one in-memory file system per player and level, made in the lab's perSession factory (it throws anywhere
-// else) like GK-06's `files` map, but bounded (SIMFS_LIMITS) and counted in the process-wide budget of large lab
-// state that the simulated victim worlds share (capPerSessionHolder, SIM_LIMITS.worldsTotal). Nothing touches the
+// else) like GK-06's `files` map, but bounded (SIMFS_LIMITS) and weighed in the process-wide byte budget of large lab
+// state that the simulated victim worlds share (capPerSessionHolder, CAPPED_BUDGET_BYTES in core/lab.ts). Nothing touches the
 // real disk: paths are keys in a Map. Every path goes through one documented resolver, the simulated OS's ground
 // truth (resolveSimPath), so a level's own (flawed) check on a filename is measured against where the write really
 // lands, as classifySimUrl is for URLs.
@@ -19,8 +19,8 @@ import { ownBytes } from './upload.js';
 /**
  * Bounds of one simulated file system. Worst case per instance, measured with a full GC (tests/simfs.spec.ts): the
  * 256 KiB of data plus about 1.8 KiB per file of path, content type and bookkeeping, ~315 KiB (512-character
- * two-byte paths; short ASCII names: ~270 KiB). Instances share the budget of SIM_LIMITS.worldsTotal (150) with the
- * victim worlds: 150 full file systems are ~46 MiB.
+ * two-byte paths; short ASCII names: ~270 KiB). It weighs `weight` in the byte budget it shares with the victim
+ * worlds (96 MiB: about 280 full file systems, or fewer next to worlds).
  */
 export const SIMFS_LIMITS = Object.freeze({
   /** Most files; beyond it the oldest unpinned file is dropped. */
@@ -33,6 +33,8 @@ export const SIMFS_LIMITS = Object.freeze({
   pathLength: 512,
   /** Longest content type kept (a longer one is clipped). */
   contentTypeLength: 255,
+  /** What one instance weighs in the shared byte budget: the measured worst case plus ~10%, rounded up to 32 KiB. */
+  weight: 352 * 1024,
 });
 
 /** Thrown for a path or write the simulated file system refuses. Lab-visible below Divine through tryDb. */
@@ -134,11 +136,12 @@ export function resolveSimPath(path: string, separators: SimSeparators = '/'): s
  *     return { fs };
  *   });
  *
- * It caps that holder like a victim world: at most SIM_LIMITS.newWorldsPerMinute new instances a minute, inside the
- * process-wide budget of SIM_LIMITS.worldsTotal (an eviction there is a reset of that player's lab).
+ * It caps that holder like a victim world: at most SIM_LIMITS.newWorldsPerMinute new instances a minute, and the
+ * instance weighs SIMFS_LIMITS.weight in the process-wide byte budget (an eviction there is a reset of that player's
+ * lab).
  */
 export function simFs(opts: SimFsOptions = {}): SimFs {
-  capPerSessionHolder('simFs', { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute, budget: SIM_LIMITS.worldsTotal });
+  capPerSessionHolder('simFs', { maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute, weight: SIMFS_LIMITS.weight });
   const separators = checkSeparators(opts.separators ?? '/');
   const files = new Map<string, SimFile>(); // insertion order = oldest write first
   let used = 0;

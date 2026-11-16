@@ -84,42 +84,59 @@ export function setPerSessionDefaults(d: { readonly maxNewPerMinute?: number }):
   return prev;
 }
 
-/** What a kind of instance asks of the perSession holder that keeps it (see capPerSessionHolder). */
+/** What a kind of store asks of the perSession holder that keeps it (see capPerSessionHolder). */
 export interface HolderCaps {
   /** Most new instances a rolling minute: the holder's default, and the most it may ask for. */
   readonly maxNewPerMinute: number;
   /**
-   * Most such instances kept process-wide, by ALL capped holders together (every lab's victim worlds share it).
-   * Creating one at the budget evicts the least recently used capped instance, whichever holder keeps it.
+   * What one such store can hold at worst, in bytes: its measured worst case plus a margin (core/sim/limits.ts,
+   * core/simfs.ts, each checked by a memory spec). An instance weighs every capped store its factory built or used,
+   * and all capped instances share ONE process-wide byte budget, CAPPED_BUDGET_BYTES.
    */
-  readonly budget: number;
+  readonly weight: number;
 }
 
-/** One running perSession factory: its holder's own options, and the caps what it built put on that holder. */
+/**
+ * The process-wide byte budget of capped instances (simulated-victim worlds, simulated file systems...): every lab
+ * and level together, weighed by their stores' worst cases. 96 MiB of the container's 512 MB (controller decision).
+ */
+export const CAPPED_BUDGET_BYTES = 96 * 1024 * 1024;
+
+/** One running perSession factory: its holder's own options, and what the capped stores it built or used ask. */
 interface FactoryFrame {
   readonly asked: { readonly maxNewPerMinute?: number };
-  caps?: HolderCaps;
-  /** What set the caps (for errors), e.g. 'simWorld'. */
+  /** The tightest rate of those stores (undefined: none built or used). */
+  maxNewPerMinute?: number;
+  /** Their weights, summed: what the instance this factory builds weighs in the budget. */
+  weight: number;
+  /** The first of them (for errors), e.g. 'simWorld'. */
   what?: string;
 }
 
-// The process-wide budget of capped holders: every instance they keep, least recently used first, each with the
-// function that drops it from its holder (an eviction is a reset of that instance, as for a holder's own LRU).
-const cappedEntries = new Map<object, () => void>();
-let declaredBudget = Infinity; // the smallest budget a capped holder has declared (core/sim: SIM_LIMITS.worldsTotal)
+// The process-wide budget: every capped instance, least recently used first, with its weight and the function that
+// drops it from its holder (an eviction is a reset of that instance, as for a holder's own LRU).
+const cappedEntries = new Map<object, { readonly weight: number; readonly drop: () => void }>();
+let cappedBytes = 0;
 let budgetOverride: number | undefined;
+const budgetBytes = (): number => budgetOverride ?? CAPPED_BUDGET_BYTES;
 
 /**
- * Test seam: set the process-wide budget of capped holders (a positive integer), or undefined for the budget they
- * declare. It applies from the next instance created. Returns the previous setting, so a test can restore it.
+ * Test seam: set the process-wide byte budget of capped instances (a positive integer), or undefined for
+ * CAPPED_BUDGET_BYTES. It applies from the next instance created. Returns the previous setting, so a test can
+ * restore it.
  */
-export function setCappedBudget(total: number | undefined): number | undefined {
-  if (total !== undefined && (!Number.isInteger(total) || total < 1)) {
-    throw new Error(`setCappedBudget: the budget must be a positive integer or undefined (got ${String(total)})`);
+export function setCappedBudget(bytes: number | undefined): number | undefined {
+  if (bytes !== undefined && (!Number.isInteger(bytes) || bytes < 1)) {
+    throw new Error(`setCappedBudget: the budget must be a positive integer of bytes or undefined (got ${String(bytes)})`);
   }
   const prev = budgetOverride;
-  budgetOverride = total;
+  budgetOverride = bytes;
   return prev;
+}
+
+/** Test seam: the capped instances held process-wide, the bytes they weigh, and the budget. */
+export function cappedBudgetUsage(): { readonly bytes: number; readonly instances: number; readonly budget: number } {
+  return { bytes: cappedBytes, instances: cappedEntries.size, budget: budgetBytes() };
 }
 
 // The perSession factories running right now, innermost last (factories are synchronous; nesting is allowed).
@@ -133,11 +150,10 @@ export function insidePerSessionFactory(): boolean {
   return frames.length > 0;
 }
 
-const tighter = (a: HolderCaps | undefined, b: HolderCaps): HolderCaps => (a === undefined ? b : {
-  maxNewPerMinute: Math.min(a.maxNewPerMinute, b.maxNewPerMinute), budget: Math.min(a.budget, b.budget),
-});
-
-/** Cap the holder of EVERY running factory: each one keeps (directly or through a nested holder) a capped instance. */
+/**
+ * Cap the holder of EVERY running factory (each keeps the store, directly or through a nested holder), adding the
+ * store's weight to each. A store kept by an outer and an inner holder counts in both: conservative, never under.
+ */
 function capFrames(what: string, caps: HolderCaps): void {
   for (const frame of frames) {
     const { maxNewPerMinute } = frame.asked;
@@ -146,28 +162,36 @@ function capFrames(what: string, caps: HolderCaps): void {
     }
   }
   for (const frame of frames) {
-    frame.caps = tighter(frame.caps, caps);
+    frame.maxNewPerMinute = Math.min(frame.maxNewPerMinute ?? Infinity, caps.maxNewPerMinute);
+    frame.weight += caps.weight;
     frame.what ??= what;
   }
 }
 
 /**
- * For stores whose instances are large (core/sim/world.ts: a filled simulated world is up to about a megabyte):
- * called while a perSession factory builds one, it caps the holder running that factory, and every holder whose
- * factory is running around it (an outer holder that keeps the instance through a nested holder keeps it alive too).
- * A capped holder used inside another holder's factory later, even for an instance it already has, caps that one too.
+ * For stores whose instances are large (core/sim/world.ts: inbox, attacker log, visits, the victim's browser;
+ * core/simfs.ts): called while a perSession factory builds one, it caps the holder running that factory, and every
+ * holder whose factory is running around it (an outer holder that keeps the store through a nested holder keeps it
+ * alive too). A capped holder used inside another holder's factory later, even for an instance it already has, caps
+ * that one too, with that instance's weight.
  *
- * - The holder joins ONE process-wide budget shared by every capped holder (`caps.budget` instances in all, every
- *   lab and level together): creating an instance at the budget evicts the least recently used capped instance,
- *   whichever holder keeps it (a reset of that instance; the new one is never refused). Memory stays bounded however
- *   many labs keep such state. The holder's own `maxEntries` still applies within it.
- * - It creates at most `caps.maxNewPerMinute` instances a minute, by default and as a ceiling: a holder whose own
- *   options ask for more fails right here, at its first factory run, with an error naming `what`, and keeps nothing.
+ * - The instance joins ONE process-wide byte budget shared by every capped holder (CAPPED_BUDGET_BYTES, every lab and
+ *   level together), weighing the sum of the `caps.weight` of every store its factory built or used. Creating one
+ *   that does not fit evicts the least recently used capped instances, whichever holder keeps them, as many as it
+ *   takes (each a reset of that instance; the new one is never refused). Memory stays bounded however many labs keep
+ *   such state; a reset, an idle-TTL expiry or the holder's own `maxEntries` gives an instance's bytes back.
+ * - The holder creates at most `caps.maxNewPerMinute` instances a minute, by default and as a ceiling: a holder whose
+ *   own options ask for more fails right here, at its first factory run, with an error naming `what`, and keeps
+ *   nothing.
  *
- * Throws outside a factory.
+ * Throws outside a factory, or for a weight or rate that is not a positive integer.
  */
 export function capPerSessionHolder(what: string, caps: HolderCaps): void {
   if (frames.length === 0) throw new Error(`${what}: create it inside a perSession() factory`);
+  if (!Number.isInteger(caps.weight) || caps.weight < 1) throw new Error(`${what}: weight must be a positive integer of bytes (got ${String(caps.weight)})`);
+  if (!Number.isInteger(caps.maxNewPerMinute) || caps.maxNewPerMinute < 1) {
+    throw new Error(`${what}: maxNewPerMinute must be a positive integer (got ${String(caps.maxNewPerMinute)})`);
+  }
   capFrames(what, caps);
 }
 
@@ -206,19 +230,24 @@ export function perSession<T>(
   }
   const created: number[] = []; // creation times within the last minute
   // Map order = least recently used first (every use re-inserts at the end).
-  type Entry = { value: T; usedAt: number };
+  /** `weight`: the bytes it counts in the process-wide budget (0: it keeps no capped store, and is not in it). */
+  type Entry = { value: T; usedAt: number; readonly weight: number };
   const entries = new Map<string, Entry>();
   const asked = { maxNewPerMinute: maxNewOpt };
-  let caps: HolderCaps | undefined; // set by the first factory run that builds a capped instance (capPerSessionHolder)
-  let capsWhat = ''; // what set them (for errors)
+  let rateCap: number | undefined; // set by the first factory run that builds or uses a capped store (capPerSessionHolder)
+  let capsWhat = ''; // what set it (for errors)
   const rateLimit = (): number => {
     if (maxNewOpt !== undefined) return maxNewOpt; // never above a cap: capPerSessionHolder refused it
     const d = perSessionDefaults.maxNewPerMinute;
-    return caps === undefined || d === Infinity ? d : Math.min(d, caps.maxNewPerMinute);
+    return rateCap === undefined || d === Infinity ? d : Math.min(d, rateCap);
   };
   const drop = (key: string, e: Entry) => {
     if (entries.get(key) === e) entries.delete(key);
-    cappedEntries.delete(e);
+    const inBudget = cappedEntries.get(e);
+    if (inBudget !== undefined) {
+      cappedEntries.delete(e);
+      cappedBytes -= inBudget.weight; // a reset, an expiry or an eviction gives the bytes back
+    }
     try { dispose?.(e.value); } catch { /* a failing dispose never breaks a request */ }
   };
   const sweep = (t: number) => {
@@ -250,31 +279,34 @@ export function perSession<T>(
         entries.delete(key);
         hit.usedAt = t;
         entries.set(key, hit);
-        const evict = cappedEntries.get(hit);
-        if (evict !== undefined) { cappedEntries.delete(hit); cappedEntries.set(hit, evict); } // the newest in the budget too
-        if (caps !== undefined && frames.length > 0) capFrames(capsWhat, caps); // another holder's factory keeps it
+        const inBudget = cappedEntries.get(hit);
+        if (inBudget !== undefined) { cappedEntries.delete(hit); cappedEntries.set(hit, inBudget); } // the newest in the budget too
+        // Another holder's factory keeps it: that holder is capped too, and its instance weighs this one as well.
+        if (rateCap !== undefined && frames.length > 0) capFrames(capsWhat, { maxNewPerMinute: rateCap, weight: hit.weight });
         return hit.value;
       }
       while (created.length > 0 && t - created[0] >= 60_000) created.shift();
       if (created.length >= rateLimit()) throw new NewSessionLimitError();
       let value: T;
-      const frame: FactoryFrame = { asked };
+      const frame: FactoryFrame = { asked, weight: 0 };
       frames.push(frame);
       try { value = factory(level, sessionId); } finally { frames.pop(); }
-      if (frame.caps !== undefined) {
-        caps = tighter(caps, frame.caps);
+      if (frame.maxNewPerMinute !== undefined) {
+        rateCap = Math.min(rateCap ?? Infinity, frame.maxNewPerMinute);
         capsWhat ||= frame.what ?? '';
-        declaredBudget = Math.min(declaredBudget, frame.caps.budget);
+      } else if (rateCap !== undefined && frames.length > 0) {
+        // Built nothing capped this time, inside another holder's factory: still pass this holder's rate cap out.
+        capFrames(capsWhat, { maxNewPerMinute: rateCap, weight: 0 });
       }
-      if (caps !== undefined && frames.length > 0) capFrames(capsWhat, caps); // another holder's factory keeps it
       created.push(t);
-      const e: Entry = { value, usedAt: t };
-      if (caps !== undefined) {
-        // At the shared budget the least recently used capped instance goes (in any holder), never this new one.
-        while (cappedEntries.size > 0 && cappedEntries.size >= (budgetOverride ?? declaredBudget)) {
-          (cappedEntries.values().next().value as () => void)();
+      const e: Entry = { value, usedAt: t, weight: frame.weight };
+      if (e.weight > 0) {
+        // The least recently used capped instances go (in any holder) until this one fits; it is never refused.
+        while (cappedEntries.size > 0 && cappedBytes + e.weight > budgetBytes()) {
+          (cappedEntries.values().next().value as { drop: () => void }).drop();
         }
-        cappedEntries.set(e, () => drop(key, e));
+        cappedEntries.set(e, { weight: e.weight, drop: () => drop(key, e) });
+        cappedBytes += e.weight;
       }
       entries.set(key, e);
       while (entries.size > maxEntries) {
