@@ -29,7 +29,10 @@ export function perLevel<T>(factory: (level: Level) => T): PerLevel<T> {
 }
 
 export interface PerSessionOptions<T = unknown> {
-  /** Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000. */
+  /**
+   * Most (session, level) instances kept; beyond it the least recently used is evicted. Default 5000, or the cap
+   * of what the factory builds (capPerSessionHolder: 250 for simulated-victim state, core/sim.ts).
+   */
   readonly maxEntries?: number;
   /**
    * An instance unused for longer than this (ms) is dropped; the next request gets a fresh one. Default 26 h:
@@ -37,7 +40,8 @@ export interface PerSessionOptions<T = unknown> {
    */
   readonly idleTtlMs?: number;
   /**
-   * Most NEW instances created per rolling minute (default 120, see setPerSessionDefaults). Evicting an instance is a reset of that
+   * Most NEW instances created per rolling minute (default 120, see setPerSessionDefaults; or the cap of what the
+   * factory builds, see capPerSessionHolder). Evicting an instance is a reset of that
    * player's lab (counters, locks, secrets), so creating instances must be too slow to flood the LRU out:
    * beyond the limit for() throws NewSessionLimitError (HTTP 429) and nothing is evicted. Infinity disables it.
    */
@@ -66,7 +70,8 @@ const perSessionDefaults = { maxNewPerMinute: 120 };
  * Engine-wide defaults for perSession holders that do not set the option themselves. Read when a
  * holder CHECKS (not when it is created), so module-level holders made at import time follow it.
  * Tests lift the per-holder new-instance limit (tests/support/setup.ts); an explicit
- * `maxNewPerMinute` on a holder always wins. Returns the previous values so a test can restore them.
+ * `maxNewPerMinute` on a holder always wins. Infinity lifts capped holders (capPerSessionHolder) too;
+ * a finite default never raises one above its cap. Returns the previous values so a test can restore them.
  */
 export function setPerSessionDefaults(d: { readonly maxNewPerMinute?: number }): { maxNewPerMinute: number } {
   const prev = { ...perSessionDefaults };
@@ -79,15 +84,53 @@ export function setPerSessionDefaults(d: { readonly maxNewPerMinute?: number }):
   return prev;
 }
 
-// How many perSession factories are running right now (factories are synchronous; nesting is allowed).
-let factoryDepth = 0;
+/** What a kind of instance allows the perSession holder that keeps it (see capPerSessionHolder). */
+export interface HolderCaps {
+  /** Most instances kept: the holder's default, and the most it may ask for. */
+  readonly maxEntries: number;
+  /** Most new instances a rolling minute: the holder's default, and the most it may ask for. */
+  readonly maxNewPerMinute: number;
+}
+
+/** One running perSession factory: its holder's own options, and the caps what it built put on that holder. */
+interface FactoryFrame {
+  readonly asked: { readonly maxEntries?: number; readonly maxNewPerMinute?: number };
+  caps?: HolderCaps;
+}
+
+// The perSession factories running right now, innermost last (factories are synchronous; nesting is allowed).
+const frames: FactoryFrame[] = [];
 
 /**
  * Whether code is running inside a perSession() factory. Per-player stores (core/sim.ts: inbox, attacker log,
  * the victim's browser) check it, so they can only be made as part of one player's lab state, never at module level.
  */
 export function insidePerSessionFactory(): boolean {
-  return factoryDepth > 0;
+  return frames.length > 0;
+}
+
+const tighter = (a: HolderCaps | undefined, b: HolderCaps): HolderCaps => (a === undefined ? b : {
+  maxEntries: Math.min(a.maxEntries, b.maxEntries), maxNewPerMinute: Math.min(a.maxNewPerMinute, b.maxNewPerMinute),
+});
+
+/**
+ * For stores whose instances are large (core/sim.ts: a filled simulated world is about a megabyte): called while a
+ * perSession factory builds one, it caps the holder running that factory (the innermost). From then on the holder
+ * keeps at most `caps.maxEntries` instances and creates at most `caps.maxNewPerMinute` a minute, by default and as a
+ * ceiling: a holder whose own options ask for more fails right here, at its first factory run, with an error naming
+ * `what`, and keeps nothing. Throws outside a factory.
+ */
+export function capPerSessionHolder(what: string, caps: HolderCaps): void {
+  const frame = frames.at(-1);
+  if (frame === undefined) throw new Error(`${what}: create it inside a perSession() factory`);
+  const { maxEntries, maxNewPerMinute } = frame.asked;
+  if (maxEntries !== undefined && maxEntries > caps.maxEntries) {
+    throw new Error(`${what}: a perSession holder that keeps it may keep at most ${caps.maxEntries} entries (this one asks for maxEntries: ${maxEntries})`);
+  }
+  if (maxNewPerMinute !== undefined && maxNewPerMinute > caps.maxNewPerMinute) {
+    throw new Error(`${what}: a perSession holder that keeps it may create at most ${caps.maxNewPerMinute} new instances a minute (this one asks for maxNewPerMinute: ${maxNewPerMinute})`);
+  }
+  frame.caps = tighter(frame.caps, caps);
 }
 
 /** Thrown by perSession().for() when new instances are being created too fast. The error handler answers 429. */
@@ -126,6 +169,14 @@ export function perSession<T>(
   const created: number[] = []; // creation times within the last minute
   // Map order = least recently used first (every use re-inserts at the end).
   const entries = new Map<string, { value: T; usedAt: number }>();
+  const asked = { maxEntries: opts.maxEntries, maxNewPerMinute: maxNewOpt };
+  let caps: HolderCaps | undefined; // set by the first factory run that builds a capped instance (capPerSessionHolder)
+  const entryLimit = (): number => (caps === undefined ? maxEntries : Math.min(maxEntries, caps.maxEntries));
+  const rateLimit = (): number => {
+    if (maxNewOpt !== undefined) return maxNewOpt; // never above a cap: capPerSessionHolder refused it
+    const d = perSessionDefaults.maxNewPerMinute;
+    return caps === undefined || d === Infinity ? d : Math.min(d, caps.maxNewPerMinute);
+  };
   const drop = (key: string, value: T) => {
     entries.delete(key);
     try { dispose?.(value); } catch { /* a failing dispose never breaks a request */ }
@@ -162,13 +213,15 @@ export function perSession<T>(
         return hit.value;
       }
       while (created.length > 0 && t - created[0] >= 60_000) created.shift();
-      if (created.length >= (maxNewOpt ?? perSessionDefaults.maxNewPerMinute)) throw new NewSessionLimitError();
+      if (created.length >= rateLimit()) throw new NewSessionLimitError();
       let value: T;
-      factoryDepth++;
-      try { value = factory(level, sessionId); } finally { factoryDepth--; }
+      const frame: FactoryFrame = { asked };
+      frames.push(frame);
+      try { value = factory(level, sessionId); } finally { frames.pop(); }
+      if (frame.caps !== undefined) caps = tighter(caps, frame.caps);
       created.push(t);
       entries.set(key, { value, usedAt: t });
-      if (entries.size > maxEntries) {
+      while (entries.size > entryLimit()) {
         const [oldKey, old] = entries.entries().next().value as [string, { value: T }];
         drop(oldKey, old.value);
       }

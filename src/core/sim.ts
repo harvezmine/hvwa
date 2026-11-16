@@ -12,7 +12,7 @@
 import { Buffer } from 'node:buffer';
 import type { Request, Response, Router } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
-import { field, insidePerSessionFactory, labPath } from './lab.js';
+import { capPerSessionHolder, field, insidePerSessionFactory, labPath } from './lab.js';
 import type { Level } from './levels.js';
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 
@@ -54,12 +54,21 @@ export const SIM_LIMITS = Object.freeze({
   visits: 5,
   /** Longest note a victim action may leave for the panel. */
   noteLength: 500,
+  /**
+   * Most instances a perSession holder that keeps sim state may keep (a filled world is about a megabyte): its
+   * default, and the most it may ask for (capPerSessionHolder in core/lab.ts).
+   */
+  worldsPerLab: 250,
+  /** Most new instances such a holder creates a rolling minute: its default, and the most it may ask for. */
+  newWorldsPerMinute: 30,
 });
 
+/** Sim state is per player and level, and bounded: it caps the holder that keeps it (core/lab.ts). */
 function requireSession(what: string): void {
   if (!insidePerSessionFactory()) {
     throw new Error(`${what}: create it inside a perSession() factory (simulated state belongs to one player at one level)`);
   }
+  capPerSessionHolder(what, { maxEntries: SIM_LIMITS.worldsPerLab, maxNewPerMinute: SIM_LIMITS.newWorldsPerMinute });
 }
 
 const str = (x: unknown): string => (typeof x === 'string' ? x : '');

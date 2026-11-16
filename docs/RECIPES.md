@@ -197,7 +197,7 @@ fully attacker-chosen SQL must also cap result size.
   An optional `dispose(value)` runs when an instance is evicted or expires (to
   release a resource; its errors are swallowed). The bound is per `perSession`
   holder, so the worst case is `maxEntries` x the number of stateful labs: fine
-  for a loopback single-player lab.
+  for a loopback single-player lab. A holder that keeps simulated-victim state is capped lower (section 8).
   **Eviction and TTL expiry are a reset** (counters, locks and secrets are rebuilt), so a lab with limiters must
   survive neither: (a) `idleTtlMs` must exceed the longest lock or lockout the lab uses (the default 26 h is
   longer than the 24 h cap of the Divine escalating locks; never lower it for such a lab); (b) creating
@@ -450,7 +450,11 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 ### All victim state goes through `perSession`
 
 `simWorld()`, `simInbox()`, `attackerLog()` and `world.browser()` throw unless called inside a `perSession` factory, so
-victim state is always per player and level, bounded, and inherits the new-instance limits. Keep the world and the
+victim state is always per player and level, bounded, and inherits the new-instance limits. They also cap the holder
+whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is about a megabyte:
+at most `SIM_LIMITS.worldsPerLab` (250) instances and `SIM_LIMITS.newWorldsPerMinute` (30) new ones a minute, by default
+and as a ceiling. A lab may pass lower `maxEntries` / `maxNewPerMinute`, never higher: asking for more fails at the first
+factory run. Keep the world and the
 victim's browser in the lab's own per-session state, next to whatever else the lab tracks (accounts, tokens, codes),
 so one eviction or one `reset` drops all of it together:
 

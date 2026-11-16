@@ -1,6 +1,6 @@
 // Engine helpers every challenge route uses (src/core/lab.ts).
 import { describe, it, expect, expectTypeOf, onTestFinished, vi } from 'vitest';
-import { setPerSessionDefaults, NewSessionLimitError, perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
+import { setPerSessionDefaults, NewSessionLimitError, capPerSessionHolder, perLevel, perSession, byLevel, tryDb, field, header, fixtureLines, sendLines, DIVINE_DB_ERROR } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 
 // Created at import time, like every lab's holder: before any test (and so possibly before setup effects)
@@ -220,6 +220,38 @@ describe('perSession(factory, opts?)', () => {
     expect(refused).toBe(5000 - 7); // 1 used by the victim, 7 more allowed this minute
     expect(p.for(req('victim'))).toBe(victim);
     expect(victim.locked).toBe(true);
+  });
+
+  it('capPerSessionHolder: what a factory builds can cap the holder running it (default and ceiling)', () => {
+    const caps = { maxEntries: 4, maxNewPerMinute: 6 };
+    expect(() => capPerSessionHolder('thing', caps)).toThrow(/thing: create it inside a perSession\(\) factory/);
+    let t = 0;
+    const capped = perSession((_l, sid) => { capPerSessionHolder('thing', caps); return { sid }; }, { now: () => t });
+    for (let i = 0; i < 10; i++) capped.for(req(`c${i}`)); // the test default (Infinity) lifts the rate for every holder
+    expect(capped.size).toBe(4);
+    const prev = setPerSessionDefaults({ maxNewPerMinute: 120 }); // the engine default: the cap's rate applies
+    onTestFinished(() => { setPerSessionDefaults(prev); });
+    t = 60_000;
+    for (let i = 0; i < 6; i++) capped.for(req(`r${i}`));
+    expect(() => capped.for(req('r6'))).toThrow(NewSessionLimitError);
+    const lower = perSession(() => { capPerSessionHolder('thing', caps); return {}; }, { now: () => 0, maxEntries: 2, maxNewPerMinute: 3 });
+    for (let i = 0; i < 3; i++) lower.for(req(`l${i}`));
+    expect(lower.size).toBe(2);
+    expect(() => lower.for(req('l3'))).toThrow(NewSessionLimitError);
+    // Asking for more than the cap fails at the first factory run, naming the thing and the cap; nothing is kept.
+    const more = perSession(() => { capPerSessionHolder('thing', caps); return {}; }, { maxEntries: 5 });
+    expect(() => more.for(req('m'))).toThrow(/thing: .*at most 4 entries.*maxEntries: 5/);
+    expect(more.size).toBe(0);
+    const faster = perSession(() => { capPerSessionHolder('thing', caps); return {}; }, { maxNewPerMinute: Infinity });
+    expect(() => faster.for(req('f'))).toThrow(/thing: .*at most 6 new .*maxNewPerMinute: Infinity/);
+  });
+
+  it('capPerSessionHolder caps the innermost holder only (nested factories)', () => {
+    const inner = perSession(() => { capPerSessionHolder('thing', { maxEntries: 1, maxNewPerMinute: 1000 }); return {}; });
+    const outer = perSession((_l, sid) => ({ sid, inner: inner.for(req(sid)) }));
+    for (let i = 0; i < 3; i++) outer.for(req(`n${i}`));
+    expect(inner.size).toBe(1);
+    expect(outer.size).toBe(3);
   });
 
   it('rejects bad options and bad requests', () => {
