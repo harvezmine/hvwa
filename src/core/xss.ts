@@ -8,6 +8,7 @@
 //   core/xss/marker.ts   the marker call: markerCall(nonce), markerNonce, markerPattern
 //   core/xss/rules.ts    the sink rules table (event handlers, script types, javascript:/data: URLs, sandbox)
 //   core/xss/oracle.ts   xssOracle (sinks, marker reachability, mXSS round trip), roundTrip, linkSinks
+//   core/xss/preview.ts  previewFrame: the sandboxed iframe the player watches the payload fire in
 //
 // core/xss/ imports only parse5 and the sim's copying clip (tests/xss.spec.ts guards it); it is never reachable from
 // core/sim/, whose no-network guard stays as it was.
@@ -17,3 +18,4 @@ export {
   linkSinks, roundTrip, xssOracle,
   type LinkSink, type Sink, type SinkKind, type SinkTrigger, type XssInsertion, type XssLimit, type XssOracleOptions, type XssVerdict,
 } from './xss/oracle.js';
+export { PREVIEW_CSP, PREVIEW_SANDBOX, previewFrame, type PreviewOptions } from './xss/preview.js';

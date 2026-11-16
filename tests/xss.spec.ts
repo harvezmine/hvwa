@@ -1,12 +1,13 @@
 // The static XSS oracle (src/core/xss/): does attacker HTML create an executable sink that runs the lab's marker?
 // No player JS ever runs here: parse5 builds the tree a browser would, and a rules table decides what would execute.
 import { readFileSync, readdirSync } from 'node:fs';
+import { parseFragment, parse, type DefaultTreeAdapterTypes } from 'parse5';
 import { createRequire } from 'node:module';
 import net from 'node:net';
 import ts from 'typescript';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
-  XSS_LIMITS, linkSinks, markerCall, roundTrip, xssOracle, type Sink, type XssOracleOptions,
+  PREVIEW_CSP, PREVIEW_SANDBOX, XSS_LIMITS, linkSinks, markerCall, previewFrame, roundTrip, xssOracle, type Sink, type XssOracleOptions,
 } from '../src/core/xss.js';
 
 const N = '0123456789abcdef';
@@ -436,6 +437,105 @@ describe('linkSinks: links and resources a mail client or page would request (no
   });
 });
 
+// --- The sandboxed preview: the player watches the payload fire, in a frame that cannot touch the platform ----------
+
+type P5Element = DefaultTreeAdapterTypes.Element;
+const elementsOf = (nodes: readonly DefaultTreeAdapterTypes.ChildNode[]): P5Element[] => nodes.filter((n): n is P5Element => 'tagName' in n);
+const textIn = (el: P5Element): string => el.childNodes.map((c) => ('value' in c ? c.value : '')).join('');
+/** previewFrame's output as a browser parses it: the frame element, its attributes, and its srcdoc document. */
+function frameOf(html: string) {
+  const top = elementsOf(parseFragment(html).childNodes);
+  expect(top.map((e) => e.tagName), html).toEqual(['iframe']);
+  const attrs: Record<string, string> = Object.fromEntries(top[0].attrs.map((a) => [a.name, a.value]));
+  const doc = parse(attrs.srcdoc ?? '');
+  const [root] = elementsOf(doc.childNodes);
+  const [head, body] = elementsOf(root.childNodes);
+  return { attrs, srcdoc: attrs.srcdoc ?? '', head, body };
+}
+
+describe('previewFrame: the payload runs for the player in an opaque origin', () => {
+  it('is one iframe with sandbox="allow-scripts" (never allow-same-origin), no src, no referrer', () => {
+    const out = previewFrame('<p>hello</p>', { marker: M });
+    const { attrs } = frameOf(out);
+    expect(Object.keys(attrs).sort()).toEqual(['class', 'referrerpolicy', 'sandbox', 'srcdoc', 'title']);
+    expect(attrs.sandbox).toBe('allow-scripts');
+    expect(PREVIEW_SANDBOX).toBe('allow-scripts');
+    expect(attrs.referrerpolicy).toBe('no-referrer');
+    expect(out).not.toMatch(/allow-same-origin|allow-top-navigation|allow-popups|allow-forms|allow-modals/);
+  });
+
+  it('carries the fragment byte for byte in its body, after the CSP and the hvwa() shim in its head', () => {
+    const fragment = '<b class="x">Results for <i>a&amp;b</i></b>é <img src=x onerror="hvwa(\'1\')">';
+    const { srcdoc, head, body } = frameOf(previewFrame(fragment, { marker: M }));
+    expect(srcdoc.endsWith(`<body>${fragment}</body></html>`)).toBe(true);
+    expect(elementsOf(head.childNodes).map((e) => e.tagName)).toEqual(['meta', 'meta', 'style', 'script']);
+    const csp = elementsOf(head.childNodes)[1];
+    expect(Object.fromEntries(csp.attrs.map((a) => [a.name, a.value]))).toEqual({ 'http-equiv': 'Content-Security-Policy', content: PREVIEW_CSP });
+    expect(PREVIEW_CSP).toMatch(/default-src 'none'/);
+    expect(PREVIEW_CSP).toMatch(/form-action 'none'/);
+    expect(PREVIEW_CSP).not.toMatch(/connect-src|'self'|http/); // no request leaves the frame, not even to the lab
+    expect(elementsOf(body.childNodes).map((e) => e.tagName)).toEqual(['b', 'img']);
+  });
+
+  it('cannot be broken out of: whatever the fragment, the platform page gets one inert iframe', () => {
+    for (const fragment of [
+      '"><script>alert(1)</script>', "'><script>alert(1)</script>", '</iframe><script>alert(1)</script>', '&quot;><img src=x onerror=alert(1)>',
+      ' onload=alert(1) x="', '<!--', ']]>', '<iframe srcdoc="<script>parent.alert(1)</script>"></iframe>',
+    ]) {
+      const out = previewFrame(fragment);
+      const { srcdoc } = frameOf(out);
+      expect(srcdoc.endsWith(`<body>${fragment}</body></html>`), fragment).toBe(true);
+      expect(out.indexOf('<'), fragment).toBe(0);
+      expect(out.slice(1, -'</iframe>'.length).includes('<'), fragment).toBe(false); // the srcdoc is all escaped
+    }
+  });
+
+  it('the oracle certifies it: payloads that run on a page run only isolated in the preview', () => {
+    for (const payload of [
+      `<script>${M}</script>`, `<img src=x onerror=${M}>`, `<svg onload=${M}>`, `<a href="javascript:${M}">x</a>`,
+      `<iframe srcdoc="<script>${M}</script>"></iframe>`, `<iframe sandbox="allow-scripts allow-same-origin" srcdoc="<script>${M}</script>"></iframe>`,
+    ]) {
+      expect(xssOracle(payload, M).executes, payload).toBe(true);
+      const v = xssOracle(previewFrame(payload, { marker: M }), M);
+      expect(v.executes, payload).toBe(false);
+      expect(v.sinks.filter((x) => x.marker).length, payload).toBeGreaterThan(0);
+      expect(v.sinks.every((x) => x.isolated), payload).toBe(true);
+    }
+  });
+
+  it('defines hvwa() (and alert/confirm/prompt) inside the frame to show a banner, naming the player\'s own marker', () => {
+    const { head } = frameOf(previewFrame('<p>x</p>', { marker: M }));
+    const code = textIn(elementsOf(head.childNodes)[3]);
+    expect(code).toContain('window.hvwa=');
+    expect(code).toContain('window.alert=');
+    expect(code).toContain(JSON.stringify(N));
+    expect(code).toContain('textContent'); // the banner is text, never markup
+    expect(code).not.toMatch(/innerHTML|document\.write|eval|Function\(/);
+    expect(xssOracle(previewFrame('<p>x</p>', { marker: M }), M).sinks.some((x) => x.marker)).toBe(false); // the shim calls no marker
+    expect(() => previewFrame('<p>x</p>', { marker: 'alert(1)' })).toThrow(/marker/);
+  });
+
+  it('a DOM-XSS lab can set location.hash in the frame first; the hash cannot end the shim script', () => {
+    const hash = '#</script><script>alert(1)</script>';
+    const { head, body } = frameOf(previewFrame('<p>x</p>', { hash }));
+    expect(elementsOf(head.childNodes).map((e) => e.tagName)).toEqual(['meta', 'meta', 'style', 'script']);
+    expect(elementsOf(body.childNodes).map((e) => e.tagName)).toEqual(['p']);
+    const code = textIn(elementsOf(head.childNodes)[3]);
+    expect(code).toContain('location.hash=');
+    expect(code).not.toContain('</script');
+  });
+
+  it('escapes its title, and omits a fragment over the oracle\'s size cap (nothing the oracle would not judge)', () => {
+    expect(frameOf(previewFrame('<p>x</p>', { title: '"><b>t' })).attrs.title).toBe('"><b>t');
+    expect(frameOf(previewFrame('<p>x</p>')).attrs.title).toBe('Sandboxed preview');
+    const big = `<img src=x onerror=${M}>`.padEnd(XSS_LIMITS.htmlLength + 1, 'x');
+    const { srcdoc, body } = frameOf(previewFrame(big));
+    expect(srcdoc).not.toContain(M);
+    expect(elementsOf(body.childNodes).map(textIn).join('')).toMatch(/Preview omitted/);
+    expect(previewFrame(undefined as never)).toContain('srcdoc=');
+  });
+});
+
 // --- The no-network guard, extended to core/xss/ ------------------------------------------------------------------
 
 const XSS_DIR = new URL('../src/core/xss/', import.meta.url);
@@ -506,7 +606,7 @@ describe('no player code runs, and core/xss/ reaches no network, file system or 
   });
 
   it('src/core/xss/ imports only parse5, the copying clip and its own files; no dynamic loading, no denied global', () => {
-    expect(XSS_FILES).toEqual(['limits.ts', 'marker.ts', 'oracle.ts', 'rules.ts']);
+    expect(XSS_FILES).toEqual(['limits.ts', 'marker.ts', 'oracle.ts', 'preview.ts', 'rules.ts']);
     for (const file of XSS_FILES) {
       const { runtime, problems } = sourceCheck(readFileSync(new URL(file, XSS_DIR), 'utf8'));
       expect(runtime.filter((m) => !XSS_ALLOWED_IMPORTS.has(m)), file).toEqual([]);
