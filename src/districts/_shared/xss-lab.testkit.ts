@@ -65,6 +65,11 @@ export interface XssLabSpec {
   readonly fragment: (level: Level, payload: string) => string;
   /** One working payload per exploitable level, made from the marker call. */
   readonly payloads: { readonly [L in ExploitLevel]?: (marker: string) => string };
+  /**
+   * Divine sanitizes (drops what it does not allow) instead of escaping: a marker inside a dropped attribute never
+   * reaches the page, so only SOME payloads reach it as text. Default false: every payload reaches it as escaped text.
+   */
+  readonly divineSanitizes?: boolean;
 }
 
 const exploitable = (o: XssLabSpec): ExploitLevel[] => LEVELS.filter((l): l is ExploitLevel => l !== 'divine' && o.challenge.levels.includes(l));
@@ -112,6 +117,7 @@ export function describeXssLab(o: XssLabSpec): void {
     it('divine: the admin sees your marker as text, and your server receives nothing', async () => {
       const { agent, sid } = await freshSession();
       const victim = o.victimOf(sid, 'divine');
+      const reached: boolean[] = [];
       for (const [level, make] of payloadsOf(o)) {
         await o.attack(agent, 'divine', make(victim.marker.call));
         expect(attackerHits((await labPage(agent, o.path, 'divine')).text), `the ${level} payload`).toEqual([]);
@@ -119,8 +125,10 @@ export function describeXssLab(o: XssLabSpec): void {
         expect(verdicts.length, level).toBeGreaterThan(0);
         expect(verdicts.every((v) => !v.fired), level).toBe(true);
         expect(verdicts.every((v) => v.page.limited === undefined), level).toBe(true);
-        expect(verdicts.at(-1)?.page.reachedMarker, `${level}: the marker reached the admin's page as text`).toBe(true);
+        reached.push(verdicts.at(-1)?.page.reachedMarker === true);
+        if (o.divineSanitizes !== true) expect(reached.at(-1), `${level}: the marker reached the admin's page as text`).toBe(true);
       }
+      expect(reached.some(Boolean), "the marker reached the admin's page as text for at least one payload").toBe(true);
     });
 
     it('isolates players and levels: your marker runs nowhere else', async () => {
