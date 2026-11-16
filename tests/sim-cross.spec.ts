@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { perSession } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { Jar, sameSiteSends, sameSiteStores, type SimCookieContext, type SimSameSite } from '../src/core/sim/cookies.js';
-import { bodyFields } from '../src/core/sim/cross.js';
+import { bodyFields, framingOf } from '../src/core/sim/cross.js';
 import {
   ADMIN_MAILBOX, SIM_FORM_BOUNDARY, classifySimUrl, simWorld, type SimFormFields, type SimHandler, type SimRequest, type SimResponse,
   type SimWorld,
@@ -631,6 +631,187 @@ describe('corsFetch: a fetch is not a navigation', () => {
     v.b.corsFetch(API);
     v.b.corsFetch(API, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     expect(v.w.visits.map((x) => [x.outcome, x.hops.length])).toEqual([['page', 1]]);
+  });
+});
+
+// --- frame and clickThrough: clickjacking ------------------------------------------------------------------------
+
+const GRANT = 'http://citadel.test/moderation/grant';
+
+describe('frame: may the citadel page be shown in the attacker\'s frame? (X-Frame-Options, CSP frame-ancestors)', () => {
+  type Headers = Record<string, string | readonly string[]>;
+  // [response headers, framing page URL (default http://attacker.test/), verdict]
+  const ROWS: readonly (readonly [Headers, string | undefined, string])[] = [
+    [{}, undefined, 'allowed'], // no framing header at all (FP-04 Acolyte)
+    [{ 'X-Frame-Options': 'DENY' }, undefined, 'x-frame-options'],
+    [{ 'X-Frame-Options': 'deny' }, undefined, 'x-frame-options'],
+    [{ 'X-Frame-Options': ' DENY ' }, undefined, 'x-frame-options'],
+    [{ 'X-Frame-Options': 'SAMEORIGIN' }, undefined, 'x-frame-options'],
+    [{ 'X-Frame-Options': 'SAMEORIGIN' }, 'http://citadel.attacker.test/', 'x-frame-options'],
+    [{ 'X-Frame-Options': 'ALLOW-FROM http://attacker.test/' }, undefined, 'allowed'], // unsupported: browsers ignore it
+    [{ 'X-Frame-Options': 'ALLOWALL' }, undefined, 'allowed'],
+    [{ 'X-Frame-Options': 'garbage' }, undefined, 'allowed'],
+    [{ 'X-Frame-Options': '' }, undefined, 'allowed'],
+    [{ 'X-Frame-Options': 'DENY, SAMEORIGIN' }, undefined, 'x-frame-options'], // conflicting values refuse
+    [{ 'X-Frame-Options': ['DENY', 'DENY'] }, undefined, 'x-frame-options'],
+    [{ 'X-Frame-Options': 'SAMEORIGIN, ALLOWALL' }, undefined, 'x-frame-options'],
+    [{ 'X-Frame-Options': 'foo, bar' }, undefined, 'allowed'], // several unknown values allow
+    [{ 'Content-Security-Policy': "frame-ancestors 'none'" }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': "FRAME-ANCESTORS 'NONE'" }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': 'frame-ancestors' }, undefined, 'frame-ancestors'], // an empty list matches nothing
+    [{ 'Content-Security-Policy': "frame-ancestors 'self'" }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': 'frame-ancestors *' }, undefined, 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test' }, undefined, 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors attacker.test' }, undefined, 'allowed'], // no scheme: the page's (http)
+    [{ 'Content-Security-Policy': 'frame-ancestors attacker.test' }, 'https://attacker.test/', 'allowed'], // http lets https in
+    [{ 'Content-Security-Policy': 'frame-ancestors https://attacker.test' }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http:' }, undefined, 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors https:' }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': 'frame-ancestors *.attacker.test' }, undefined, 'frame-ancestors'], // not the apex
+    [{ 'Content-Security-Policy': 'frame-ancestors *.attacker.test' }, 'http://x.attacker.test/', 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test:8080' }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test:8080' }, 'http://attacker.test:8080/', 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test:*' }, 'http://attacker.test:8080/', 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test:80' }, undefined, 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test/' }, undefined, 'allowed'],
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test/x' }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': "frame-ancestors 'none' http://attacker.test" }, undefined, 'allowed'], // 'none' counts only alone
+    [{ 'Content-Security-Policy': "frame-ancestors 'unsafe-inline'" }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': "script-src 'self'; frame-ancestors 'none'" }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy': "frame-ancestors *; frame-ancestors 'none'" }, undefined, 'allowed'], // a repeat is ignored
+    [{ 'Content-Security-Policy': ['frame-ancestors *', "frame-ancestors 'self'"] }, undefined, 'frame-ancestors'], // both apply
+    [{ 'Content-Security-Policy': "frame-ancestors *, frame-ancestors 'self'" }, undefined, 'frame-ancestors'], // two policies
+    [{ 'Content-Security-Policy': "default-src 'none'" }, undefined, 'allowed'], // no frame-ancestors: X-Frame-Options decides
+    [{ 'Content-Security-Policy': "default-src 'none'", 'X-Frame-Options': 'DENY' }, undefined, 'x-frame-options'],
+    [{ 'Content-Security-Policy': 'frame-ancestors *', 'X-Frame-Options': 'DENY' }, undefined, 'allowed'], // frame-ancestors wins
+    [{ 'Content-Security-Policy': "frame-ancestors 'none'", 'X-Frame-Options': 'ALLOWALL' }, undefined, 'frame-ancestors'],
+    [{ 'Content-Security-Policy-Report-Only': "frame-ancestors 'none'" }, undefined, 'allowed'], // reports, enforces nothing
+    [{ 'Content-Security-Policy': 'frame-ancestors http://attacker.test', 'X-Frame-Options': 'DENY' }, undefined, 'allowed'],
+  ];
+
+  it.each(ROWS.map((row) => [JSON.stringify(row), row] as const))('%s', (_label, [headers, pageUrl, verdict]) => {
+    const v = victim(() => ({ status: 200, headers, body: 'Approve this moderator request? [Approve]' }));
+    const f = v.b.frame(GRANT, pageUrl === undefined ? {} : { page: { url: pageUrl } });
+    expect(f.reason).toBe(verdict);
+    expect(f.framed).toBe(verdict === 'allowed');
+    expect(v.seen).toHaveLength(1); // the request is sent either way; the page decides whether it is shown
+    if (f.framed) expect(f.page).toMatchObject({ url: GRANT, status: 200 });
+    else expect(f.page).toBeUndefined();
+    expect(Object.isFrozen(f)).toBe(true);
+  });
+
+  it('framingOf: SAMEORIGIN and \'self\' let a same-origin (or https-upgraded) ancestor frame the page', () => {
+    const page = classifySimUrl('http://citadel.test/p');
+    const h = (k: string, val: string) => new Map([[k, [val]]]);
+    expect(framingOf(h('x-frame-options', 'SAMEORIGIN'), page, [classifySimUrl('http://citadel.test/')])).toBe('allowed');
+    expect(framingOf(h('x-frame-options', 'SAMEORIGIN'), page, [classifySimUrl('http://citadel.test/'), classifySimUrl('http://attacker.test/')])).toBe('x-frame-options');
+    expect(framingOf(h('content-security-policy', "frame-ancestors 'self'"), page, [classifySimUrl('http://citadel.test/')])).toBe('allowed');
+    expect(framingOf(h('content-security-policy', "frame-ancestors 'self'"), page, [classifySimUrl('https://citadel.test/')])).toBe('allowed');
+    expect(framingOf(h('content-security-policy', "frame-ancestors 'self'"), classifySimUrl('https://citadel.test/p'), [classifySimUrl('http://citadel.test/')])).toBe('frame-ancestors');
+  });
+
+  it('a <meta> tag in the body sets nothing: only response headers count', () => {
+    const v = victim(() => ({ status: 200, body: '<meta http-equiv="X-Frame-Options" content="DENY"><meta http-equiv="Content-Security-Policy" content="frame-ancestors \'none\'">' }));
+    expect(v.b.frame(GRANT).framed).toBe(true);
+  });
+});
+
+describe('frame: the frame\'s requests', () => {
+  it('a GET navigation of a frame: only SameSite=None cookies (the top-level page is the attacker\'s), no Origin, Sec-Fetch-Dest iframe', () => {
+    const v = victim();
+    v.b.frame(GRANT, { page: { url: 'http://attacker.test/decoy.html', referrerPolicy: 'unsafe-url' } });
+    expect(sentCookies(v.seen[0])).toEqual(['none']);
+    expect(v.seen[0].headers.origin).toBeUndefined();
+    expect(fetchMeta(v.seen[0])).toEqual(['cross-site', 'navigate', 'iframe']);
+    expect(v.seen[0].headers.referer).toBe('http://attacker.test/decoy.html');
+  });
+
+  it('a signed-in admin with a Lax (or Strict) session is signed OUT inside the frame: clickjacking needs SameSite=None', () => {
+    const v = victim((r) => ({ status: 200, body: r.cookies.lax === 'l' || r.cookies.strict === 's' ? 'Signed in' : 'Please sign in' }));
+    const f = v.b.frame(GRANT);
+    expect([f.framed, f.page?.body]).toEqual([true, 'Please sign in']);
+  });
+
+  it('redirects are followed and only the page shown is checked: a framing header on a redirect does not count', () => {
+    const v = victim((r) => (r.path === '/moderation/grant' ? { status: 302, headers: { location: '/moderation/confirm', 'X-Frame-Options': 'DENY' } } : { status: 200 }));
+    const f = v.b.frame(GRANT);
+    expect([f.framed, f.page?.url]).toEqual([true, 'http://citadel.test/moderation/confirm']);
+  });
+
+  it('a shown page that moves on (Refresh) navigates the frame; a page that refuses the frame is not shown, so it never moves on', () => {
+    const moving = victim((r) => (r.path === '/moderation/grant' ? { status: 200, headers: { refresh: '0; url=/moderation/confirm' } } : { status: 200 }));
+    const f = moving.b.frame(GRANT);
+    expect([f.framed, f.page?.url]).toEqual([true, 'http://citadel.test/moderation/confirm']);
+    expect(moving.seen.map((r) => [r.path, sentCookies(r), r.headers['sec-fetch-site'], r.headers.referer])).toEqual([
+      ['/moderation/grant', ['none'], 'cross-site', 'http://attacker.test/'],
+      ['/moderation/confirm', ['none'], 'same-origin', GRANT], // started by the framed citadel page; still cross-site for cookies
+    ]);
+    const refused = victim((r) => (r.path === '/moderation/grant' ? { status: 200, headers: { refresh: '0; url=/moderation/confirm', 'X-Frame-Options': 'DENY' } } : { status: 200 }));
+    const g = refused.b.frame(GRANT);
+    expect([g.framed, g.reason, refused.seen.length]).toEqual([false, 'x-frame-options', 1]);
+  });
+
+  it('a frame of your own server or an unreachable host shows no citadel page (not-loaded); your server logs the request', () => {
+    const v = victim();
+    const own = v.b.frame('http://attacker.test/inner');
+    expect([own.framed, own.reason, own.visit.outcome]).toEqual([false, 'not-loaded', 'attacker']);
+    expect(v.w.attackerLog.entries()[0]).toMatchObject({ method: 'GET', url: 'http://attacker.test/inner', referer: 'http://attacker.test/' });
+    expect(v.b.frame('http://127.0.0.1/').reason).toBe('not-loaded');
+  });
+
+  it('the framing page must be on attacker.test; a sandboxed framing page is not modelled', () => {
+    const v = victim();
+    expect(() => v.b.frame(GRANT, { page: { url: 'http://citadel.test/' } })).toThrow(/attacker page must be on attacker\.test/);
+    expect(() => v.b.frame(GRANT, { page: { sandboxed: true } as never })).toThrow(/sandboxed framing page is not modelled/);
+  });
+});
+
+describe('clickThrough: the admin clicks your decoy over the framed page\'s button', () => {
+  it('submits the framed page\'s form inside the frame: Origin citadel, Sec-Fetch-Site same-origin, but only SameSite=None cookies', () => {
+    const v = victim();
+    const f = v.b.frame('http://citadel.test/moderation/confirm?id=7');
+    const c = v.b.clickThrough(f, '/moderation/grant', { user: 'pilgrim', token: 't1' });
+    expect(c.clicked).toBe(true);
+    expect(c.visit?.outcome).toBe('page');
+    const post = v.seen[1];
+    expect([post.method, post.url, post.rawBody, { ...post.body }]).toEqual(['POST', GRANT, 'user=pilgrim&token=t1', { user: 'pilgrim', token: 't1' }]);
+    expect(sentCookies(post)).toEqual(['none']); // contrast FP-01/02's cross-site form: same verdict for cookies, other headers
+    expect(post.headers.origin).toBe('http://citadel.test');
+    expect(fetchMeta(post)).toEqual(['same-origin', 'navigate', 'iframe']);
+    expect(post.headers.referer).toBe('http://citadel.test/moderation/confirm?id=7'); // the framed page, under its own policy
+    expect(Object.isFrozen(c)).toBe(true);
+  });
+
+  it('the framed page\'s Referrer-Policy governs the click\'s Referer (and Origin); its enctype is the form\'s', () => {
+    const v = victim((r) => ({ status: 200, headers: r.method === 'GET' ? { 'Referrer-Policy': 'no-referrer' } : {} }));
+    const f = v.b.frame('http://citadel.test/moderation/confirm');
+    v.b.clickThrough(f, 'http://citadel.test/moderation/grant', [['user', 'pilgrim']], { contentType: 'text/plain' });
+    expect([v.seen[1].headers.referer, v.seen[1].headers.origin, v.seen[1].headers['content-type'], v.seen[1].rawBody])
+      .toEqual([undefined, 'null', 'text/plain', 'user=pilgrim\r\n']);
+  });
+
+  it('nothing is sent when the frame shows no citadel page: the click lands on your decoy alone', () => {
+    const v = victim(() => ({ status: 200, headers: { 'X-Frame-Options': 'DENY' } }));
+    const f = v.b.frame(GRANT);
+    expect(v.b.clickThrough(f, '/moderation/grant', { user: 'pilgrim' })).toEqual({ clicked: false });
+    expect(v.seen).toHaveLength(1);
+    const own = v.b.frame('http://attacker.test/');
+    expect(v.b.clickThrough(own, '/x', {})).toEqual({ clicked: false });
+  });
+
+  it('the answer to the click is sent even when it may not be framed itself (the action ran; the frame shows nothing)', () => {
+    const v = victim((r) => (r.method === 'POST' ? { status: 200, headers: { 'X-Frame-Options': 'DENY', refresh: '0; url=/after' } } : { status: 200 }));
+    const c = v.b.clickThrough(v.b.frame('http://citadel.test/moderation/confirm'), '/moderation/grant', {});
+    expect([c.clicked, v.seen.map((r) => r.path)]).toEqual([true, ['/moderation/confirm', '/moderation/grant']]);
+  });
+
+  it('only a frame this browser loaded can be clicked', () => {
+    const v = victim();
+    const other = victim();
+    const f = other.b.frame(GRANT);
+    expect(() => v.b.clickThrough(f, '/x', {})).toThrow(/a frame this browser loaded/);
+    expect(() => v.b.clickThrough({ ...f }, '/x', {})).toThrow(/a frame this browser loaded/);
+    expect(() => v.b.clickThrough(null as never, '/x', {})).toThrow(/a frame this browser loaded/);
   });
 });
 

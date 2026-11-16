@@ -11,14 +11,14 @@ import { capPerSessionHolder, field, insidePerSessionFactory, labPath } from './
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 import { sendPage } from './render.js';
 import {
-  REDIRECT_STATUSES, isThenable, type SimBrowser, type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimFetch,
-  type SimFetchOptions, type SimHandler,
-  type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
+  ATTACKER_PAGE_URL, REDIRECT_STATUSES, isThenable, type SimAttackerPage, type SimBrowser, type SimClick, type SimClickOptions,
+  type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimFetch, type SimFetchOptions, type SimFrame, type SimFrameOptions,
+  type SimHandler, type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
 } from './sim/browser.js';
 import type { SimCookieJar } from './sim/cookies.js';
-import type { SimFormFields } from './sim/cross.js';
+import { framingOf, type SimFormFields } from './sim/cross.js';
 import { SIM_LIMITS, clip, str } from './sim/limits.js';
-import { ATTACKER_ORIGIN, CITADEL_ORIGIN, classifySimUrl, labHref, type SimUnreachable } from './sim/url.js';
+import { ATTACKER_ORIGIN, CITADEL_ORIGIN, classifySimUrl, labHref, type SimUnreachable, type SimUrl } from './sim/url.js';
 import { PLAYER_MAILBOX, World, type SimWorld } from './sim/world.js';
 import { XSS_LIMITS } from './xss/limits.js';
 import { markerCall, markerNonce } from './xss/marker.js';
@@ -494,6 +494,9 @@ function cspSandbox(values: readonly string[] | undefined): string | undefined {
 }
 
 /** The fragment of a URL as `location.hash` gives it ('' when there is none or the URL does not parse). A copy. */
+/** Where an attacker page a lab declared is (the browser checks it and throws for one off attacker.test). */
+const pageOrigin = (page: Pick<SimAttackerPage, 'url'> | undefined): SimUrl => classifySimUrl(page?.url ?? ATTACKER_PAGE_URL);
+
 function fragmentOf(url: unknown, base?: string): string {
   if (typeof url !== 'string' || url.length > SIM_LIMITS.urlLength) return '';
   try {
@@ -514,6 +517,8 @@ class XssVictimBrowser implements XssBrowser {
    * request is answered, or when the visit ends. A Refresh hop to attacker.test is logged by the browser first.
    */
   private fired = 0;
+  /** The attacker page around the frame the navigation in progress runs in, if it runs in one. */
+  private framedIn: SimUrl | undefined;
 
   constructor(readonly world: SimWorld, handler: SimHandler, private readonly opts: XssVictimOptions) {
     // A page that fired earlier in this visit steals first: its cookies are stored by now, and the next page has not
@@ -533,11 +538,19 @@ class XssVictimBrowser implements XssBrowser {
   }
 
   crossSiteLink(url: string, opts?: SimCrossSiteOptions): SimVisit {
-    return this.navigation(url, () => this.inner.crossSiteLink(url, opts));
+    return this.navigation(url, () => this.inner.crossSiteLink(url, opts), opts?.page?.sandboxed === true ? pageOrigin(opts.page) : undefined);
   }
 
   crossSitePost(url: string, form: SimFormFields, opts?: SimCrossSitePostOptions): SimVisit {
-    return this.navigation(url, () => this.inner.crossSitePost(url, form, opts));
+    return this.navigation(url, () => this.inner.crossSitePost(url, form, opts), opts?.page?.sandboxed === true ? pageOrigin(opts.page) : undefined);
+  }
+
+  frame(url: string, opts?: SimFrameOptions): SimFrame {
+    return this.navigation(url, () => this.inner.frame(url, opts), pageOrigin(opts?.page));
+  }
+
+  clickThrough(frame: SimFrame, action: string, form: SimFormFields, opts?: SimClickOptions): SimClick {
+    return this.navigation(action, () => this.inner.clickThrough(frame, action, form, opts), classifySimUrl(str(frame?.ancestor)));
   }
 
   /** A fetch is not a navigation: its answer is never rendered, so it is never judged and keeps the page's hash. */
@@ -549,12 +562,18 @@ class XssVictimBrowser implements XssBrowser {
     }
   }
 
-  /** A navigation to `url`: its fragment is the page's location.hash; the pages that fired steal once it ends. */
-  private navigation<T>(url: string, go: () => T): T {
+  /**
+   * A navigation to `url`: its fragment is the page's location.hash; the pages that fired steal once it ends. In a
+   * frame on the attacker's page (`framedIn`: that page), a page is judged only if the frame shows it: the browser
+   * applies the same rule (framingOf) and never shows a page that refuses to be framed.
+   */
+  private navigation<T>(url: string, go: () => T, framedIn?: SimUrl): T {
     this.hash = fragmentOf(url);
+    this.framedIn = framedIn;
     try {
       return go();
     } finally {
+      this.framedIn = undefined;
       this.steal();
     }
   }
@@ -579,7 +598,8 @@ class XssVictimBrowser implements XssBrowser {
       if (own !== '') this.hash = own;
       return res;
     }
-    const syntax = rendersDocument(h);
+    const framed = this.framedIn === undefined || framingOf(h, classifySimUrl(r.url), [this.framedIn]) === 'allowed';
+    const syntax = framed ? rendersDocument(h) : undefined; // a page that refuses the frame is never shown: nothing runs
     if (syntax !== undefined) this.judge(r, res, h, syntax);
     if (h.has('refresh')) this.hash = ''; // the next page is a new navigation
     return res;

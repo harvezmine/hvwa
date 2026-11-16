@@ -6,8 +6,9 @@
 import { SIM_LIMITS, clip, str } from './limits.js';
 import { Jar, parseCookieHeader, type SimCookieContext, type SimCookieJar } from './cookies.js';
 import {
-  bodyFields, corsCheck, encodeForm, fetchHeaders, fetchSiteOf, formEnctype, formEntries, initiatorOf, needsPreflight, originHeader,
-  parsePolicy, redirectTainted, refererFor, type ReferrerPolicy, type SimCorsRead, type SimFormFields, type SimInitiator,
+  bodyFields, corsCheck, encodeForm, fetchHeaders, fetchSiteOf, formEnctype, formEntries, framingOf, initiatorOf, needsPreflight,
+  originHeader, parsePolicy, redirectTainted, refererFor, type ReferrerPolicy, type SimCorsRead, type SimFormFields, type SimFraming,
+  type SimInitiator,
 } from './cross.js';
 import { ATTACKER_ORIGIN, classifySimUrl, type SimSite, type SimUnreachable, type SimUrl } from './url.js';
 import type { SimWorld, World } from './world.js'; // type only: the world imports this module at runtime
@@ -169,6 +170,40 @@ export interface SimFetch {
   readonly body?: string;
 }
 
+/** frame()'s options: the attacker page that holds the `<iframe>` (not a sandboxed one: not modelled). */
+export interface SimFrameOptions {
+  readonly page?: Omit<SimAttackerPage, 'sandboxed'>;
+}
+
+/** A citadel page the attacker's page put in an `<iframe>` (frame()). Frozen; pass it to clickThrough(). */
+export interface SimFrame {
+  /** Whether the citadel page is shown in the frame. */
+  readonly framed: boolean;
+  /**
+   * 'allowed'; or why it is not shown: the page refused to be framed ('x-frame-options', 'frame-ancestors': the
+   * request was still sent), or no citadel page came back ('not-loaded': attacker.test, unreachable, a loop).
+   */
+  readonly reason: SimFraming | 'not-loaded';
+  readonly visit: SimVisit;
+  /** The origin of the attacker page around the frame (its one ancestor). */
+  readonly ancestor: string;
+  /** The citadel page shown in the frame (visit.page), when framed. */
+  readonly page?: SimVisit['page'];
+}
+
+/** clickThrough()'s options: the framed form's enctype (as crossSitePost's contentType; default urlencoded). */
+export interface SimClickOptions {
+  readonly contentType?: string;
+}
+
+/** What clickThrough() did. Frozen. */
+export interface SimClick {
+  /** false when the frame shows no citadel page: the click landed on your decoy alone, and nothing was sent. */
+  readonly clicked: boolean;
+  /** The form's request and what followed, when clicked. */
+  readonly visit?: SimVisit;
+}
+
 /** A victim's browser: a cookie jar plus a request loop. */
 export interface SimBrowser {
   /** The world it lives in (its inbox, its attacker log). */
@@ -198,6 +233,20 @@ export interface SimBrowser {
    * (corsCheck, on every answer, redirects included).
    */
   corsFetch(url: string, opts?: SimFetchOptions): SimFetch;
+  /**
+   * The attacker's page holds `<iframe src=url>`: a navigation of a frame (GET), cross-site for cookies (only
+   * SameSite=None ones go: the top-level page is the attacker's), Sec-Fetch-Dest iframe. Each page the frame would
+   * show is checked against X-Frame-Options and CSP frame-ancestors (framingOf); `framed` says whether it is shown.
+   */
+  frame(url: string, opts?: SimFrameOptions): SimFrame;
+  /**
+   * The victim clicks your decoy, which lies over a button of the framed page: that page's form (`action`, resolved
+   * against the framed page, and its `form` fields: the lab says what the framed page's form holds) is submitted
+   * inside the frame. A POST from the citadel page itself (Origin http://citadel.test, Sec-Fetch-Site same-origin,
+   * the framed page as Referer under its own Referrer-Policy), yet still cross-site for cookies: only SameSite=None
+   * ones go. Nothing is sent when the frame shows no citadel page. Throws for a frame this browser did not load.
+   */
+  clickThrough(frame: SimFrame, action: string, form: SimFormFields, opts?: SimClickOptions): SimClick;
 }
 
 /** Fetch's redirect statuses: the only ones whose Location a browser follows. */
@@ -290,6 +339,13 @@ interface Context {
   readonly shaped: boolean;
   /** Headers the page's fetch() set (fetchHeaders); the body's Content-* ones go when a redirect drops the body. */
   extra?: Record<string, string>;
+  /**
+   * In a frame: the pages around it (the attacker's). Every page the frame would show is checked (framingOf); one
+   * that refuses to be framed ends the visit there, unshown (so its Refresh never runs).
+   */
+  readonly ancestors?: readonly SimUrl[];
+  /** The framing verdict on the last page the frame got (set by the loop). */
+  framing?: SimFraming;
 }
 
 /**
@@ -312,6 +368,8 @@ interface Start {
 
 export class Browser implements SimBrowser {
   private readonly jar: Jar;
+  /** The frames this browser loaded; the shown ones keep what a click inside them needs. Weak: nothing is retained. */
+  private readonly frames = new WeakMap<SimFrame, { readonly shown?: { readonly url: SimUrl; readonly policy: ReferrerPolicy }; readonly top: SimUrl }>();
 
   constructor(readonly world: World, private readonly handler: SimHandler) {
     this.jar = new Jar(() => world.now());
@@ -372,6 +430,39 @@ export class Browser implements SimBrowser {
     if (visit.outcome !== 'page' || visit.page === undefined || read === undefined) return Object.freeze({ sent: true, verdict: 'no-answer', visit });
     const { status } = visit.page;
     return Object.freeze(read === 'readable' ? { sent: true, verdict: read, visit, status, body: visit.page.body } : { sent: true, verdict: read, visit, status });
+  }
+
+  frame(url: string, opts: SimFrameOptions = {}): SimFrame {
+    if ((opts.page as SimAttackerPage | undefined)?.sandboxed !== undefined) throw new Error('SimBrowser.frame: a sandboxed framing page is not modelled');
+    const page = attackerPage(opts.page);
+    const ctx = inFrame(page.init, page.url);
+    let policy: ReferrerPolicy = DEFAULT_POLICY;
+    const visit = this.navigate({ method: 'GET', url, referrer: page.url, policy: page.policy }, ctx, (_req, _res, h, redirect) => {
+      if (!redirect) policy = parsePolicy(h.get('referrer-policy')) ?? DEFAULT_POLICY; // the shown page's own policy
+      return false;
+    });
+    const shownPage = visit.outcome === 'page' ? visit.page : undefined;
+    const framed = shownPage !== undefined && ctx.framing === 'allowed';
+    const frame: SimFrame = Object.freeze({
+      framed, reason: shownPage === undefined ? 'not-loaded' : ctx.framing ?? 'not-loaded', visit, ancestor: page.url.origin,
+      ...(framed ? { page: shownPage } : {}),
+    });
+    this.frames.set(frame, { top: page.url, ...(framed ? { shown: { url: classifySimUrl(shownPage.url), policy } } : {}) });
+    return frame;
+  }
+
+  clickThrough(frame: SimFrame, action: string, form: SimFormFields, opts: SimClickOptions = {}): SimClick {
+    const known = this.frames.get(frame);
+    if (known === undefined) throw new Error('SimBrowser.clickThrough: pass a frame this browser loaded with frame()');
+    if (known.shown === undefined) return Object.freeze({ clicked: false });
+    const { url: from, policy } = known.shown;
+    const resolved = classifySimUrl(str(action), from.url);
+    const { type, raw } = encodeForm(formEntries(form), formEnctype(opts.contentType));
+    const visit = this.navigate(
+      { method: 'POST', url: resolved.site === 'other' ? str(action) : resolved.url, payload: { type, raw, fields: bodyFields(type, raw) }, referrer: from, policy },
+      inFrame(initiatorOf(from), known.top),
+    );
+    return Object.freeze({ clicked: true, visit });
   }
 
   /**
@@ -456,6 +547,10 @@ export class Browser implements SimBrowser {
       const location = REDIRECT_STATUSES.has(res.status) ? h.get('location')?.[0] : undefined;
       const refresh = location === undefined && ctx.mode === 'navigate' ? refreshTarget(h.get('refresh')?.[0]) : undefined;
       const page = (): SimVisit['page'] => ({ url: target.url, status: res.status, body: clip(res.body ?? '', SIM_LIMITS.bodyLength) });
+      if (location === undefined && ctx.ancestors !== undefined) {
+        ctx.framing = framingOf(h, target, ctx.ancestors);
+        if (ctx.framing !== 'allowed') return finish('page', page());
+      }
       if (watch?.(req, res, h, location !== undefined)) return finish('page', page());
       if (location === undefined && refresh === undefined) return finish('page', page());
       if (redirects >= SIM_LIMITS.maxRedirects) return finish('too-many-redirects');
@@ -526,6 +621,11 @@ function attackerPage(p: SimAttackerPage | undefined): Page {
 function fromPage(page: Page): Context {
   return {
     init: page.init, site: 'cross', topLevel: !page.sandboxed, mode: 'navigate', dest: page.sandboxed ? 'iframe' : 'document',
-    credentials: true, shaped: true,
+    credentials: true, shaped: true, ...(page.sandboxed ? { ancestors: [page.url] } : {}),
   };
+}
+
+/** A navigation in a frame on the attacker's page: cross-site for cookies (the top-level page is the attacker's). */
+function inFrame(init: SimInitiator, top: SimUrl): Context {
+  return { init, site: 'cross', topLevel: false, mode: 'navigate', dest: 'iframe', credentials: true, shaped: true, ancestors: [top] };
 }

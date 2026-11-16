@@ -1076,5 +1076,25 @@ describe('no real network', () => {
       releaseSpies(spies);
     }
   });
+
+  it('the cross-site primitives (E1: link, form, fetch, frame, click) touch no network function either', () => {
+    const spies = installNetSpies();
+    try {
+      const w = world();
+      const s = site({
+        '/api': { status: 200, headers: { 'access-control-allow-origin': 'http://attacker.test', 'access-control-allow-credentials': 'true' }, body: 'x' },
+        '/form': { status: 200 }, '/go': redirect('http://attacker.test/landed', 307),
+      });
+      const b = inSession(() => w.browser(s.handler));
+      b.crossSiteLink('http://citadel.test/form');
+      expect(b.crossSitePost('http://citadel.test/go', { a: '1' }).outcome).toBe('attacker');
+      expect(b.corsFetch('http://citadel.test/api', { credentials: 'include' }).verdict).toBe('readable');
+      expect(b.corsFetch('http://example.com/').verdict).toBe('no-answer');
+      expect(b.clickThrough(b.frame('http://citadel.test/form'), '/form', { a: '1' }).clicked).toBe(true);
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      releaseSpies(spies);
+    }
+  });
 });
 

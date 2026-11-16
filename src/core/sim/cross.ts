@@ -295,3 +295,111 @@ export function corsCheck(headers: ReadonlyMap<string, readonly string[]>, origi
   if (!credentials) return 'readable';
   return headers.get('access-control-allow-credentials')?.map(httpTrim).join(', ') === 'true' ? 'readable' : 'no-allow-credentials';
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Framing: may a citadel page be shown inside the attacker's frame? (X-Frame-Options, CSP frame-ancestors)
+
+/** Whether a page is shown in a frame, and if not, which header refused it. */
+export type SimFraming = 'allowed' | 'x-frame-options' | 'frame-ancestors';
+
+/** An origin as CSP matches it: scheme, host, and port (null for the scheme's default). */
+interface OriginParts { readonly scheme: string; readonly host: string; readonly port: number | null }
+const DEFAULT_PORTS: Readonly<Record<string, number>> = { http: 80, https: 443 };
+
+function partsOf(u: SimUrl): OriginParts {
+  const scheme = u.url.startsWith('https:') ? 'https' : 'http';
+  const colon = u.origin.lastIndexOf(':');
+  const port = colon > scheme.length ? Number(u.origin.slice(colon + 1)) : null; // WHATWG drops a default port
+  return { scheme, host: u.host, port };
+}
+
+/** CSP "scheme-part match": the same scheme, or http in the expression letting https in. */
+function schemeMatches(expr: string, scheme: string): boolean {
+  return expr === scheme || (expr === 'http' && scheme === 'https');
+}
+
+/** CSP "port-part match": `*`; the same port; or, for a URL on its default port, the expression naming that port. */
+function portMatches(expr: string | undefined, u: OriginParts): boolean {
+  if (expr === '*') return true;
+  const want = expr === undefined ? null : Number(expr);
+  if (want === u.port) return true;
+  return u.port === null && want === DEFAULT_PORTS[u.scheme];
+}
+
+const SCHEME_SOURCE_RE = /^([a-z][a-z0-9+.-]*):$/;
+const HOST_SOURCE_RE = /^(?:([a-z][a-z0-9+.-]*):\/\/)?(\*|(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*)(?::(\*|[0-9]+))?(\/.*)?$/;
+
+/**
+ * Whether one frame-ancestors source expression matches an ancestor's origin (CSP3 "does url match expression",
+ * for an origin): `*` (any http or https ancestor); `'self'` (the framed page's own origin, or its https upgrade); a
+ * scheme (`https:`); a host source `[scheme://]host[:port][/path]` where `*.attacker.test` matches the subdomains (not
+ * attacker.test itself), a missing scheme means the framed page's (http also lets https in), a missing port the
+ * default one, and a path other than `/` matches no origin. Any other keyword (`'none'` among others, nonces...)
+ * matches nothing.
+ */
+function expressionMatches(raw: string, a: OriginParts, framed: OriginParts): boolean {
+  const e = raw.toLowerCase();
+  if (e === '*') return a.scheme === 'http' || a.scheme === 'https';
+  if (e === "'self'") {
+    if (a.scheme === framed.scheme && a.host === framed.host && a.port === framed.port) return true;
+    const defaults = (a.port === null || a.port === DEFAULT_PORTS[a.scheme]) && (framed.port === null || framed.port === DEFAULT_PORTS[framed.scheme]);
+    return a.host === framed.host && (a.port === framed.port || defaults) && (a.scheme === 'https' || (framed.scheme === 'http' && a.scheme === 'http'));
+  }
+  if (e.startsWith("'")) return false;
+  const schemeOnly = SCHEME_SOURCE_RE.exec(e);
+  if (schemeOnly !== null) return schemeMatches(schemeOnly[1], a.scheme);
+  const m = HOST_SOURCE_RE.exec(e);
+  if (m === null) return false;
+  const [, scheme, host, port, path] = m;
+  if (!schemeMatches(scheme ?? framed.scheme, a.scheme)) return false;
+  if (host !== '*' && !(host.startsWith('*.') ? a.host.endsWith(host.slice(1)) : a.host === host)) return false;
+  if (!portMatches(port, a)) return false;
+  return path === undefined || path === '/';
+}
+
+/** The frame-ancestors source lists of every enforced CSP (several headers, or comma-separated policies, each apply). */
+function frameAncestorsLists(values: readonly string[] | undefined): string[][] {
+  const lists: string[][] = [];
+  for (const policy of (values ?? []).join(',').split(',')) {
+    const seen = new Set<string>();
+    for (const directive of policy.split(';')) {
+      const tokens = directive.split(/[\t\n\f\r ]/).filter((t) => t !== '');
+      if (tokens.length === 0) continue;
+      const name = tokens[0].toLowerCase();
+      if (seen.has(name)) continue; // a repeated directive is ignored
+      seen.add(name);
+      if (name === 'frame-ancestors') lists.push(tokens.slice(1));
+    }
+  }
+  return lists;
+}
+
+/**
+ * Whether a page whose response has `headers` (lower-case names, lists of values) may be shown in a frame whose
+ * ancestors (the attacker's page, outermost last) have the given origins, as browsers decide (HTML "check a
+ * navigation response's adherence to its embedder policy" + CSP3 frame-ancestors). Response headers only: a `<meta>`
+ * tag sets neither (browsers ignore X-Frame-Options and frame-ancestors in meta), and Report-Only enforces nothing.
+ * - An enforced CSP with a frame-ancestors directive decides, and X-Frame-Options is then ignored: every ancestor
+ *   must match a source of every such policy (`'none'` alone, or an empty list, matches none).
+ * - Otherwise X-Frame-Options: `DENY` refuses; `SAMEORIGIN` refuses unless every ancestor is the page's origin;
+ *   values are case-insensitive, combined across headers by commas; several different values refuse if any is
+ *   deny, sameorigin or allowall, and allow otherwise; anything else (`ALLOW-FROM ...`, which browsers no longer
+ *   support, garbage, empty) allows.
+ */
+export function framingOf(headers: ReadonlyMap<string, readonly string[]>, page: SimUrl, ancestors: readonly SimUrl[]): SimFraming {
+  const framed = partsOf(page);
+  const lists = frameAncestorsLists(headers.get('content-security-policy'));
+  if (lists.length > 0) {
+    // `'none'` is a keyword, which matches no ancestor: alone (or with an empty list) nothing may frame the page.
+    const ok = lists.every((list) => ancestors.every((anc) => list.some((expr) => expressionMatches(expr, partsOf(anc), framed))));
+    return ok ? 'allowed' : 'frame-ancestors';
+  }
+  const xfo = headers.get('x-frame-options');
+  if (xfo === undefined) return 'allowed';
+  const values = new Set(xfo.join(',').split(',').map((v) => httpTrim(v).toLowerCase()));
+  if (values.size > 1) return values.has('deny') || values.has('sameorigin') || values.has('allowall') ? 'x-frame-options' : 'allowed';
+  const [only] = values;
+  if (only === 'deny') return 'x-frame-options';
+  if (only === 'sameorigin') return ancestors.every((anc) => anc.origin === page.origin) ? 'allowed' : 'x-frame-options';
+  return 'allowed';
+}

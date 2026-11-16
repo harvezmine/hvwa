@@ -223,6 +223,32 @@ describe('xssBrowser: the admin views a page; the oracle decides whether the pay
     expect(l.admin.verdicts).toEqual([]);
   });
 
+  it('a framed page runs only if the frame shows it: X-Frame-Options or frame-ancestors keep a payload from firing (E1)', () => {
+    const l = lab((m) => ({
+      '/open': page(`<img src=x onerror=${m}>`),
+      '/deny': page(`<img src=x onerror=${m}>`, { 'X-Frame-Options': 'DENY' }),
+      '/none': page(`<img src=x onerror=${m}>`, { 'Content-Security-Policy': "frame-ancestors 'none'" }),
+      '/form': (r) => page(r.method === 'POST' ? `<svg onload=${m}>` : '<form>'),
+    }));
+    expect(l.admin.frame('http://citadel.test/deny').framed).toBe(false);
+    expect(l.admin.frame('http://citadel.test/none').framed).toBe(false);
+    expect(steals(l)).toEqual([]);
+    expect(l.admin.frame('http://citadel.test/open').framed).toBe(true);
+    expect(steals(l)).toEqual([STOLEN]);
+    const f = l.admin.frame('http://citadel.test/form');
+    l.admin.clickThrough(f, '/form', { a: '1' }); // the click's answer is shown in the same frame, so it is judged too
+    expect(steals(l)).toEqual([STOLEN, STOLEN]);
+    expect(l.admin.verdicts.map((v) => v.url)).toEqual(['http://citadel.test/open', 'http://citadel.test/form', 'http://citadel.test/form']);
+  });
+
+  it('a sandboxed frame\'s navigation is framed on the attacker\'s page: a page that refuses frames never runs there (E1)', () => {
+    const l = lab((m) => ({ '/deny': (r) => page(r.method === 'POST' ? `<svg onload=${m}>` : '', { 'X-Frame-Options': 'DENY' }) }));
+    l.admin.crossSitePost('http://citadel.test/deny', {}, { page: { sandboxed: true } });
+    expect(steals(l)).toEqual([]);
+    l.admin.crossSitePost('http://citadel.test/deny', {}); // the top-level window: no frame to refuse
+    expect(steals(l)).toEqual([STOLEN]);
+  });
+
   it('refuses bad options when the lab is built', () => {
     const build = (opts: Partial<XssVictimOptions>) => () => perSession(() => xssBrowser(simWorld(), () => page(''), { marker: markerCall('0123456789abcdef'), canary: 'x', ...opts }))
       .for({ sessionId: `bad-${++n}`, level: 'acolyte' });
