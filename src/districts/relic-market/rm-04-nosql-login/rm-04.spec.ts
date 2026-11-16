@@ -121,6 +121,7 @@ describe('RM-04 NoSQL injection login', () => {
     // Past the parser's depth limit the engine itself refuses the body (a 4xx page, never a 5xx), and nothing signs in.
     for (const level of LEVELS) {
       const res = await form(agent, level, `username=relic_admin&password${'[a]'.repeat(60)}=x`);
+      expect(res.status, level).toBeGreaterThanOrEqual(400); // refused by the engine's parser: a 4xx, never a 5xx
       expect(res.status, level).toBeLessThan(500);
       expect(res.text, level).not.toMatch(FLAG_RE);
     }
