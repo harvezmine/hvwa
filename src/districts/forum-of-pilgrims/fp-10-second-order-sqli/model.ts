@@ -14,9 +14,13 @@ export const MAX_NAME = 64;
 /** At most this many rows of a result are shown, and at most this many columns of a row (rule (g): cap what is read). */
 export const MAX_ROWS = 20;
 export const MAX_COLUMNS = 8;
-/** The tables stay small however many names a player registers: members and activity are trimmed after each registration. */
-const MEMBER_CAP = 50;
-const ACTIVITY_CAP = 100;
+/**
+ * The tables stay small however many names a player registers: members and activity are trimmed after each registration.
+ * The caps are also a CPU bound (RECIPES section 4, "CPU"): a 61-character name can self-join activity four times, and
+ * 106 rows made that one query take 5-13 s of blocked event loop; at 36 rows it takes about 0.2 s.
+ */
+export const MEMBER_CAP = 30;
+export const ACTIVITY_CAP = 30;
 /** The seeded members (ids 1..3) and their seeded activity rows are never trimmed. */
 const SEEDED_MEMBERS = 3;
 const SEEDED_ACTIVITY = 6;
@@ -40,18 +44,26 @@ CREATE TABLE vault (id INTEGER PRIMARY KEY, label TEXT NOT NULL, secret TEXT NOT
 `;
 
 /** One player's lab at one level: the database, the vault's canary, and who they registered as (a member id). */
-export interface LabState { readonly db: ChallengeDb; readonly canary: string; current: number | undefined }
+export interface LabState {
+  /** Built on first use (a page that only shows the form never builds it), as GK-06 builds its database. */
+  readonly db: ChallengeDb;
+  readonly canary: string;
+  current: number | undefined;
+  /** Test seam: whether the database exists yet. */
+  readonly built: () => boolean;
+}
 
 /**
  * Per player AND per level: the registered names and the vault are mutated by play, and a canary read at one level must
- * not open another. Each state is a small in-memory SQLite database (about 140 KiB of process memory with the tables
- * filled to their caps, measured as RSS growth over 300 of them), so 300 entries are about 42 MB, where the default
- * 5000 would be about 700 MB against the container's 512 MB. Eviction is a reset (register again): nothing here is a
+ * not open another. Each state is a small in-memory SQLite database (about 117 KiB of process memory once built, with the
+ * tables filled to their caps, measured as RSS growth over 300 of them; and it is built only on first use), so 300 entries
+ * are about 35 MB, where the default 5000 would be about 585 MB against the container's 512 MB. Eviction is a reset (register again): nothing here is a
  * limiter.
  */
 const labs = perSession((): LabState => {
   const canary = randomBytes(16).toString('hex');
-  const db = challengeDb(SCHEMA, (raw) => {
+  let db: ChallengeDb | undefined;
+  const build = (): ChallengeDb => challengeDb(SCHEMA, (raw) => {
     const member = raw.prepare('INSERT INTO members (username) VALUES (?)');
     for (const name of [ADMIN_NAME, PLAYER.username, ARCHIVIST]) member.run(name);
     const act = raw.prepare('INSERT INTO activity (member, action, at) VALUES (?, ?, ?)');
@@ -63,11 +75,19 @@ const labs = perSession((): LabState => {
     act.run(ARCHIVIST, 'edited a post', 6);
     raw.prepare('INSERT INTO vault (label, secret) VALUES (?, ?)').run('treasury seal', canary);
   });
-  return { db, canary, current: undefined };
+  return { get db(): ChallengeDb { return (db ??= build()); }, canary, current: undefined, built: () => db !== undefined };
 }, { maxEntries: 300 });
 
 export const labFor = (req: { sessionId: string; level: Level }): LabState => labs.for(req);
 /** Test seam: the vault's canary of session `sessionId` at `level`. */
+/** Test seam: whether this lab's database has been built yet. */
+export const dbBuilt = (sessionId: string, level: Level): boolean => labs.for({ sessionId, level }).built();
+/** Test seam: how many rows the two bounded tables hold now. */
+export function tableSizes(sessionId: string, level: Level): { members: number; activity: number } {
+  const { db } = labs.for({ sessionId, level });
+  const n = (t: string): number => (db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n;
+  return { members: n('members'), activity: n('activity') };
+}
 export const canaryFor = (sessionId: string, level: Level): string => labs.for({ sessionId, level }).canary;
 /**
  * Test seam: make `username` this player's stored name WITHOUT registration's checks (what a name that got past a

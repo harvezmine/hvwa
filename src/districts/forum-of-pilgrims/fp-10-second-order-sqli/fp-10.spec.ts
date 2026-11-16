@@ -7,7 +7,9 @@ import {
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
 import { FP10 } from './challenge.js'; // registers FP-10 before createApp() inside freshSession
-import { canaryFor, forceName } from './model.js';
+import { ACTIVITY_CAP, MEMBER_CAP, canaryFor, dbBuilt, forceName, tableSizes } from './model.js';
+import * as divine from './levels/divine.js';
+import { challengeDb } from '../../../core/challenge-db.js';
 
 const LAB = '/d/forum-of-pilgrims/second-order-sqli';
 type Script = (agent: Agent, level: Level) => Promise<request.Response>;
@@ -219,5 +221,53 @@ describe('FP-10 specifics', () => {
     // the first names fell out of the bounded table, so they are free again; the seeded members never do
     expect((await register(agent, 'acolyte', 'flood_0')).text).toContain('Registered as flood_0.');
     expect((await register(agent, 'acolyte', 'pilgrim')).text).toContain('That name is taken.');
+  });
+});
+
+describe('FP-10 bounded state (the cross-join CPU gap)', () => {
+  it('registrations are trimmed to small caps, so a self-join of the tables stays small', async () => {
+    expect(MEMBER_CAP).toBeLessThanOrEqual(30);
+    expect(ACTIVITY_CAP).toBeLessThanOrEqual(30);
+    const { agent, sid } = await freshSession();
+    for (let i = 0; i < 120; i++) await register(agent, 'acolyte', `flood_${i}`);
+    const sizes = tableSizes(sid, 'acolyte');
+    expect(sizes.members).toBeLessThanOrEqual(3 + MEMBER_CAP); // the 3 seeded members are never trimmed
+    expect(sizes.activity).toBeLessThanOrEqual(6 + ACTIVITY_CAP);
+  });
+
+  it('the worst name that fits (a 4-way self-join of activity) answers promptly at the caps', async () => {
+    const { agent } = await freshSession();
+    for (let i = 0; i < 120; i++) await register(agent, 'acolyte', `flood_${i}`);
+    const name = "x'UNION SELECT 1,2 FROM activity,activity,activity,activity--";
+    expect(name.length).toBeLessThanOrEqual(64);
+    await register(agent, 'acolyte', name);
+    const t = performance.now();
+    const res = await activity(agent, 'acolyte');
+    expect(res.status).toBe(200);
+    expect(performance.now() - t).toBeLessThan(3000); // 12.7 s at the old caps (100 activity rows); well under a second now
+  });
+
+  it('the database is built on first use: a page that only shows the form never builds it', async () => {
+    const { agent, sid } = await freshSession();
+    await agent.get(`${LAB}?level=divine`);
+    expect(dbBuilt(sid, 'divine')).toBe(false);
+    await agent.get(`${LAB}/activity?level=divine`); // not registered: still nothing to read
+    expect(dbBuilt(sid, 'divine')).toBe(false);
+    await register(agent, 'divine', 'river_pilgrim');
+    expect(dbBuilt(sid, 'divine')).toBe(true);
+    expect(tableSizes(sid, 'divine').members).toBe(4);
+  });
+});
+
+describe('divine.register (the INSERT is parameterized at every level)', () => {
+  const fresh = () => challengeDb('CREATE TABLE members (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL); CREATE TABLE activity (id INTEGER PRIMARY KEY, member TEXT NOT NULL, action TEXT NOT NULL, at INTEGER NOT NULL)');
+  it('stores a quote-laden name verbatim, and refuses a duplicate', () => {
+    const db = fresh();
+    const id = divine.register(db, "o'brien'); DROP TABLE members;--", 5);
+    expect(id).toBeTypeOf('number');
+    expect(db.prepare('SELECT username FROM members').all()).toEqual([{ username: "o'brien'); DROP TABLE members;--" }]);
+    expect(db.prepare('SELECT member, action, at FROM activity').all()).toEqual([{ member: "o'brien'); DROP TABLE members;--", action: 'registered', at: 5 }]);
+    expect(divine.register(db, "o'brien'); DROP TABLE members;--", 6)).toBeUndefined();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM activity').get()).toEqual({ n: 1 });
   });
 });
