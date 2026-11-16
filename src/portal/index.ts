@@ -90,7 +90,7 @@ export function portalRouter(db: DatabaseSync): Router {
       .sort((a, b) => a[0].localeCompare(b[0]))
       // By challenge id (numeric-aware), so registration order never shows.
       .map(([id, challenges]) => ({ id, challenges: [...challenges].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })) }));
-    await sendPage(res, view('index'), { title: res.locals.t('app.title'), districts });
+    await sendPage(res, view('index'), { pageTitle: res.locals.t('app.title'), districts });
   });
 
   // Per-challenge player page. The id only ever selects a registry entry.
@@ -110,7 +110,7 @@ export function portalRouter(db: DatabaseSync): Router {
       .map((h) => ({ id: h.id, cost: h.cost, unlocked: unlocked.has(h.id), text: h.text[req.lang] }));
     const sources = LEVELS.filter((l) => c.levels.includes(l) && levelSource(c, l) !== undefined);
     await sendPage(res, view('challenge'), {
-      title: c.title[req.lang], c, levels, hints, sources, hasDiff: diffPair(c) !== undefined,
+      pageTitle: c.title[req.lang], c, levels, hints, sources, hasDiff: diffPair(c) !== undefined,
       openLabHref: challengePath(c), flash: flashFrom(req.query, best),
       flashHtml: (f: Flash) => flashHtml(f, res.locals.t),
     });
@@ -159,7 +159,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const src = c && isLevel(level) ? levelSource(c, level) : undefined;
     if (!c || !isLevel(level) || src === undefined) { next(); return; }
     await sendPage(res, view('source'), {
-      title: `${c.id} — ${res.locals.t(`level.${level}`)}`, c, srcLevel: level, src, diff: undefined,
+      pageTitle: `${c.id} — ${res.locals.t(`level.${level}`)}`, c, srcLevel: level, src, diff: undefined,
     });
   });
 
@@ -168,7 +168,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const pair = c ? diffPair(c) : undefined;
     if (!c || !pair) { next(); return; }
     await sendPage(res, view('source'), {
-      title: `${c.id} — ${res.locals.t('challenge.diff_title')}`, c, srcLevel: undefined, src: undefined,
+      pageTitle: `${c.id} — ${res.locals.t('challenge.diff_title')}`, c, srcLevel: undefined, src: undefined,
       diff: diffView(pair.vuln, pair.secure, req.lang, pair.level),
     });
   });
@@ -176,7 +176,7 @@ export function portalRouter(db: DatabaseSync): Router {
   r.get('/scoreboard', async (req, res) => {
     const sid = req.sessionId;
     await sendPage(res, view('scoreboard'), {
-      title: res.locals.t('scoreboard.title'),
+      pageTitle: res.locals.t('scoreboard.title'),
       score: scoreFor(db, sid),
       solved: progress(db, sid).solved,
     });

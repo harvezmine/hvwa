@@ -214,7 +214,9 @@ For a shape with a shell, a lab's `challenge.ts` shrinks to metadata, the shell 
 **(a) Render only with `page()` / `sendPage()`** from `core/render.ts`, never
 `res.render()` or a two-argument `ejs.renderFile` with request data (EJS option
 injection would reach the host process). View data may not use the reserved
-keys: `escapeFn include rethrow __append __output locals body t lang challenge level labBar labPath simPanel`.
+keys: `escapeFn include rethrow __append __output locals body t lang challenge level labBar labPath simPanel title`. `title` is reserved because the
+layout's `<title>` was once clobbered by a lab view's own `title` (use `heading`); the layout reads the platform-only
+`pageTitle` (the portal sets it), else `labBar.pageTitle`, else the app name.
 
 **(b) The vulnerability lives only in the challenge's own surface**: its level
 files, its `challengeDb`, its simulated sandbox. Never in shared platform code.
@@ -370,7 +372,8 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   values; platform strings go in `core/i18n.ts`.
 - **The lab bar is automatic.** The layout shows the id, title, summary, served
   level, a level switcher and a link back to `/c/<id>` on every challenge route,
-  and defaults `<title>` to `<id> — <title>`. Do not repeat these in the view.
+  and sets `<title>` to `<id> — <title>`. Do not repeat these in the view. A view cannot pass `title`: it is a
+  reserved key (sendPage throws), so the platform owns the document `<title>`; name a heading `heading`.
 - **Lab views** (see `gk-01-sqli-login/views/login.ejs`): wrap the app in
   `<section class="lab">`; show messages in `<p class="lab-message lab-success|lab-error">`;
   tell the player their own account if the lab has one; use text inputs so

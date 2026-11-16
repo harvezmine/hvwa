@@ -479,6 +479,21 @@ describe('GET /c/:id/diff', () => {
     expect(html).not.toContain('TEMPLAR_MARKER');
     expect(html).not.toContain('INQ_UNDECLARED');
   });
+  it('every portal page keeps its exact <title> (front, challenge, source, diff, scoreboard), in both languages', async () => {
+    const { agent } = await fresh();
+    const expected: Record<string, [string, string]> = {
+      '/': ['HVWA — Holy Vulnerable Web App', 'HVWA — Kota Suci yang Rentan'],
+      '/c/CP-01': ['Page Title', 'Judul Uji'],
+      '/c/CP-01/source/acolyte': ['CP-01 — Acolyte', 'CP-01 — Acolyte'],
+      '/c/CP-01/diff': ['CP-01 — diff', 'CP-01 — perbandingan'],
+      '/scoreboard': ['Scoreboard', 'Papan Skor'],
+    };
+    for (const [p, [en, id]] of Object.entries(expected)) {
+      for (const [lang, want] of [['en', en], ['id', id]] as const) {
+        expect(/<title>([\s\S]*?)<\/title>/.exec((await agent.get(`${p}?lang=${lang}`)).text)?.[1], `${p} ${lang}`).toBe(want);
+      }
+    }
+  });
   it('the diff page title is i18n-ed', async () => {
     const { agent } = await fresh();
     const title = /<title>([\s\S]*?)<\/title>/.exec((await agent.get('/c/CP-01/diff?lang=id')).text)![1];
