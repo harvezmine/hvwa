@@ -100,6 +100,8 @@ export interface HolderCaps {
 interface FactoryFrame {
   readonly asked: { readonly maxNewPerMinute?: number };
   caps?: HolderCaps;
+  /** What set the caps (for errors), e.g. 'simWorld'. */
+  what?: string;
 }
 
 // The process-wide budget of capped holders: every instance they keep, least recently used first, each with the
@@ -136,9 +138,25 @@ const tighter = (a: HolderCaps | undefined, b: HolderCaps): HolderCaps => (a ===
   maxNewPerMinute: Math.min(a.maxNewPerMinute, b.maxNewPerMinute), budget: Math.min(a.budget, b.budget),
 });
 
+/** Cap the holder of EVERY running factory: each one keeps (directly or through a nested holder) a capped instance. */
+function capFrames(what: string, caps: HolderCaps): void {
+  for (const frame of frames) {
+    const { maxNewPerMinute } = frame.asked;
+    if (maxNewPerMinute !== undefined && maxNewPerMinute > caps.maxNewPerMinute) {
+      throw new Error(`${what}: a perSession holder that keeps it may create at most ${caps.maxNewPerMinute} new instances a minute (this one asks for maxNewPerMinute: ${maxNewPerMinute})`);
+    }
+  }
+  for (const frame of frames) {
+    frame.caps = tighter(frame.caps, caps);
+    frame.what ??= what;
+  }
+}
+
 /**
  * For stores whose instances are large (core/sim/world.ts: a filled simulated world is up to about a megabyte):
- * called while a perSession factory builds one, it caps the holder running that factory (the innermost).
+ * called while a perSession factory builds one, it caps the holder running that factory, and every holder whose
+ * factory is running around it (an outer holder that keeps the instance through a nested holder keeps it alive too).
+ * A capped holder used inside another holder's factory later, even for an instance it already has, caps that one too.
  *
  * - The holder joins ONE process-wide budget shared by every capped holder (`caps.budget` instances in all, every
  *   lab and level together): creating an instance at the budget evicts the least recently used capped instance,
@@ -150,13 +168,8 @@ const tighter = (a: HolderCaps | undefined, b: HolderCaps): HolderCaps => (a ===
  * Throws outside a factory.
  */
 export function capPerSessionHolder(what: string, caps: HolderCaps): void {
-  const frame = frames.at(-1);
-  if (frame === undefined) throw new Error(`${what}: create it inside a perSession() factory`);
-  const { maxNewPerMinute } = frame.asked;
-  if (maxNewPerMinute !== undefined && maxNewPerMinute > caps.maxNewPerMinute) {
-    throw new Error(`${what}: a perSession holder that keeps it may create at most ${caps.maxNewPerMinute} new instances a minute (this one asks for maxNewPerMinute: ${maxNewPerMinute})`);
-  }
-  frame.caps = tighter(frame.caps, caps);
+  if (frames.length === 0) throw new Error(`${what}: create it inside a perSession() factory`);
+  capFrames(what, caps);
 }
 
 /** Thrown by perSession().for() when new instances are being created too fast. The error handler answers 429. */
@@ -198,6 +211,7 @@ export function perSession<T>(
   const entries = new Map<string, Entry>();
   const asked = { maxNewPerMinute: maxNewOpt };
   let caps: HolderCaps | undefined; // set by the first factory run that builds a capped instance (capPerSessionHolder)
+  let capsWhat = ''; // what set them (for errors)
   const rateLimit = (): number => {
     if (maxNewOpt !== undefined) return maxNewOpt; // never above a cap: capPerSessionHolder refused it
     const d = perSessionDefaults.maxNewPerMinute;
@@ -239,6 +253,7 @@ export function perSession<T>(
         entries.set(key, hit);
         const evict = cappedEntries.get(hit);
         if (evict !== undefined) { cappedEntries.delete(hit); cappedEntries.set(hit, evict); } // the newest in the budget too
+        if (caps !== undefined && frames.length > 0) capFrames(capsWhat, caps); // another holder's factory keeps it
         return hit.value;
       }
       while (created.length > 0 && t - created[0] >= 60_000) created.shift();
@@ -249,8 +264,10 @@ export function perSession<T>(
       try { value = factory(level, sessionId); } finally { frames.pop(); }
       if (frame.caps !== undefined) {
         caps = tighter(caps, frame.caps);
+        capsWhat ||= frame.what ?? '';
         declaredBudget = Math.min(declaredBudget, frame.caps.budget);
       }
+      if (caps !== undefined && frames.length > 0) capFrames(capsWhat, caps); // another holder's factory keeps it
       created.push(t);
       const e: Entry = { value, usedAt: t };
       if (caps !== undefined) {

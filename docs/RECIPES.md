@@ -469,8 +469,9 @@ victim state is always per player and level, bounded, and inherits the new-insta
 whose factory creates them (`capPerSessionHolder` in `core/lab.ts`), because a filled world is up to about a megabyte
 and the container has 512 MB:
 
-- **One budget for the whole process.** Every holder that keeps sim state, in every lab and at every level, shares
-  `SIM_LIMITS.worldsTotal` (150) instances in all (about 100-170 MB at worst). Creating one at the budget evicts the
+- **One budget for the whole process.** Every holder that keeps sim state (directly, or through a nested holder whose
+  instance it keeps), in every lab and at every level, shares `SIM_LIMITS.worldsTotal` (150) instances in all (about
+  100-170 MB at worst). Creating one at the budget evicts the
   least recently used of them, whichever lab it belongs to; the new one is never refused. Adding a victim-driven lab
   does not raise the bound. A lab's own `maxEntries` still applies within it.
 - **Eviction is a reset** of that player's instance at that level (section 4), and a shared budget turns over in

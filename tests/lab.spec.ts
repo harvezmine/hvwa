@@ -275,14 +275,26 @@ describe('perSession(factory, opts?)', () => {
     expect(a.size + b.size).toBe(5);
   });
 
-  it('capPerSessionHolder caps the innermost holder only (nested factories)', () => {
+  it('a holder that keeps a capped instance through a nested holder is capped too (every frame on the stack)', () => {
     const prev = setCappedBudget(2);
     onTestFinished(() => { setCappedBudget(prev); });
     const inner = perSession(() => { capPerSessionHolder('thing', { maxNewPerMinute: 1000, budget: 10_000 }); return {}; });
+    // The outer entries keep the inner instances alive, so they count toward the budget as well.
     const outer = perSession((_l, sid) => ({ sid, inner: inner.for(req(sid)) }));
     for (let i = 0; i < 3; i++) outer.for(req(`n${i}`));
-    expect(inner.size).toBe(2);
-    expect(outer.size).toBe(3);
+    expect(inner.size + outer.size).toBe(2);
+    expect(outer.size).toBe(1);
+    // Also when the outer factory only USES an existing capped instance (a hit, no sim store built).
+    inner.for(req('shared'));
+    const viaHit = perSession((_l, sid) => ({ sid, shared: inner.for(req('shared')) }));
+    for (let i = 0; i < 3; i++) viaHit.for(req(`h${i}`));
+    expect(viaHit.size + inner.size).toBe(2);
+    // The rate ceiling applies to the outer holder too, failing fast; nothing is kept.
+    const fastOuter = perSession((_l, sid) => ({ inner: inner.for(req(`f-${sid}`)) }), { maxNewPerMinute: Infinity });
+    expect(() => fastOuter.for(req('x'))).toThrow(/thing: .*at most 1000 new .*maxNewPerMinute: Infinity/);
+    expect(fastOuter.size).toBe(0);
+    const fastViaHit = perSession(() => ({ shared: inner.for(req('shared')) }), { maxNewPerMinute: Infinity });
+    expect(() => fastViaHit.for(req('y'))).toThrow(/thing: .*at most 1000 new/);
   });
 
   it('setCappedBudget takes a positive integer (undefined: the budget capped holders declare) and returns the previous one', () => {
