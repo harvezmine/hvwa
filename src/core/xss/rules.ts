@@ -116,7 +116,8 @@ const rels = (el: Element): ReadonlySet<string> => new Set((attr(el, 'rel') ?? '
  * The URL an element fetches by itself, so its error (or, if it loads, its load) event fires on its own; undefined
  * when it fetches nothing. Checked against Chromium 157: a script inserted by innerHTML is never fetched (`scripts`
  * false); a link fetches as a stylesheet, a preload with an `as`, a modulepreload or a prefetch (an icon, a bare
- * preload: no event); a track only when it is the default one; an embed and an iframe fire no error event.
+ * preload: no event); a track only when it is the default one of a video or audio; an embed and an iframe fire no
+ * error event.
  */
 function sourceOf(el: Element, scripts: boolean): string | undefined {
   if (el.namespaceURI === NS.SVG) {
@@ -133,7 +134,10 @@ function sourceOf(el: Element, scripts: boolean): string | undefined {
     }
     case 'input': return (attr(el, 'type') ?? '').trim().toLowerCase() === 'image' ? attr(el, 'src') : undefined;
     case 'video': case 'audio': return attr(el, 'src');
-    case 'track': return has(el, 'default') ? attr(el, 'src') : undefined;
+    case 'track': { // the default track of a media element (Chrome 157: no fetch for a track outside video or audio)
+      const media = el.parentNode !== null && 'tagName' in el.parentNode && isHtml(el.parentNode, 'video', 'audio');
+      return media && has(el, 'default') ? attr(el, 'src') : undefined;
+    }
     case 'script': return scripts ? attr(el, 'src') : undefined;
     case 'link': {
       const r = rels(el);
@@ -148,19 +152,95 @@ function sourceOf(el: Element, scripts: boolean): string | undefined {
 const LOADING_ELEMENTS: ReadonlySet<string> = new Set(['img', 'input', 'script', 'link', 'object', 'track', 'svg:image', 'svg:script', 'svg:feImage']);
 const IMAGE_ELEMENTS: ReadonlySet<string> = new Set(['img', 'input', 'source', 'svg:image', 'svg:feImage']);
 
+// Minimal structural checks of the raster formats, as Chrome 157 judged decodes (headers and block structure; the
+// compressed pixel data itself is not decoded): a GIF needs one complete image (its trailer may be missing); a PNG an
+// IHDR first and one complete IDAT (IEND may be missing); a JPEG a frame header and the start of a scan (EOI may be
+// missing); a WebP its RIFF size and a VP8 chunk. Garbage behind a valid signature errors.
+
+function gifDecodes(b: Uint8Array): boolean {
+  const n = b.length;
+  if (n < 13 || (b[6] | (b[7] << 8)) === 0 || (b[8] | (b[9] << 8)) === 0) return false;
+  let i = 13 + ((b[10] & 0x80) !== 0 ? 3 * (1 << ((b[10] & 7) + 1)) : 0); // the global color table
+  const subBlocks = (at: number): number => { // the index after a run of data sub-blocks, or -1 if it is cut
+    for (let k = at; k < n;) { const size = b[k]; k += 1 + size; if (size === 0) return k; }
+    return -1;
+  };
+  let images = 0;
+  while (i < n && b[i] !== 0x3b) { // the trailer
+    if (b[i] === 0x21 && i + 1 < n) { // an extension: its label, then sub-blocks
+      i = subBlocks(i + 2);
+    } else if (b[i] === 0x2c && i + 10 < n) { // an image: descriptor, local color table, LZW code size, sub-blocks
+      i += 10 + ((b[i + 9] & 0x80) !== 0 ? 3 * (1 << ((b[i + 9] & 7) + 1)) : 0);
+      if (i >= n || b[i] < 1 || b[i] > 11) return images > 0;
+      i = subBlocks(i + 1);
+      if (i !== -1) images++;
+    } else {
+      return images > 0;
+    }
+    if (i === -1) return images > 0;
+  }
+  return images > 0;
+}
+
+function pngDecodes(b: Uint8Array): boolean {
+  const n = b.length;
+  const u32 = (at: number): number => ((b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]) >>> 0;
+  const type = (at: number): string => String.fromCharCode(b[at], b[at + 1], b[at + 2], b[at + 3]);
+  if (n < 33 || u32(8) !== 13 || type(12) !== 'IHDR' || u32(16) === 0 || u32(20) === 0) return false;
+  let idat = false;
+  for (let i = 33; i + 12 <= n;) {
+    const len = u32(i);
+    if (i + 12 + len > n) break; // a cut chunk
+    const t = type(i + 4);
+    if (t === 'IDAT') idat = true;
+    if (t === 'IEND') break;
+    i += 12 + len;
+  }
+  return idat;
+}
+
+function jpegDecodes(b: Uint8Array): boolean {
+  const n = b.length;
+  let frame = false;
+  for (let i = 2; i + 1 < n;) {
+    if (b[i] !== 0xff) return false;
+    const m = b[i + 1];
+    if (m === 0xff) { i++; continue; } // fill bytes
+    if (m === 0xd9) return false; // EOI before any scan
+    if ((m >= 0xd0 && m <= 0xd7) || m === 0x01) { i += 2; continue; }
+    if (m < 0xc0 || i + 3 >= n) return false; // not a marker this decoder knows
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (len < 2) return false;
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) { // a frame header (SOFn): height and width
+      if (len < 8 || i + 8 >= n || ((b[i + 5] << 8) | b[i + 6]) === 0 || ((b[i + 7] << 8) | b[i + 8]) === 0) return false;
+      frame = true;
+    }
+    if (m === 0xda) return frame && i + 2 + len <= n; // the start of a scan: enough to show (EOI may be missing)
+    i += 2 + len;
+  }
+  return false;
+}
+
+function webpDecodes(b: Uint8Array): boolean {
+  const n = b.length;
+  const ascii = (at: number, s: string): boolean => [...s].every((c, k) => b[at + k] === c.charCodeAt(0));
+  return n >= 20 && ascii(0, 'RIFF') && ascii(8, 'WEBP') && (b[4] | (b[5] << 8) | (b[6] << 16) | (b[7] << 24)) + 8 === n
+    && (ascii(12, 'VP8 ') || ascii(12, 'VP8L') || ascii(12, 'VP8X'));
+}
+
 /**
- * Whether image bytes decode: a complete GIF, PNG, JPEG or WebP, or a well-formed SVG document (a broken one errors).
+ * Whether image bytes decode: a GIF, PNG, JPEG or WebP by the structural checks above, or a well-formed SVG document
+ * (a broken one errors).
  * Undefined: not judged (an SVG over the oracle's size or tag cap, a tree over its caps, a DTD): neither its load nor
  * its error event counts.
  */
 function imageLoads(d: { readonly mime: string; readonly text: string; readonly bytes: Uint8Array }): boolean | undefined {
   const b = d.bytes;
-  const n = b.length;
   const ascii = (at: number, s: string): boolean => [...s].every((c, k) => b[at + k] === c.charCodeAt(0));
-  if (ascii(0, 'GIF87a') || ascii(0, 'GIF89a')) return n > 13 && b[n - 1] === 0x3b; // the trailer
-  if (b[0] === 0x89 && ascii(1, 'PNG\r\n\x1a\n')) return n >= 20 && ascii(n - 8, 'IEND');
-  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return b[n - 2] === 0xff && b[n - 1] === 0xd9;
-  if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return (b[4] | (b[5] << 8) | (b[6] << 16) | (b[7] << 24)) + 8 === n;
+  if (ascii(0, 'GIF87a') || ascii(0, 'GIF89a')) return gifDecodes(b);
+  if (b[0] === 0x89 && ascii(1, 'PNG\r\n\x1a\n')) return pngDecodes(b);
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return jpegDecodes(b);
+  if (ascii(0, 'RIFF') && ascii(8, 'WEBP')) return webpDecodes(b);
   if (d.mime === 'image/svg+xml') {
     if (d.text.length > XSS_LIMITS.htmlLength || tagOpens(d.text) > XSS_LIMITS.tags) return undefined;
     const read = readXml(d.text);

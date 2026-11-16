@@ -409,9 +409,31 @@ describe('xssOracle: rule precision', () => {
     }
   });
 
-  it('M3: a track fetches only when it is the default one', () => {
+  it('M3: a track fetches only when it is the default one, inside a video or an audio', () => {
     expect(fires(`<video><track src=x onerror=${M}></video>`)).toBe(false);
     expect(fires(`<video><track default src=x onerror=${M}></video>`, false)).toBe(true);
+    expect(fires(`<audio><track default src=x onerror=${M}></audio>`, false)).toBe(true);
+    expect(fires(`<track default src=x onerror=${M}>`)).toBe(false); // no media element
+    expect(fires(`<div><track default src=x onerror=${M}></div>`)).toBe(false);
+  });
+
+  it('M3: a data: image decodes by its structure, as Chrome 157 judged these (encoded by Chrome itself, then cut or garbled)', () => {
+    const JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAACAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABQf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCWAAqu/9k=';
+    const WEBP = 'UklGRhwCAABXRUJQVlA4WAoAAAAgAAAAAQAAAQAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggLgAAAJABAJ0BKgIAAgABQCYloAJ0ugADmAD+7v+f/AXT3Ri3/7g4/7Bx/2Dj90wAAAA=';
+    const PNG2 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4AWI6Y2z8H4SZGKAAAAAA//9GCLHHAAAABklEQVQDADraBGceUPKyAAAAAElFTkSuQmCC';
+    const cut = (b64: string, drop: number): string => { const b = Buffer.from(b64, 'base64'); return b.subarray(0, b.length - drop).toString('base64'); };
+    const half = (b64: string): string => { const b = Buffer.from(b64, 'base64'); return b.subarray(0, b.length >> 1).toString('base64'); };
+    const loads: [string, boolean][] = [ // [src, decodes in Chrome 157]
+      [`data:image/jpeg;base64,${JPEG}`, true], [`data:image/jpeg;base64,${cut(JPEG, 2)}`, true], // no EOI: still decodes
+      [`data:image/jpeg;base64,${half(JPEG)}`, false], ['data:image/jpeg,%FF%D8%FF%00%00%00%FF%D9', false], // cut in its tables; garbage
+      [`data:image/webp;base64,${WEBP}`, true], [`data:image/webp;base64,${cut(WEBP, 20)}`, false],
+      [`data:image/png;base64,${PNG2}`, true], [`data:image/png;base64,${cut(PNG2, 12)}`, true], // no IEND: still decodes
+      [`data:image/gif;base64,${cut(GIF, 1)}`, true], ['data:image/gif,GIF89a%00%00%00%00%00%00%00%00%00%00%00;', false], // no trailer; zeros
+    ];
+    for (const [src, decodes] of loads) {
+      expect(fires(`<img src="${src}" onload=${M}>`, false), `onload ${src.slice(0, 40)}`).toBe(decodes);
+      expect(fires(`<img src="${src}" onerror=${M}>`, false), `onerror ${src.slice(0, 40)}`).toBe(!decodes);
+    }
   });
 
   it('M3: formaction runs only on a submit button that has a form', () => {
