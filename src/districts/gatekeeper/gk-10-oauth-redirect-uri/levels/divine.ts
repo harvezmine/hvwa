@@ -8,7 +8,10 @@ const s256 = (verifier: string): string => createHash('sha256').update(verifier)
 // request carrying a PKCE (S256) challenge. A code is redeemed once, by the client it was issued to, for the
 // redirect_uri it was sent to, and only with the verifier whose hash is that challenge (Citadel keeps the verifier on
 // the server, so a code that leaks is useless). Citadel's callback forwards nowhere, and its page sends no Referer.
-// Errors are generic. Out of scope here: signed ID tokens, consent screens, and token revocation.
+// Not shown in this file: with `pkce` set, Citadel's own flow binding lives in model.ts (startLogin and callback): a
+// login cookie names the sign-in this browser started, whose state and verifier stay on the server, and the callback
+// finishes only that sign-in, once. Refusals say what failed (this lab teaches OAuth, not error hygiene).
+// Out of scope here: signed ID tokens, consent screens, and token revocation.
 export function allowRedirect(redirectUri: string): boolean {
   return redirectUri === REGISTERED;
 }
