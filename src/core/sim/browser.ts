@@ -1,9 +1,15 @@
-// src/core/sim/browser.ts — the victim's browser: a cookie jar plus a navigation loop whose citadel.test requests
-// are answered IN PROCESS by the lab's handler and whose attacker.test requests land in the player's log. Every other
-// host is unreachable; nothing here opens a socket, resolves a name or fetches.
+// src/core/sim/browser.ts — the victim's browser: a cookie jar plus a request loop whose citadel.test requests are
+// answered IN PROCESS by the lab's handler and whose attacker.test requests land in the player's log. Every other host
+// is unreachable; nothing here opens a socket, resolves a name or fetches. Besides the victim's own navigations
+// (follow, submit) it runs what the player's attacker page makes the victim's browser do (crossSiteLink,
+// crossSitePost): requests that cross sites, shaped by the rules in cross.ts and the SameSite jar in cookies.ts.
 import { SIM_LIMITS, clip, str } from './limits.js';
-import { Jar, parseCookieHeader, type SimCookieJar } from './cookies.js';
-import { classifySimUrl, type SimSite, type SimUnreachable, type SimUrl } from './url.js';
+import { Jar, parseCookieHeader, type SimCookieContext, type SimCookieJar } from './cookies.js';
+import {
+  bodyFields, encodeForm, fetchSiteOf, formEnctype, formEntries, initiatorOf, originHeader, parsePolicy, redirectTainted,
+  refererFor, type ReferrerPolicy, type SimFormFields, type SimInitiator,
+} from './cross.js';
+import { ATTACKER_ORIGIN, classifySimUrl, type SimSite, type SimUnreachable, type SimUrl } from './url.js';
 import type { SimWorld, World } from './world.js'; // type only: the world imports this module at runtime
 
 /** The User-Agent the victim's browser sends to the citadel. */
@@ -22,12 +28,21 @@ export interface SimRequest {
   /** Path on citadel.test ('/callback'): the lab route <labPath>/callback. */
   readonly path: string;
   readonly query: URLSearchParams;
-  /** Lower-case names: host, user-agent, and when present referer, cookie, content-type. */
+  /**
+   * Lower-case names: host, user-agent, and when present referer, cookie, content-type and origin (every POST, every
+   * cross-origin fetch). A request the attacker's page started, or one made in a frame, also carries sec-fetch-site,
+   * sec-fetch-mode and sec-fetch-dest. The victim's own navigations (follow, submit) carry no sec-fetch-* headers.
+   */
   readonly headers: Readonly<Record<string, string>>;
   /** Cookies sent with the request (decoded; null prototype). */
   readonly cookies: Readonly<Record<string, string>>;
-  /** POST form fields (null prototype); {} for a GET. Works with field(). */
+  /**
+   * The body's form fields (null prototype), as the app's own parsers read them: an urlencoded body's fields, or a
+   * JSON object's string members; {} for any other body (text/plain, multipart) and for a GET. Works with field().
+   */
   readonly body: Readonly<Record<string, string>>;
+  /** The body exactly as sent ('' for a GET): read a text/plain or JSON body from here. */
+  readonly rawBody: string;
 }
 
 /** What the citadel handler answers. Header names are case-insensitive. */
@@ -83,56 +98,69 @@ export interface SimNavigateOptions {
   readonly referrer?: string;
 }
 
-/** A victim's browser: a cookie jar plus a navigation loop. */
+/** The player's attacker page, as the lab declares it (never parsed from HTML, never run): where it is, its policy. */
+export interface SimAttackerPage {
+  /** Its URL, on attacker.test or any *.attacker.test (default ATTACKER_PAGE_URL). Origin and Referer come from it. */
+  readonly url?: string;
+  /**
+   * Its referrer policy (a `<meta name="referrer">`, `rel=noreferrer`, or its server's header): one token or a list,
+   * the last known one wins. Default 'strict-origin-when-cross-origin', Chrome's default.
+   */
+  readonly referrerPolicy?: string;
+  /**
+   * The request comes from a sandboxed iframe inside the page (`<iframe sandbox="allow-scripts allow-forms">`, or a
+   * `data:` document): an opaque origin, so `Origin: null`. Its form or link navigates that frame, not the top-level
+   * page (so a Lax cookie is not sent even on a GET).
+   */
+  readonly sandboxed?: boolean;
+}
+
+/** Where the attacker page is when the lab names none. */
+export const ATTACKER_PAGE_URL = `${ATTACKER_ORIGIN}/`;
+
+/** What every cross-site primitive takes: the attacker page it runs on. */
+export interface SimCrossSiteOptions {
+  readonly page?: SimAttackerPage;
+}
+
+export interface SimCrossSitePostOptions extends SimCrossSiteOptions {
+  /**
+   * The form's enctype: 'application/x-www-form-urlencoded' (the default, and what a browser uses for any value it
+   * does not know), 'multipart/form-data' or 'text/plain' (fields sent as `name=value` lines, unescaped).
+   */
+  readonly contentType?: string;
+}
+
+/** A victim's browser: a cookie jar plus a request loop. */
 export interface SimBrowser {
   /** The world it lives in (its inbox, its attacker log). */
   readonly world: SimWorld;
   readonly cookies: SimCookieJar;
-  /** Open a link (GET). */
+  /** Open a link (GET), from a mail client (no Referer) or clicked on a citadel page (`referrer`). Same-site. */
   follow(url: string, opts?: SimNavigateOptions): SimVisit;
-  /** Submit a form (POST, urlencoded). */
+  /** Submit a form (POST, urlencoded), on a citadel page. Same-site; it carries `Origin: http://citadel.test`. */
   submit(url: string, form: Readonly<Record<string, string>>, opts?: SimNavigateOptions): SimVisit;
+  /**
+   * The victim clicks a link on the attacker's page (or the page sets `location`): a top-level GET navigation that
+   * crosses sites. SameSite=Lax and None cookies are sent, Strict ones are not; no Origin; Sec-Fetch-Site cross-site.
+   */
+  crossSiteLink(url: string, opts?: SimCrossSiteOptions): SimVisit;
+  /**
+   * The attacker's page auto-submits a hidden form to `url` (CSRF): a top-level POST navigation that crosses sites,
+   * encoded as the form's enctype (`contentType`). Only SameSite=None cookies are sent; `Origin` is the page's
+   * (`null` when its referrer policy hides it, or from a sandboxed frame); Sec-Fetch-Site cross-site. The citadel's
+   * answer renders as a page, as for any navigation.
+   */
+  crossSitePost(url: string, form: SimFormFields, opts?: SimCrossSitePostOptions): SimVisit;
 }
 
 /** Fetch's redirect statuses: the only ones whose Location a browser follows. */
 export const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 
-type ReferrerPolicy = 'no-referrer' | 'no-referrer-when-downgrade' | 'same-origin' | 'origin' | 'strict-origin'
-  | 'origin-when-cross-origin' | 'strict-origin-when-cross-origin' | 'unsafe-url';
-const POLICIES: ReadonlySet<string> = new Set([
-  'no-referrer', 'no-referrer-when-downgrade', 'same-origin', 'origin', 'strict-origin',
-  'origin-when-cross-origin', 'strict-origin-when-cross-origin', 'unsafe-url',
-]);
 /** The legacy browser default (before 2020): the full URL, except https -> http. Pages tighten it with Referrer-Policy. */
 const DEFAULT_POLICY: ReferrerPolicy = 'no-referrer-when-downgrade';
-
-/** A Referrer-Policy header value: the last recognized token, or undefined (unknown tokens are ignored). */
-function parsePolicy(values: readonly string[] | undefined): ReferrerPolicy | undefined {
-  let found: ReferrerPolicy | undefined;
-  for (const token of (values ?? []).join(',').split(',')) {
-    const p = token.trim().toLowerCase();
-    if (POLICIES.has(p)) found = p as ReferrerPolicy;
-  }
-  return found;
-}
-
-/** The Referer a request from page `from` to `to` carries under `policy` (Referrer Policy spec, without length limits). */
-function refererFor(from: SimUrl, to: SimUrl, policy: ReferrerPolicy): string | undefined {
-  const full = from.url;
-  const origin = `${from.origin}/`;
-  const sameOrigin = from.origin === to.origin;
-  const downgrade = from.url.startsWith('https:') && to.url.startsWith('http:');
-  switch (policy) {
-    case 'no-referrer': return undefined;
-    case 'no-referrer-when-downgrade': return downgrade ? undefined : full;
-    case 'same-origin': return sameOrigin ? full : undefined;
-    case 'origin': return origin;
-    case 'strict-origin': return downgrade ? undefined : origin;
-    case 'origin-when-cross-origin': return sameOrigin ? full : origin;
-    case 'strict-origin-when-cross-origin': return sameOrigin ? full : downgrade ? undefined : origin;
-    case 'unsafe-url': return full;
-  }
-}
+/** Chrome's default since 2020, for the attacker's page when the lab names no policy. */
+const ATTACKER_DEFAULT_POLICY: ReferrerPolicy = 'strict-origin-when-cross-origin';
 
 /** CR or LF: never part of a real header value. */
 const CRLF_RE = /[\r\n]/;
@@ -167,7 +195,7 @@ function checkResponse(res: unknown): SimResponse {
 }
 
 /** Response headers by lower-case name; a value or a list of values each. */
-function headerMap(res: SimResponse): Map<string, string[]> {
+export function headerMap(res: SimResponse): Map<string, string[]> {
   const m = new Map<string, string[]>();
   for (const [k, v] of Object.entries(res.headers ?? {})) {
     const list = typeof v === 'string' ? [v] : Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [];
@@ -184,7 +212,45 @@ function formOf(form: Readonly<Record<string, string>>): Record<string, string> 
   return out;
 }
 
-const encodeForm = (form: Readonly<Record<string, string>>): string => new URLSearchParams(Object.entries(form)).toString();
+/** A fresh null-prototype copy of a request's fields (each hop gets its own, frozen). */
+function copyFields(fields: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const out: Record<string, string> = Object.create(null);
+  for (const [k, v] of Object.entries(fields ?? {})) out[k] = v;
+  return out;
+}
+
+/** A request body as sent: its Content-Type, the bytes as text, and the fields the lab reads (SimRequest.body). */
+interface Payload { readonly type: string; readonly raw: string; readonly fields: Record<string, string> }
+
+/** The attacker page as the browser uses it: where it is, its initiator (origin, site) and referrer policy. */
+interface Page { readonly url: SimUrl; readonly init: SimInitiator; readonly policy: ReferrerPolicy; readonly sandboxed: boolean }
+
+/**
+ * Who makes a request and how (Fetch's initiator, mode and destination), fixed for one visit except where a page that
+ * moves on by itself becomes the next request's initiator.
+ */
+interface Context {
+  /** The document that made the request; undefined for the victim's own navigations (follow, submit). */
+  init?: SimInitiator;
+  /** The cookie context (cookies.ts): same-site for cookies, and whether the top-level page navigates. */
+  site: 'same' | 'cross';
+  readonly topLevel: boolean;
+  readonly dest: 'document' | 'iframe' | 'empty';
+  /** Add sec-fetch-* (requests the attacker's page starts, and anything in a frame). */
+  readonly shaped: boolean;
+}
+
+/** Where a visit starts. */
+interface Start {
+  readonly method: 'GET' | 'POST';
+  readonly url: string;
+  readonly payload?: Payload;
+  /** The page the request is made from (its Referer source) and its referrer policy. */
+  readonly referrer?: SimUrl;
+  readonly policy: ReferrerPolicy;
+  /** The initiator of a POST from the victim's own navigation (submit): its Origin. */
+  readonly origin?: SimInitiator;
+}
 
 export class Browser implements SimBrowser {
   private readonly jar: Jar;
@@ -196,28 +262,45 @@ export class Browser implements SimBrowser {
   get cookies(): SimCookieJar { return this.jar; }
 
   follow(url: string, opts: SimNavigateOptions = {}): SimVisit {
-    return this.navigate('GET', url, undefined, opts);
+    const referrer = citadelReferrer(opts);
+    return this.navigate({ method: 'GET', url, policy: DEFAULT_POLICY, ...(referrer ? { referrer } : {}) }, ownNavigation());
   }
 
   submit(url: string, form: Readonly<Record<string, string>>, opts: SimNavigateOptions = {}): SimVisit {
-    return this.navigate('POST', url, formOf(form), opts);
+    const referrer = citadelReferrer(opts);
+    const fields = formOf(form);
+    // The form is on a citadel page: the referrer when given, else the page it posts to.
+    const origin = initiatorOf(referrer ?? classifySimUrl(url));
+    const payload: Payload = { type: 'application/x-www-form-urlencoded', raw: new URLSearchParams(Object.entries(fields)).toString(), fields };
+    return this.navigate({ method: 'POST', url, payload, policy: DEFAULT_POLICY, origin, ...(referrer ? { referrer } : {}) }, ownNavigation());
   }
 
-  private navigate(
-    startMethod: 'GET' | 'POST', input: string, startBody: Record<string, string> | undefined, opts: SimNavigateOptions,
-  ): SimVisit {
-    let referrer: SimUrl | undefined;
-    if (opts.referrer !== undefined) {
-      referrer = classifySimUrl(opts.referrer);
-      if (referrer.site !== 'citadel') throw new Error('SimBrowser: a referrer must be a citadel.test page');
-    }
-    let policy: ReferrerPolicy = DEFAULT_POLICY;
-    let method = startMethod;
-    let body = startBody;
-    let raw = str(input);
-    let target = classifySimUrl(input);
+  crossSiteLink(url: string, opts: SimCrossSiteOptions = {}): SimVisit {
+    const page = attackerPage(opts.page);
+    return this.navigate({ method: 'GET', url, referrer: page.url, policy: page.policy }, fromPage(page));
+  }
+
+  crossSitePost(url: string, form: SimFormFields, opts: SimCrossSitePostOptions = {}): SimVisit {
+    const page = attackerPage(opts.page);
+    const { type, raw } = encodeForm(formEntries(form), formEnctype(opts.contentType));
+    return this.navigate({ method: 'POST', url, payload: { type, raw, fields: bodyFields(type, raw) }, referrer: page.url, policy: page.policy }, fromPage(page));
+  }
+
+  /**
+   * The request loop shared by every navigation: citadel requests go to the handler, attacker.test requests to the
+   * log (the visit ends there), anything else is unreachable. Redirects (Location on a redirect status) and pages that
+   * move on by themselves (Refresh) are followed, at most SIM_LIMITS.maxRedirects; the same request again with the jar
+   * unchanged is a loop.
+   */
+  private navigate(start: Start, ctx: Context): SimVisit {
+    let { method, referrer, policy } = start;
+    let payload = start.payload;
+    let raw = str(start.url);
+    let target = classifySimUrl(start.url);
     let via: SimHop['via'] = 'start';
     let redirects = 0;
+    /** The URLs requested since the current initiator made the request (Fetch's URL list). */
+    let urls: SimUrl[] = [];
     const hops: SimHop[] = [];
     const seen = new Set<string>();
     const finish = (outcome: SimOutcome, page?: SimVisit['page']): SimVisit => {
@@ -231,10 +314,10 @@ export class Browser implements SimBrowser {
         hop({ site: 'other', method, url: target.url || clip(raw, SIM_LIMITS.urlLength), via, ...(target.reason ? { reason: target.reason } : {}) });
         return finish('unreachable');
       }
-      const encoded = body === undefined ? undefined : encodeForm(body);
-      const key = `${method} ${target.url}\n${encoded ?? ''}\n${this.jar.version}`;
+      const key = `${method} ${target.url}\n${payload?.raw ?? ''}\n${this.jar.version}`;
       if (seen.has(key)) return finish('loop');
       seen.add(key);
+      urls = [...urls, target];
       const sent = referrer === undefined ? undefined : refererFor(referrer, target, policy);
       const referer = sent === undefined ? undefined : clip(sent, SIM_LIMITS.urlLength); // kept in the hop: a copy
       const withReferer: { referer?: string } = referer === undefined ? {} : { referer };
@@ -242,22 +325,33 @@ export class Browser implements SimBrowser {
         // The player's server: the request is logged and the visit ends (nothing is served back).
         hop({ site: 'attacker', method, url: target.url, via, ...withReferer });
         this.world.attackerLog.record({
-          method, url: target.url, ...withReferer, ...(method === 'POST' && encoded !== undefined ? { body: encoded } : {}),
+          method, url: target.url, ...withReferer, ...(method === 'POST' && payload !== undefined ? { body: payload.raw } : {}),
         });
         return finish('attacker');
       }
-      const cookie = this.jar.headerFor(target);
+      const cookieCtx: SimCookieContext = { site: ctx.site, method, topLevel: ctx.topLevel };
+      const cookie = this.jar.headerFor(target, cookieCtx);
       const headers: Record<string, string> = { host: target.host, 'user-agent': SIM_USER_AGENT, ...withReferer };
       if (cookie !== '') headers.cookie = cookie;
-      if (method === 'POST') headers['content-type'] = 'application/x-www-form-urlencoded';
+      if (method === 'POST' && payload !== undefined) headers['content-type'] = payload.type;
+      const init = ctx.init ?? start.origin;
+      if (init !== undefined) {
+        const origin = originHeader({ init, method, cors: false, target, policy, tainted: redirectTainted(init, urls) });
+        if (origin !== undefined) headers.origin = clip(origin, SIM_LIMITS.urlLength);
+      }
+      if (ctx.shaped && ctx.init !== undefined) {
+        headers['sec-fetch-site'] = fetchSiteOf(ctx.init, urls);
+        headers['sec-fetch-mode'] = 'navigate';
+        headers['sec-fetch-dest'] = ctx.dest;
+      }
       const req: SimRequest = Object.freeze({
         method, url: target.url, path: target.path, query: new URLSearchParams(target.search),
         headers: Object.freeze(headers), cookies: Object.freeze(parseCookieHeader(cookie)),
-        body: Object.freeze(formOf(body ?? {})),
+        body: Object.freeze(copyFields(payload?.fields)), rawBody: payload?.raw ?? '',
       });
       const res = checkResponse(this.handler(req));
       const h = headerMap(res);
-      for (const line of h.get('set-cookie') ?? []) this.jar.store(line, target);
+      for (const line of h.get('set-cookie') ?? []) this.jar.store(line, target, cookieCtx);
       hop({ site: 'citadel', method, url: target.url, via, ...withReferer, status: res.status });
       // A Location or Refresh value with CR or LF cannot exist in real HTTP (Node refuses to send it, a browser
       // never receives it), and WHATWG URL parsing would silently drop the characters here. So the response is
@@ -282,21 +376,54 @@ export class Browser implements SimBrowser {
         policy = parsePolicy(h.get('referrer-policy')) ?? policy;
         if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
           method = 'GET';
-          body = undefined;
+          payload = undefined;
         }
         raw = location;
         target = classifySimUrl(location, target.url);
         via = 'redirect';
       } else {
-        // A page that moves on by itself: the page is the new referrer, under its own Referrer-Policy.
+        // A page that moves on by itself: the page is the new referrer, under its own Referrer-Policy, and the
+        // initiator of the next request. A citadel page in the top-level window makes that request same-site; a framed
+        // one does not (the top-level page is still the attacker's).
         referrer = target;
         policy = parsePolicy(h.get('referrer-policy')) ?? DEFAULT_POLICY;
+        if (ctx.init !== undefined) ctx.init = initiatorOf(target);
+        if (ctx.topLevel) ctx.site = 'same';
+        urls = [];
         method = 'GET';
-        body = undefined;
+        payload = undefined;
         raw = refresh as string;
         target = classifySimUrl(raw, target.url);
         via = 'refresh';
       }
     }
   }
+}
+
+/** follow()'s and submit()'s `referrer`, checked: a citadel page. */
+function citadelReferrer(opts: SimNavigateOptions): SimUrl | undefined {
+  if (opts.referrer === undefined) return undefined;
+  const referrer = classifySimUrl(opts.referrer);
+  if (referrer.site !== 'citadel') throw new Error('SimBrowser: a referrer must be a citadel.test page');
+  return referrer;
+}
+
+/** The victim's own navigation (a link from mail, a click or a form on a citadel page): same-site, top-level, as before E1. */
+function ownNavigation(): Context {
+  return { site: 'same', topLevel: true, dest: 'document', shaped: false };
+}
+
+/** The attacker page a lab declared, checked: on attacker.test, with a known (or the default) referrer policy. */
+function attackerPage(p: SimAttackerPage | undefined): Page {
+  if (p !== undefined && (p === null || typeof p !== 'object')) throw new Error('SimBrowser: page must be { url?, referrerPolicy?, sandboxed? }');
+  const url = classifySimUrl(p?.url ?? ATTACKER_PAGE_URL);
+  if (url.site !== 'attacker') throw new Error('SimBrowser: the attacker page must be on attacker.test (or a subdomain of it)');
+  if (p?.referrerPolicy !== undefined && typeof p.referrerPolicy !== 'string') throw new Error('SimBrowser: page.referrerPolicy must be a string');
+  const sandboxed = p?.sandboxed === true;
+  return { url, init: initiatorOf(url, sandboxed), policy: parsePolicy(p?.referrerPolicy === undefined ? undefined : [p.referrerPolicy]) ?? ATTACKER_DEFAULT_POLICY, sandboxed };
+}
+
+/** A navigation the attacker's page starts: cross-site, in the top-level window unless it runs in a sandboxed frame. */
+function fromPage(page: Page): Context {
+  return { init: page.init, site: 'cross', topLevel: !page.sandboxed, dest: page.sandboxed ? 'iframe' : 'document', shaped: true };
 }

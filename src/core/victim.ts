@@ -11,10 +11,11 @@ import { capPerSessionHolder, field, insidePerSessionFactory, labPath } from './
 import type { Text } from './registry.js'; // type only: the registry imports this module at runtime
 import { sendPage } from './render.js';
 import {
-  REDIRECT_STATUSES, isThenable, type SimBrowser, type SimHandler, type SimNavigateOptions, type SimOutcome, type SimRequest,
-  type SimResponse, type SimVisit,
+  REDIRECT_STATUSES, isThenable, type SimBrowser, type SimCrossSiteOptions, type SimCrossSitePostOptions, type SimHandler,
+  type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
 } from './sim/browser.js';
 import type { SimCookieJar } from './sim/cookies.js';
+import type { SimFormFields } from './sim/cross.js';
 import { SIM_LIMITS, clip, str } from './sim/limits.js';
 import { ATTACKER_ORIGIN, CITADEL_ORIGIN, classifySimUrl, labHref, type SimUnreachable } from './sim/url.js';
 import { PLAYER_MAILBOX, World, type SimWorld } from './sim/world.js';
@@ -523,18 +524,26 @@ class XssVictimBrowser implements XssBrowser {
   get verdicts(): readonly XssPageVerdict[] { return Object.freeze([...this.recent]); }
 
   follow(url: string, opts?: SimNavigateOptions): SimVisit {
-    this.hash = fragmentOf(url);
-    try {
-      return this.inner.follow(url, opts);
-    } finally {
-      this.steal();
-    }
+    return this.navigation(url, () => this.inner.follow(url, opts));
   }
 
   submit(url: string, form: Readonly<Record<string, string>>, opts?: SimNavigateOptions): SimVisit {
+    return this.navigation(url, () => this.inner.submit(url, form, opts));
+  }
+
+  crossSiteLink(url: string, opts?: SimCrossSiteOptions): SimVisit {
+    return this.navigation(url, () => this.inner.crossSiteLink(url, opts));
+  }
+
+  crossSitePost(url: string, form: SimFormFields, opts?: SimCrossSitePostOptions): SimVisit {
+    return this.navigation(url, () => this.inner.crossSitePost(url, form, opts));
+  }
+
+  /** A navigation to `url`: its fragment is the page's location.hash; the pages that fired steal once it ends. */
+  private navigation<T>(url: string, go: () => T): T {
     this.hash = fragmentOf(url);
     try {
-      return this.inner.submit(url, form, opts);
+      return go();
     } finally {
       this.steal();
     }

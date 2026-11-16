@@ -997,7 +997,7 @@ describe('no real network', () => {
   });
 
   it('src/core/sim/ imports only what the allow-list names, never loads code dynamically, and names no network global', () => {
-    expect(SIM_FILES).toEqual(['browser.ts', 'cookies.ts', 'limits.ts', 'url.ts', 'world.ts']);
+    expect(SIM_FILES).toEqual(['browser.ts', 'cookies.ts', 'cross.ts', 'limits.ts', 'url.ts', 'world.ts']);
     for (const file of SIM_FILES) {
       const { runtime, problems } = simSourceCheck(readFileSync(new URL(file, SIM_DIR), 'utf8'));
       expect(runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m)), file).toEqual([]);

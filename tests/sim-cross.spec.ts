@@ -5,7 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { perSession } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { Jar, sameSiteSends, sameSiteStores, type SimCookieContext, type SimSameSite } from '../src/core/sim/cookies.js';
-import { ADMIN_MAILBOX, classifySimUrl, simWorld, type SimHandler, type SimRequest, type SimResponse, type SimWorld } from '../src/core/sim.js';
+import { bodyFields } from '../src/core/sim/cross.js';
+import {
+  ADMIN_MAILBOX, SIM_FORM_BOUNDARY, classifySimUrl, simWorld, type SimFormFields, type SimHandler, type SimRequest, type SimResponse,
+  type SimWorld,
+} from '../src/core/sim.js';
 
 let n = 0;
 /** Build sim state the way labs must: inside a perSession factory (one fresh session per call). */
@@ -152,5 +156,239 @@ describe('Secure cookies: citadel.test is a secure context (as browsers treat lo
     b.cookies.set('sid', 'admin', { sameSite: 'None', secure: true });
     b.follow('http://citadel.test/me');
     expect(s.seen[0].cookies.sid).toBe('admin');
+  });
+});
+
+// --- Requests across sites: who sends what ------------------------------------------------------------------------
+
+/** A victim signed in with one cookie of each SameSite, on a citadel that answers every path with `answer`. */
+function victim(answer: (r: SimRequest) => SimResponse = () => ({ status: 200, body: 'ok' })) {
+  const w = world();
+  const seen: SimRequest[] = [];
+  const b = inSession(() => w.browser((r) => { seen.push(r); return answer(r); }));
+  b.cookies.set('strict', 's', { sameSite: 'Strict' });
+  b.cookies.set('lax', 'l', { sameSite: 'Lax' });
+  b.cookies.set('none', 'n', { sameSite: 'None', secure: true });
+  return { w, b, seen };
+}
+type Victim = ReturnType<typeof victim>;
+const sentCookies = (r: SimRequest | undefined): string[] => Object.keys(r?.cookies ?? {});
+const fetchMeta = (r: SimRequest | undefined) => [r?.headers['sec-fetch-site'], r?.headers['sec-fetch-mode'], r?.headers['sec-fetch-dest']];
+const TARGET = 'http://citadel.test/account/email';
+
+/** One way the victim's browser requests the citadel, with what it must send. */
+interface Kind {
+  readonly name: string;
+  readonly run: (b: Victim['b']) => void;
+  readonly cookies: readonly string[];
+  readonly origin: string | undefined;
+  readonly fetch: readonly (string | undefined)[];
+}
+const NAVIGATIONS: readonly Kind[] = [
+  { name: 'follow (a link from mail)', run: (b) => b.follow(TARGET), cookies: ['strict', 'lax', 'none'], origin: undefined, fetch: [undefined, undefined, undefined] },
+  { name: 'follow (a link on a citadel page)', run: (b) => b.follow(TARGET, { referrer: 'http://citadel.test/home' }), cookies: ['strict', 'lax', 'none'], origin: undefined, fetch: [undefined, undefined, undefined] },
+  { name: 'submit (a form on a citadel page)', run: (b) => b.submit(TARGET, { email: 'x' }), cookies: ['strict', 'lax', 'none'], origin: 'http://citadel.test', fetch: [undefined, undefined, undefined] },
+  { name: 'crossSiteLink (a link on your page: top-level GET)', run: (b) => b.crossSiteLink(TARGET), cookies: ['lax', 'none'], origin: undefined, fetch: ['cross-site', 'navigate', 'document'] },
+  { name: 'crossSitePost (your page\'s form: top-level POST)', run: (b) => b.crossSitePost(TARGET, { email: 'x' }), cookies: ['none'], origin: 'http://attacker.test', fetch: ['cross-site', 'navigate', 'document'] },
+  { name: 'crossSiteLink from a sandboxed frame (navigates the frame)', run: (b) => b.crossSiteLink(TARGET, { page: { sandboxed: true } }), cookies: ['none'], origin: undefined, fetch: ['cross-site', 'navigate', 'iframe'] },
+  { name: 'crossSitePost from a sandboxed frame', run: (b) => b.crossSitePost(TARGET, { email: 'x' }, { page: { sandboxed: true } }), cookies: ['none'], origin: 'null', fetch: ['cross-site', 'navigate', 'iframe'] },
+];
+
+describe('requests across sites: cookies, Origin and Sec-Fetch per kind of request', () => {
+  it.each(NAVIGATIONS.map((k) => [k.name, k] as const))('%s', (_name, k) => {
+    const v = victim();
+    k.run(v.b);
+    expect(v.seen).toHaveLength(1);
+    expect(sentCookies(v.seen[0]), 'cookies').toEqual(k.cookies);
+    expect(v.seen[0].headers.origin, 'origin').toBe(k.origin);
+    expect(fetchMeta(v.seen[0]), 'sec-fetch-*').toEqual(k.fetch);
+  });
+
+  it('the victim\'s own navigations keep their headers: a GET has only host and user-agent (and its cookies)', () => {
+    const v = victim();
+    v.b.cookies.clear();
+    v.b.follow(TARGET);
+    expect(v.seen[0].headers).toEqual({ host: 'citadel.test', 'user-agent': expect.any(String) });
+    expect(v.seen[0].rawBody).toBe('');
+    v.b.submit(TARGET, { a: '1' }, { referrer: 'http://citadel.test/form' });
+    expect(v.seen[1].headers).toEqual({
+      host: 'citadel.test', 'user-agent': expect.any(String), referer: 'http://citadel.test/form',
+      'content-type': 'application/x-www-form-urlencoded', origin: 'http://citadel.test', // a POST carries Origin, same-site too
+    });
+    expect(v.seen[1].rawBody).toBe('a=1');
+    v.b.submit(TARGET, { a: '1' }, { referrer: 'https://citadel.test/form' }); // an https page posting to http: a downgrade
+    expect([v.seen[2].headers.referer, v.seen[2].headers.origin]).toEqual([undefined, 'null']);
+  });
+
+  it('the attacker page must be on attacker.test (any subdomain, any port); its URL decides Origin and Referer', () => {
+    const v = victim();
+    for (const url of ['http://citadel.test/', 'http://example.com/', 'javascript:alert(1)', 'http://attacker.test.citadel.test/']) {
+      expect(() => v.b.crossSitePost(TARGET, {}, { page: { url } }), url).toThrow(/attacker page must be on attacker\.test/);
+      expect(() => v.b.crossSiteLink(TARGET, { page: { url } }), url).toThrow(/attacker page must be on attacker\.test/);
+    }
+    expect(() => v.b.crossSiteLink(TARGET, { page: 'http://attacker.test/' as never })).toThrow(/page must be/);
+    v.b.crossSitePost(TARGET, {}, { page: { url: 'http://citadel.test.attacker.test:8080/x?citadel=1#frag' } });
+    expect(v.seen[0].headers.origin).toBe('http://citadel.test.attacker.test:8080');
+    expect(v.seen[0].headers.referer).toBe('http://citadel.test.attacker.test:8080/'); // Chrome's default policy: the origin only
+    expect(v.seen).toHaveLength(1);
+  });
+});
+
+describe('requests across sites: Referer and Origin under the attacker page\'s referrer policy', () => {
+  const PAGE = 'http://attacker.test/citadel/forms.html?citadel=yes';
+  // [policy, Referer, Origin of the form POST]
+  const POLICIES: readonly (readonly [string | undefined, string | undefined, string])[] = [
+    [undefined, 'http://attacker.test/', 'http://attacker.test'], // strict-origin-when-cross-origin, Chrome's default
+    ['strict-origin-when-cross-origin', 'http://attacker.test/', 'http://attacker.test'],
+    ['unsafe-url', PAGE, 'http://attacker.test'], // the page can ask for its whole URL to be sent
+    ['no-referrer-when-downgrade', PAGE, 'http://attacker.test'],
+    ['origin', 'http://attacker.test/', 'http://attacker.test'],
+    ['origin-when-cross-origin', 'http://attacker.test/', 'http://attacker.test'],
+    ['strict-origin', 'http://attacker.test/', 'http://attacker.test'],
+    ['same-origin', undefined, 'null'], // cross-origin: no Referer, and Origin is hidden too (Fetch)
+    ['no-referrer', undefined, 'null'], // rel=noreferrer / <meta name=referrer content=no-referrer>: Origin: null
+    ['bogus, unsafe-url, also-bogus', PAGE, 'http://attacker.test'], // the last known token wins
+    ['bogus', 'http://attacker.test/', 'http://attacker.test'], // none known: the default
+  ];
+
+  it.each(POLICIES.map(([p, ref, origin]) => [String(p), p, ref, origin] as const))('%s', (_label, policy, referer, origin) => {
+    const v = victim();
+    const page = { url: PAGE, ...(policy === undefined ? {} : { referrerPolicy: policy }) };
+    v.b.crossSitePost(TARGET, { email: 'x' }, { page });
+    v.b.crossSiteLink(TARGET, { page });
+    expect([v.seen[0].headers.referer, v.seen[0].headers.origin]).toEqual([referer, origin]);
+    expect([v.seen[1].headers.referer, v.seen[1].headers.origin]).toEqual([referer, undefined]); // a GET carries no Origin
+  });
+
+  it('an https page posting to http: the strict policies and the legacy one hide Referer and Origin (a downgrade)', () => {
+    const v = victim();
+    for (const policy of ['strict-origin-when-cross-origin', 'no-referrer-when-downgrade', 'strict-origin', 'unsafe-url']) {
+      v.b.crossSitePost(TARGET, {}, { page: { url: 'https://attacker.test/p', referrerPolicy: policy } });
+    }
+    expect(v.seen.map((r) => [r.headers.referer, r.headers.origin])).toEqual([
+      [undefined, 'null'], [undefined, 'null'], [undefined, 'null'], ['https://attacker.test/p', 'https://attacker.test'],
+    ]);
+  });
+
+  it('a sandboxed frame\'s request still carries the page\'s Referer, but Origin: null', () => {
+    const v = victim();
+    v.b.crossSitePost(TARGET, {}, { page: { url: PAGE, referrerPolicy: 'unsafe-url', sandboxed: true } });
+    expect([v.seen[0].headers.referer, v.seen[0].headers.origin]).toEqual([PAGE, 'null']);
+  });
+});
+
+describe('requests across sites: redirects and pages that move on', () => {
+  it('a cross-site POST answered 303: the GET that follows is a cross-site top-level GET (Lax now sent, Strict still not, no Origin)', () => {
+    const v = victim((r) => (r.path === '/account/email' ? { status: 303, headers: { location: '/account' } } : { status: 200, body: 'Account' }));
+    const visit = v.b.crossSitePost(TARGET, { email: 'x' });
+    expect(visit.outcome).toBe('page');
+    expect(v.seen.map((r) => [r.method, sentCookies(r), r.headers.origin, r.headers['sec-fetch-site']])).toEqual([
+      ['POST', ['none'], 'http://attacker.test', 'cross-site'],
+      ['GET', ['lax', 'none'], undefined, 'cross-site'],
+    ]);
+    expect(v.seen[1].headers.referer).toBe('http://attacker.test/'); // a redirect keeps the referrer that started it
+  });
+
+  it('307 keeps the POST, its body and its Origin; an origin change on the way taints Origin to null (Fetch)', () => {
+    const v = victim((r) => (r.url === 'http://citadel.test/a' ? { status: 307, headers: { location: 'https://citadel.test/b' } }
+      : r.url === 'https://citadel.test/b' ? { status: 307, headers: { location: 'https://citadel.test/c' } } : { status: 200 }));
+    v.b.crossSitePost('http://citadel.test/a', { k: 'v' });
+    expect(v.seen.map((r) => [r.url, r.method, r.rawBody, r.headers.origin])).toEqual([
+      ['http://citadel.test/a', 'POST', 'k=v', 'http://attacker.test'],
+      ['https://citadel.test/b', 'POST', 'k=v', 'null'], // http -> https citadel: another origin, not the initiator's
+      ['https://citadel.test/c', 'POST', 'k=v', 'null'],
+    ]);
+  });
+
+  it('a citadel page that moves on by itself (Refresh) in the top-level window starts a same-site request', () => {
+    const v = victim((r) => (r.path === '/account/email' ? { status: 200, headers: { refresh: '0; url=/done' } } : { status: 200 }));
+    v.b.crossSitePost(TARGET, { email: 'x' });
+    expect(v.seen.map((r) => [r.path, sentCookies(r), r.headers['sec-fetch-site'], r.headers.referer])).toEqual([
+      ['/account/email', ['none'], 'cross-site', 'http://attacker.test/'],
+      ['/done', ['strict', 'lax', 'none'], 'same-origin', TARGET],
+    ]);
+  });
+
+  it('a cross-site response that is not a top-level navigation\'s cannot set a Lax cookie; a top-level one can', () => {
+    const v = victim(() => ({ status: 200, headers: { 'set-cookie': ['lax2=1; SameSite=Lax', 'none2=1; SameSite=None; Secure'] } }));
+    v.b.crossSitePost(TARGET, {}, { page: { sandboxed: true } }); // navigates a frame
+    expect(v.b.cookies.list().map((c) => c.name)).toEqual(['strict', 'lax', 'none', 'none2']);
+    v.b.crossSitePost(TARGET, {}); // navigates the top-level page
+    expect(v.b.cookies.list().map((c) => c.name)).toEqual(['strict', 'lax', 'none', 'none2', 'lax2']);
+  });
+
+  it('a form posted to attacker.test is logged with its body and the page\'s Referer; nothing reaches the citadel', () => {
+    const v = victim();
+    const visit = v.b.crossSitePost('http://attacker.test/collect', { a: '1' }, { page: { url: 'http://attacker.test/p?x=1' } });
+    expect(visit.outcome).toBe('attacker');
+    expect(v.w.attackerLog.entries().map((h) => [h.method, h.url, h.referer, h.body])).toEqual([['POST', 'http://attacker.test/collect', 'http://attacker.test/p?x=1', 'a=1']]);
+    expect(v.seen).toEqual([]);
+  });
+});
+
+describe('crossSitePost: the form body as a browser encodes it', () => {
+  const posted = (form: SimFormFields, contentType?: string): SimRequest => {
+    const v = victim();
+    v.b.crossSitePost(TARGET, form, contentType === undefined ? {} : { contentType });
+    return v.seen[0];
+  };
+
+  it('urlencoded (the default): fields in body, the encoded form in rawBody', () => {
+    const r = posted({ email: 'pilgrim@citadel.test', note: 'a b&c' });
+    expect(r.headers['content-type']).toBe('application/x-www-form-urlencoded');
+    expect(r.rawBody).toBe('email=pilgrim%40citadel.test&note=a+b%26c');
+    expect({ ...r.body }).toEqual({ email: 'pilgrim@citadel.test', note: 'a b&c' });
+    expect(Object.getPrototypeOf(r.body)).toBeNull();
+  });
+
+  it('text/plain: name=value lines, unescaped, so a JSON body can be smuggled in a field name; the app parses none of it', () => {
+    const r = posted([['{"notify":"all","pad":"', '"}']], 'text/plain');
+    expect(r.headers['content-type']).toBe('text/plain');
+    expect(r.rawBody).toBe('{"notify":"all","pad":"="}\r\n');
+    expect(JSON.parse(r.rawBody)).toEqual({ notify: 'all', pad: '=' });
+    expect({ ...r.body }).toEqual({});
+  });
+
+  it('multipart/form-data: one part per field (names escaped), a deterministic boundary; the app parses none of it', () => {
+    const r = posted([['a"b', '1'], ['c', 'x\ny']], 'multipart/form-data');
+    expect(r.headers['content-type']).toBe(`multipart/form-data; boundary=${SIM_FORM_BOUNDARY}`);
+    expect(r.rawBody).toBe([
+      `--${SIM_FORM_BOUNDARY}`, 'Content-Disposition: form-data; name="a%22b"', '', '1',
+      `--${SIM_FORM_BOUNDARY}`, 'Content-Disposition: form-data; name="c"', '', 'x', 'y',
+      `--${SIM_FORM_BOUNDARY}--`, '',
+    ].join('\r\n'));
+    expect({ ...r.body }).toEqual({});
+    const clash = posted([['a', SIM_FORM_BOUNDARY]], 'multipart/form-data');
+    expect(clash.headers['content-type']).toBe(`multipart/form-data; boundary=${SIM_FORM_BOUNDARY}x`);
+  });
+
+  it('an enctype a browser does not know is urlencoded; the known ones match in any case', () => {
+    expect(posted({ a: '1' }, 'application/json').headers['content-type']).toBe('application/x-www-form-urlencoded');
+    expect(posted({ a: '1' }, ' text/plain').headers['content-type']).toBe('application/x-www-form-urlencoded');
+    expect(posted({ a: '1' }, 'TEXT/Plain').headers['content-type']).toBe('text/plain');
+  });
+
+  it('line breaks become CRLF (HTML); pairs keep their order and may repeat (a repeated name keeps its first value in body)', () => {
+    const r = posted([['a', 'x\ry'], ['a', '2'], ['b', 'z\n']]);
+    expect(r.rawBody).toBe('a=x%0D%0Ay&a=2&b=z%0D%0A');
+    expect({ ...r.body }).toEqual({ a: 'x\r\ny', b: 'z\r\n' });
+  });
+
+  it('non-string fields are dropped; a form that is not a record or a list of pairs is empty', () => {
+    expect(posted({ a: 'x', b: 5 as never }).rawBody).toBe('a=x');
+    expect(posted([['a', 'x'], ['b'] as never, 'c' as never]).rawBody).toBe('a=x');
+    expect(posted(null as never).rawBody).toBe('');
+  });
+});
+
+describe('bodyFields: what the app\'s body parsers give the lab', () => {
+  it('urlencoded and JSON objects give fields; anything else gives none', () => {
+    expect({ ...bodyFields('application/x-www-form-urlencoded; charset=UTF-8', 'a=1&a=2&b=%20') }).toEqual({ a: '1', b: ' ' });
+    const json = bodyFields('Application/JSON', '{"notify":"all","n":5,"o":{"x":"y"},"__proto__":"p"}');
+    expect(Object.keys(json)).toEqual(['notify', '__proto__']);
+    expect(Object.getPrototypeOf(json)).toBeNull();
+    for (const [type, raw] of [['application/json', '[1]'], ['application/json', 'nope'], ['application/json', 'null'], ['text/plain', 'a=1'], ['multipart/form-data; boundary=x', 'a=1']]) {
+      expect({ ...bodyFields(type, raw) }, `${type} ${raw}`).toEqual({});
+    }
   });
 });

@@ -201,6 +201,19 @@ describe('xssBrowser: the admin views a page; the oracle decides whether the pay
     expect(steals(l)).toEqual([STOLEN]);
   });
 
+  it('runs the attacker page\'s navigations too (E1): the page a cross-site link or form lands on is judged, its hash kept', () => {
+    const l = lab((m) => ({
+      '/post': (r) => page(r.method === 'POST' ? `<img src=x onerror=${m}>` : ''),
+      '/hash': page('<p>benign</p>'),
+    }), { dom: (p) => (p.path === '/hash' ? { html: decodeURIComponent(p.hash.slice(1)) } : undefined) });
+    l.admin.crossSitePost('http://citadel.test/post', { a: '1' });
+    expect(l.seen[0]).toMatchObject({ method: 'POST', headers: { origin: 'http://attacker.test', 'sec-fetch-site': 'cross-site' } });
+    expect(steals(l)).toEqual([STOLEN]);
+    l.admin.crossSiteLink(`http://citadel.test/hash#${encodeURIComponent(`<img src=x onerror=${l.marker.call}>`)}`);
+    expect(steals(l)).toEqual([STOLEN, STOLEN]);
+    expect(l.admin.verdicts.map((v) => [v.url, v.fired])).toEqual([['http://citadel.test/post', true], ['http://citadel.test/hash', true]]);
+  });
+
   it('refuses bad options when the lab is built', () => {
     const build = (opts: Partial<XssVictimOptions>) => () => perSession(() => xssBrowser(simWorld(), () => page(''), { marker: markerCall('0123456789abcdef'), canary: 'x', ...opts }))
       .for({ sessionId: `bad-${++n}`, level: 'acolyte' });
