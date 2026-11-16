@@ -29,6 +29,14 @@ const MODULES = ['upload.ts', 'upload-zip.ts', 'simfs.ts'] as const;
 const ALLOWED: ReadonlySet<string> = new Set([
   'node:buffer', 'node:zlib', './upload.js', './upload-zip.js', './simfs.js', './sim/limits.js', './lab.js',
 ]);
+/*
+ * WHAT THE STATIC SCAN IS FOR: it catches ACCIDENTS (someone adding `import ... from 'node:fs'`, a `fetch`, an `eval`)
+ * in the engine's own code. It is NOT a sandbox against hostile code: a computed name (`({})['con' + 'structor']`), a
+ * template substitution or `String.fromCharCode(...)` still spells a way to Function that no source scan can see.
+ * The backstop is the runtime traps below: every fs, network, child-process and vm function throws during the whole
+ * flow. (Uploaded bytes never reach any of this as code: simInterpret only pattern-matches them.)
+ */
+
 /**
  * Names that reach the network or load or run code, however the call site spells the rest: globals, and
  * `constructor` (`(() => 0).constructor` is the Function constructor without naming Function). Flagged as an
@@ -130,28 +138,32 @@ describe('the upload engine imports no filesystem, network or code runner', () =
 });
 
 /**
- * Spy on every filesystem, network, child-process and vm function. The spies sit on the CommonJS export objects;
- * syncBuiltinESMExports() then points the builtins' ES-module bindings at them too, so a module that did
- * `import { readFileSync } from 'node:fs'` is seen as well (without it, ESM callers bypass every spy).
+ * Trap every filesystem, network, child-process and vm function: each becomes a spy that THROWS `guard: <name>` and
+ * never calls the real function, so a regression fails the test instead of touching the disk, the network or a
+ * process. The spies sit on the CommonJS export objects; syncBuiltinESMExports() then points the builtins'
+ * ES-module bindings at them too, so a module that did `import { readFileSync } from 'node:fs'` is trapped as well
+ * (without it, ESM callers would reach the real functions: the self-test checks the bindings before any call).
  */
 function installSpies() {
   const require = createRequire(import.meta.url);
+  const trap = (mod: object, name: string) =>
+    vi.spyOn(mod as Record<string, () => unknown>, name).mockImplementation(() => { throw new Error(`guard: ${name}`); });
   const on = (id: string, fns: readonly string[]) => {
     const mod = require(id) as Record<string, unknown>;
-    return fns.filter((f) => typeof mod[f] === 'function').map((f) => vi.spyOn(mod as Record<string, () => unknown>, f));
+    return fns.filter((f) => typeof mod[f] === 'function').map((f) => trap(mod, f));
   };
   const fsFns = ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync', 'mkdir',
     'mkdirSync', 'createReadStream', 'createWriteStream', 'readdir', 'readdirSync', 'stat', 'statSync', 'unlink', 'unlinkSync', 'rename', 'renameSync'];
-  const fsPromises = require('node:fs/promises') as Record<string, () => unknown>;
-  const dns = require('node:dns') as { promises: Record<string, () => unknown> };
+  const fsPromises = require('node:fs/promises') as object;
+  const dns = require('node:dns') as { promises: object };
   const spies = [
-    vi.spyOn(globalThis, 'fetch'),
+    trap(globalThis, 'fetch'),
     ...on('node:fs', fsFns),
-    ...(['readFile', 'writeFile', 'appendFile', 'open', 'mkdir', 'readdir', 'stat', 'unlink', 'rename'] as const).map((f) => vi.spyOn(fsPromises, f)),
+    ...(['readFile', 'writeFile', 'appendFile', 'open', 'mkdir', 'readdir', 'stat', 'unlink', 'rename'] as const).map((f) => trap(fsPromises, f)),
     ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
     ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
     ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
-    ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
+    ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => trap(dns.promises, f)),
     ...on('node:child_process', ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']),
     ...on('node:vm', ['runInNewContext', 'runInThisContext', 'runInContext', 'compileFunction', 'createContext']),
   ];
@@ -184,20 +196,21 @@ async function wholeFlow(sessionId: string): Promise<void> {
 }
 
 describe('a whole upload, archive and "execution" touches no filesystem, network, child-process or vm function', () => {
-  it('the spies see ES-module imports too (self-test): readFileSync(url, "utf8") and runInNewContext', () => {
+  it('the spies throw instead of passing through, and reach ES-module imports (self-test, nothing real is called)', () => {
     const spies = installSpies();
     try {
-      const fsSpy = spies.find((s) => s.getMockName() === 'readFileSync');
-      const vmSpy = spies.find((s) => s.getMockName() === 'runInNewContext');
-      expect(readFileSync(new URL(import.meta.url), 'utf8')).toContain('installSpies'); // this module's own ESM import
-      expect(runInNewContext('6 * 7')).toBe(42);
-      expect(fsSpy).toHaveBeenCalledTimes(1);
-      expect(vmSpy).toHaveBeenCalledTimes(1);
+      // Every spy has a throwing implementation: a call can never reach the real function.
+      for (const spy of spies) expect(spy.getMockImplementation(), spy.getMockName()).toBeDefined();
+      // This module's own ESM imports ARE the spies, checked before any call (without syncBuiltinESMExports they are
+      // the real functions).
+      expect([vi.isMockFunction(readFileSync), vi.isMockFunction(runInNewContext)]).toEqual([true, true]);
+      expect(() => readFileSync(new URL(import.meta.url), 'utf8')).toThrow('guard: readFileSync');
+      expect(() => runInNewContext('6 * 7')).toThrow('guard: runInNewContext');
     } finally {
       releaseSpies(spies);
     }
     // Restored for ESM callers too: the bindings point at the real functions again.
-    expect(vi.isMockFunction(readFileSync)).toBe(false);
+    expect([vi.isMockFunction(readFileSync), vi.isMockFunction(runInNewContext)]).toEqual([false, false]);
   });
 
   it('parse -> sniff -> unzip -> store -> interpret, with every such function spied', async () => {

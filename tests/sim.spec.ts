@@ -1001,19 +1001,23 @@ describe('no real network', () => {
   });
 
   /**
-   * Spy on every network function. The spies sit on the CommonJS export objects; syncBuiltinESMExports() points the
-   * builtins' ES-module bindings at them too, so `import { request } from 'node:http'` callers are seen as well.
+   * Trap every network function: each becomes a spy that THROWS `guard: <name>` and never calls the real function, so
+   * a regression fails the test instead of opening a connection. The spies sit on the CommonJS export objects;
+   * syncBuiltinESMExports() points the builtins' ES-module bindings at them too, so `import { request } from
+   * 'node:http'` callers are trapped as well (the self-test checks the binding before any call).
    */
   const installNetSpies = () => {
     const require = createRequire(import.meta.url);
-    const on = (id: string, fns: readonly string[]) => fns.map((f) => vi.spyOn(require(id) as Record<string, () => unknown>, f));
-    const dns = require('node:dns') as { promises: Record<string, () => unknown> };
+    const trap = (mod: object, name: string) =>
+      vi.spyOn(mod as Record<string, () => unknown>, name).mockImplementation(() => { throw new Error(`guard: ${name}`); });
+    const on = (id: string, fns: readonly string[]) => fns.map((f) => trap(require(id) as object, f));
+    const dns = require('node:dns') as { promises: object };
     const spies = [
-      vi.spyOn(globalThis, 'fetch'),
+      trap(globalThis, 'fetch'),
       ...on('node:http', ['request', 'get']), ...on('node:https', ['request', 'get']), ...on('node:http2', ['connect']),
       ...on('node:tls', ['connect']), ...on('node:net', ['connect', 'createConnection']), ...on('node:dgram', ['createSocket']),
       ...on('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']),
-      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => vi.spyOn(dns.promises, f)),
+      ...(['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'] as const).map((f) => trap(dns.promises, f)),
     ];
     syncBuiltinESMExports();
     return spies;
@@ -1023,16 +1027,14 @@ describe('no real network', () => {
     syncBuiltinESMExports();
   };
 
-  it('the network spies see ES-module imports too (self-test: a named import of node:net createConnection)', () => {
+  it('the network spies throw instead of passing through, and reach ES-module imports (self-test, nothing real is called)', () => {
     const spies = installNetSpies();
     try {
-      // By identity: vitest names a spy after the function, and net.createConnection is a function named `connect`.
-      const cjs = createRequire(import.meta.url)('node:net') as { createConnection: unknown };
-      const spy = spies.find((s) => s === cjs.createConnection);
-      expect(spy).toBeDefined();
-      spy?.mockImplementationOnce((() => ({})) as never); // seen, never really connecting
-      expect(createConnection({ port: 9 })).toEqual({});
-      expect(spy).toHaveBeenCalledTimes(1);
+      // Every spy has a throwing implementation: a call can never reach the real function.
+      for (const spy of spies) expect(spy.getMockImplementation(), spy.getMockName()).toBeDefined();
+      // The ESM binding IS the spy, checked before any call (without syncBuiltinESMExports it is the real function).
+      expect(vi.isMockFunction(createConnection)).toBe(true);
+      expect(() => createConnection({ port: 9 })).toThrow('guard: createConnection');
     } finally {
       releaseSpies(spies);
     }
