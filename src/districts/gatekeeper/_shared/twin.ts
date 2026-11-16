@@ -48,17 +48,19 @@ export function toSim(r: Reply): SimResponse {
 const REDIRECTS: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 
 /**
- * Answer the player's real browser with a Reply: its cookies always; a redirect, or a page that would move on by
- * itself, through sendSimRedirect (a citadel URL lands in the lab at the served level; anything else gets the "your
- * browser would go to" page); otherwise `render()` at the Reply's status.
+ * Answer the player's real browser with a Reply, as the simulated browser reads the same Reply: its cookies always; a
+ * Location only on a redirect status (301, 302, 303, 307, 308) and then through sendSimRedirect (a citadel URL lands in
+ * the lab at the served level; anything else gets the "your browser would go to" page); a page that would move on by
+ * itself through sendSimRedirect too; otherwise `render()` at the Reply's status (a Location on any other status is
+ * ignored, as the simulated browser ignores it).
  */
 export async function sendReply(res: Response, r: Reply, render: () => Promise<void>): Promise<void> {
   for (const c of r.cookies ?? []) {
     if (c.clear) res.clearCookie(c.name, { path: c.path, httpOnly: true, sameSite: 'lax' });
     else res.cookie(c.name, c.value, { path: c.path, httpOnly: true, sameSite: 'lax' });
   }
-  if (r.location !== undefined) {
-    await sendSimRedirect(res, r.location, (REDIRECTS.has(r.status) ? r.status : 302) as SimRedirectStatus);
+  if (r.location !== undefined && REDIRECTS.has(r.status)) {
+    await sendSimRedirect(res, r.location, r.status as SimRedirectStatus);
     return;
   }
   if (r.forward !== undefined) {
