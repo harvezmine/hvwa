@@ -2,10 +2,12 @@
 import { describe, it, expect } from 'vitest';
 import type request from 'supertest';
 import {
-  FLAG_RE, attackerHits, bare, describeExploitMatrix, describeLabView, freshSession, panelOf, setCookieHeader, setCookieValue,
-  unescapeHtml, type Agent,
+  FLAG_RE, attackerHits, bare, describeExploitMatrix, freshSession, panelOf, setCookieValue, unescapeHtml, type Agent,
 } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
+import {
+  describeLabCookies, describeSignInView, describeVictimAction, expectInLab, victimClient,
+} from '../../_shared/victim-lab.testkit.js';
 import { describeCurlExample } from '../_shared/pilgrim-lab.testkit.js';
 import { GK16 } from './challenge.js'; // registers GK-16 before createApp() inside freshSession
 import { cookieName, labState } from './model.js';
@@ -20,7 +22,7 @@ type Script = (agent: Agent, level: Level, sid: string) => Promise<request.Respo
 const home = (a: Agent, l: Level, extra = '') => a.get(`${LAB}?level=${l}&lang=en${extra}`);
 const signIn = (a: Agent, l: Level, username: string, password: string) =>
   a.post(`${LAB}?level=${l}`).type('form').send({ username, password });
-const sendLink = (a: Agent, l: Level, url: string) => a.post(`${LAB}/victim/send-link?level=${l}`).type('form').send({ url });
+const { sendLink } = victimClient(LAB);
 const adminPage = (a: Agent, l: Level) => a.get(`${LAB}/admin?level=${l}`);
 /** "Your session: <code>…</code>" on the page. */
 const sessionOn = (html: string): string | undefined => /Your session: <code>([^<]*)<\/code>/.exec(html)?.[1];
@@ -77,16 +79,16 @@ describeExploitMatrix<Script>({
   },
 });
 
-describeLabView({
-  challenge: GK16,
-  path: LAB,
-  account: /pilgrim<\/code> \/ <code>pilgrim/,
-  echoField: 'username',
-  extra: { password: 'x' },
-  oddBodies: [{ username: { toString: 1 }, password: ['a'] }, [1, 2], {}],
-  ok: (agent, level) => signIn(agent, level, 'pilgrim', 'pilgrim'),
-  bad: (agent, level) => signIn(agent, level, 'pilgrim', 'nope'),
+describeSignInView({ challenge: GK16, path: LAB });
+describeVictimAction({
+  challenge: GK16, path: LAB,
+  description: {
+    en: 'opens the link you send in a fresh browser, then signs in on the citadel sign-in page it lands on',
+    id: 'membuka tautan yang Anda kirim di peramban baru, lalu masuk di halaman masuk citadel yang terbuka',
+  },
+  label: { en: 'Send your session link to the admin', id: 'Kirim tautan sesi ke admin' },
 });
+describeLabCookies({ challenge: GK16, path: LAB, cookies: [{ name: cookieName, set: (agent, level, base) => agent.get(`${base}?level=${level}`) }] });
 
 describeCurlExample({
   challenge: GK16, path: LAB,
@@ -301,16 +303,7 @@ describe('GK-16 the lab state', () => {
     expect(state.resumes.size).toBeLessThanOrEqual(100);
   });
 
-  it('the session cookie is named per level, on the canonical lab path, HttpOnly', async () => {
-    const { agent } = await freshSession();
-    for (const level of LEVELS) {
-      const line = setCookieHeader(await agent.get(`${LAB.toUpperCase()}?level=${level}`), cookieName(level));
-      expect(line, level).toBeDefined();
-      expect(line, level).toContain(`Path=${LAB}`);
-      expect(line, level).toMatch(/HttpOnly/i);
-    }
-  });
-
+  // The session cookie's names, path and HttpOnly: describeLabCookies above.
   it('a wrong password does not sign in, and the admin cannot be signed in to through guesses', async () => {
     const { agent } = await freshSession();
     for (const level of LEVELS) {
@@ -329,7 +322,7 @@ describe('GK-16 your real browser never leaves the lab (sendSimRedirect)', () =>
     const link = shareLinkOn((await home(agent, 'inquisitor')).text)!;
     const res = await agent.get(`${LAB}/resume?level=inquisitor&token=${new URL(link).searchParams.get('token')}`);
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe(`${LAB}?level=inquisitor`);
+    expect(expectInLab(res, LAB, 'inquisitor')).toBe(`${LAB}?level=inquisitor`);
   });
 });
 
@@ -349,13 +342,5 @@ describe('GK-16 lab view specifics', () => {
     const page = await home(agent, 'templar');
     const mine = sessionOn(page.text)!;
     expect(page.text).toContain(`href="${LAB}?sid=${mine}&amp;level=templar"`);
-  });
-
-  it('the victim action says what the admin does, in both languages', async () => {
-    const { agent } = await freshSession();
-    expect(panelOf((await home(agent, 'acolyte')).text)).toContain('opens the link you send in a fresh browser, then signs in on the citadel sign-in page it lands on');
-    const id = panelOf((await agent.get(`${LAB}?level=acolyte&lang=id`)).text);
-    expect(id).toContain('Kirim tautan sesi ke admin');
-    expect(id).toContain('membuka tautan yang Anda kirim di peramban baru, lalu masuk di halaman masuk citadel yang terbuka');
   });
 });
