@@ -32,7 +32,7 @@ const NOT_FOUND = 'Order not found.';
 type Lookup = { readonly ok: true; readonly order: PlacedOrder } | { readonly ok: false; readonly status: 403 | 404; readonly message: string };
 
 /** The refusal of a level: 403 below Divine, the same answer as a missing order at Divine. */
-function refused(req: Request): Lookup {
+function refused(req: Request): Extract<Lookup, { ok: false }> {
   return impl.for(req.level).uniformNotFound ? { ok: false, status: 404, message: NOT_FOUND } : { ok: false, status: 403, message: DENIED };
 }
 
@@ -101,7 +101,7 @@ async function render(req: Request, res: Response, outcome: Outcome): Promise<vo
     heading: 'Relic Market: your orders',
     detail: lookup?.ok === true ? detailOf(req, lookup.order) : null,
     findId: outcome.intent === 'find' ? field(req, 'id') : '',
-    feed: state.records.map((o) => ({ id: level.feedShowsIds ? o.no : '', city: o.city, items: o.lines.map((l) => `${l.name} × ${l.qty}`).join(', ') })),
+    feed: state.records.map((o) => ({ id: level.feedId(o), city: o.city, items: o.lines.map((l) => `${l.name} × ${l.qty}`).join(', ') })),
   });
 }
 
@@ -159,7 +159,7 @@ export const RM11 = register(defineChallenge({
       const orders = impl.for(req.level).authorizeBatch(CUSTOMER.id, ids.map((id) => findOrder(state, id)));
       if (orders === 'deny') {
         const out = refused(req);
-        res.status(out.ok ? 200 : out.status).json({ error: out.ok ? NOT_FOUND : out.message });
+        res.status(out.status).json({ error: out.message });
         return;
       }
       if (orders.length === 0) {

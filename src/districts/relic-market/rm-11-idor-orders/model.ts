@@ -3,6 +3,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Level } from '../../../core/levels.js';
 import { CUSTOMER, catalogOf, newShop, perShop, pinOrder, type Order, type OrderLine, type ShopState } from '../_shared/shop.js';
+// The model imports the level modules at runtime (idStyle); the levels import only types from here, so there is no cycle.
 import * as acolyte from './levels/acolyte.js';
 import * as templar from './levels/templar.js';
 import * as inquisitor from './levels/inquisitor.js';
@@ -22,6 +23,8 @@ export const CUSTOMERS: Readonly<Record<string, string>> = Object.freeze({
 /** A seeded order: the shop's Order (with a string id) plus where it ships and its gift message. */
 export interface PlacedOrder extends Order {
   readonly no: string;
+  /** The plain sequence number (1001 ...): what the id is derived from at the weak levels. */
+  readonly seq: number;
   readonly city: string;
   readonly gift: string;
 }
@@ -36,8 +39,8 @@ export type Channel = 'page' | 'api';
 export interface OrdersLevel {
   /** How order ids look: sequential numbers, base64url-encoded numbers or random ids. */
   readonly idStyle: IdStyle;
-  /** Whether the "recently shipped" feed prints the order ids. */
-  readonly feedShowsIds: boolean;
+  /** What the "recently shipped" feed prints to name an order: its id, its plain number, or '' for nothing. */
+  feedId(order: PlacedOrder): string;
   /** Whether a refusal is the same answer as a missing order. */
   readonly uniformNotFound: boolean;
   /** May the viewer read this one order through this door? */
@@ -89,7 +92,7 @@ const labs = perShop((level): LabState => {
     const line = lineOf(sku, qty);
     const total = line.unitPrice * qty;
     const order: PlacedOrder = Object.freeze({
-      no: idOf(style, n), owner, lines: Object.freeze([line]), discounts: Object.freeze([]), subtotal: total, total,
+      no: idOf(style, n), seq: n, owner, lines: Object.freeze([line]), discounts: Object.freeze([]), subtotal: total, total,
       charged: total, status: 'shipped', at: Date.UTC(2026, 9, day), city, gift,
     });
     pinOrder(state, order);

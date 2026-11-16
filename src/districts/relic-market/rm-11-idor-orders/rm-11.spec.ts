@@ -327,7 +327,8 @@ describe('RM-11 page', () => {
 });
 
 // Keep `Level` in use for readers: the per-level table of what the feed shows.
-const FEED_SHOWS_IDS: Record<Level, boolean> = { acolyte: true, templar: true, inquisitor: true, divine: false };
+/** What the feed prints for Maren's order per level: the id (acolyte, inquisitor), the plain NUMBER (templar), nothing (divine). */
+const FEED_PRINTS = (c: Ctx): Record<Level, string | null> => ({ acolyte: '1002', templar: '#1002', inquisitor: victim(c), divine: null });
 describe('RM-11 feed', () => {
   it('prints order ids below Divine only', async () => {
     for (const level of LEVELS) {
@@ -335,7 +336,32 @@ describe('RM-11 feed', () => {
       const html = (await home(c)).text;
       const feed = /<section[^>]*data-testid="feed"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
       expect(feed, level).toContain('Bandung');
-      expect(feed.includes(`<code>${victim(c)}</code>`), level).toBe(FEED_SHOWS_IDS[level]);
+      const want = FEED_PRINTS(c)[level];
+      if (want === null) expect(feed, level).not.toContain('<code>');
+      else expect(feed, level).toContain(`<code>${want}</code>`);
+      if (level === 'templar') expect(feed).not.toContain(victim(c)); // the player encodes the number themselves
+    }
+  });
+});
+
+describe('RM-11 review fixes', () => {
+  it('templar: the feed number, base64url-encoded by the player, opens the order (the solve)', async () => {
+    const c = await ctx('templar');
+    const feed = /<section[^>]*data-testid="feed"[\s\S]*?<\/section>/.exec((await home(c)).text)?.[0] ?? '';
+    const n = /Bandung[^<]*<code>#(\d+)<\/code>/.exec(feed)?.[1] ?? '';
+    expect(n).toBe('1002');
+    const res = await page(c, Buffer.from(n).toString('base64url'));
+    expect(res.status).toBe(200);
+    expect(res.text).toMatch(FLAG_RE);
+  });
+
+  it('inquisitor: a batch whose first id is unknown is a 404 Order not found, not a 403', async () => {
+    const c = await ctx('inquisitor');
+    for (const ids of [['ORD-0000000000', victim(c)], ['ORD-0000000000', own(c)[0]], ['ORD-0000000000']]) {
+      const res = await batch(c, ids);
+      expect(res.status, ids.join()).toBe(404);
+      expect(res.text).toContain('Order not found.');
+      expect(res.text).not.toMatch(FLAG_RE);
     }
   });
 });

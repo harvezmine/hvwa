@@ -7,7 +7,9 @@ import type { Channel, OrdersLevel, PlacedOrder } from '../model.js';
 // ASVS 5.0 V8.2 (object-level authorization).
 // Out of scope here: a production system would also log denied lookups and rate limit them.
 export const idStyle: OrdersLevel['idStyle'] = 'random';
-export const feedShowsIds = false;
+export function feedId(_order: PlacedOrder): string {
+  return '';
+}
 export const uniformNotFound = true;
 
 export function canRead(viewerId: string, order: PlacedOrder, _channel: Channel): boolean {
