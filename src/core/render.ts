@@ -36,11 +36,12 @@ function serverEjsOptions(): Options {
  * Data keys a view may not set: ejs's own template-function locals
  * (escapeFn, include, rethrow, __append, __output, locals) and the context
  * the engine provides (body, labBar and simPanel for the layout; t and lang
- * from res.locals; challenge, level and labPath on challenge routes).
+ * from res.locals; challenge, level and labPath on challenge routes), plus title: the document <title> is the
+ * platform's (portal pages pass pageTitle, which stays unreserved; a lab page gets labBar.pageTitle).
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-  'challenge', 'level', 'labBar', 'labPath', 'simPanel',
+  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */

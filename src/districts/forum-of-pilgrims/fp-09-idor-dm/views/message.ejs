@@ -1,0 +1,10 @@
+<%# FP-09 message page. Lab content is English by design. Escaped output only. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Message</h1>
+<% if (dm) { -%>
+  <p class="lab-message lab-success" role="status" data-testid="lab-message"><%= dm.from %> to <%= dm.to %>: <%= dm.subject %> — <%= dm.body %></p>
+<% } else { -%>
+  <p class="lab-message lab-error" role="status" data-testid="lab-message"><%= message %></p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to the forum messages</a></p>
+</section>

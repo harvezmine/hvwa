@@ -5,14 +5,14 @@
 Levels: A = Acolyte, T = Templar, I = Inquisitor, D = Divine; "puzzle" rows have no difficulty tiers.
 Status: "✅ registered" = the challenge is in the registry; "planned" = catalog row only.
 
-**Total: 21/122 registered**
+**Total: 32/122 registered**
 
 | District | Registered | Planned |
 |---|---|---|
 | Gatekeeper | 18 | 0 |
-| Relic Market | 3 | 11 |
-| Scriptorium | 0 | 20 |
-| Forum of Pilgrims | 0 | 12 |
+| Relic Market | 7 | 7 |
+| Scriptorium | 4 | 16 |
+| Forum of Pilgrims | 3 | 9 |
 | Archive API | 0 | 15 |
 | Oracle | 0 | 21 |
 | Forge | 0 | 10 |
@@ -46,14 +46,14 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Relic Market
 
-3/14 registered
+7/14 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
-| RM-01 | SQLi product search (UNION) | A05 | A T I D | 2 | planned |
-| RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | planned |
-| RM-03 | Blind time-based SQLi | A05 | A T I D | 2 | planned |
-| RM-04 | NoSQL injection (`$ne` login) | A05 | A T I D | 2 | planned |
+| RM-01 | SQLi product search (UNION) | A05 | A T I D | 2 | ✅ registered |
+| RM-02 | Blind boolean SQLi | A05 | A T I D | 2 | ✅ registered |
+| RM-03 | Blind time-based SQLi | A05 | A T I D | 2 | ✅ registered |
+| RM-04 | NoSQL injection (`$ne` login) | A05 | A T I D | 2 | ✅ registered |
 | RM-05 | Negative quantity logic flaw | A06 | A T I D | 2 | ✅ registered |
 | RM-06 | Coupon stacking | A06 | A T I D | 2 | planned |
 | RM-07 | Race: coupon reuse | A06 | A I D | 2 | planned |
@@ -67,7 +67,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Scriptorium
 
-0/20 registered
+4/20 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -77,11 +77,11 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | SC-04 | Markdown renderer XSS | A05 | A T I D | 2 | planned |
 | SC-05 | SVG upload XSS | A05 | A T I D | 2 | planned |
 | SC-06 | mXSS sanitizer bypass | A05 | A I D | 2 | planned |
-| SC-07 | Upload webshell (ext bypass) | A05 | A T I D | 2 | planned |
-| SC-08 | Upload double-extension | A05 | A T I D | 2 | planned |
+| SC-07 | Upload webshell (ext bypass) | A05 | A T I D | 2 | ✅ registered |
+| SC-08 | Upload double-extension | A05 | A T I D | 2 | ✅ registered |
 | SC-09 | Upload polyglot image | A05 | A I D | 2 | planned |
-| SC-10 | ZIP slip | A01 | A T I D | 2 | planned |
-| SC-11 | Path traversal download | A01 | A T I D | 2 | planned |
+| SC-10 | ZIP slip | A01 | A T I D | 2 | ✅ registered |
+| SC-11 | Path traversal download | A01 | A T I D | 2 | ✅ registered |
 | SC-12 | Path traversal Unicode/double-encode | A01 | A I D | 3 | planned |
 | SC-13 | LFI → log poisoning RCE | A05 | A I D | 3 | planned |
 | SC-14 | XXE via DOCX | A05 | A T I D | 3 | planned |
@@ -94,7 +94,7 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 
 ## Forum of Pilgrims
 
-0/12 registered
+3/12 registered
 
 | ID | Title | Standard | Levels | Phase | Status |
 |---|---|---|---|---|---|
@@ -105,9 +105,9 @@ Status: "✅ registered" = the challenge is in the registry; "planned" = catalog
 | FP-05 | Stored XSS (bio) | A05 | A T I D | 2 | planned |
 | FP-06 | SSTI (Nunjucks) | A05 | A T I D | 2 | planned |
 | FP-07 | SSTI → RCE | A05 | A I D | 2 | planned |
-| FP-08 | Open redirect (share link) | A01 | A T I D | 2 | planned |
-| FP-09 | IDOR private message (BOLA) | A01/API1 | A T I D | 2 | planned |
-| FP-10 | Second-order SQLi via username | A05 | A I D | 2 | planned |
+| FP-08 | Open redirect (share link) | A01 | A T I D | 2 | ✅ registered |
+| FP-09 | IDOR private message (BOLA) | A01/API1 | A T I D | 2 | ✅ registered |
+| FP-10 | Second-order SQLi via username | A05 | A I D | 2 | ✅ registered |
 | FP-11 | Client-side prototype pollution → XSS | A05 | A I D | 2 | planned |
 | FP-12 | HTML injection in email notification | A05 | A T I D | 2 | planned |
 

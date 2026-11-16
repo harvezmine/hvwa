@@ -1,0 +1,13 @@
+<%# RM-04 lab view. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Relic Market staff portal</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code></p>
+  <form method="post">
+    <label>Username <input name="username" type="text" autocomplete="off" spellcheck="false" value="<%= username %>"></label>
+    <label>Password <input name="password" type="text" autocomplete="off" spellcheck="false" value="<%= password %>"></label>
+    <button type="submit">Sign in</button>
+  </form>
+<%- include('../../_shared/views/message', { result: result }) %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+  <p class="lab-note">The same login as JSON: <code>curl "<%= curlJson.url %>"<% curlJson.headers.forEach(function (h) { %> -H "<%= h %>"<% }); %> -b "hvwa_sid=&lt;copy from devtools&gt;" -d '<%= curlJson.data %>'</code></p>
+</section>

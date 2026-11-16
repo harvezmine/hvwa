@@ -24,6 +24,16 @@ describe('curl helpers', () => {
     expect(put.form).toEqual(['name=Brother Lamp', "bio=it'\\''s"]);
     expect(JSON.stringify(put)).not.toContain('11111111-1111');
   });
+
+  it('curlFor: files add multipart -F entries (files in the order given, then the form fields); no files, no multipart key', () => {
+    expect(curlFor(fakeReq('acolyte'), fakeRes(), { path: '/p', form: { a: 'b' } })).not.toHaveProperty('multipart');
+    const m = curlFor(fakeReq('acolyte'), fakeRes(), {
+      path: '', form: { caption: "it's", note: 'x' },
+      files: [{ field: 'scroll', filename: './local-file', sendAs: '<name>', type: '<content type>' }, { field: 'extra', filename: 'b.txt' }],
+    });
+    expect(m.multipart).toEqual(['scroll=@./local-file;filename=<name>;type=<content type>', 'extra=@b.txt', "caption=it'\\''s", 'note=x']);
+    expect(m.form).toEqual([]);
+  });
 });
 
 const curlPartial = fileURLToPath(new URL('./views/curl-note.ejs', import.meta.url));
@@ -37,6 +47,14 @@ describe('curl-note partial', () => {
     const text = await render(view({ method: 'PUT', headers: ['Content-Type: application/json'], data: '{"a":"b"}', form: ['name=Brother Lamp', "bio=it'\''s"] }));
     expect(text).toContain(`curl -X PUT "http://127.0.0.1:3000/d/gatekeeper/x/p?level=acolyte" -H "Content-Type: application/json"`);
     expect(text).toContain(`-b "hvwa_sid=&lt;copy from devtools&gt;" -d '{&#34;a&#34;:&#34;b&#34;}' --data-urlencode 'name=Brother Lamp' --data-urlencode 'bio=it&#39;\&#39;&#39;s'`);
+  });
+
+  it('multipart entries render as -F after everything else, the placeholder and PowerShell note stay', async () => {
+    const text = await render(view({ multipart: ['scroll=@./f;type=text/plain', "caption=it'\\''s"] }));
+    expect(text).toContain(`-b "hvwa_sid=&lt;copy from devtools&gt;" -F 'scroll=@./f;type=text/plain' -F 'caption=it&#39;\\&#39;&#39;s'`);
+    expect(text).toContain('curl sends exactly what you write');
+    expect(text).toMatch(/PowerShell[\s\S]*<code>curl\.exe<\/code>/);
+    expect(await render(view({}))).not.toContain('-F ');
   });
 
   it('says to sign in first by default; a lab without a sign-in (signIn: false) says to open the page instead', async () => {
