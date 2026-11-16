@@ -1,0 +1,9 @@
+<%# GK-11 lab view: Citadel's home, its sign-in and its Pilgrim-ID features. Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Citadel — Accounts</h1>
+  <p class="lab-note">Your account: <code><%= account.username %></code> / <code><%= account.password %></code>, at Citadel and at Pilgrim-ID alike. Target: the Citadel account of <code><%= target %></code>, who is signed in to Citadel and opens any link you send (the button below the lab). Citadel is registered at Pilgrim-ID with two redirect URIs: <code><%= linkRedirect %></code> (linking) and <code><%= loginRedirect %></code> (signing in).</p>
+  <p class="lab-note" data-testid="who">Citadel: <% if (client) { %><%= client %><% } else { %>not signed in.<% } %><% if (linked.length > 0) { %> Linked Pilgrim-ID: <% linked.forEach(function (p, i) { %><%= i > 0 ? ', ' : '' %><code><%= p %></code><% }); %>.<% } %> Pilgrim-ID: <% if (idp) { %>signed in as <%= idp %>.<% } else { %>not signed in.<% } %></p>
+  <p class="lab-note"><a href="<%= base %>/link?level=<%= level %>">Link your Pilgrim-ID</a> · <a href="<%= base %>/login?level=<%= level %>">Sign in with Pilgrim-ID</a> · <a href="<%= base %>/idp?level=<%= level %>">Pilgrim-ID</a> · <a href="<%= base %>/logout?level=<%= level %>">Sign out of Citadel</a></p>
+  <h2>Sign in to Citadel</h2>
+<%- include('../../_shared/views/pilgrim-form', { username: username, password: password, result: result }) %>
+</section>
