@@ -5,6 +5,7 @@ import type request from 'supertest';
 import { describeExploitMatrix, describeLabView, freshSession, DB_ERROR_RE, FLAG_RE, type Agent } from '../../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../../core/levels.js';
 import { describeCurlExample } from '../../_shared/curl.testkit.js';
+import { setClockForTests } from '../_shared/clock.js';
 import { useFakeClock } from '../_shared/shop-lab.testkit.js';
 import { RM03 } from './challenge.js'; // registers RM-03 before createApp() inside freshSession
 import { ordersDb, vaultPin } from './model.js';
@@ -150,6 +151,24 @@ describe('RM-03 blind time-based SQLi', () => {
     expect(messageOf(failing.res.text)).not.toMatch(/malformed/i);
     expect((await timed(c, 'RM-1001')).dt).toBe(0);
     expect((await timed(c, "x' UNION SELECT sleep(1)-- ")).dt).toBe(1000); // not 1000 plus a stale remainder
+  });
+
+  it('concurrent requests on ONE level never see each other delay: a sleeping and a plain request wait exactly [0, 2000]', async () => {
+    const waits: number[] = [];
+    const restore = setClockForTests({ wait: async (ms) => { waits.push(ms); await new Promise<void>((resolve) => { setImmediate(resolve); }); } });
+    try {
+      for (const level of ['acolyte', 'templar', 'inquisitor'] as const) {
+        waits.length = 0;
+        const a = await freshSession();
+        const b = await freshSession();
+        const sleeping = { acolyte: "x' UNION SELECT sleep(2)-- ", templar: "x'/**/UNION/**/SELECT/**/sleep(2)--", inquisitor: "RM-1001\n' UNION SELECT sleep(2)-- " }[level];
+        await Promise.all([
+          track({ agent: a.agent, level, sid: a.sid }, sleeping),
+          track({ agent: b.agent, level, sid: b.sid }, 'RM-1001'),
+        ]);
+        expect([...waits].sort((x, y) => x - y), level).toEqual([0, 2000]);
+      }
+    } finally { restore(); }
   });
 
   it('sleep() never blocks: the whole delay is simulated on the clock, not spent', () => {
