@@ -310,7 +310,7 @@ generic message. Parser labs (XXE, YAML) pass a label:
 with `field()`, so a JSON object or extended-urlencoded nesting is an empty
 string, not a 500. **One exception: blind labs** (RM-02, RM-03) show no database text at ANY level, because an echoed
 error would make them error-based; a database error is rendered as the level's ordinary negative answer, `divine.ts`
-says so, and the spec uses `malformed: []` plus an explicit "no database text at any level" case (section 11).
+says so, and the spec uses `malformed: []` plus an explicit "no database text at any level" case (section 12).
 
 **Lab links and cookies.**
 
