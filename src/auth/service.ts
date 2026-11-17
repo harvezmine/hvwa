@@ -88,6 +88,8 @@ export interface AuthService {
   usesDefaultPassword(): boolean;
   /** Password checks running and waiting right now (AUTH_LIMITS.checksInFlight / checksQueued). */
   checkLoad(): { inFlight: number; queued: number };
+  /** Whether THIS start created the admin account (so `initialPassword` was used); false when it already existed. */
+  readonly accountCreated: boolean;
   /**
    * A form's synchroniser token. The login form's is bound to hvwa_sid (the browser has no sign-in yet); the
    * account forms' (logout, password) also to the sign-in, `authToken` (the hvwa_auth cookie): any same-host page
@@ -156,7 +158,8 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
     changed_at = ? WHERE username = ?`);
 
   // First start: create the account. Synchronous (once), so the app never serves without one.
-  if (!getAccount.get(ADMIN_USERNAME)) {
+  const accountCreated = !getAccount.get(ADMIN_USERNAME);
+  if (accountCreated) {
     const first = opts.initialPassword ?? DEFAULT_ADMIN_PASSWORD;
     if (first.length < PASSWORD_MIN_LENGTH || first.length > PASSWORD_MAX_LENGTH || CONTROL.test(first)) {
       // Never the value itself in the message.
@@ -253,6 +256,7 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
     },
 
     checkLoad: () => checks.load(),
+    accountCreated,
 
     csrfToken: csrfFor,
 
