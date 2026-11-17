@@ -8,7 +8,8 @@ HVWA is a deliberately vulnerable web application for learning web security
 hands-on, a modern successor to DVWA. Every challenge has four difficulty
 levels (Acolyte, Templar, Inquisitor, Divine), a flag to capture, and View
 Source with a diff against the secure reference. It is bilingual
-(Indonesian/English) and built on Node 22, TypeScript, Express 5 and `node:sqlite`.
+(English by default, Indonesian through the EN/ID switch) and built on Node 22, TypeScript, Express 5 and
+`node:sqlite`.
 
 ## Run from Docker Hub (lite trial)
 

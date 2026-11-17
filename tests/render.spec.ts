@@ -96,7 +96,7 @@ describe('page() resists EJS option injection through data', () => {
   function expectNormal(html: string) {
     expect(g[MARKER]).toBeUndefined();
     expect(html).toMatch(/^<!doctype html>/i);
-    expect(html).toContain('<p id="hello">Distrik &lt;b&gt;x&lt;/b&gt;</p>');
+    expect(html).toContain('<p id="hello">Districts &lt;b&gt;x&lt;/b&gt;</p>'); // English: the default language
     expect(html).not.toContain('<%');
   }
 

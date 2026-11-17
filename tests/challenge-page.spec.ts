@@ -222,7 +222,7 @@ const hx = { 'HX-Request': 'true' };
 describe('portal POST /c/:id/hint and /submit (htmx fragments)', () => {
   it('hint unlock with HX-Request returns an escaped HTML fragment', async () => {
     const { agent } = await fresh();
-    const res = await agent.post('/c/CP-01/hint').set(hx).type('form').send({ tier: '1' });
+    const res = await agent.post('/c/CP-01/hint?lang=id').set(hx).type('form').send({ tier: '1' });
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/html/);
     expect(res.text).toContain('petunjuk-id &lt;b&gt;');

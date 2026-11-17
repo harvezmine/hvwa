@@ -174,9 +174,9 @@ describe('the gate (auth on)', () => {
 });
 
 describe('signing in', () => {
-  it('the login page is bilingual (ID default), carries a CSRF token and the validated next', async () => {
+  it('the login page is bilingual (EN default), carries a CSRF token and the validated next', async () => {
     const { app } = authApp();
-    const id = await request(app).get('/login?next=%2Fc%2FZA-01');
+    const id = await request(app).get('/login?next=%2Fc%2FZA-01&lang=id');
     expect(id.status).toBe(200);
     expect(id.headers['cache-control']).toBe('no-store');
     expect(id.headers['x-frame-options']).toBe('DENY');
@@ -186,7 +186,7 @@ describe('signing in', () => {
     expect(id.text).toContain('name="next" value="/c/ZA-01"');
     expect(csrfOf(id.text)).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(id.text).toContain('autocomplete="current-password"');
-    const en = await request(app).get('/login?lang=en');
+    const en = await request(app).get('/login'); // no ?lang=, no cookie: English
     expect(en.text).toContain('<html lang="en">');
     expect(en.text).toContain('Password');
     // The signed-out page shows no navigation into the gated portal, and never the default password.
@@ -609,10 +609,10 @@ describe('the default-password banner', () => {
     for (const path of ['/', '/scoreboard', '/c/ZA-01', '/account/password']) {
       const page = await agent.get(path);
       expect(page.text, path).toContain('data-testid="default-password-banner"');
-      expect(page.text, path).toContain('Anda masih memakai kata sandi bawaan');
+      expect(page.text, path).toContain("You&#39;re using the default password — change it");
       expect(page.text, path).toContain('href="/account/password"');
     }
-    expect((await agent.get('/?lang=en')).text).toContain("You&#39;re using the default password — change it");
+    expect((await agent.get('/?lang=id')).text).toContain('Anda masih memakai kata sandi bawaan');
     const csrf = csrfOf((await agent.get('/account/password')).text);
     const changed = await agent.post('/account/password').type('form')
       .send({ _csrf: csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' });

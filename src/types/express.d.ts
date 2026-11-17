@@ -15,7 +15,7 @@ declare global {
        * Under /d/<district>/<slug> it is clamped to the challenge's levels.
        */
       level: Level;
-      /** UI language (langMiddleware: ?lang= → cookie → id). */
+      /** UI language (langMiddleware: ?lang= → cookie → en). */
       lang: Lang;
     }
     interface Locals {
