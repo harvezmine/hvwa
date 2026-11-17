@@ -169,6 +169,13 @@ describe('SC-02 review lab', () => {
     expect((await agent.get(`${LAB}/scroll?level=templar`)).status).toBe(200);
   });
 
+  it('inquisitor: a tag the pattern cannot match (another tag starts inside it) survives whole, handler and all', () => {
+    const m = "hvwa('0123456789abcdef')";
+    expect(impl.for('inquisitor').renderReview(`<img src=x onerror=${m} <b>`)).toBe(`<img src=x onerror=${m} <b>`);
+    expect(xssOracle(impl.for('inquisitor').renderReview(`<img src=x onerror=${m} <b>`), m).executes).toBe(true);
+    expect(xssOracle(impl.for('divine').renderReview(`<img src=x onerror=${m} <b>`), m).executes).toBe(false);
+  });
+
   it('every level keeps ordinary formatting: bold and italic words render as such', () => {
     for (const level of SC02.levels) {
       expect(impl.for(level).renderReview('A <b>fine</b> and <i>old</i> psalter.'), level).toBe('A <b>fine</b> and <i>old</i> psalter.');
