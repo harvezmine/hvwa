@@ -421,13 +421,16 @@ return { status: 200, headers: labHeaders(impl.for(level).headers ?? {}), body }
 
 ## 5. Views, language and hints
 
+- **Look and markup: see [`docs/UI.md`](UI.md)** (the "Sanctum" style guide): tokens, components, the CSP and
+  page-size rules (no inline script, handler or style; a whole lab page stays under the XSS oracle's 16 KiB), and
+  section 5 there, "Writing a lab view". A lab view needs no CSS of its own: `.lab` and its descendants are styled.
 - **Language policy.** Content inside a lab (the vulnerable app's own headings,
   labels, messages) is English by design: it is a realistic target. All player
-  guidance is bilingual (ID/EN): `title`, `summary` and `hints` are `Text`
+  guidance is bilingual (EN default, ID): `title`, `summary` and `hints` are `Text`
   values; platform strings go in `core/i18n.ts`.
-- **The lab bar is automatic.** The layout shows the id, title, summary, served
-  level, a level switcher and a link back to `/c/<id>` on every challenge route,
-  and sets `<title>` to `<id> — <title>`. Do not repeat these in the view. A view cannot pass `title`: it is a
+- **The lab bar is automatic.** The layout shows the breadcrumb, id, title, summary, served
+  level (and what it means), a level switcher, Restart (with a reset hook) and a link back to `/c/<id>` on every
+  challenge route, and sets `<title>` to `<id> — <title>`. Do not repeat these in the view. A view cannot pass `title`: it is a
   reserved key (sendPage throws), so the platform owns the document `<title>`; name a heading `heading`.
 - **Lab views** (see `gk-01-sqli-login/views/login.ejs`): wrap the app in
   `<section class="lab">`; show messages in `<p class="lab-message lab-success|lab-error">`;
