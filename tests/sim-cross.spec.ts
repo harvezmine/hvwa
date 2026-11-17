@@ -272,10 +272,19 @@ describe('requests across sites: Referer and Origin under the attacker page\'s r
     ]);
   });
 
-  it('a sandboxed frame\'s request still carries the page\'s Referer, but Origin: null', () => {
+  it('a sandboxed frame has an opaque origin, so no referrer at all: no Referer under any policy, and Origin: null (Chrome 157)', () => {
+    // Fetch: a document with an opaque origin has no referrer. Checked in Chrome 157 (E1 review): a level that accepts a
+    // missing Referer is beaten by a sandboxed iframe, so the sim must not send the page's URL here.
     const v = victim();
-    v.b.crossSitePost(TARGET, {}, { page: { url: PAGE, referrerPolicy: 'unsafe-url', sandboxed: true } });
-    expect([v.seen[0].headers.referer, v.seen[0].headers.origin]).toEqual([PAGE, 'null']);
+    for (const policy of [undefined, 'unsafe-url', 'no-referrer-when-downgrade', 'origin']) {
+      const page = { url: PAGE, sandboxed: true, ...(policy === undefined ? {} : { referrerPolicy: policy }) };
+      v.b.crossSitePost(TARGET, {}, { page });
+      v.b.crossSiteLink(TARGET, { page });
+      v.b.corsFetch(TARGET, { page });
+    }
+    expect(v.seen).toHaveLength(12);
+    expect(v.seen.map((r) => r.headers.referer)).toEqual(Array(12).fill(undefined));
+    expect(v.seen.map((r) => r.headers.origin)).toEqual(Array(4).fill(['null', undefined, 'null']).flat());
   });
 });
 

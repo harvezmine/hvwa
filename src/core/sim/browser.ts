@@ -110,8 +110,9 @@ export interface SimAttackerPage {
   readonly referrerPolicy?: string;
   /**
    * The request comes from a sandboxed iframe inside the page (`<iframe sandbox="allow-scripts allow-forms">`, or a
-   * `data:` document): an opaque origin, so `Origin: null`. Its form or link navigates that frame, not the top-level
-   * page (so a Lax cookie is not sent even on a GET).
+   * `data:` document): an opaque origin, so `Origin: null` and no Referer at all, whatever the policy (an opaque origin
+   * has no referrer). Its form or link navigates that frame, not the top-level page (so a Lax cookie is not sent even on
+   * a GET).
    */
   readonly sandboxed?: boolean;
 }
@@ -395,13 +396,13 @@ export class Browser implements SimBrowser {
 
   crossSiteLink(url: string, opts: SimCrossSiteOptions = {}): SimVisit {
     const page = attackerPage(opts.page);
-    return this.navigate({ method: 'GET', url, base: page.url.url, referrer: page.url, policy: page.policy }, fromPage(page));
+    return this.navigate({ method: 'GET', url, base: page.url.url, ...referrerOf(page), policy: page.policy }, fromPage(page));
   }
 
   crossSitePost(url: string, form: SimFormFields, opts: SimCrossSitePostOptions = {}): SimVisit {
     const page = attackerPage(opts.page);
     const { type, raw } = encodeForm(formEntries(form), formEnctype(opts.contentType));
-    return this.navigate({ method: 'POST', url, payload: { type, raw, fields: bodyFields(type, raw) }, base: page.url.url, referrer: page.url, policy: page.policy }, fromPage(page));
+    return this.navigate({ method: 'POST', url, payload: { type, raw, fields: bodyFields(type, raw) }, base: page.url.url, ...referrerOf(page), policy: page.policy }, fromPage(page));
   }
 
   corsFetch(url: string, opts: SimFetchOptions = {}): SimFetch {
@@ -422,7 +423,7 @@ export class Browser implements SimBrowser {
     const withCredentials = credentials === 'include';
     let read: SimCorsRead | undefined;
     const visit = this.navigate(
-      { method, url, ...(payload ? { payload } : {}), base: page.url.url, referrer: page.url, policy: page.policy },
+      { method, url, ...(payload ? { payload } : {}), base: page.url.url, ...referrerOf(page), policy: page.policy },
       { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, shaped: true, extra: headers },
       (req, _res, h) => {
         read = corsCheck(h, req.headers.origin ?? 'null', withCredentials);
@@ -439,7 +440,7 @@ export class Browser implements SimBrowser {
     const page = attackerPage(opts.page);
     const ctx = inFrame(page.init, page.url);
     let policy: ReferrerPolicy = DEFAULT_POLICY;
-    const visit = this.navigate({ method: 'GET', url, base: page.url.url, referrer: page.url, policy: page.policy }, ctx, (_req, _res, h, redirect) => {
+    const visit = this.navigate({ method: 'GET', url, base: page.url.url, ...referrerOf(page), policy: page.policy }, ctx, (_req, _res, h, redirect) => {
       if (!redirect) policy = parsePolicy(h.get('referrer-policy')) ?? DEFAULT_POLICY; // the shown page's own policy
       return false;
     });
@@ -617,6 +618,14 @@ function attackerPage(p: SimAttackerPage | undefined): Page {
   if (p?.referrerPolicy !== undefined && typeof p.referrerPolicy !== 'string') throw new Error('SimBrowser: page.referrerPolicy must be a string');
   const sandboxed = p?.sandboxed === true;
   return { url, init: initiatorOf(url, sandboxed), policy: parsePolicy(p?.referrerPolicy === undefined ? undefined : [p.referrerPolicy]) ?? ATTACKER_DEFAULT_POLICY, sandboxed };
+}
+
+/**
+ * The Referer source of a request the attacker's page makes: the page, unless the request comes from a sandboxed frame.
+ * A document with an opaque origin has no referrer (Fetch), so Chrome sends no Referer from it under any policy.
+ */
+function referrerOf(page: Page): { referrer?: SimUrl } {
+  return page.sandboxed ? {} : { referrer: page.url };
 }
 
 /** A navigation the attacker's page starts: cross-site, in the top-level window unless it runs in a sandboxed frame. */
