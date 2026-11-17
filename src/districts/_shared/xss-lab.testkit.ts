@@ -6,7 +6,7 @@
 import { parseFragment } from 'parse5';
 import { describe, expect, it } from 'vitest';
 import type request from 'supertest';
-import { attackerHits, freshSession, unescapeHtml, type Agent, type ExploitLevel, type PanelHit } from '../../../tests/helpers.js';
+import { FLAG_RE, attackerHits, freshSession, unescapeHtml, type Agent, type ExploitLevel, type PanelHit } from '../../../tests/helpers.js';
 import { LEVELS, type Level } from '../../core/levels.js';
 import { XSS_STEAL_URL, xssOracle } from '../../core/xss.js';
 import type { XssVictim } from './xss-lab.js';
@@ -129,6 +129,19 @@ export function describeXssLab(o: XssLabSpec): void {
         if (o.divineSanitizes !== true) expect(reached.at(-1), `${level}: the marker reached the admin's page as text`).toBe(true);
       }
       expect(reached.some(Boolean), "the marker reached the admin's page as text for at least one payload").toBe(true);
+    });
+
+    it("only the whole session key signs in: a prefix, a longer string, another case or another level's key is wrong", async () => {
+      const [level] = exploitable(o);
+      if (level === undefined) throw new Error(`${o.challenge.id}: describeXssLab needs an exploitable level`);
+      const { agent, sid } = await freshSession();
+      const { key } = o.victimOf(sid, level);
+      for (const typed of [key.slice(0, 8), key.slice(0, -1), `${key}0`, key.toUpperCase(), o.victimOf(sid, 'divine').key, ' ']) {
+        const res = await signIn(agent, o.path, level, typed);
+        expect(res.text, JSON.stringify(typed)).toContain('Wrong session key.');
+        expect(res.text, JSON.stringify(typed)).not.toMatch(FLAG_RE);
+      }
+      expect((await signIn(agent, o.path, level, key)).text).toMatch(FLAG_RE);
     });
 
     it('isolates players and levels: your marker runs nowhere else', async () => {
