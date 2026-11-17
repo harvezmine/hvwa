@@ -22,7 +22,8 @@ export {
   type LinkSink, type Sink, type SinkKind, type SinkTrigger, type XssInsertion, type XssLimit, type XssOracleOptions, type XssVerdict,
 } from './xss/oracle.js';
 export { PREVIEW_CSP, PREVIEW_SANDBOX, previewFrame, type PreviewOptions } from './xss/preview.js';
+export { DOCUMENT_MIME_TYPES } from './xss/rules.js';
 export {
-  XSS_STEAL_URL, newMarker, xssBrowser,
+  XSS_STEAL_URL, newMarker, rendersDocument, xssBrowser,
   type XssBrowser, type XssDomWrite, type XssMarker, type XssPage, type XssPageVerdict, type XssVictimOptions,
 } from './victim.js';
