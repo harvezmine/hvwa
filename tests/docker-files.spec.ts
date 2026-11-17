@@ -63,6 +63,15 @@ describe('Dockerfile', () => {
     expect(ignore.indexOf('!docker-compose.hub.yml')).toBeGreaterThan(ignore.indexOf('docker-compose*.yml'));
   });
 
+  it('.dockerignore keeps secrets, databases, tests, docs and VCS data out of the build context, at any depth', () => {
+    const ignore = read('.dockerignore').split('\n');
+    for (const line of ['**/.env*', '**/*.db*', '.env', '.env.*', '*.db', 'data', 'tests', 'docs', '.git', '.worktrees', '.claude', 'node_modules', 'dist']) {
+      expect(ignore, line).toContain(line);
+    }
+    // Nothing re-includes them after the exclusions (only the hub compose file is re-included).
+    expect(ignore.filter((l) => l.startsWith('!'))).toEqual(['!docker-compose.hub.yml']);
+  });
+
   it('keeps every hardening line', () => {
     for (const line of [
       'ARG NODE_IMAGE=node:22.23.5-alpine3.24',
@@ -111,16 +120,36 @@ describe('docker-compose.hub.yml (pull-only)', () => {
     expect(strip(service(hub, 'app'))).toEqual(strip(service(full, 'app')));
   });
 
-  it('the proxy service keeps every line of docker-compose.yml\'s but the nginx.conf bind mount', () => {
-    const fullProxy = service(full, 'proxy');
+  it('the proxy service is docker-compose.yml\'s EXACTLY, but for the bind mount (out) and command + HVWA_NGINX_CONF (in)', () => {
+    const fullProxy = service(full, 'proxy').filter((l) => l.trim() !== '');
     const mount = fullProxy.indexOf('    volumes:');
     expect(fullProxy[mount + 1]).toBe('      - ./docker/proxy/nginx.conf:/etc/nginx/nginx.conf:ro');
-    const expected = fullProxy.filter((_, i) => i !== mount && i !== mount + 1).filter((l) => l.trim() !== '');
-    const hubProxy = service(hub, 'proxy');
+    const expected = fullProxy.filter((_, i) => i !== mount && i !== mount + 1);
+    const hubProxy = service(hub, 'proxy').filter((l) => l.trim() !== '');
+    const conf = hubProxy.indexOf('      HVWA_NGINX_CONF: |');
+    const confEnd = hubProxy.findIndex((l, i) => i > conf && !l.startsWith('        '));
+    expect(conf).toBeGreaterThan(0);
+    expect(confEnd).toBeGreaterThan(conf);
+    const rest = [...hubProxy.slice(0, conf), ...hubProxy.slice(confEnd)].filter((l) => !l.startsWith('    command: '));
+    // Line for line: an extra port ("1338:8080" = 0.0.0.0), privileged, network_mode: host, cap_add, a volume... fails.
+    expect(rest).toEqual(expected);
     expect(inOrder(hubProxy, expected)).toEqual([]);
-    expect(hubProxy.some((l) => /^ {4}volumes:/.test(l))).toBe(false); // nothing from the host is mounted
+    expect(hubProxy.filter((l) => l.startsWith('    command: '))).toHaveLength(1);
     expect(hubProxy).toContain('      - "127.0.0.1:1337:8080" # loopback ONLY — never 0.0.0.0');
     expect(hub).not.toMatch(/0\.0\.0\.0:/);
+  });
+
+  it('has the same top-level keys and the same two services, nothing else', () => {
+    const top = (yml: string) => yml.split('\n').filter((l) => /^[a-z_]+:/.test(l)).map((l) => l.split(':')[0]);
+    expect(top(hub)).toEqual(top(full));
+    const services = (yml: string) => yml.slice(yml.indexOf('\nservices:\n'), yml.indexOf('\nnetworks:\n')).split('\n')
+      .filter((l) => /^ {2}[a-z]/.test(l));
+    expect(services(hub)).toEqual(['  app:', '  proxy:']);
+    expect(services(full)).toEqual(['  app:', '  proxy:']);
+    for (const forbidden of [/^\s*privileged:/m, /^\s*network_mode:/m, /^\s*cap_add:/m, /^\s*pid:/m, /^\s*ipc:/m, /docker\.sock/, /^\s*devices:/m]) {
+      expect(hub, String(forbidden)).not.toMatch(forbidden);
+      expect(full, String(forbidden)).not.toMatch(forbidden);
+    }
   });
 
   it('the networks (internal lab, isolated gateway) and the data volume are the same', () => {
