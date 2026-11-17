@@ -185,11 +185,13 @@ interface Kind {
   readonly cookies: readonly string[];
   readonly origin: string | undefined;
   readonly fetch: readonly (string | undefined)[];
+  /** Sec-Fetch-User: '?1' only for a navigation the victim's own action started (a click, a typed or mailed link). */
+  readonly user?: string;
 }
 const NAVIGATIONS: readonly Kind[] = [
-  { name: 'follow (a link from mail)', run: (b) => b.follow(TARGET), cookies: ['strict', 'lax', 'none'], origin: undefined, fetch: [undefined, undefined, undefined] },
-  { name: 'follow (a link on a citadel page)', run: (b) => b.follow(TARGET, { referrer: 'http://citadel.test/home' }), cookies: ['strict', 'lax', 'none'], origin: undefined, fetch: [undefined, undefined, undefined] },
-  { name: 'submit (a form on a citadel page)', run: (b) => b.submit(TARGET, { email: 'x' }), cookies: ['strict', 'lax', 'none'], origin: 'http://citadel.test', fetch: [undefined, undefined, undefined] },
+  { name: 'follow (a link from mail)', run: (b) => b.follow(TARGET), cookies: ['strict', 'lax', 'none'], origin: undefined, fetch: ['none', 'navigate', 'document'], user: '?1' },
+  { name: 'follow (a link on a citadel page)', run: (b) => b.follow(TARGET, { referrer: 'http://citadel.test/home' }), cookies: ['strict', 'lax', 'none'], origin: undefined, fetch: ['same-origin', 'navigate', 'document'], user: '?1' },
+  { name: 'submit (a form on a citadel page)', run: (b) => b.submit(TARGET, { email: 'x' }), cookies: ['strict', 'lax', 'none'], origin: 'http://citadel.test', fetch: ['same-origin', 'navigate', 'document'], user: '?1' },
   { name: 'crossSiteLink (a link on your page: top-level GET)', run: (b) => b.crossSiteLink(TARGET), cookies: ['lax', 'none'], origin: undefined, fetch: ['cross-site', 'navigate', 'document'] },
   { name: 'crossSitePost (your page\'s form: top-level POST)', run: (b) => b.crossSitePost(TARGET, { email: 'x' }), cookies: ['none'], origin: 'http://attacker.test', fetch: ['cross-site', 'navigate', 'document'] },
   { name: 'crossSiteLink from a sandboxed frame (navigates the frame)', run: (b) => b.crossSiteLink(TARGET, { page: { sandboxed: true } }), cookies: ['none'], origin: undefined, fetch: ['cross-site', 'navigate', 'iframe'] },
@@ -204,22 +206,35 @@ describe('requests across sites: cookies, Origin and Sec-Fetch per kind of reque
     expect(sentCookies(v.seen[0]), 'cookies').toEqual(k.cookies);
     expect(v.seen[0].headers.origin, 'origin').toBe(k.origin);
     expect(fetchMeta(v.seen[0]), 'sec-fetch-*').toEqual(k.fetch);
+    expect(v.seen[0].headers['sec-fetch-user'], 'sec-fetch-user').toBe(k.user); // ?1 only where the victim itself clicked or typed
   });
 
-  it('the victim\'s own navigations keep their headers: a GET has only host and user-agent (and its cookies)', () => {
+  it('the victim\'s own navigations carry Sec-Fetch as Chrome 157 sends it: none from mail, same-origin from a citadel page, ?1', () => {
     const v = victim();
     v.b.cookies.clear();
     v.b.follow(TARGET);
-    expect(v.seen[0].headers).toEqual({ host: 'citadel.test', 'user-agent': expect.any(String) });
+    expect(v.seen[0].headers).toEqual({
+      host: 'citadel.test', 'user-agent': expect.any(String),
+      'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', 'sec-fetch-user': '?1',
+    });
     expect(v.seen[0].rawBody).toBe('');
     v.b.submit(TARGET, { a: '1' }, { referrer: 'http://citadel.test/form' });
     expect(v.seen[1].headers).toEqual({
       host: 'citadel.test', 'user-agent': expect.any(String), referer: 'http://citadel.test/form',
       'content-type': 'application/x-www-form-urlencoded', origin: 'http://citadel.test', // a POST carries Origin, same-site too
+      'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', 'sec-fetch-user': '?1',
     });
     expect(v.seen[1].rawBody).toBe('a=1');
     v.b.submit(TARGET, { a: '1' }, { referrer: 'https://citadel.test/form' }); // an https page posting to http: a downgrade
-    expect([v.seen[2].headers.referer, v.seen[2].headers.origin]).toEqual([undefined, 'null']);
+    expect([v.seen[2].headers.referer, v.seen[2].headers.origin, v.seen[2].headers['sec-fetch-site']]).toEqual([undefined, 'null', 'cross-site']);
+  });
+
+  it('a navigation the victim started stays Sec-Fetch-Site none (and ?1) across redirects; a page that moves on is a new, unclicked request', () => {
+    const v = victim((r) => (r.path === '/a' ? { status: 302, headers: { location: '/b' } } : r.path === '/b' ? { status: 200, headers: { refresh: '0; url=/c' } } : { status: 200 }));
+    v.b.follow('http://citadel.test/a');
+    expect(v.seen.map((r) => [r.path, r.headers['sec-fetch-site'], r.headers['sec-fetch-user']])).toEqual([
+      ['/a', 'none', '?1'], ['/b', 'none', '?1'], ['/c', 'same-origin', undefined],
+    ]);
   });
 
   it('the attacker page must be on attacker.test (any subdomain, any port); its URL decides Origin and Referer', () => {
@@ -424,6 +439,7 @@ describe('corsFetch: cookies, Origin and Sec-Fetch', () => {
     expect(sentCookies(v.seen[0]), 'cookies').toEqual(k.cookies);
     expect(v.seen[0].headers.origin, 'origin').toBe(k.origin);
     expect(fetchMeta(v.seen[0]), 'sec-fetch-*').toEqual(k.fetch);
+    expect(v.seen[0].headers['sec-fetch-user'], 'sec-fetch-user').toBeUndefined();
   });
 
   it('Referer follows the page\'s policy (the origin only, by default); a GET carries no Content-Type', () => {
@@ -734,6 +750,7 @@ describe('frame: the frame\'s requests', () => {
     expect(sentCookies(v.seen[0])).toEqual(['none']);
     expect(v.seen[0].headers.origin).toBeUndefined();
     expect(fetchMeta(v.seen[0])).toEqual(['cross-site', 'navigate', 'iframe']);
+    expect(v.seen[0].headers['sec-fetch-user']).toBeUndefined();
     expect(v.seen[0].headers.referer).toBe('http://attacker.test/decoy.html');
   });
 
@@ -789,6 +806,7 @@ describe('clickThrough: the admin clicks your decoy over the framed page\'s butt
     expect(sentCookies(post)).toEqual(['none']); // contrast FP-01/02's cross-site form: same verdict for cookies, other headers
     expect(post.headers.origin).toBe('http://citadel.test');
     expect(fetchMeta(post)).toEqual(['same-origin', 'navigate', 'iframe']);
+    expect(post.headers['sec-fetch-user']).toBe('?1'); // the admin's own click (Chrome 157, a real click)
     expect(post.headers.referer).toBe('http://citadel.test/moderation/confirm?id=7'); // the framed page, under its own policy
     expect(Object.isFrozen(c)).toBe(true);
   });

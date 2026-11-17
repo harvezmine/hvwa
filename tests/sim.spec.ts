@@ -327,7 +327,10 @@ describe('SimBrowser: requests to the citadel go to the lab\'s in-process handle
     expect(r).toMatchObject({ method: 'GET', url: 'http://citadel.test/home?x=1&x=2&y=%20', path: '/home' });
     expect(r.query.getAll('x')).toEqual(['1', '2']);
     expect(r.query.get('y')).toBe(' ');
-    expect(r.headers).toEqual({ host: 'citadel.test', 'user-agent': SIM_USER_AGENT });
+    expect(r.headers).toEqual({ // a link opened from mail: started by the victim, so Sec-Fetch-Site none (E1 review)
+      host: 'citadel.test', 'user-agent': SIM_USER_AGENT,
+      'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', 'sec-fetch-user': '?1',
+    });
     expect({ ...r.cookies }).toEqual({});
     expect({ ...r.body }).toEqual({});
     expect(w.attackerLog.entries()).toEqual([]);

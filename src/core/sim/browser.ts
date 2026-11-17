@@ -31,8 +31,9 @@ export interface SimRequest {
   readonly query: URLSearchParams;
   /**
    * Lower-case names: host, user-agent, and when present referer, cookie, content-type and origin (every POST, every
-   * cross-origin fetch). A request the attacker's page started, or one made in a frame, also carries sec-fetch-site,
-   * sec-fetch-mode and sec-fetch-dest. The victim's own navigations (follow, submit) carry no sec-fetch-* headers.
+   * cross-origin fetch), and sec-fetch-site, sec-fetch-mode and sec-fetch-dest, as Chrome sends them: `none` for a
+   * link opened from mail, `same-origin` from a citadel page, `cross-site` from the attacker's page. sec-fetch-user is
+   * `?1` on what the victim's own action started (follow, submit, a click through a frame).
    */
   readonly headers: Readonly<Record<string, string>>;
   /** Cookies sent with the request (decoded; null prototype). */
@@ -210,9 +211,15 @@ export interface SimBrowser {
   /** The world it lives in (its inbox, its attacker log). */
   readonly world: SimWorld;
   readonly cookies: SimCookieJar;
-  /** Open a link (GET), from a mail client (no Referer) or clicked on a citadel page (`referrer`). Same-site. */
+  /**
+   * Open a link (GET), from a mail client (no Referer; Sec-Fetch-Site none) or clicked on a citadel page (`referrer`;
+   * same-origin). Same-site; Sec-Fetch-User ?1 (the victim's own action).
+   */
   follow(url: string, opts?: SimNavigateOptions): SimVisit;
-  /** Submit a form (POST, urlencoded), on a citadel page. Same-site; it carries `Origin: http://citadel.test`. */
+  /**
+   * Submit a form (POST, urlencoded), on a citadel page. Same-site; it carries `Origin: http://citadel.test`,
+   * Sec-Fetch-Site same-origin and Sec-Fetch-User ?1.
+   */
   submit(url: string, form: Readonly<Record<string, string>>, opts?: SimNavigateOptions): SimVisit;
   /**
    * The victim clicks a link on the attacker's page (or the page sets `location`): a top-level GET navigation that
@@ -326,7 +333,10 @@ interface Page { readonly url: SimUrl; readonly init: SimInitiator; readonly pol
  * moves on by itself becomes the next request's initiator.
  */
 interface Context {
-  /** The document that made the request; undefined for the victim's own navigations (follow, submit). */
+  /**
+   * The document that made the request: the page clicked on, the form's page, the attacker's page, the framed page.
+   * Undefined for a navigation the victim's browser itself started (a link opened from mail): Sec-Fetch-Site none.
+   */
   init?: SimInitiator;
   /** The cookie context (cookies.ts): same-site for cookies, and whether the top-level page navigates. */
   site: 'same' | 'cross';
@@ -336,8 +346,13 @@ interface Context {
   readonly dest: 'document' | 'iframe' | 'empty';
   /** Send and store cookies: always for a navigation, only with credentials: 'include' for a fetch. */
   readonly credentials: boolean;
-  /** Add sec-fetch-* (requests the attacker's page starts, and anything in a frame). */
+  /** Add sec-fetch-* (every request but a WebSocket handshake, which carries none). */
   readonly shaped: boolean;
+  /**
+   * The victim's own action started it (a click, a typed or mailed link, a form it submitted): Sec-Fetch-User ?1,
+   * kept across redirects; a page that moves on by itself starts a request no one clicked.
+   */
+  user: boolean;
   /** Headers the page's fetch() set (fetchHeaders); the body's Content-* ones go when a redirect drops the body. */
   extra?: Record<string, string>;
   /**
@@ -363,8 +378,6 @@ interface Start {
   /** The page the request is made from (its Referer source) and its referrer policy. */
   readonly referrer?: SimUrl;
   readonly policy: ReferrerPolicy;
-  /** The initiator of a POST from the victim's own navigation (submit): its Origin. */
-  readonly origin?: SimInitiator;
   /** What a relative `url` is relative to: the attacker page that made the request (the victim's own navigations take absolute URLs). */
   readonly base?: string;
 }
@@ -382,16 +395,16 @@ export class Browser implements SimBrowser {
 
   follow(url: string, opts: SimNavigateOptions = {}): SimVisit {
     const referrer = citadelReferrer(opts);
-    return this.navigate({ method: 'GET', url, policy: DEFAULT_POLICY, ...(referrer ? { referrer } : {}) }, ownNavigation());
+    // From mail: the browser itself started it (Sec-Fetch-Site none). Clicked on a citadel page: that page did.
+    return this.navigate({ method: 'GET', url, policy: DEFAULT_POLICY, ...(referrer ? { referrer } : {}) }, ownNavigation(referrer && initiatorOf(referrer)));
   }
 
   submit(url: string, form: Readonly<Record<string, string>>, opts: SimNavigateOptions = {}): SimVisit {
     const referrer = citadelReferrer(opts);
     const fields = formOf(form);
-    // The form is on a citadel page: the referrer when given, else the page it posts to.
-    const origin = initiatorOf(referrer ?? classifySimUrl(url));
     const payload: Payload = { type: 'application/x-www-form-urlencoded', raw: new URLSearchParams(Object.entries(fields)).toString(), fields };
-    return this.navigate({ method: 'POST', url, payload, policy: DEFAULT_POLICY, origin, ...(referrer ? { referrer } : {}) }, ownNavigation());
+    // The form is on a citadel page: the referrer when given, else the page it posts to.
+    return this.navigate({ method: 'POST', url, payload, policy: DEFAULT_POLICY, ...(referrer ? { referrer } : {}) }, ownNavigation(initiatorOf(referrer ?? classifySimUrl(url))));
   }
 
   crossSiteLink(url: string, opts: SimCrossSiteOptions = {}): SimVisit {
@@ -424,7 +437,7 @@ export class Browser implements SimBrowser {
     let read: SimCorsRead | undefined;
     const visit = this.navigate(
       { method, url, ...(payload ? { payload } : {}), base: page.url.url, ...referrerOf(page), policy: page.policy },
-      { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, shaped: true, extra: headers },
+      { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, shaped: true, user: false, extra: headers },
       (req, _res, h) => {
         read = corsCheck(h, req.headers.origin ?? 'null', withCredentials);
         return read !== 'readable'; // a failed check is a network error: the answer goes no further, not even a redirect
@@ -463,7 +476,7 @@ export class Browser implements SimBrowser {
     const { type, raw } = encodeForm(formEntries(form), formEnctype(opts.contentType));
     const visit = this.navigate(
       { method: 'POST', url: resolved.site === 'other' ? str(action) : resolved.url, payload: { type, raw, fields: bodyFields(type, raw) }, referrer: from, policy },
-      inFrame(initiatorOf(from), known.top),
+      inFrame(initiatorOf(from), known.top, true),
     );
     return Object.freeze({ clicked: true, visit });
   }
@@ -516,15 +529,17 @@ export class Browser implements SimBrowser {
       const headers: Record<string, string> = { host: target.host, 'user-agent': SIM_USER_AGENT, ...withReferer };
       if (cookie !== '') headers.cookie = cookie;
       if (method === 'POST' && payload !== undefined && payload.type !== '') headers['content-type'] = payload.type;
-      const init = ctx.init ?? start.origin;
+      const { init } = ctx;
       if (init !== undefined) {
         const origin = originHeader({ init, method, cors: ctx.mode === 'cors', target, policy, tainted: redirectTainted(init, urls) });
         if (origin !== undefined) headers.origin = clip(origin, SIM_LIMITS.urlLength);
       }
-      if (ctx.shaped && ctx.init !== undefined) {
-        headers['sec-fetch-site'] = fetchSiteOf(ctx.init, urls);
+      if (ctx.shaped) {
+        // A navigation the browser itself started stays `none` across redirects (Fetch Metadata).
+        headers['sec-fetch-site'] = init === undefined ? 'none' : fetchSiteOf(init, urls);
         headers['sec-fetch-mode'] = ctx.mode;
         headers['sec-fetch-dest'] = ctx.dest;
+        if (ctx.user) headers['sec-fetch-user'] = '?1';
       }
       for (const [name, value] of Object.entries(ctx.extra ?? {})) if (!Object.hasOwn(headers, name)) headers[name] = value;
       const req: SimRequest = Object.freeze({
@@ -576,7 +591,8 @@ export class Browser implements SimBrowser {
         // one does not (the top-level page is still the attacker's).
         referrer = target;
         policy = parsePolicy(h.get('referrer-policy')) ?? DEFAULT_POLICY;
-        if (ctx.init !== undefined) ctx.init = initiatorOf(target);
+        ctx.init = initiatorOf(target); // the citadel page now makes the request (no longer the browser itself)
+        ctx.user = false; // nobody clicked: the page moves on by itself
         if (ctx.topLevel) ctx.site = 'same';
         urls = [];
         method = 'GET';
@@ -597,9 +613,12 @@ function citadelReferrer(opts: SimNavigateOptions): SimUrl | undefined {
   return referrer;
 }
 
-/** The victim's own navigation (a link from mail, a click or a form on a citadel page): same-site, top-level, as before E1. */
-function ownNavigation(): Context {
-  return { site: 'same', topLevel: true, mode: 'navigate', dest: 'document', credentials: true, shaped: false };
+/**
+ * The victim's own navigation (a link from mail, a click or a form on a citadel page): same-site, top-level, started by
+ * the victim's action (Sec-Fetch-User ?1). `init` is the citadel page it was on; none for a link opened from mail.
+ */
+function ownNavigation(init: SimInitiator | undefined): Context {
+  return { ...(init ? { init } : {}), site: 'same', topLevel: true, mode: 'navigate', dest: 'document', credentials: true, shaped: true, user: true };
 }
 
 /** Fetch's request-body headers, which a redirect to GET removes along with the body. */
@@ -630,13 +649,17 @@ function referrerOf(page: Page): { referrer?: SimUrl } {
 
 /** A navigation the attacker's page starts: cross-site, in the top-level window unless it runs in a sandboxed frame. */
 function fromPage(page: Page): Context {
+  // The page's script navigates (an auto-submitted form, `location =`): no user activation, so no Sec-Fetch-User.
   return {
     init: page.init, site: 'cross', topLevel: !page.sandboxed, mode: 'navigate', dest: page.sandboxed ? 'iframe' : 'document',
-    credentials: true, shaped: true, ...(page.sandboxed ? { ancestors: [page.url] } : {}),
+    credentials: true, shaped: true, user: false, ...(page.sandboxed ? { ancestors: [page.url] } : {}),
   };
 }
 
-/** A navigation in a frame on the attacker's page: cross-site for cookies (the top-level page is the attacker's). */
-function inFrame(init: SimInitiator, top: SimUrl): Context {
-  return { init, site: 'cross', topLevel: false, mode: 'navigate', dest: 'iframe', credentials: true, shaped: true, ancestors: [top] };
+/**
+ * A navigation in a frame on the attacker's page: cross-site for cookies (the top-level page is the attacker's).
+ * `user`: the admin's own click (clickThrough) rather than the frame loading.
+ */
+function inFrame(init: SimInitiator, top: SimUrl, user = false): Context {
+  return { init, site: 'cross', topLevel: false, mode: 'navigate', dest: 'iframe', credentials: true, shaped: true, user, ancestors: [top] };
 }

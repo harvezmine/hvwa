@@ -575,7 +575,7 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   expiresAt? })` signs the victim in up front (SameSite defaults to Lax, as Chrome's default; `'None'` needs
   `secure: true`). Every citadel request calls
   `handler(req: SimRequest): SimResponse` synchronously: `req` has `method`, `url`, `path`, `query`
-  (URLSearchParams), lower-case `headers` (`origin` on every POST, `sec-fetch-*` on what the attacker's page starts),
+  (URLSearchParams), lower-case `headers` (`origin` on every POST, `sec-fetch-*` on every request, as Chrome sends them),
   `cookies`, the form `body` (an urlencoded body's fields, or a JSON object's string members, as the app's own parsers
   read them; null prototypes; `field()` and `header()` work on it) and `rawBody` (the body exactly as sent: read a
   text/plain or JSON body there); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
@@ -877,20 +877,24 @@ twin always writes the attribute, so a lab never meets it); third-party cookies 
 blocks it, so in those browsers a framed or fetched citadel is signed out even then); `http://citadel.test` and
 `https://citadel.test` are different origins.
 
-**Origin and Sec-Fetch.** The victim's own navigations keep their old headers (no `sec-fetch-*`); a POST now carries
-`Origin`, as every POST does. Sec-Fetch-Site never gets less cross along a redirect; a citadel page that moves on starts a
-new request of its own. `fetch()` cannot forge `Cookie`, `Origin`, `Referer`, `Host`, `Sec-*` or `Proxy-*` (dropped, as
+**Origin and Sec-Fetch.** Every request carries `sec-fetch-site`, `-mode` and `-dest` as Chrome 157 sends them, and
+`sec-fetch-user: ?1` when the victim's own action started it (a link it opened, a form it submitted, its click through a
+frame); a script on the attacker's page navigating, a frame loading or a fetch carry none. Every POST carries `Origin`.
+Sec-Fetch-Site never gets less cross along a redirect, and a navigation the browser itself started (a link from mail)
+stays `none` across redirects; a citadel page that moves on starts a new request of its own (`same-origin`, no
+`sec-fetch-user`). `fetch()` cannot forge `Cookie`, `Origin`, `Referer`, `Host`, `Sec-*` or `Proxy-*` (dropped, as
 browsers drop them).
 
-| Request | `Origin` | `Referer` | `sec-fetch-site` / `-mode` / `-dest` |
+| Request | `Origin` | `Referer` | `sec-fetch-site` / `-mode` / `-dest` / `-user` |
 |---|---|---|---|
-| `follow` | none | none from mail; the citadel page clicked on | none |
-| `submit` | `http://citadel.test` | the citadel page, when given | none |
-| `crossSiteLink` | none | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `navigate` / `document` |
-| `crossSitePost` | the page's origin; `null` when its policy is `no-referrer`, `same-origin`, or an https page posts to http, and from a sandboxed frame | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `navigate` / `document` (`iframe` when sandboxed) |
-| `corsFetch` | always the page's origin (the policy never hides it); `null` from a sandboxed frame or after a redirect to another origin | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `cors` / `empty` |
-| `frame` | none | the page's, under its policy | `cross-site` / `navigate` / `iframe` |
-| `clickThrough` | `http://citadel.test` (`null` under the framed page's own `no-referrer`) | the framed page, under ITS policy | `same-origin` / `navigate` / `iframe` |
+| `follow` from mail | none | none | `none` / `navigate` / `document` / `?1` |
+| `follow` clicked on a citadel page | none | that page | `same-origin` / `navigate` / `document` / `?1` |
+| `submit` | `http://citadel.test` | the citadel page, when given | `same-origin` / `navigate` / `document` / `?1` |
+| `crossSiteLink` | none | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `navigate` / `document` / — |
+| `crossSitePost` | the page's origin; `null` when its policy is `no-referrer`, `same-origin`, or an https page posts to http, and from a sandboxed frame | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `navigate` / `document` (`iframe` when sandboxed) / — |
+| `corsFetch` | always the page's origin (the policy never hides it); `null` from a sandboxed frame or after a redirect to another origin | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `cors` / `empty` / — |
+| `frame` | none | the page's, under its policy | `cross-site` / `navigate` / `iframe` / — |
+| `clickThrough` | `http://citadel.test` (`null` under the framed page's own `no-referrer`) | the framed page, under ITS policy | `same-origin` / `navigate` / `iframe` / `?1` |
 
 A sandboxed frame's document has an opaque origin, and an opaque origin has no referrer (Fetch): Chrome sends neither its
 page's URL nor its origin, whatever the policy. So **a level that accepts a missing Referer is beaten by a sandboxed
