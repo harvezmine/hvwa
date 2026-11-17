@@ -1,6 +1,9 @@
 <h1 class="page-title"><%= t('auth.login_heading') %></h1>
 <section class="card panel auth-card">
   <p class="muted small"><%= t('auth.login_intro') %></p>
+<% if (notice) { -%>
+  <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
+<% } -%>
 <% if (failed) { -%>
   <p class="result result-bad" role="alert" data-testid="login-error"><%= t('auth.login_failed') %></p>
 <% } -%>

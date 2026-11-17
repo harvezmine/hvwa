@@ -34,21 +34,34 @@ afterEach(() => {
   for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 3 });
 });
 
-interface Made { app: HvwaApp; clock: { now: () => number; advance: (ms: number) => void }; verifies: string[] }
+/** With `hold`, every password check waits until the test calls one of `releases` (to fill the check slots). */
+interface Held { releases: (() => void)[]; inFlight: number; peak: number }
+interface Made { app: HvwaApp; clock: { now: () => number; advance: (ms: number) => void }; verifies: string[]; held: Held }
 /** An auth-on app with a fake clock; `verifies` records which stored hash each password check used. */
-function authApp(o: { initialPassword?: string; dbPath?: string } = {}): Made {
+function authApp(o: { initialPassword?: string; dbPath?: string; hold?: boolean } = {}): Made {
   let t = T0;
   const verifies: string[] = [];
+  const held: Held = { releases: [], inFlight: 0, peak: 0 };
   const hasher: PasswordHasher = {
     ...SCRYPT_HASHER,
-    verify: (pw, stored) => { verifies.push(stored); return SCRYPT_HASHER.verify(pw, stored); },
+    verify: async (pw, stored) => {
+      verifies.push(stored);
+      held.inFlight += 1;
+      held.peak = Math.max(held.peak, held.inFlight);
+      try {
+        if (o.hold) await new Promise<void>((r) => { held.releases.push(r); });
+        return await SCRYPT_HASHER.verify(pw, stored);
+      } finally {
+        held.inFlight -= 1;
+      }
+    },
   };
   const app = createApp({
     flagSecret: TEST_SECRET, dbPath: o.dbPath,
     auth: { now: () => t, hasher, ...(o.initialPassword === undefined ? {} : { initialPassword: o.initialPassword }) },
   });
   apps.push(app);
-  return { app, clock: { now: () => t, advance: (ms) => { t += ms; } }, verifies };
+  return { app, clock: { now: () => t, advance: (ms) => { t += ms; } }, verifies, held };
 }
 
 const csrfOf = (html: string): string => {
@@ -301,6 +314,77 @@ describe('signing in', () => {
   });
 });
 
+/** Release held checks (one per tick, so each freed slot is handed on) until `until` settles; returns its value. */
+async function drain<T>(held: Held, until: Promise<T>): Promise<T> {
+  let settled = false;
+  const out = until.finally(() => { settled = true; });
+  const deadline = Date.now() + 15_000;
+  while (!settled) {
+    if (Date.now() > deadline) throw new Error('held checks never finished');
+    held.releases.shift()?.();
+    await new Promise((r) => setTimeout(r, 2));
+  }
+  return out;
+}
+
+describe('password checks in flight (CPU: every attempt, even a locked one, costs one scrypt)', () => {
+  it(`runs at most ${AUTH_LIMITS.checksInFlight} at once, queues ${AUTH_LIMITS.checksQueued}, and answers 503 beyond: no check, no backoff`, async () => {
+    const { app, verifies, held } = authApp({ hold: true });
+    const db = app.locals.db;
+    const agent = request.agent(app);
+    const csrf = await csrfFor(agent);
+    const attempt = (username: string) => agent.post('/login').type('form').send({ _csrf: csrf, username, password: 'wrong-pass', next: '/c/ZA-01' });
+    const capacity = AUTH_LIMITS.checksInFlight + AUTH_LIMITS.checksQueued;
+    const done: request.Response[] = [];
+    const all = Array.from({ length: capacity }, () => attempt('nobody').then((r) => { done.push(r); return r; }));
+    const full = { inFlight: AUTH_LIMITS.checksInFlight, queued: AUTH_LIMITS.checksQueued };
+    await vi.waitFor(() => {
+      expect(app.locals.auth?.checkLoad()).toEqual(full);
+      expect(held.releases).toHaveLength(AUTH_LIMITS.checksInFlight); // both in-flight checks reached scrypt
+    }, { timeout: 10_000 });
+    // Full: three more (for the real account) are refused at once, before any check or backoff bookkeeping.
+    const busy = await Promise.all([attempt('admin'), attempt('admin'), attempt('admin')]);
+    for (const r of busy) {
+      expect(r.status).toBe(503);
+      expect(r.headers['retry-after']).toBe('1');
+      expect(r.text).toContain('data-testid="auth-busy"');
+      expect(r.text).toContain('name="next" value="/c/ZA-01"');
+      expect(r.text).not.toContain('data-testid="login-error"');
+    }
+    expect(done).toHaveLength(0);
+    expect(verifies).toHaveLength(AUTH_LIMITS.checksInFlight);
+    expect(db.prepare("SELECT failures FROM auth_accounts WHERE username='admin'").get()).toEqual({ failures: 0 });
+    expect(app.locals.auth?.checkLoad()).toEqual(full);
+    // Release one check at a time: each frees its slot for the next queued attempt, never more than the cap.
+    const results = await drain(held, Promise.all(all));
+    expect(app.locals.auth?.checkLoad()).toEqual({ inFlight: 0, queued: 0 });
+    expect(held.peak).toBe(AUTH_LIMITS.checksInFlight);
+    expect(verifies).toHaveLength(capacity); // every admitted attempt: exactly one check
+    expect(results.every((r) => r.status === 401)).toBe(true);
+    expect(new Set(results.map((r) => r.text)).size).toBe(1); // admitted ones stay uniform
+  });
+
+  it('the password form is capped too: 503, nothing changed', async () => {
+    const { app, held } = authApp({ hold: true });
+    const me = request.agent(app);
+    expect((await drain(held, signIn(me))).status).toBe(303);
+    const _csrf = await accountCsrf(me);
+    const other = request.agent(app);
+    const otherCsrf = await csrfFor(other);
+    const fill = Array.from({ length: AUTH_LIMITS.checksInFlight + AUTH_LIMITS.checksQueued }, () =>
+      other.post('/login').type('form').send({ _csrf: otherCsrf, username: 'nobody', password: 'x' }).then((r) => r));
+    await vi.waitFor(() => expect(app.locals.auth?.checkLoad())
+      .toEqual({ inFlight: AUTH_LIMITS.checksInFlight, queued: AUTH_LIMITS.checksQueued }), { timeout: 10_000 });
+    const res = await me.post('/account/password').type('form')
+      .send({ _csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' });
+    expect(res.status).toBe(503);
+    expect(res.headers['retry-after']).toBe('1');
+    expect(res.text).toContain('data-testid="auth-busy"');
+    await drain(held, Promise.all(fill));
+    expect((await drain(held, signIn(request.agent(app)))).status).toBe(303); // the old password still works
+  });
+});
+
 describe('brute-force backoff (fake clock)', () => {
   it('locks the account after 5 failures; even the right password is refused, with the same message, until it expires', async () => {
     const { app, clock, verifies } = authApp();
@@ -366,9 +450,12 @@ describe('brute-force backoff (fake clock)', () => {
     const csrf = csrfOf((await agent.get('/login')).text);
     const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
       agent.post('/login').type('form').send({ _csrf: csrf, username: 'admin', password: i === 11 ? 'password' : `wrong-${i}` })));
-    expect(results.every((r) => r.status === 401 || r.status === 303)).toBe(true);
+    // Beyond the check slots (in flight + queued) an attempt is refused unchecked (503); every other one is checked.
+    expect(results.every((r) => [401, 303, 503].includes(r.status))).toBe(true);
+    const admitted = results.filter((r) => r.status !== 503).length;
+    expect(admitted).toBeGreaterThanOrEqual(AUTH_LIMITS.checksInFlight + AUTH_LIMITS.checksQueued);
     expect(verifies.filter((h) => h === stored).length).toBeLessThanOrEqual(5);
-    expect(verifies).toHaveLength(12);
+    expect(verifies).toHaveLength(admitted);
   });
 
   it('persists the lock in the platform DB (a restart does not refill the budget)', async () => {

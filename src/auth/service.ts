@@ -34,6 +34,14 @@ export const AUTH_LIMITS = Object.freeze({
   touchEveryMs: 60_000,
   /** Newest tokens kept per account (one per browser that signed in); older ones are revoked. */
   maxTokens: 20,
+  /**
+   * Password checks running at once. Every attempt costs one scrypt on libuv's thread pool (4 threads), a locked
+   * or unknown-user one included (uniform timing), so a local flood could keep the pool busy for the whole app
+   * (fs, dns, other crypto). 2 leave the rest of the pool free and hold at most 64 MiB of scrypt memory.
+   */
+  checksInFlight: 2,
+  /** Attempts that may wait for a check slot; beyond them an attempt is refused at once (503), unchecked. */
+  checksQueued: 8,
 });
 
 /** How long the account stays locked after its `failures`-th consecutive failure (0 = not locked). */
@@ -58,15 +66,18 @@ export interface AuthServiceOptions {
 
 export interface AuthSession { readonly username: string; readonly defaultPassword: boolean }
 
-export type PasswordChangeError = 'current' | 'too_short' | 'too_long' | 'control' | 'mismatch' | 'same' | 'default';
+export type PasswordChangeError = 'current' | 'too_short' | 'too_long' | 'control' | 'mismatch' | 'same' | 'default' | 'busy';
 
 /** C0 controls and DEL: never part of a new password (NUL would even collide in scrypt, see password.ts). */
 const CONTROL = /[\u0000-\u001f\u007f]/;
 export type PasswordChange = { ok: true; token: string } | { ok: false; error: PasswordChangeError };
 
 export interface AuthService {
-  /** Sign in; on success a fresh token for the hvwa_auth cookie. Every failure is the same `{ ok: false }`. */
-  signIn(username: string, password: string): Promise<{ ok: true; token: string } | { ok: false }>;
+  /**
+   * Sign in; on success a fresh token for the hvwa_auth cookie. Every credential failure is the same
+   * `{ ok: false }`; `busy` means the attempt was refused unchecked because every check slot was taken.
+   */
+  signIn(username: string, password: string): Promise<{ ok: true; token: string } | { ok: false; busy?: true }>;
   /** The live session of a cookie value (touching it), or undefined for a missing, unknown or expired token. */
   session(token: unknown): AuthSession | undefined;
   /** Revoke one token (sign-out). Unknown tokens are ignored. */
@@ -75,6 +86,8 @@ export interface AuthService {
   changePassword(username: string, current: string, next: string, confirm: string): Promise<PasswordChange>;
   /** Whether the admin account still uses the default password (the banner, the startup warning). */
   usesDefaultPassword(): boolean;
+  /** Password checks running and waiting right now (AUTH_LIMITS.checksInFlight / checksQueued). */
+  checkLoad(): { inFlight: number; queued: number };
   /**
    * A form's synchroniser token. The login form's is bound to hvwa_sid (the browser has no sign-in yet); the
    * account forms' (logout, password) also to the sign-in, `authToken` (the hvwa_auth cookie): any same-host page
@@ -90,6 +103,29 @@ interface AccountRow { username: string; password_hash: string; is_default: numb
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /**
+ * At most `max` jobs at once and `queueMax` waiting (FIFO); a job beyond that is not run at all. A finishing job
+ * hands its slot straight to the next waiter, so the cap holds at every moment.
+ */
+function slots(max: number, queueMax: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return {
+    load: () => ({ inFlight: active, queued: waiting.length }),
+    async run<T>(job: () => Promise<T>): Promise<{ ran: true; value: T } | { ran: false }> {
+      if (active < max) active += 1;
+      else if (waiting.length < queueMax) await new Promise<void>((resolve) => { waiting.push(resolve); });
+      else return { ran: false };
+      try {
+        return { ran: true, value: await job() };
+      } finally {
+        const next = waiting.shift();
+        if (next) next(); else active -= 1;
+      }
+    },
+  };
+}
+
+/**
  * The login state over the platform DB. Creates the admin account on first use (no account yet) with
  * `initialPassword` or the default. Brute force: one scrypt check per attempt whatever happens (a dummy
  * hash for an unknown username or a locked account, so timing tells nothing); each attempt is counted as a
@@ -101,6 +137,7 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
   const now = opts.now ?? Date.now;
   const hasher = opts.hasher ?? SCRYPT_HASHER;
   const csrfKey = randomBytes(32); // per process: a restart only expires open forms
+  const checks = slots(AUTH_LIMITS.checksInFlight, AUTH_LIMITS.checksQueued);
 
   const getAccount = db.prepare(
     'SELECT username, password_hash, is_default, failures, locked_until FROM auth_accounts WHERE username = ?');
@@ -170,7 +207,9 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
 
   return Object.freeze({
     async signIn(username: string, password: string) {
-      if (!(await check(username, password))) return { ok: false } as const;
+      const r = await checks.run(() => check(username, password));
+      if (!r.ran) return { ok: false, busy: true } as const;
+      if (!r.value) return { ok: false } as const;
       return { ok: true, token: mint(username) } as const;
     },
 
@@ -200,9 +239,11 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
       if (next !== confirm) return { ok: false, error: 'mismatch' };
       if (next === current) return { ok: false, error: 'same' };
       if (next === DEFAULT_ADMIN_PASSWORD) return { ok: false, error: 'default' };
-      if (!(await check(username, current))) return { ok: false, error: 'current' };
-      const hash = await hasher.hash(next);
-      setPassword.run(hash, 0, now(), username);
+      // The check and the new hash share one slot: both are scrypt.
+      const r = await checks.run(async () => ((await check(username, current)) ? hasher.hash(next) : undefined));
+      if (!r.ran) return { ok: false, error: 'busy' };
+      if (r.value === undefined) return { ok: false, error: 'current' };
+      setPassword.run(r.value, 0, now(), username);
       deleteAllTokens.run(username);
       return { ok: true, token: mint(username) };
     },
@@ -210,6 +251,8 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
     usesDefaultPassword(): boolean {
       return account(ADMIN_USERNAME)?.is_default === 1;
     },
+
+    checkLoad: () => checks.load(),
 
     csrfToken: csrfFor,
 

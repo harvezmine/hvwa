@@ -92,6 +92,18 @@ function nextFor(req: Request): string {
 
 const loginHref = (next: string) => `/login?next=${encodeURIComponent(next)}`;
 
+// Every check slot is taken (AUTH_LIMITS.checksInFlight / checksQueued): the attempt was not checked at all.
+// Kept here, not in the platform dictionary, so the login stays self-contained.
+const BUSY = Object.freeze({
+  id: 'Server sedang sibuk memeriksa kata sandi. Coba lagi sebentar lagi.',
+  en: 'The server is busy checking passwords. Try again in a moment.',
+});
+/** 503 + Retry-After for an attempt refused unchecked; returns the notice text for the page. */
+function busy(req: Request, res: Response): string {
+  res.status(503).set('Retry-After', '1');
+  return BUSY[req.lang] ?? BUSY.id;
+}
+
 export interface PlatformAuth {
   readonly service: AuthService;
   readonly publicRouter: Router;
@@ -116,11 +128,11 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
   const formOk = (req: Request, account: boolean) => originOk(req) && fetchSiteOk(req) &&
     service.checkCsrf(req.sessionId, field(req, '_csrf'), account ? authTokenOf(req) : undefined);
 
-  const renderLogin = (req: Request, res: Response, next: string, failed: boolean) => {
+  const renderLogin = (req: Request, res: Response, next: string, failed: boolean, notice?: string) => {
     noStore(res);
     res.locals.platformAuth = { signedIn: false };
     return sendPage(res, view('login'), {
-      pageTitle: res.locals.t('auth.login_heading'), csrf: service.csrfToken(req.sessionId), next, failed,
+      pageTitle: res.locals.t('auth.login_heading'), csrf: service.csrfToken(req.sessionId), next, failed, notice,
     });
   };
 
@@ -135,6 +147,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     const next = safeNext(field(req, 'next'));
     const result = await service.signIn(field(req, 'username'), field(req, 'password'));
     if (!result.ok) {
+      if (result.busy) { await renderLogin(req, res, next, false, busy(req, res)); return; }
       res.status(401);
       await renderLogin(req, res, next, true);
       return;
@@ -176,11 +189,11 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     res.redirect(303, '/login');
   });
 
-  const renderPassword = (req: Request, res: Response, data: { error?: string; changed?: boolean }) => {
+  const renderPassword = (req: Request, res: Response, data: { error?: string; changed?: boolean; notice?: string }) => {
     noStore(res);
     return sendPage(res, view('password'), {
       pageTitle: res.locals.t('auth.pw_heading'), csrf: service.csrfToken(req.sessionId, authTokenOf(req)),
-      user: res.locals.platformAuth?.user ?? '', error: data.error, changed: data.changed === true,
+      user: res.locals.platformAuth?.user ?? '', error: data.error, changed: data.changed === true, notice: data.notice,
     });
   };
   accountRouter.get('/account/password', async (req, res) => {
@@ -191,6 +204,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     const username = res.locals.platformAuth?.user ?? '';
     const result = await service.changePassword(username, field(req, 'current'), field(req, 'password'), field(req, 'confirm'));
     if (!result.ok) {
+      if (result.error === 'busy') { await renderPassword(req, res, { notice: busy(req, res) }); return; }
       res.status(400);
       await renderPassword(req, res, { error: result.error });
       return;
