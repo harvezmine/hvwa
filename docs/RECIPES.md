@@ -86,6 +86,15 @@ src/districts/index.ts              imports each district index
   - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
+  - `xss-lab.ts` + `views/xss-proof.ejs`: what the server-sink XSS labs share (SC-01, SC-02, SC-04, FP-05; section 13):
+    `xssVictim(cookie, handler)` (in the `perSession` factory: a world, the player's marker, the admin's session key and
+    XSS browser, signed in), `rearmVictim(cookie, victimFor)` (the presets' `rearm`), `signOutPage(cookie)` (the
+    citadel's `/logout`), `keySignIn(req, challenge, typed, victim, who)` (the proof: the whole key below Divine shows
+    the flag) and `proofView(...)` for the partial (the marker in `<code data-marker>` and the sign-in form,
+    `intent=sign-in`), included with `<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>`.
+  - `xss-lab.testkit.ts`: `describeXssLab({ challenge, path, victimOf, attack, preview, fragment, payloads,
+    divineSanitizes? })` (section 13, Testing), `xssExploit(path, attack)` (an exploit as the player plays it), and the
+    page readers `markerOn`, `stealsOn`, `stolenKey`, `previewSrcdoc`, `signIn`, `labPage`.
 - **The Relic Market shop shell** (`relic-market/_shared/`: money, cart, orders, intents, the shop page, its test kit)
   is section 10; its race and time primitives are sections 11 and 12.
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
@@ -157,9 +166,12 @@ case (g)). Divine resists every exploit.
 | `defineChallenge({ victim: { sim, actions } })`, `VICTIM_LABELS` | `core/registry`, `core/sim` | the victim's buttons (`POST <lab>/victim/<name>`, 303 back) and the inbox / attacker-log panel under every lab page (section 8) |
 | `classifySimUrl(url, base?)`, `labHref(u, base, level)` | `core/sim` | where a URL really takes the victim's browser (`citadel` / `attacker` / `other`); a citadel URL as a link into the lab (section 8) |
 | `checkMailAction({ browser, mailbox, link?, rearm })`, `sendLinkAction(browserFor, { rearm })` | `core/sim` | the two usual victim actions, with a required re-arm step at the start of each (section 8) |
+| `browser.crossSiteLink(url, { page? })`, `.crossSitePost(url, form, { contentType?, page? })`, `.corsFetch(url, { method?, credentials?, headers?, body?, page? })`, `.frame(url, { page? })`, `.clickThrough(frame, action, form)` | `core/sim` | what the player's attacker page makes the victim's browser do across sites: SameSite, Origin, Sec-Fetch, CORS and framing as Chrome applies them (section 8, "Across sites") |
+| `visitAttackerPageAction({ browser, page, rearm })`, `sendAttackerPageAction({ browser, page, rearm })`, `frameAndClickAction({ browser, click, rearm, page? })`, `ATTACKER_EXFIL_URL` | `core/sim` | the cross-site victim actions: the admin opens your page (CSRF, CORS) or your framing page (clickjacking), with a required re-arm (section 8, "Across sites") |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 | `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
-| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r, cookieNames?)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
+| `visitOf(req, res, cookieNames, headerNames?)`, `simVisitOf(level, r, cookieNames?, headerNames?)`, `Visit`, `RequestVisit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base`; and (RequestVisit) its method, headers, body, text and `self`, the lab's own origin (section 8) |
+| `twinBody()` | `core/sim` (`core/twin.ts`) | route-local `express.text` (text/plain, 8 KiB) for a state-changing route whose levels read a text/plain body (section 8) |
 | `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
 | `parseMultipart(req, limits?)`, `settle(p)`, `UPLOAD_LIMITS`, `UploadError` | `core/upload` | upload labs: the raw multipart body `express.raw` read on the upload route, parsed and capped; `tryDb(req, await settle(parseMultipart(req)), 'Upload error')` (section 9) |
 | `looksLikeImage(bytes)`, `sniffImage(bytes)`, `placeholderImage(sniff)` | `core/upload` | PNG/JPEG/GIF/WebP magic bytes and size, from the header ONLY (SC-09's polyglot lesson; never a safety check); the constant-size GIF a safe level serves instead (section 9) |
@@ -169,6 +181,7 @@ case (g)). Divine resists every exploit.
 | `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 13) |
 | `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 13) |
 | `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 13) |
+| `setLabHeaders(res, { csp?, frameAncestors?, xfo?, cors? })`, `labHeaders(h)`, `LabHeaders` | `core/http` | a level's CSP / `X-Frame-Options` / `frame-ancestors` / CORS on its OWN route's response, from an allow-list; `labHeaders` is the same lines as a plain object, for a citadel twin's `SimResponse` (section 4, "Lab headers") |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -358,6 +371,39 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   belongs in `model.ts`.
 - **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
   `sendLines`; the page links them by absolute path.
+
+**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** The platform sends no CSP, no `X-Frame-Options` and
+no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the clickjacking and CORS
+labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`. Nothing else
+changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages (`tests/http.spec.ts`).
+
+```ts
+// levels/divine.ts: the level decides, so View Source and the Diff show it
+export const headers: LabHeaders = { csp: "script-src 'self'; object-src 'none'; base-uri 'none'" };
+// challenge.ts (real route) and model.ts (citadel twin): one decision, both browsers
+setLabHeaders(res, impl.for(req.level).headers ?? {});
+return { status: 200, headers: labHeaders(impl.for(level).headers ?? {}), body };
+```
+
+- **The allow-list** is the whole interface: `csp` (one policy, no comma), `frameAncestors` (its source list, written as
+  that policy's own `frame-ancestors` directive), `xfo` (`'DENY'` or `'SAMEORIGIN'`), and `cors: { allowOrigin?,
+  allowCredentials?, varyOrigin? }` (`Access-Control-Allow-Origin` as the level decided it, a reflected or `null` origin
+  included; `Access-Control-Allow-Credentials: true` only for `true`; `Vary: Origin` added to any `Vary` already set).
+  Any other option, a value of the wrong type or with a control character, or `frame-ancestors` given twice throws: a
+  lab bug, a stack-free 500. `{}` sets nothing, so every level can export a value.
+- **It refuses** a response that is not a lab route (no `res.locals.labPath`), one whose headers are sent, and one that
+  already carries one of its headers (two decisions for one header are never merged or overwritten). A refused call sets
+  nothing.
+- **`labHeaders(h)`** is the same lines as a frozen plain object (wire names, `LAB_HEADER_NAMES`): put them in the
+  citadel twin's `SimResponse`, so the victim's browser gets what the player's does.
+- **A previewFrame inherits the page's CSP** (a srcdoc document takes its parent's policy). A `script-src` without
+  `'unsafe-inline'` therefore blocks the preview's banner shim and every inline payload in it, as a browser would. The
+  platform layout has no inline script or handler (htmx is a file under `/static/`), so `script-src 'self'` leaves the
+  lab bar and the victim panel working.
+- **The XSS oracle evaluates only CSP `sandbox`** (section 13). A policy is defence in depth: a Divine level encodes or
+  sanitizes, and its spec's mutation "encoding removed, CSP kept" must go red.
+- Header-shaped lessons whose bytes are not HTTP-header values (a `<meta>` CSP, a `<meta>` frame option) stay in the
+  level's markup; this helper writes response headers only.
 - **Limiters and lockouts must not be beaten by waiting.** A short window or a short lock turns a brute-force lab
   into "wait and retry" at every level, Divine included. Use long windows or locks (15 min or more) below Divine and
   an escalating per-account lockout at Divine (the fifth failure locks, every further one doubles it, capped), so
@@ -526,10 +572,12 @@ resolves a name or fetches. A guard in `tests/sim.spec.ts` parses every module i
 compiler and allows only a fixed list of runtime imports (no dynamic `import()`, `require` or network globals such as
 `fetch` or `globalThis`; transitively they reach only `node:buffer`: the fixture reader lives in `core/fixtures.ts`), spies on fetch, http(s), http2,
 tls, net, dgram and dns during a visit, and spies on `net.Socket.prototype.connect` for the whole spec file. The worked
-example is the fixture lab SV-01 in `tests/sim-lab.spec.ts`.
+example is the fixture lab SV-01 in `tests/sim-lab.spec.ts` (and XS-01 in `tests/sim-cross-lab.spec.ts` for CSRF, CORS
+and clickjacking, "Across sites" below).
 
 Import everything from `core/sim.ts`, a barrel over the pure simulation in `core/sim/` (`limits.ts`: `SIM_LIMITS` and
-the copying clip; `url.ts`: the hosts and `classifySimUrl`; `cookies.ts`: the jar; `browser.ts`: `SimBrowser`;
+the copying clip; `url.ts`: the hosts and `classifySimUrl`; `cookies.ts`: the SameSite jar; `cross.ts`: the browser rules
+across sites (Origin, Sec-Fetch, form bodies, CORS, framing); `browser.ts`: `SimBrowser`;
 `world.ts`: `simWorld`, `simInbox`, `attackerLog`; no Express at runtime), the engine side in `core/victim.ts`
 (`VictimConfig`, the presets, the panel, `mountVictim`, `sendSimRedirect`) and `core/twin.ts` (one page answer for both
 browsers: `Reply`, `TwinCookie`, `toSim`, `sendReply`, `cookiePath`, `Visit`, `visitOf`, `simVisitOf`; see "A page that
@@ -556,20 +604,27 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 ### What is simulated
 
 - **`simWorld({ mailboxes })`**: one player's world at one level: `world.inbox`, `world.attackerLog`, the victim's recent
-  visits (`world.visits`) and a clock (`world.now`, a test seam like `state.now`).
+  visits (`world.visits`) and a clock (`world.now`, a test seam like `state.now`). **`world.visits` starts afresh with
+  every victim action** (the action's start clears it): it holds that action's visits, and any made after it, newest
+  `SIM_LIMITS.visits`. A spec that presses the button twice reads the visits after each press, not both at the end.
 - **`world.inbox`**: fixed mailboxes, `PLAYER_MAILBOX` (`pilgrim@citadel.test`) always plus the ones named (usually
   `ADMIN_MAILBOX`); mail to any other address bounces (`deliver()` returns `undefined`), so no map is keyed by attacker
   input. `deliver({ from, to, subject, body, links })`, `newest(address)`, `list(address)` (newest first). Links are an
   explicit list: "the admin clicks the first link" is `links[0]`.
 - **`world.attackerLog`**: append-only, capped (oldest dropped, sequence numbers keep counting): method, URL, `Referer`,
-  form body, time.
+  body (a form, or what your page sent home), time.
 - **`world.browser(handler)`**: a victim's browser. `follow(url, { referrer? })` opens a link, `submit(url, form)` posts a
   form; both return a `SimVisit` trace (`outcome`: `page` | `attacker` | `unreachable` | `too-many-redirects` | `loop`,
-  the `hops`, and the final citadel `page`). Its cookie jar (`browser.cookies`) holds citadel.test cookies only, never
-  real ones and never sent to attacker.test; `cookies.set()` signs the victim in up front. Every citadel request calls
+  the `hops`, and the final citadel `page`). What the player's attacker page makes it do (a cross-site link or form, a
+  `fetch()`, a frame and a click) is "Across sites" below. Its cookie jar (`browser.cookies`) holds citadel.test cookies
+  only, never real ones and never sent to attacker.test; `cookies.set(name, value, { path?, secure?, sameSite?,
+  expiresAt? })` signs the victim in up front (SameSite defaults to Lax, as Chrome's default; `'None'` needs
+  `secure: true`). Every citadel request calls
   `handler(req: SimRequest): SimResponse` synchronously: `req` has `method`, `url`, `path`, `query`
-  (URLSearchParams), lower-case `headers`, `cookies` and form `body` (null prototypes; `field()` and `header()` work on
-  it); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
+  (URLSearchParams), lower-case `headers` (`origin` on every POST, `sec-fetch-*` on every request, as Chrome sends them),
+  `cookies`, the form `body` (an urlencoded body's fields, or a JSON object's string members, as the app's own parsers
+  read them; null prototypes; `field()` and `header()` work on it) and `rawBody` (the body exactly as sent: read a
+  text/plain or JSON body there); the response is `{ status, headers?, body? }`, where `Location` (followed on 301, 302, 303, 307 and 308 only:
   any other status, a 300 or 304 with a Location included, is a page), `Set-Cookie`, `Refresh` and `Referrer-Policy`
   are honoured. A `Location` or `Refresh` value containing CR or LF is a malformed response (real HTTP cannot carry
   one, and URL parsing would silently drop it): the visit ends `unreachable` with an `other` hop whose reason is
@@ -579,7 +634,9 @@ hand-written parser); the classifier is the ground truth for where the victim's 
   its own URL). **A citadel page that moves the browser on by itself sends its own URL**: answer
   `200` with `Refresh: 0; url=<next>` (the stand-in for a meta refresh or a script; the sim does not parse HTML).
   `Referrer-Policy` on that page (or on a redirect) applies; the default is the legacy full URL
-  (`no-referrer-when-downgrade`). The Referer never carries userinfo or a fragment, and nothing ever comes FROM attacker.test.
+  (`no-referrer-when-downgrade`). The Referer never carries userinfo or a fragment. The victim's own navigations never
+  start on attacker.test; only the cross-site primitives below do, from the player's page, under ITS policy (Chrome's
+  `strict-origin-when-cross-origin` by default: the origin only).
   So an OAuth code leaks through `Referer` only from a page that forwards (GK-10 Inquisitor: the callback page moves on
   to `next=`), and Divine can stop it (`Referrer-Policy: no-referrer`, no secrets in URLs, no open forward).
 - **Limits** (`SIM_LIMITS`): URL 2048 chars, 10 redirects, 3 mailboxes (the player's included) of 10 mails (subject 200,
@@ -621,7 +678,11 @@ the container has 512 MB:
 - At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
   pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
 - Tests may shrink the budget with `setCappedBudget(bytes)` from `core/lab.ts` (restore the value it returns), and read
-  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`).
+  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`). **A spec that checks what one new instance adds to
+  the budget makes room first**: a busy spec file fills the shared budget, and the eviction the new instance causes
+  gives bytes back, so the difference comes out short. Raise the budget for the check and restore it in a `finally`:
+  `const prev = setCappedBudget(cappedBudgetUsage().bytes + 64 * 1024 * 1024); try { ... } finally { setCappedBudget(prev); }`
+  (SC-02, FP-05).
 
 Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
 (accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
@@ -707,15 +768,18 @@ browser's answer:
   carries, stay visible.
 - **Cookies** (`TwinCookie`): `{ name, value, path, clear?, maxAgeSec?, httpOnly?, sameSite?, secure? }`. The path is
   `cookiePath(base)` (`base || '/'`). The defaults are HttpOnly and `SameSite=Lax` (as `hvwa_sid`), not Secure; both
-  browsers get the same attributes. `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
+  browsers get the same attributes, and the line always NAMES its SameSite. **Never set a session cookie without an
+  explicit SameSite** (no raw `res.cookie` or `Set-Cookie` without it): Chrome treats such a cookie as Lax but still sends
+  it on a cross-site POST for its first 2 minutes, which the sim does not model ("Across sites" below). `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
   `sameSite: 'Strict' | 'Lax' | 'None'`: a lab whose lesson is SameSite (CSRF) sets it per level IN THE LEVEL FILE, so
   View Source and the Diff show it (Acolyte's `sameSite: 'None'` with `secure: true` is the realistic
   misconfiguration). Any other value throws, and so does `'None'` without `secure: true`, set or cleared: browsers
-  drop a `SameSite=None` cookie that is not Secure, so the lab would test nothing. `secure: true` adds Secure. The
-  open edge: today the simulated browser on `http://citadel.test` refuses a Secure cookie (as a browser does on plain
-  http) and its jar ignores SameSite; engine task E1 will make the sim jar accept Secure cookies from
-  `http://citadel.test` and apply SameSite. The player's own browser treats `http://127.0.0.1` as a secure context and
-  keeps a Secure cookie from it in Chromium and Firefox, but maybe not in Safari. `maxAgeSec` is in seconds (Express's
+  drop a `SameSite=None` cookie that is not Secure, so the lab would test nothing. `secure: true` adds Secure. **Both
+  browsers keep such a cookie:** the simulated jar treats `http://citadel.test` as a secure context, as browsers treat
+  loopback (engine task E1; it used to refuse a Secure cookie on plain http), and applies SameSite ("Across sites"
+  below). The player's own browser treats `http://127.0.0.1` as a secure context and keeps a Secure cookie from it in
+  Chromium and Firefox, but Safari may not: a player on Safari may find a `SameSite=None; Secure` lab cookie missing in
+  their own browser (the simulated victim is unaffected). `maxAgeSec` is in seconds (Express's
   `maxAge` is milliseconds: `sendReply` converts).
 - **Requests** (`Visit`: `level`, `query` (the raw query string as `URLSearchParams`, never Express's parsed
   `req.query`; everything after the first `?`), `cookies` (only the lab's own, as strings), `base`):
@@ -724,6 +788,31 @@ browser's answer:
   page function sees the same cookies in both browsers. (`simVisitOf` without names keeps every cookie the simulated
   browser sent: the behaviour before the filter, kept so older callers still compile; GK-10, 11 and 16 pass names.)
   The page function takes the `Visit` and never sees Express or the sim.
+- **The request itself** (`RequestVisit`, a `Visit` plus the request; E1b): `visitOf` and `simVisitOf` return one, and
+  take a fourth argument, `headerNames`, for headers the lab reads besides the usual ones. A level whose lesson is where
+  a request came from (FP-01 to FP-04) types its page function's argument as `RequestVisit`:
+  - `method` (`'GET'` or `'POST'`);
+  - `headers`: `VISIT_HEADERS` (`origin`, `referer`, `content-type`, `sec-fetch-site`, `-mode`, `-dest`, `-user`,
+    `x-requested-with`) plus the lab's names, lower-case, only those the request had; never cookie, host or user-agent;
+  - `body`: the body's string fields as `bodyFields` reads `text` (an urlencoded form's, the first value of a repeated
+    name; a JSON object's string members; none for text/plain);
+  - `text`: the body as text. In the sim it is exactly what was sent. On the real route the app's global
+    `express.json()` / `express.urlencoded()` have already parsed a JSON or form body, so `text` is **re-serialised from
+    `req.body`**: the same fields, not the same bytes (key order, escapes, `a[]` names may differ). A text/plain body is
+    read only on a route that mounts `twinBody()` (below);
+  - `self`: this browser's own origin for the lab: `CITADEL_ORIGIN` in the sim, `<protocol>://<Host>` on the real route.
+
+  Every value is a bounded copy (`TWIN_LIMITS`: a header 2049 characters, the text and each field 8 KiB) and the
+  records have no prototype. **A level that checks Origin compares `visit.headers.origin === visit.self`, never a
+  hard-coded `http://citadel.test`**: the player's own browser sends `Origin: http://127.0.0.1:<port>`, and a level
+  that hard-codes the citadel refuses the player's legitimate form at Divine. `tests/twin-visit.spec.ts` checks that
+  equivalent requests give equal Visits in both browsers, `self` aside.
+- **`twinBody()`**: a state-changing route whose levels read a text/plain body (FP-01 Inquisitor's text/plain form,
+  FP-02's JSON sent as text/plain) mounts it first: `router.post('/account/prefs', twinBody(), handler)`. The app's global
+  parsers read no text/plain, so without it `text` is empty on the real route. It is route-local (as `express.raw` on the
+  upload routes, owner decision Q6), reads `text/plain` only, at most 8 KiB (a bigger body gets 413 before the route
+  runs); a JSON or urlencoded body on the same route was already parsed by the global parsers, so its `text` is still
+  re-serialised. A GET route needs nothing.
 
 ```ts
 // model.ts: one page function, both browsers
@@ -823,6 +912,182 @@ or the admin's mail anywhere else. Labels: `VICTIM_LABELS.checkMail` / `.sendLin
 Restart: a victim-driven lab whose state can get stuck may pass `reset: (req) => labs.reset(req)`; that drops the
 world (inbox, attacker log, victim cookies) with the rest. The usual rule applies: no Restart on a lab with limiters.
 
+### Across sites: CSRF, CORS and clickjacking (engine task E1)
+
+The Forum labs FP-01 to FP-04 need what the **player's attacker page** makes the admin's browser do: submit a hidden
+form, call `fetch()`, frame a citadel page under a decoy. The page is the player's input, declared by the lab
+(`SimAttackerPage`: `{ url?, referrerPolicy?, sandboxed? }`); it is never parsed from HTML and never run, since there is no
+JavaScript engine. Its `url` is on attacker.test or any subdomain of it (default `ATTACKER_PAGE_URL`, `http://attacker.test/`),
+and relative URLs on the page resolve against it. Its referrer policy defaults to Chrome's `strict-origin-when-cross-origin`.
+`sandboxed: true` is a sandboxed iframe (or a `data:` document) inside the page: an opaque origin, so `Origin: null` and
+no Referer at all, and its form or link navigates that frame, not the top-level window. The rules come from Fetch, RFC 6265bis, HTML and CSP3 as
+current Chrome applies them (`core/sim/cross.ts`, the jar in `core/sim/cookies.ts`), all pure, inside the no-network guard.
+
+| `SimBrowser` method | What the page does | Request |
+|---|---|---|
+| `crossSiteLink(url, { page? })` | a link the admin clicks, or `location = url` | top-level GET navigation |
+| `crossSitePost(url, form, { contentType?, page? })` | an auto-submitted `<form>` with that enctype | top-level POST navigation |
+| `corsFetch(url, { method?, credentials?, headers?, body?, page? })` → `SimFetch` | `fetch(url, init)` | a CORS request; its answer is never rendered |
+| `frame(url, { page? })` → `SimFrame` | `<iframe src=url>` | GET navigation of a frame |
+| `clickThrough(frame, action, form, { contentType? })` → `SimClick` | the admin clicks the decoy over the framed page's button | POST navigation of the frame, made by the framed citadel page |
+
+**SameSite: what the jar sends.** Every cookie keeps its SameSite (`Lax` when the line has none or an unknown value;
+`SameSite=None` without `Secure` is refused). `citadel.test` is a secure context, so `Secure` cookies are kept and sent
+over http (see "The twin" above).
+
+| Request | Same-site for cookies? | Strict | Lax | None |
+|---|---|---|---|---|
+| `follow` (from mail, or clicked on a citadel page), `submit` | yes | sent | sent | sent |
+| `crossSiteLink` (cross-site, top-level GET) | no | — | sent | sent |
+| `crossSitePost` (cross-site, top-level POST) | no | — | — | sent |
+| the GET after that POST's 303 | no | — | sent | sent |
+| `corsFetch` with `credentials: 'include'` (GET or POST) | no | — | — | sent |
+| `corsFetch` with `'same-origin'` (fetch's default) or `'omit'` | no cookies to another origin | — | — | — |
+| `frame`, a `clickThrough` in it, a link or form in a sandboxed frame | no: the top-level page is the attacker's | — | — | sent |
+| a citadel page in the top-level window that moves on (`Refresh`) | yes | sent | sent | sent |
+
+A cross-site answer that is not a top-level navigation's (a fetch, a frame) may store only `SameSite=None` cookies: it can
+neither set nor delete the admin's Lax session. **Modelling choices (current Chrome):** no "Lax-allowing-unsafe" exception.
+Chrome 157 still sends a cookie that has NO SameSite attribute and is under 2 minutes old on a cross-site top-level POST
+(the E1 review saw it), and the sim does not model that, so **a lab must NEVER set a session cookie without an explicit
+SameSite**: in the real browser a fresh session would ride along on a cross-site POST that the sim refuses, and the lab
+would teach the wrong thing. Set every lab cookie through a TwinCookie (it always writes the attribute, `Lax` by default),
+and give a raw `Set-Cookie` line in a citadel handler or test an explicit `SameSite` too. Third-party cookies are on, as in Chrome's default, so a
+`SameSite=None` cookie reaches a frame or a credentialed fetch (Firefox's Total Cookie Protection partitions it and Safari
+blocks it, so in those browsers a framed or fetched citadel is signed out even then); `http://citadel.test` and
+`https://citadel.test` are different origins.
+
+**Origin and Sec-Fetch.** Every request carries `sec-fetch-site`, `-mode` and `-dest` as Chrome 157 sends them, and
+`sec-fetch-user: ?1` when the victim's own action started it (a link it opened, a form it submitted, its click through a
+frame); a script on the attacker's page navigating, a frame loading or a fetch carry none. Every POST carries `Origin`.
+Sec-Fetch-Site never gets less cross along a redirect, and a navigation the browser itself started (a link from mail)
+stays `none` across redirects; a citadel page that moves on starts a new request of its own (`same-origin`, no
+`sec-fetch-user`). `fetch()` cannot forge `Cookie`, `Origin`, `Referer`, `Host`, `Sec-*` or `Proxy-*` (dropped, as
+browsers drop them).
+
+| Request | `Origin` | `Referer` | `sec-fetch-site` / `-mode` / `-dest` / `-user` |
+|---|---|---|---|
+| `follow` from mail | none | none | `none` / `navigate` / `document` / `?1` |
+| `follow` clicked on a citadel page | none | that page | `same-origin` / `navigate` / `document` / `?1` |
+| `submit` | `http://citadel.test` | the citadel page, when given | `same-origin` / `navigate` / `document` / `?1` |
+| `crossSiteLink` | none | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `navigate` / `document` / — |
+| `crossSitePost` | the page's origin; `null` when its policy is `no-referrer`, `same-origin`, or an https page posts to http, and from a sandboxed frame | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `navigate` / `document` (`iframe` when sandboxed) / — |
+| `corsFetch` | always the page's origin (the policy never hides it); `null` from a sandboxed frame or after a redirect to another origin | the page's, under its policy; **none from a sandboxed frame** | `cross-site` / `cors` / `empty` / — |
+| `frame` | none | the page's, under its policy | `cross-site` / `navigate` / `iframe` / — |
+| `clickThrough` | `http://citadel.test` (`null` under the framed page's own `no-referrer`) | the framed page, under ITS policy | `same-origin` / `navigate` / `iframe` / `?1` |
+
+A sandboxed frame's document has an opaque origin, and an opaque origin has no referrer (Fetch): Chrome sends neither its
+page's URL nor its origin, whatever the policy. So **a level that accepts a missing Referer is beaten by a sandboxed
+iframe**; checked in Chrome 157 (E1 review).
+
+**Form bodies** are encoded as HTML does: urlencoded (the default, and any enctype a browser does not know), `text/plain`
+(`name=value` lines, unescaped: one field named `{"notify":"all","x":"` with the value `"}` is a JSON body) and
+`multipart/form-data` (a fixed boundary). `SimRequest.body` holds what the app's own parsers would read (an urlencoded
+form's fields, a JSON object's string members); a text/plain or multipart body gives none, so a level that parses it reads
+`r.rawBody`. A fetch's string body without a Content-Type goes as `text/plain;charset=UTF-8`.
+
+**CORS: may the page read the answer?** A cross-origin fetch with a method other than GET, HEAD or POST, or any header
+that is not CORS-safelisted (Accept, Accept-Language, Content-Language, a Content-Type of the three simple types; at most
+128 bytes; no `"():<>?@[\]{}`), would need a **preflight**. The sim approves none (no lab answers `OPTIONS`; no FP lab
+teaches preflight), so such a request is **not sent** (`verdict: 'preflight'`). Otherwise the request IS sent, cookies
+and all, and does whatever it does on the citadel; CORS only decides what the page may read (`corsCheck`, on every
+answer, redirects included: a failed check ends the fetch there).
+
+| Access-Control-Allow-Origin | Access-Control-Allow-Credentials | `credentials` | The page may read? |
+|---|---|---|---|
+| absent | any | any | no (`no-allow-origin`) |
+| `*` | any | `omit` or `same-origin` | yes |
+| `*` | any | `include` | no (`wildcard-credentials`) |
+| exactly the request's Origin | any | `omit` or `same-origin` | yes |
+| exactly the request's Origin | `true` | `include` | yes |
+| exactly the request's Origin | absent, `TRUE`, `false` | `include` | no (`no-allow-credentials`) |
+| another origin, another case, a trailing `/`, a port, two values | any | any | no (`origin-mismatch`) |
+| `null` | `true` | `include` from a sandboxed frame (`Origin: null`) | yes |
+
+A readable answer is `SimFetch.body`; the presets send it home (below). `'invalid'` is a fetch() that throws before
+sending (a GET with a body, a header it cannot carry); `'no-answer'` is one that reached your own server or nowhere.
+
+**Framing: is the page shown in the frame?** `framingOf` is checked on every page a frame would show (never on a
+redirect); a page that refuses is not shown, so nothing on it runs (the XSS browser does not judge it) and its Refresh
+never fires, though its request was sent. Response headers only: a `<meta>` sets neither header, and
+`Content-Security-Policy-Report-Only` enforces nothing. Every enforced CSP (headers, or policies split by commas) applies.
+
+| Response | Shown in a frame on attacker.test? |
+|---|---|
+| no framing header | yes |
+| `X-Frame-Options: DENY` (any case) | no |
+| `X-Frame-Options: SAMEORIGIN` | no (yes only when every ancestor is the page's own origin) |
+| `X-Frame-Options: ALLOW-FROM ...`, `ALLOWALL`, garbage, empty | yes (browsers no longer support ALLOW-FROM) |
+| `X-Frame-Options: DENY, SAMEORIGIN` (conflicting values) | no |
+| CSP `frame-ancestors 'none'`, or an empty list | no |
+| CSP `frame-ancestors 'self'` | no |
+| CSP `frame-ancestors *`, `http:`, `http://attacker.test`, `attacker.test`, `*.attacker.test` (subdomains only, not the apex) | yes for an ancestor it matches |
+| any enforced CSP with `frame-ancestors` | it alone decides: X-Frame-Options is then ignored |
+
+**The presets** (each with a REQUIRED `rearm`, like `checkMailAction`): the lab keeps the player's page in its
+per-session state as an `AttackerScript`, `{ page?: SimAttackerPage, does }`, where `does` is ONE step:
+`{ kind: 'form', action, method?, enctype?, fields }`, `{ kind: 'link', url }` or `{ kind: 'fetch', url, method?,
+credentials?, headers?, body? }`. Store what the player wrote clipped (`clip`) and declare its weight (section 8, "All
+victim state goes through perSession").
+
+```ts
+// The admin is signed in with the session cookie its level sets: rearm uses the SAME attributes as the level's TwinCookie.
+const rearm = (req: Request, admin: SimBrowser) => { admin.cookies.set(SESSION, adminSession(labFor(req)), sessionAttributes(req.level)); };
+victim: {
+  sim: (req) => labFor(req).world,
+  actions: [
+    visitAttackerPageAction({ browser: (req) => labFor(req).admin, page: (req) => labFor(req).page, rearm }), // FP-01/02/03
+    frameAndClickAction({ browser: (req) => labFor(req).admin, rearm,                                            // FP-04
+      // The framed page's button under the decoy: the lab knows its own page's form.
+      click: (_req, framed) => (new URL(framed.url).pathname === '/moderation/confirm' ? { action: '/moderation/grant', fields: { user: 'pilgrim' } } : undefined) }),
+  ],
+},
+```
+
+- `visitAttackerPageAction({ browser, page, rearm })`: the admin opens the page (your server logs that GET), and the page
+  does its step: a form (POST via `crossSitePost`; `method: 'GET'` puts the fields in the action's query and follows it),
+  a link, or a fetch. **A fetch the browser lets the page read is sent home**: `POST ATTACKER_EXFIL_URL`
+  (`http://attacker.test/exfil`) with the answer as its body, in the player's attacker log. That is FP-03's proof; when the
+  read is blocked, nothing but the page load is logged.
+- `sendAttackerPageAction({ browser, page, rearm })`: the same page, at the attacker.test link the player sends in the
+  panel's link field, so its origin and path are the player's (`http://citadel.test.attacker.test/`,
+  `http://attacker.test/citadel?x`). A link off attacker.test is never opened: it is no free-form "send link".
+- `frameAndClickAction({ browser, click, rearm, page? })`: the admin opens your framing page (`page(req)`, default
+  attacker.test), which frames the citadel link you send. If the frame shows it, `click(req, framed)` names the framed
+  page's form, which is submitted inside the frame; undefined means there is no button under the decoy.
+
+Each answers with a bilingual note for what the summary cannot show: no page written yet, a link off attacker.test, the
+fetch's verdict (the read, the preflight, which CORS header was missing), the header that refused the frame, a click that
+hit nothing.
+
+**What the levels decide, and what an FP lab must do:**
+- A level's session cookie's SameSite is its decision, in the level file (TwinCookie), and the re-arm sets the same
+  attributes. **A request the attacker's page makes carries only `SameSite=None` cookies**, except a cross-site
+  top-level GET (Lax too). So every level exploitable by a cross-site form POST, a credentialed fetch or a frame needs the
+  admin's session at `SameSite=None; Secure`: FP-01 Acolyte (as its design says), the FP-02 levels, FP-03's credentialed
+  read, and FP-04's framed page and its click (a Lax session is signed out inside the frame, as in Chrome). Divine may
+  keep Lax or Strict on top of its real fix.
+- CORS and framing headers are set by the level on its own route only, never globally: the real route through
+  `setLabHeaders` (`core/http.ts`, from the SC XSS batch), the citadel twin in its `SimResponse` headers with the same
+  values (`labHeaders(h)` there builds them from the same object). The sim reads them from the `SimResponse` only. CSP `frame-ancestors` is modelled (with X-Frame-Options), so FP-04's Divine fix is real; the XSS rule "a level
+  whose only fix is a CSP is not a Divine" is about script CSP, which the XSS oracle does not evaluate.
+- A level's Origin, Referer, Content-Type or custom-header check takes a `RequestVisit` (the twin, above): the same
+  `headers`, `body` and `text` in both browsers, and the Origin check is `visit.headers.origin === visit.self`, never
+  a hard-coded `http://citadel.test` (the real route sees `Origin: http://127.0.0.1:<port>`).
+
+**Memory.** Nothing here is a new store: the primitives keep only the world's visits and log entries (copies, under their
+caps) and a frame handle the browser holds weakly, and the presets keep nothing, so the byte budget weights are unchanged
+(`tests/sim-cross.spec.ts`, "budget, caps and copies").
+
+**Shaped for AR-14 (WebSocket hijacking, Phase 3), not implemented.** No primitive opens a WebSocket yet; the rules a
+handshake needs are in place so AR-14 adds one primitive and one `AttackerStep` kind, nothing more. As Chrome sends it, a
+handshake from the attacker's page is a GET that always carries `Origin` (`originHeader` with `mode: 'websocket'`), no
+Referer and no `Sec-Fetch-*` (`fetchMetadata` gives none for that mode), gets no CORS check, and is cross-site and not
+top-level for cookies, so only `SameSite=None` ones go. `classifySimUrl(url, base, { websocket: true })` takes `ws:` and
+`wss:` with the usual host and port rules; without the option they stay `other`. `AttackerStep` is dispatched
+exhaustively, so a `{ kind: 'websocket', ... }` member does not compile until the presets run it; today such a step is a
+lab bug.
+
 ### Testing
 
 An exploit is a script, as the player would do it: craft the link → trigger the victim (`POST <lab>/victim/<name>`) →
@@ -871,6 +1136,14 @@ it) holds what these specs repeat, modelled on `pilgrim-lab.testkit.ts`:
 
 Engine-level twin tests live in `tests/twin.spec.ts` (a fixture lab for both browsers, `sendReply` on a fake Response,
 the cookie attributes, `visitOf`).
+
+Across sites: `tests/sim-cross.spec.ts` is the guard (the SameSite, Origin, Sec-Fetch, CORS and framing matrices above,
+preflight, form bodies, the presets, and budget, caps and copies), and the fixture lab XS-01 in
+`tests/sim-cross-lab.spec.ts` is the worked example through the real panel: a forged form whose confirmation mail lands
+in the player's mailbox, a credentialed fetch whose answer reaches the attacker log at `ATTACKER_EXFIL_URL`, and a framed
+confirm page clicked through, each resisted at Divine. In a lab spec, read the proof as the player would: the mailbox,
+`attackerHits(html)` (the exfil hit's `body`), or the lab's own state after the click; the panel's note says what the
+browser refused.
 
 ## 9. Upload labs (`core/upload.ts`, `core/upload-zip.ts`, `core/simfs.ts`)
 
@@ -1088,7 +1361,7 @@ every integer (BigInt), and it throws on a fractional, NaN or infinite amount. N
 that names an amount calls `formatMoney`, or `insufficientFunds(total, wallet)` for the usual checkout refusal.
 
 **State.** `newShop({ catalog, wallet })` is a `ShopState`: `catalog`, `startWallet`, `wallet`, `cart`, `discounts`,
-`orders`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
+`orders`, `pinned`, `nextOrderNo`, `clock`, `gate` and `locks` (section 11). A lab extends it, typed (never `as`), and keeps it
 in `perShop`:
 
 ```ts
@@ -1114,10 +1387,18 @@ export const resetLab = (req: { sessionId: string; level: Level }): void => { la
   bounds: |qty| ≤ 9 999 999 999 (`Quantity too large for this shop.`) and 20 lines (`Your cart is full (20 lines).`);
   a fractional quantity or an unsafe unit price is a programming error and throws. A lab that adds up (RM-05's
   returns) computes the new quantity itself and sets it.
-- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged })` debits `charged` (a negative charge
+- `placeOrder(state, { lines: orderLines(state), subtotal, total, charged, status? })` places an order (status `paid`
+  unless the lab names another), debits `charged` (a negative charge
   credits), stamps the order with `state.clock.now()`, empties the cart and the discounts and keeps the newest 30
   orders (`pushOrder`). A charge or wallet outside the safe integers is refused (`OUT_OF_RANGE`) and changes nothing.
-  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...).
+  Whether the order may be placed is the level's decision, made before (`checkoutAllowed`, ...). RM-13 does not call
+  `placeOrder`: its payment provider has already debited the wallet at the pay step, so it builds its `confirmed` order by
+  hand (`pushOrder`, no debit) with `charged` set to the provider's ledger (`received`), avoiding a double debit.
+- **Seeded orders** (RM-11's other customers) go through `pinOrder(state, order)` in the lab's factory into
+  `state.pinned` (at most `LIMITS.pinned` = 20, an id seeded twice throws): they are never trimmed by the player's own
+  newest 30. `allOrders(state)` is pinned then own. An `Order.no` is a number (the shop's running number) or a string id.
+  `ordersView` lists only orders with `owner === CUSTOMER.id` (pinned ones included), so a seeded foreign order never
+  shows in "Your orders"; a lab that shows foreign data does it on its own page, by its own level's rule.
 - An `OrderLine` keeps `qty`, `unitPrice` (what was charged) and `listPrice` (the catalog's, then), so a proof never
   reads the current catalog. `exactValue(lines)` is their real worth in BigInt.
 - `exactTotals(state)` (and `cartTotal`) are exact cart totals, `OUT_OF_RANGE` beyond the safe integers. A lab whose
@@ -1155,12 +1436,15 @@ await sendPage(res, view, shopView(req, res, state, {
   challenge: RM05, result: outcome.result, intent: outcome.intent, totals: exactTotals(state), proves,
   removable: true, endpoints: endpointsOf(INTENTS), curl: { path: '/cart', form: { sku: 'ROSARY', qty: '1' }, signIn: false },
   // fields: (p) => level.formFields(p), api: [{ path: '/api/price-lists', description: '...' }], extra: { ... },
+  // an API path with a parameter links to its example: { path: '/api/orders/:id', example: '/api/orders/1001', description }
 }));
 ```
 
 - `shopView` is `baseView` (header data, message, `kept`, curl, endpoint list, API box) plus `catalogView`,
   `cartView` and `ordersView`. A page without a cart (store credit, an exchange, an API landing page) uses
   `baseView(req, res, { result, curl, endpoints?, api?, wallet?, intent?, extra? })` and the parts it has.
+- A lab whose checkout has several steps (RM-13) names the cart button's intent with `checkoutIntent: 'start'` (`shopView`
+  spec or `cartView` option; default `checkout`), so the cart partial's form posts that intent.
 - `kept` is what was posted (`intent`, `sku`, `qty`): a product's quantity field keeps it only after an `add` of
   that product, and a lab's own form keeps its value only after its own intent.
 - A lab without a cart (RM-08 store credit, RM-10 money changer) renders `{ ...baseView(...), ...ordersView(...) }` (or
@@ -1199,7 +1483,7 @@ Restart restores the start wallet and empties the cart and the orders, and that 
   isolated per player and per level, Restart (and its 429 cooldown) or a 404, the 21st cart line, the newest 30
   orders, money formatting. The default purchase is the cheapest product with its own form, then checkout; a lab
   without a cart passes its own `purchase` and `hasCart: false`.
-- Readers: `walletOf`, `ordersOf`, `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
+- Readers: `walletOf`, `ordersOf` (numeric ids; `orderIdsOf` reads string ids too), `cartOf`, `productForm(html, sku)` (a product form's fields, as a browser posts
   them), `pricesOf`, `endpointsShown`.
 - Exploit scripts end on checkout, and Divine's answer to each is `Insufficient funds: …` (`resisted` is the text, or
   a map keyed by the exploit's level when the totals differ).
@@ -1484,12 +1768,21 @@ Every string kept is a copy.
   (`default-src 'none'`), and a shim that turns `hvwa()` and `alert()` into a text banner naming the player's own
   marker. Checked in headless Chrome 157. A route-scoped CSP on the lab page applies inside it too, because srcdoc
   inherits it.
+- **`javascript:` links run in the preview through the shim.** A `sandbox="allow-scripts"` frame never runs a
+  `javascript:` URL a click navigates to (Chrome 157, with or without the meta CSP), so a link payload the oracle
+  counts would never be seen firing. The shim catches the click on an `a` or `area`, or on a submit button with a form
+  owner (its `formaction`, else the form's `action`), decodes the URL exactly as the oracle does (`urlText`,
+  `schemeOf`, `javascriptSource`: C0 controls and spaces trimmed, tabs and newlines removed, the scheme compared
+  case-insensitively, the rest percent-decoded as UTF-8; entities are undone by the parser), cancels the navigation and
+  runs the code as an inline script in the frame. The frame stays sandboxed with no `allow-same-origin`; a page CSP
+  without `'unsafe-inline'` blocks it, as it blocks every inline payload. `tests/xss-preview.spec.ts` checks the
+  decoding against the oracle's own functions.
 - `hvwa_sid` is HttpOnly and `SameSite=Lax`: no script anywhere reads the player's session.
 - Raw lab input reaches only the preview frame; everything else is escaped. Residual risk, accepted: all labs share
   the loopback origin, so a payload the player pastes into their own address bar or devtools can script their own
   platform page.
-- No route-scoped header helper exists yet (`core/http.ts setLabHeaders` is engine task E1). Until then a Divine
-  level that adds CSP sets the header on its own route only, never globally.
+- A Divine level that adds a CSP sets it on its own route with `setLabHeaders` (section 4, "Lab headers"), never
+  globally, and puts the same lines (`labHeaders`) in its citadel twin's answer.
 
 ### Testing
 
@@ -1497,13 +1790,17 @@ Every string kept is a copy.
   select pass, SMIL `href`, precision, form owners, `data:` images and tracks, XML documents and DTDs), escaped
   negatives, mXSS corpora, marker reachability,
   per-player isolation, the bounds (including the linear-time and mocked-clock cases), `linkSinks` and the preview's
-  attributes. It also guards imports: `core/xss/` imports
+  attributes (`tests/xss-preview.spec.ts`: its `javascript:` link runner). It also guards imports: `core/xss/` imports
   only parse5 and `sim/limits.ts` (the copying clip), with no dynamic `import()`, no network, file system, `vm`,
   `child_process` or code-loading global; parse5 and entities import no Node builtin at all; `core/sim/` never
   reaches `core/xss/`.
 - **The victim wrap (`tests/xss-victim.spec.ts`).** In process: what renders, what fires, the canary (read after the
   page's `Set-Cookie`), content types (XML read as XML), CSP sandbox, the `dom` twin, its hash and its failures, and
   the bound on kept verdicts.
+- **The XSS lab kit (`src/districts/_shared/xss-lab.testkit.ts`, section 1).** `describeXssLab` runs the cases below
+  that every server-sink XSS lab shares (the preview holds the fragment and runs it only isolated, one steal with no
+  Referer, Divine never fires, only the whole session key signs in, players and levels isolated); a lab spec adds its
+  own (re-arm, bounds, Restart, the Divine sanitizer on a corpus).
 - **A lab spec**, like XV-01, scripts the exploit as a player would. It reads the marker from the page (put it in
   `<code data-marker>`), sends the link (`POST <lab>/victim/send-link`), reads the canary from the attacker log
   (`attackerHits(html)`, the hit whose URL starts with `XSS_STEAL_URL`), then completes the attack.
@@ -1511,7 +1808,11 @@ Every string kept is a copy.
   - the preview's srcdoc ends with `<body>` + the level's fragment + `</body></html>`;
   - `xssOracle(labPage.text, marker)` finds the marker sinks only `isolated` (the payload never runs on the platform
     page);
-  - Divine's librarian saw the marker as text (`labFor(...).admin.verdicts`: `reachedMarker` true, `fired` false);
+  - Divine's admin never fired (`labFor(...).admin.verdicts`: `fired` false, no `limited`) and saw the marker as text
+    (`reachedMarker` true). **The "as text" half holds for an ESCAPING Divine only**: a sanitizing Divine drops the
+    marker together with the attribute or element it sat in, so there only some payloads reach the page as text;
+    `describeXssLab({ ..., divineSanitizes: true })` then asks for at least one (SC-02, FP-05, and SC-04, whose refused
+    link keeps only its label);
   - players and levels are isolated;
   - a logout link does not wedge the victim (re-arm);
   - for a level that serves player XML: Divine never produces `limited: 'dtd'` (it refuses a DOCTYPE with an

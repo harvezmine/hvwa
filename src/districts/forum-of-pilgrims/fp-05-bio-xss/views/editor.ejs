@@ -1,0 +1,19 @@
+<%# FP-05 profile editor. Lab content is English by design. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Forum of Pilgrims: your profile</h1>
+  <p class="lab-note">You are signed in as <code><%= me %></code>. Your bio shows on your public profile, http://citadel.test/u/<%= me %> (<a href="<%= base %>/u/<%= me %>?level=<%= level %>">open it here</a>), and may use bold, italic and links. The moderator, <code><%= moderator %></code>, is signed in at http://citadel.test/ and reviews your profile when asked (the button below the lab).</p>
+  <form method="post">
+    <input type="hidden" name="intent" value="bio">
+    <label>Your bio<br><textarea name="bio" rows="4" cols="60" autocomplete="off" spellcheck="false"><%= draft %></textarea></label>
+    <button type="submit">Save bio</button>
+  </form>
+<% if (saved) { -%>
+  <p class="lab-message <%= saved.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="saved"><%= saved.text %></p>
+<% } -%>
+<% if (preview) { -%>
+  <p class="lab-note">Your profile card as your public profile renders it (the moderator gets the same), live in a sandboxed frame:</p>
+  <%- preview %>
+<% } -%>
+<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>

@@ -1,0 +1,11 @@
+<%# The proof of a server-sink XSS lab (src/districts/_shared/xss-lab.ts proofView): the player's marker, and the sign-in with the session key their server received. Lab content is English. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <h2>Your marker, and the stolen session</h2>
+  <p class="lab-note">Where a real payload would send <%= proof.who %>'s cookie home, call your marker: <code data-marker><%= proof.marker %></code>. When it runs in <%= proof.who %>'s browser, your server (attacker.test) receives <code><%= proof.steal %>?c=&lt;session key&gt;</code> (below the lab). Sign in with that key.</p>
+  <form method="post">
+    <input type="hidden" name="intent" value="sign-in">
+    <label>Session key <input name="key" type="text" autocomplete="off" spellcheck="false" value="<%= proof.key %>"></label>
+    <button type="submit">Sign in as <%= proof.who %></button>
+  </form>
+<% if (proof.result) { -%>
+  <p class="lab-message <%= proof.result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="sign-in"><%= proof.result.text %></p>
+<% } -%>

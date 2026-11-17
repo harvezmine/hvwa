@@ -69,6 +69,66 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'sim.describe.send_link': { id: 'membuka tautan apa pun yang Anda kirim', en: 'opens any link you send' },
   'sim.note.mailbox_empty': { id: 'Kotak surat korban kosong.', en: "The victim's mailbox is empty." },
   'sim.note.no_link': { id: 'Surat terbaru korban tidak punya tautan ke-{n}.', en: "The victim's newest mail has no link {n}." },
+  // The cross-site presets (engine task E1): the attacker's page, its fetch() and its frame.
+  'sim.action.visit_page': { id: 'Minta admin membuka halaman Anda', en: 'Ask the admin to open your page' },
+  'sim.action.send_page': { id: 'Kirim tautan halaman Anda ke admin', en: 'Send the admin a link to your page' },
+  'sim.action.frame_click': { id: 'Minta admin membuka halaman pembingkai Anda', en: 'Ask the admin to open your framing page' },
+  'sim.describe.visit_page': {
+    id: 'membuka halaman Anda di attacker.test, yang melakukan apa yang Anda tulis di sana',
+    en: 'opens your page on attacker.test, which does what you wrote on it',
+  },
+  'sim.describe.send_page': {
+    id: 'membuka tautan ke halaman Anda di attacker.test yang Anda kirim; halaman itu melakukan apa yang Anda tulis di sana',
+    en: 'opens the link to your page on attacker.test that you send; the page does what you wrote on it',
+  },
+  'sim.describe.frame_click': {
+    id: 'membuka halaman Anda, yang membingkai tautan citadel.test yang Anda kirim, lalu mengklik tombol umpan Anda',
+    en: 'opens your page, which frames the citadel.test link you send, and clicks your decoy button',
+  },
+  'sim.note.no_page': { id: 'Anda belum menulis halaman penyerang Anda.', en: 'You have not written your attacker page yet.' },
+  'sim.note.not_your_server': {
+    id: 'Tautan itu tidak berada di server Anda (attacker.test); admin tidak membukanya.',
+    en: 'That link is not on your server (attacker.test); the admin does not open it.',
+  },
+  'sim.note.fetch_read': { id: 'Halaman Anda membaca jawabannya dan mengirimkannya ke server Anda.', en: 'Your page read the answer and sent it to your server.' },
+  'sim.note.fetch_preflight': {
+    id: 'fetch() di halaman Anda memerlukan preflight CORS (metode atau header yang tidak dimiliki permintaan sederhana); server ini tidak menyetujui satu pun, jadi peramban tidak mengirimnya.',
+    en: "Your page's fetch() needs a CORS preflight (a method or header a simple request cannot have); this server approves none, so the browser did not send it.",
+  },
+  'sim.note.fetch_invalid': {
+    id: 'fetch() di halaman Anda gagal sebelum terkirim (GET dengan body, atau header yang tidak bisa dibawanya).',
+    en: "Your page's fetch() threw before sending (a GET with a body, or a header it cannot carry).",
+  },
+  'sim.note.fetch_no_answer': { id: 'fetch() di halaman Anda tidak mendapat jawaban citadel.test untuk dibaca.', en: "Your page's fetch() got no citadel.test answer to read." },
+  'sim.note.cors_no_allow_origin': {
+    id: 'Peramban mengirim permintaannya, tetapi tidak membiarkan halaman Anda membaca jawabannya: tidak ada Access-Control-Allow-Origin.',
+    en: 'The browser sent the request but did not let your page read the answer: it has no Access-Control-Allow-Origin.',
+  },
+  'sim.note.cors_origin_mismatch': {
+    id: 'Peramban mengirim permintaannya, tetapi tidak membiarkan halaman Anda membaca jawabannya: Access-Control-Allow-Origin tidak menyebut asal halaman Anda.',
+    en: "The browser sent the request but did not let your page read the answer: Access-Control-Allow-Origin does not name your page's origin.",
+  },
+  'sim.note.cors_wildcard_credentials': {
+    id: 'Peramban mengirim permintaannya, tetapi tidak membiarkan halaman Anda membaca jawabannya: Access-Control-Allow-Origin: * tidak pernah berlaku untuk permintaan dengan kredensial.',
+    en: 'The browser sent the request but did not let your page read the answer: Access-Control-Allow-Origin: * never allows a request with credentials.',
+  },
+  'sim.note.cors_no_allow_credentials': {
+    id: 'Peramban mengirim permintaannya, tetapi tidak membiarkan halaman Anda membaca jawabannya: permintaan dengan kredensial juga memerlukan Access-Control-Allow-Credentials: true.',
+    en: 'The browser sent the request but did not let your page read the answer: a request with credentials also needs Access-Control-Allow-Credentials: true.',
+  },
+  'sim.note.frame_x_frame_options': {
+    id: 'Peramban menolak menampilkan halaman itu di bingkai Anda: X-Frame-Options.',
+    en: 'The browser refused to show that page in your frame: X-Frame-Options.',
+  },
+  'sim.note.frame_frame_ancestors': {
+    id: 'Peramban menolak menampilkan halaman itu di bingkai Anda: Content-Security-Policy frame-ancestors.',
+    en: 'The browser refused to show that page in your frame: Content-Security-Policy frame-ancestors.',
+  },
+  'sim.note.frame_not_loaded': { id: 'Bingkai Anda tidak menampilkan halaman citadel.test.', en: 'Your frame shows no citadel.test page.' },
+  'sim.note.nothing_to_click': {
+    id: 'Halaman yang dibingkai tidak punya tombol di bawah umpan Anda: klik itu tidak melakukan apa pun.',
+    en: 'The framed page has no button under your decoy: the click did nothing.',
+  },
   'sim.report': { id: 'Yang dilakukan peramban korban', en: 'What the victim\'s browser did' },
   'sim.opened_nothing': { id: 'Peramban korban tidak membuka apa pun.', en: 'The victim\'s browser opened nothing.' },
   'sim.failed': { id: 'Aksi korban gagal (galat di lab).', en: "The victim's action failed (an error in the lab)." },

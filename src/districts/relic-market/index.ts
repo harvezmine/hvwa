@@ -9,4 +9,7 @@ import './rm-07-race-coupon-reuse/challenge.js';
 import './rm-08-race-balance-underflow/challenge.js';
 import './rm-09-client-side-price/challenge.js';
 import './rm-10-currency-rounding/challenge.js';
+import './rm-11-idor-orders/challenge.js';
+import './rm-12-unbounded-export/challenge.js';
+import './rm-13-workflow-skip/challenge.js';
 import './rm-14-cart-total-overflow/challenge.js';
