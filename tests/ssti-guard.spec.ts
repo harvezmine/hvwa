@@ -6,9 +6,9 @@
 // THE ONE EXCEPTION, precisely (engine.ts): node:fs's readFileSync is called twice, both in loadAssets(), on two fixed
 // files resolved from their packages (never from input): the QuickJS .wasm and the Nunjucks browser bundle (read as
 // TEXT, evaluated only inside QuickJS). node:module's createRequire is called twice: in loadAssets() for that
-// resolve(), and in sealWorker(), which loads the builtins listed in SEALED_FUNCTIONS only to replace their functions
-// with ones that throw. Outside our code, the QuickJS Emscripten glue (node_modules) requires node:fs, node:path and
-// node:url when it starts, and would read the .wasm itself; engine.ts hands it the compiled module (wasmModule), so
+// resolve(), and in sealWorker(), which loads the builtins it seals (and names the host's globalThis, and the strings
+// 'fetch', 'WebSocket', 'EventSource', 'Worker') only to replace their functions with ones that throw. Outside our
+// code, the QuickJS Emscripten glue (node_modules) requires node:fs, node:path and node:url when it starts, and would read the .wasm itself; engine.ts hands it the compiled module (wasmModule), so
 // a render calls no fs function (the runtime spies below prove it, and a sealed worker would fail if it did).
 import { execSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -17,7 +17,6 @@ import net from 'node:net';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { SEALED_FUNCTIONS } from '../src/core/ssti/engine.js';
 import {
   inThreadTransport, renderInSandbox, setSandboxTransport, workerTransport, type SandboxInput,
 } from '../src/core/ssti/sandbox.js';
@@ -51,14 +50,16 @@ const ASSETS = ['@jitl/quickjs-wasmfile-release-sync/wasm', 'nunjucks/browser/nu
  * Names that reach the network or load or run code, however the call site spells the rest: as an identifier (a
  * variable or a property: `(() => 0).constructor` is the Function constructor without naming Function) and as a
  * string literal. One property is fine: `global`, because QuickJS's `vm.global` is the GUEST's global object.
- * `WebAssembly` is allowed in engine.ts only (it compiles and instantiates the QuickJS module), `Worker` in
- * transport.ts only.
+ * `WebAssembly` is allowed in engine.ts only (it compiles and instantiates the QuickJS module), and so is `globalThis`
+ * (sealWorker only, pinned below); `Worker` in transport.ts only. engine.ts may also hold the STRINGS of the network
+ * globals and of Worker, which the seal replaces (never as names it could call).
  */
 const DENIED: ReadonlySet<string> = new Set([
   'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'globalThis', 'global', 'window', 'self', 'process', 'require',
   'module', 'eval', 'Function', 'constructor', 'Deno', 'Bun', 'WebAssembly', 'Worker',
 ]);
-const ALLOWED_NAMES: Readonly<Record<string, readonly string[]>> = { 'engine.ts': ['WebAssembly'], 'transport.ts': ['Worker'] };
+const ALLOWED_NAMES: Readonly<Record<string, readonly string[]>> = { 'engine.ts': ['WebAssembly', 'globalThis'], 'transport.ts': ['Worker'] };
+const ALLOWED_STRINGS: Readonly<Record<string, readonly string[]>> = { 'engine.ts': ['fetch', 'WebSocket', 'EventSource', 'Worker'] };
 const ALLOWED_PROPERTIES: ReadonlySet<string> = new Set(['global']);
 
 interface Scan {
@@ -72,7 +73,7 @@ interface Scan {
   readonly refs: { readonly name: string; readonly inside: string }[];
 }
 
-function scan(src: string, allowedNames: readonly string[] = []): Scan {
+function scan(src: string, allowedNames: readonly string[] = [], allowedStrings: readonly string[] = []): Scan {
   const sf = ts.createSourceFile('m.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const out: Scan = { runtime: [], problems: [], named: new Map(), calls: [], refs: [] };
   const fnName = (n: ts.Node): string => {
@@ -114,7 +115,8 @@ function scan(src: string, allowedNames: readonly string[] = []): Scan {
     }
     if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
       const allowedProperty = ts.isIdentifier(node) && isPropertyName(node) && ALLOWED_PROPERTIES.has(node.text);
-      if (DENIED.has(node.text) && !allowedNames.includes(node.text) && !allowedProperty) {
+      const allowedString = !ts.isIdentifier(node) && allowedStrings.includes(node.text);
+      if (DENIED.has(node.text) && !allowedNames.includes(node.text) && !allowedProperty && !allowedString) {
         out.problems.push(`${node.text} (line ${sf.getLineAndCharacterOfPosition(node.getStart()).line + 1})`);
       }
     }
@@ -162,12 +164,14 @@ describe('the SSTI host side imports no filesystem, network or code runner (beyo
     expect(scan("import type { Worker } from 'node:worker_threads'; vm.getProp(vm.global, 'nunjucks');"))
       .toMatchObject({ runtime: [], problems: [] });
     expect(scan('const o = { module: 1 }; o.process; x.fetch(1);').problems).toHaveLength(3);
+    // An allowed STRING stays a denied NAME.
+    expect(scan("const names = ['fetch']; fetch('http://x');", [], ['fetch']).problems).toEqual(['fetch (line 1)']);
   });
 
   it('src/core/ssti/ is the three modules, each importing only its allow-list, never loading code dynamically', () => {
     expect(FILES).toEqual(['engine.ts', 'sandbox.ts', 'transport.ts']);
     for (const file of FILES) {
-      const { runtime, problems } = scan(source(file), ALLOWED_NAMES[file]);
+      const { runtime, problems } = scan(source(file), ALLOWED_NAMES[file], ALLOWED_STRINGS[file]);
       expect(runtime.filter((m) => !ALLOWED[file].includes(m)), file).toEqual([]);
       expect(problems, file).toEqual([]);
     }
@@ -181,7 +185,7 @@ describe('the SSTI host side imports no filesystem, network or code runner (beyo
   });
 
   it('node:fs is readFileSync only: called twice, in loadAssets, on the two package files; elsewhere only compared (the seal check)', () => {
-    const s = scan(source('engine.ts'), ALLOWED_NAMES['engine.ts']);
+    const s = scan(source('engine.ts'), ALLOWED_NAMES['engine.ts'], ALLOWED_STRINGS['engine.ts']);
     expect(s.named.get('node:fs')).toEqual(['readFileSync']);
     expect(s.calls.filter((c) => c.callee === 'readFileSync').map((c) => [c.inside, c.arg])).toEqual(
       ASSETS.map((a) => ['loadAssets', `resolve('${a}')`]),
@@ -191,28 +195,57 @@ describe('the SSTI host side imports no filesystem, network or code runner (beyo
     expect(s.calls.filter((c) => c.callee === 'resolve').map((c) => c.inside)).toEqual(['loadAssets', 'loadAssets']);
   });
 
-  it('node:module is createRequire (loadAssets resolves the two files; sealWorker loads only SEALED_FUNCTIONS\' builtins) and syncBuiltinESMExports', () => {
+  it('node:module is createRequire (loadAssets resolves the two files; sealWorker loads only the builtins it seals) and syncBuiltinESMExports', () => {
     const src = source('engine.ts');
-    const s = scan(src, ALLOWED_NAMES['engine.ts']);
+    const s = scan(src, ALLOWED_NAMES['engine.ts'], ALLOWED_STRINGS['engine.ts']);
     expect(s.named.get('node:module')).toEqual(['createRequire', 'syncBuiltinESMExports']);
     expect(s.calls.filter((c) => c.callee === 'createRequire').map((c) => [c.inside, c.arg])).toEqual([
       ['loadAssets', 'import.meta.url'], ['sealWorker', 'import.meta.url'],
     ]);
-    expect(s.calls.filter((c) => c.callee === 'load').map((c) => [c.inside, c.arg])).toEqual([['sealWorker', 'id']]);
-    expect(src).toContain('for (const [id, names] of SEALED_FUNCTIONS) {');
+    expect(s.calls.filter((c) => c.callee === 'load').map((c) => [c.inside, c.arg])).toEqual([
+      ['sealWorker', "'node:net'"], ['sealWorker', "'node:process'"], ['sealWorker', "'node:worker_threads'"], ['sealWorker', 'id'],
+    ]);
+    expect(src).toContain('for (const id of SEALED_MODULES) {');
     expect(s.calls.filter((c) => c.callee === 'syncBuiltinESMExports').map((c) => c.inside)).toEqual(['sealWorker']);
-    // Every builtin the seal loads is one the guard below spies on (and nothing else).
-    expect(SEALED_FUNCTIONS.map(([id]) => id).sort()).toEqual(Object.keys(SPIED).sort());
+    // The host's global object is named in sealWorker only (to seal its network functions).
+    expect(new Set(s.refs.filter((r) => r.name === 'globalThis').map((r) => r.inside))).toEqual(new Set(['sealWorker']));
   });
 
   it('node:worker_threads gives the engine its worker side and the transport its Worker; nothing else', () => {
-    expect(scan(source('engine.ts'), ALLOWED_NAMES['engine.ts']).named.get('node:worker_threads')).toEqual(['isMainThread', 'parentPort', 'workerData']);
+    expect(scan(source('engine.ts'), ALLOWED_NAMES['engine.ts'], ALLOWED_STRINGS['engine.ts']).named.get('node:worker_threads')).toEqual(['isMainThread', 'parentPort', 'workerData']);
     expect(scan(source('transport.ts'), ALLOWED_NAMES['transport.ts']).named.get('node:worker_threads')).toEqual(['Worker']);
   });
 });
 
-/** Every host function the guard traps, per module: the worker's seal (SEALED_FUNCTIONS) must cover exactly these. */
-const SPIED: Readonly<Record<string, readonly string[]>> = Object.fromEntries(SEALED_FUNCTIONS.map(([id, fns]) => [id, fns]));
+/**
+ * The guard's OWN list of host functions, written out here and independent of the engine (whose seal ENUMERATES
+ * modules): what reaches the disk, the network, a process, the inspector or loads code. The worker must report each
+ * one sealed, and this thread spies on each (but NOT_SPIED_HERE) while a whole flow runs.
+ */
+const HOST_FUNCTIONS: Readonly<Record<string, readonly string[]>> = {
+  'node:fs': ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync',
+    'read', 'readSync', 'write', 'writeSync', 'copyFile', 'copyFileSync', 'link', 'linkSync', 'symlink', 'symlinkSync', 'chmod',
+    'chmodSync', 'truncate', 'truncateSync', 'opendir', 'opendirSync', 'lstat', 'lstatSync', 'stat', 'statSync', 'realpath',
+    'realpathSync', 'openAsBlob', 'mkdir', 'mkdirSync', 'readdir', 'readdirSync', 'unlink', 'unlinkSync', 'rename', 'renameSync',
+    'rm', 'rmSync', 'cp', 'cpSync', 'createReadStream', 'createWriteStream', 'watch', 'existsSync', 'access', 'accessSync'],
+  'node:fs/promises': ['readFile', 'writeFile', 'appendFile', 'open', 'opendir', 'readdir', 'stat', 'lstat', 'realpath', 'copyFile',
+    'link', 'symlink', 'chmod', 'truncate', 'unlink', 'rename', 'rm', 'cp', 'mkdir', 'access', 'watch'],
+  'node:http': ['request', 'get', 'createServer'], 'node:https': ['request', 'get', 'createServer'],
+  'node:http2': ['connect', 'createServer'], 'node:tls': ['connect', 'createServer'],
+  'node:net': ['connect', 'createConnection', 'createServer'], 'node:dgram': ['createSocket'],
+  'node:dns': ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny'], 'node:dns/promises': ['lookup', 'resolve'],
+  'node:child_process': ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork', 'ChildProcess'],
+  'node:vm': ['runInNewContext', 'runInThisContext', 'runInContext', 'compileFunction', 'createContext', 'Script'],
+  'node:inspector': ['open', 'Session'],
+  'node:worker_threads': ['Worker'],
+};
+/** Sealed in the worker by name: a prototype method, the process's native-code doors, and the network globals. */
+const HOST_EXTRAS: readonly string[] = [
+  'node:net.Socket.prototype.connect', 'node:process.binding', 'node:process.dlopen', 'node:process.kill',
+  'globalThis.fetch', 'globalThis.WebSocket',
+];
+/** What THIS realm legitimately uses while the flow runs: the transport's Worker, vitest's module runner's Script. */
+const NOT_SPIED_HERE: ReadonlySet<string> = new Set(['node:worker_threads.Worker', 'node:vm.Script']);
 
 /**
  * Trap every filesystem, network, child-process and vm function in THIS realm: each becomes a spy that THROWS
@@ -224,9 +257,9 @@ function installSpies() {
   const trap = (mod: object, name: string) =>
     vi.spyOn(mod as Record<string, () => unknown>, name).mockImplementation(() => { throw new Error(`guard: ${name}`); });
   const spies = [trap(globalThis, 'fetch')];
-  for (const [id, fns] of Object.entries(SPIED)) {
+  for (const [id, fns] of Object.entries(HOST_FUNCTIONS)) {
     const mod = load(id) as Record<string, unknown>;
-    for (const f of fns) if (typeof mod[f] === 'function') spies.push(trap(mod, f));
+    for (const f of fns) if (typeof mod[f] === 'function' && !NOT_SPIED_HERE.has(`${id}.${f}`)) spies.push(trap(mod, f));
   }
   syncBuiltinESMExports();
   return spies;
@@ -299,12 +332,22 @@ describe('a whole SSTI -> RCE flow touches no filesystem, network, child-process
     try {
       await wholeFlow();
       for (const spy of spies) expect(spy, spy.getMockName()).not.toHaveBeenCalled();
-      // The worker's own realm: every SEALED_FUNCTIONS entry this Node has was replaced, its own ES-module binding of
-      // readFileSync is the seal (checked right after sealing), and nothing called a sealed function.
-      const load = createRequire(import.meta.url);
-      const present = SEALED_FUNCTIONS.flatMap(([id, fns]) => fns.filter((f) => typeof (load(id) as Record<string, unknown>)[f] === 'function'));
+      // The worker's own realm: its own ES-module binding of readFileSync is the seal (checked right after sealing),
+      // and nothing called a sealed function.
       const s = await t.stats();
-      expect(s.worker).toEqual({ renders: FLOW.length, sealed: present.length, sealHits: 0, sealVerified: true });
+      expect([s.worker?.renders, s.worker?.sealHits, s.worker?.sealVerified]).toEqual([FLOW.length, 0, true]);
+      // Every function of the guard's own list is sealed there,
+      const sealed = new Set(s.worker?.sealedNames);
+      const listed = [...Object.entries(HOST_FUNCTIONS).flatMap(([id, fns]) => fns.map((f) => `${id}.${f}`)), ...HOST_EXTRAS];
+      expect(listed.filter((n) => !sealed.has(n))).toEqual([]);
+      // and so is EVERY function of fs and fs/promises, enumerated here, in this realm, on its own.
+      const load = createRequire(import.meta.url);
+      for (const id of ['node:fs', 'node:fs/promises']) {
+        const mod = load(id) as Record<string, unknown>;
+        const all = Object.getOwnPropertyNames(mod).filter((k) => typeof mod[k] === 'function').map((k) => `${id}.${k}`);
+        expect(all.length, id).toBeGreaterThan(25);
+        expect(all.filter((n) => !sealed.has(n)), id).toEqual([]);
+      }
     } finally {
       releaseSpies(spies);
       setSandboxTransport(prev);

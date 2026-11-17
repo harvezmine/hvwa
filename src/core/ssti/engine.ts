@@ -14,7 +14,8 @@
 //
 // Host side (the guard in tests/ssti-guard.spec.ts): node:fs is used for ONE thing, reading two fixed files once
 // (the QuickJS .wasm and the Nunjucks browser bundle, resolved from their packages, never from input). A worker then
-// seals itself: every fs, network, child-process and vm function in its own realm throws from then on.
+// seals itself: every function of the fs, network, child-process, vm and inspector modules in its own realm (found by
+// enumeration), plus the process's and the global object's own doors out (sealWorker), throws from then on.
 import { readFileSync } from 'node:fs';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
@@ -566,50 +567,79 @@ export function fakeShell(node: FakeNode, command: string): ShellResult {
 /** workerData tag that makes this module run as the SSTI worker (any other worker that imports it stays inert). */
 export const WORKER_TAG = 'hvwa-ssti/1';
 
-/** Every host function the worker realm loses once its two files are read (the same list the guard spies on). */
-export const SEALED_FUNCTIONS: readonly (readonly [string, readonly string[]])[] = [
-  ['node:fs', ['readFile', 'readFileSync', 'writeFile', 'writeFileSync', 'appendFile', 'appendFileSync', 'open', 'openSync',
-    'mkdir', 'mkdirSync', 'createReadStream', 'createWriteStream', 'readdir', 'readdirSync', 'stat', 'statSync', 'unlink',
-    'unlinkSync', 'rename', 'renameSync', 'rm', 'rmSync', 'cp', 'cpSync', 'symlink', 'symlinkSync', 'watch']],
-  ['node:fs/promises', ['readFile', 'writeFile', 'appendFile', 'open', 'mkdir', 'readdir', 'stat', 'unlink', 'rename', 'rm', 'cp']],
-  ['node:http', ['request', 'get', 'createServer']], ['node:https', ['request', 'get', 'createServer']],
-  ['node:http2', ['connect', 'createServer']], ['node:tls', ['connect', 'createServer']],
-  ['node:net', ['connect', 'createConnection', 'createServer']], ['node:dgram', ['createSocket']],
-  ['node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6', 'resolveAny']],
-  ['node:child_process', ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']],
-  ['node:vm', ['runInNewContext', 'runInThisContext', 'runInContext', 'compileFunction', 'createContext']],
+/**
+ * Builtins the worker seals by ENUMERATION once its two files are read: every function-valued own property of each
+ * module object (a class too), so nothing on the disk, the network, a process, the inspector or code loading is left
+ * by omission. node:fs/promises is node:fs's `promises`, node:dns/promises node:dns's.
+ */
+export const SEALED_MODULES: readonly string[] = [
+  'node:fs', 'node:fs/promises', 'node:child_process', 'node:net', 'node:http', 'node:https', 'node:http2', 'node:tls',
+  'node:dgram', 'node:dns', 'node:dns/promises', 'node:vm', 'node:inspector',
 ];
+/** Sealed by name besides: the process's doors to native code and other processes, and the host's network globals. */
+const SEALED_PROCESS_FUNCTIONS: readonly string[] = ['binding', '_linkedBinding', 'dlopen', 'kill', '_kill'];
+const SEALED_GLOBALS: readonly string[] = ['fetch', 'WebSocket', 'EventSource'];
 
 /**
- * Worker diagnostics (the stats message): renders done, functions sealed, sealed calls attempted since, and whether
- * this module's own ES-module binding of readFileSync now IS the seal (checked right after sealing, before any call).
+ * Worker diagnostics (the stats message): renders done, every function sealed (`<module>.<name>`), sealed calls
+ * attempted since, and whether this module's own ES-module binding of readFileSync now IS the seal (checked right
+ * after sealing, before any call).
  */
 export interface WorkerStats {
   readonly renders: number;
-  readonly sealed: number;
+  readonly sealedNames: readonly string[];
   readonly sealHits: number;
   readonly sealVerified: boolean;
 }
 
 let sealHits = 0;
 
-/** Replace every SEALED_FUNCTIONS entry in THIS realm (the worker's own module objects) with one that throws. */
-function sealWorker(): number {
+/**
+ * Replace a function-valued property of `owner` with one that throws (called or constructed), whatever kind of
+ * property it is: a plain assignment would throw on an accessor without a setter (net.BlockList) and stop the worker.
+ * A property that cannot be redefined is left, and not listed. Returns whether it was sealed.
+ */
+function sealOne(owner: object, name: string, label: string): boolean {
+  const d = Object.getOwnPropertyDescriptor(owner, name);
+  if (d === undefined) return false;
+  let value: unknown;
+  if ('value' in d) value = d.value;
+  else {
+    try { value = d.get?.call(owner); } catch { return false; }
+  }
+  if (typeof value !== 'function') return false;
+  if (!d.configurable && !('value' in d && d.writable === true)) return false;
+  const sealed = function sealed(): never {
+    sealHits += 1;
+    throw new Error(`ssti worker: ${label} is sealed`);
+  };
+  Object.defineProperty(owner, name, { value: sealed, writable: true, configurable: d.configurable, enumerable: d.enumerable });
+  return true;
+}
+
+/**
+ * Seal THIS realm (the worker's own module objects; the main thread's are its own): every function of SEALED_MODULES,
+ * net.Socket.prototype.connect, the process functions and network globals listed above, and worker_threads' Worker.
+ * Returns the labels sealed.
+ */
+function sealWorker(): string[] {
   const load = createRequire(import.meta.url);
-  let sealed = 0;
-  for (const [id, names] of SEALED_FUNCTIONS) {
-    const mod = load(id) as Record<string, unknown>;
-    for (const name of names) {
-      if (typeof mod[name] !== 'function') continue;
-      mod[name] = () => {
-        sealHits += 1;
-        throw new Error(`ssti worker: ${id} ${name} is sealed`);
-      };
-      sealed += 1;
-    }
+  const sealed: string[] = [];
+  const seal = (owner: object, name: string, label: string) => {
+    if (sealOne(owner, name, label)) sealed.push(label);
+  };
+  // The prototype first: node:net's own Socket is replaced below, and what already holds the class keeps it.
+  seal((load('node:net') as { Socket: { prototype: object } }).Socket.prototype, 'connect', 'node:net.Socket.prototype.connect');
+  const proc = load('node:process') as object;
+  for (const name of SEALED_PROCESS_FUNCTIONS) seal(proc, name, `node:process.${name}`);
+  seal(load('node:worker_threads') as object, 'Worker', 'node:worker_threads.Worker');
+  for (const name of SEALED_GLOBALS) seal(globalThis, name, `globalThis.${name}`);
+  for (const id of SEALED_MODULES) {
+    const mod = load(id) as object;
+    for (const name of Object.getOwnPropertyNames(mod)) seal(mod, name, `${id}.${name}`);
   }
   syncBuiltinESMExports(); // ES-module bindings (this file's own readFileSync included) now point at the seals too
-  return sealed;
+  return sealed.sort();
 }
 
 /**
@@ -637,13 +667,13 @@ async function workerMain(): Promise<void> {
   const port = parentPort;
   if (port === null) return;
   let assets: EngineAssets;
-  let sealed: number;
+  let sealedNames: readonly string[];
   let sealVerified: boolean;
   try {
     assets = loadAssets();
     await warmUp(assets); // imports what a render loads lazily, while the worker can still read files
     const unsealed = readFileSync;
-    sealed = sealWorker();
+    sealedNames = sealWorker();
     sealVerified = readFileSync !== unsealed;
     await warmUp(assets); // and a sealed worker still renders
   } catch (err) {
@@ -659,7 +689,7 @@ async function workerMain(): Promise<void> {
         renders += 1;
         port.postMessage({ type: 'result', id: m.id, result } satisfies FromWorker);
       } else if (m.type === 'stats') {
-        const stats: WorkerStats = { renders, sealed, sealHits, sealVerified };
+        const stats: WorkerStats = { renders, sealedNames, sealHits, sealVerified };
         port.postMessage({ type: 'stats', id: m.id, stats } satisfies FromWorker);
       }
     });

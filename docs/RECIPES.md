@@ -1647,8 +1647,14 @@ Measured on Node 22.22 (Windows, this machine), through the real worker.
 - An idle worker is unref'd, so it never keeps the process up. A pending render or stats reply does. `server.ts`'s
   shutdown ends it with the process.
 - The worker starts with no environment (`FLAG_SECRET` never reaches it) and no flags. It loads its two files,
-  warms up, then **seals itself**: every fs, network, child-process and vm function in its own realm throws from
-  then on (`SEALED_FUNCTIONS`; `stats()` reports it).
+  warms up, then **seals itself**. In its own realm, these throw from then on:
+  - every function of `node:fs`, `fs/promises`, `child_process`, `net`, `http`, `https`, `http2`, `tls`, `dgram`,
+    `dns`, `dns/promises`, `vm` and `inspector`, ENUMERATED (`SEALED_MODULES`), classes included;
+  - `net.Socket.prototype.connect`, `process.binding`/`_linkedBinding`/`dlopen`/`kill`/`_kill`,
+    `worker_threads.Worker`, and the global `fetch`, `WebSocket` and `EventSource`.
+
+  `stats()` lists every sealed name. The guard spec keeps its own written list and checks each name is there,
+  plus every function of `fs` and `fs/promises` that it enumerates itself.
 - Measured numbers come from `workerTransport().stats()`: workers started and dropped, the live thread id, the
   queue, the worker's counters and its V8 heap.
 
