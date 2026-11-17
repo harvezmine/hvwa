@@ -37,8 +37,11 @@ export function searchPage(level: Level, q: string): string {
     + `<h1>Scriptorium search</h1>${impl.for(level).results(q)}</body></html>`;
 }
 
-/** The lab as the librarian's browser sees it at http://citadel.test: the twins of the real routes. */
-function citadel(level: Level, r: SimRequest): SimResponse {
+/**
+ * The lab as the librarian's browser sees it at http://citadel.test: the twins of the real routes, with the same headers
+ * (exported as a test seam: sc-01.spec.ts compares its CSP with the real route's).
+ */
+export function citadel(level: Level, r: SimRequest): SimResponse {
   if (r.path === '/' || r.path === '/search') {
     return { status: 200, headers: { ...labHeaders(impl.for(level).headers ?? {}) }, body: searchPage(level, r.query.get('q') ?? '') };
   }

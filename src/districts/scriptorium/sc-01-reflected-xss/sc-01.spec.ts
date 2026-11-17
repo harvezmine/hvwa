@@ -7,13 +7,14 @@ import {
   FLAG_RE, describeExploitMatrix, describeLabView, freshSession, type Agent,
 } from '../../../../tests/helpers.js';
 import type { Level } from '../../../core/levels.js';
+import type { SimRequest } from '../../../core/sim.js';
 import { xssOracle } from '../../../core/xss.js';
 import { describeVictimAction, victimClient } from '../../_shared/victim-lab.testkit.js';
 import {
   describeXssLab, labPage, markerOn, previewSrcdoc, signIn, stolenKey, xssExploit,
 } from '../../_shared/xss-lab.testkit.js';
 import { SC01 } from './challenge.js'; // registers SC-01 before createApp() inside freshSession
-import { SESSION, impl, labState } from './model.js';
+import { SESSION, citadel, impl, labState } from './model.js';
 
 const LAB = '/d/scriptorium/reflected-xss';
 const victim = victimClient(LAB);
@@ -83,6 +84,9 @@ describe('SC-01 search lab', () => {
     const { agent } = await freshSession();
     const res = await exploit((m) => `x onmouseover=${m}`)(agent, 'inquisitor');
     expect(res.text).toMatch(FLAG_RE);
+    // A tag-shaped hover payload with a trailing space lands on the <input> too: the same unquoted-value flaw.
+    const m = "hvwa('0123456789abcdef')";
+    expect(xssOracle(impl.for('inquisitor').results(`<img src=x onmouseover=${m} >`), m).executes).toBe(true);
   });
 
   it('every level reflects the query in the same two places: the results line and the refine field', () => {
@@ -106,12 +110,29 @@ describe('SC-01 search lab', () => {
     expect(librarian.verdicts.at(-1)?.fired).toBe(false);
     // ...but the oracle evaluates no script-src: Divine's fragment itself has no sink for any exploit.
     const { call } = labState(sid, 'divine').marker;
-    for (const make of Object.values(PAYLOADS)) {
+    // Plus the quote breakouts of a quoted value: Divine escapes the quote too, not just & < >.
+    const QUOTE_BREAKOUTS = [(m: string) => `" autofocus onfocus="${m}`, (m: string) => `" onmouseover="${m}`];
+    for (const make of [...Object.values(PAYLOADS), ...QUOTE_BREAKOUTS]) {
       const v = xssOracle(impl.for('divine').results(make(call)), call);
       expect([v.executes, v.reachedMarker], make(call)).toEqual([false, true]);
     }
     // A platform page in the same session carries no policy.
     expect((await agent.get('/')).headers['content-security-policy']).toBeUndefined();
+  });
+
+  it("the librarian's search page carries exactly the CSP your page carries, at every level (the citadel twin)", async () => {
+    const { agent } = await freshSession();
+    const simGet = (url: string): SimRequest => {
+      const u = new URL(url);
+      return { method: 'GET', url, path: u.pathname, query: u.searchParams, headers: { host: 'citadel.test' }, cookies: {}, body: {} };
+    };
+    for (const level of SC01.levels) {
+      const real = (await labPage(agent, LAB, level, '&q=x')).headers['content-security-policy'];
+      expect(real === undefined, level).toBe(level !== 'divine');
+      for (const path of ['/search?q=x', '/?q=x']) {
+        expect(citadel(level, simGet(`http://citadel.test${path}`)).headers?.['Content-Security-Policy'], `${level} ${path}`).toBe(real);
+      }
+    }
   });
 
   it('a link that signs the librarian out never leaves the lab stuck: every action re-arms', async () => {
