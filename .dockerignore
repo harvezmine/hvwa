@@ -13,9 +13,12 @@ docs
 *.db-journal
 *.db-wal
 *.db-shm
+# ...at any depth (a stray data dir or lab DB under src/ never reaches the image).
+**/*.db*
 # Never bake secrets into the image.
 .env
 .env.*
+**/.env*
 docker
 docker-compose*.yml
 # ...except the pull-only one, which the image ships (Dockerfile COPY).

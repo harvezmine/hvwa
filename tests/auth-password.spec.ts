@@ -1,7 +1,7 @@
 // The platform login's password hashing (src/auth/password.ts) and brute-force backoff schedule (src/auth/service.ts).
 import { describe, it, expect } from 'vitest';
 import { scryptSync } from 'node:crypto';
-import { hashPassword, hashPasswordSync, verifyPassword, SCRYPT_PARAMS } from '../src/auth/password.js';
+import { hashPassword, hashPasswordSync, verifyPassword, SCRYPT_PARAMS, STORED_HASH_LIMITS } from '../src/auth/password.js';
 import { AUTH_LIMITS, lockMsAfter } from '../src/auth/service.js';
 
 const HASH_RE = /^scrypt\$(\d+)\$(\d+)\$(\d+)\$([A-Za-z0-9_-]+)\$([A-Za-z0-9_-]+)$/;
@@ -26,6 +26,30 @@ describe('password hashing (scrypt, node:crypto)', () => {
     }
     expect(a).not.toBe(b); // per-hash salt
     expect(HASH_RE.exec(a)?.[4]).not.toBe(HASH_RE.exec(b)?.[4]);
+  });
+
+  it('every hash gets its own random salt, on the async AND the sync path', async () => {
+    const hashes = [await hashPassword('same-pass'), await hashPassword('same-pass'), hashPasswordSync('same-pass'), hashPasswordSync('same-pass')];
+    const salts = hashes.map((h) => HASH_RE.exec(h)?.[4]);
+    expect(salts.every((s) => typeof s === 'string' && s.length === 22)).toBe(true);
+    expect(new Set(salts).size).toBe(4);
+    expect(new Set(hashes).size).toBe(4);
+  });
+
+  it('a stored hash is never trusted to be expensive: N, r and p above the caps verify nothing, with no scrypt work', async () => {
+    expect(STORED_HASH_LIMITS.maxN).toBeLessThanOrEqual(4 * SCRYPT_PARAMS.N);
+    expect(STORED_HASH_LIMITS.maxR).toBeLessThanOrEqual(16);
+    expect(STORED_HASH_LIMITS.maxP).toBeLessThanOrEqual(4);
+    const real = await hashPassword('tampered-row');
+    const [, , , , salt, key] = real.split('$');
+    // A tampered row (anyone who can write the platform DB, e.g. an exploited lab): 2N would cost 2x memory and time,
+    // 2^30 a terabyte. Refused before deriving anything, so the answer is immediate (one real check takes ~50-100 ms).
+    for (const [N, r, p] of [[2 * STORED_HASH_LIMITS.maxN, 8, 1], [2 ** 30, 8, 1], [SCRYPT_PARAMS.N, 64, 1], [SCRYPT_PARAMS.N, 8, 64]]) {
+      const t0 = performance.now();
+      await expect(verifyPassword('tampered-row', `scrypt$${N}$${r}$${p}$${salt}$${key}`)).resolves.toBe(false);
+      expect(performance.now() - t0, `N=${N} r=${r} p=${p}`).toBeLessThan(40);
+    }
+    expect(await verifyPassword('tampered-row', real)).toBe(true); // the untampered row still verifies
   });
 
   it('the stored key is scrypt(password, salt) with the stored parameters', () => {

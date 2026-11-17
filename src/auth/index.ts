@@ -48,14 +48,32 @@ function ownHost(req: Request): string | undefined {
 
 /**
  * Same-origin check for the forms: an absent Origin passes (older clients, curl; the synchroniser token
- * still applies), a present one must be http(s)://<this Host>. 'null' and other origins are refused.
+ * still applies), a present one must be exactly this origin: the request's own scheme (req.protocol: 'http'
+ * here, as 'trust proxy' is off, so X-Forwarded-Proto cannot change it) and Host, port included. 'null', another
+ * port of the same host and every other origin are refused.
  */
 function originOk(req: Request): boolean {
   const origin = req.get('origin');
   if (origin === undefined) return true;
   let u: URL;
   try { u = new URL(origin); } catch { return false; }
-  return (u.protocol === 'http:' || u.protocol === 'https:') && u.origin === origin.toLowerCase() && u.host === ownHost(req);
+  return u.protocol === `${req.protocol}:` && u.origin === origin.toLowerCase() && u.host === ownHost(req);
+}
+
+/**
+ * Fetch metadata: a browser marks every request with Sec-Fetch-Site. The forms accept only 'same-origin' (a
+ * page of ours posting), or no header at all (older clients, curl). 'same-site' (another port of this host),
+ * 'cross-site' and 'none' are refused: 'none' is a user-typed navigation, which is never a form POST.
+ */
+function fetchSiteOk(req: Request): boolean {
+  const site = req.get('sec-fetch-site');
+  return site === undefined || site.trim().toLowerCase() === 'same-origin';
+}
+
+/** The hvwa_auth cookie as presented (a string, else ''). */
+function authTokenOf(req: Request): string {
+  const v: unknown = req.cookies?.[AUTH_COOKIE];
+  return typeof v === 'string' ? v : '';
 }
 
 /** Where the login page should return a signed-out request to. */
@@ -74,6 +92,18 @@ function nextFor(req: Request): string {
 
 const loginHref = (next: string) => `/login?next=${encodeURIComponent(next)}`;
 
+// Every check slot is taken (AUTH_LIMITS.checksInFlight / checksQueued): the attempt was not checked at all.
+// Kept here, not in the platform dictionary, so the login stays self-contained.
+const BUSY = Object.freeze({
+  id: 'Server sedang sibuk memeriksa kata sandi. Coba lagi sebentar lagi.',
+  en: 'The server is busy checking passwords. Try again in a moment.',
+});
+/** 503 + Retry-After for an attempt refused unchecked; returns the notice text for the page. */
+function busy(req: Request, res: Response): string {
+  res.status(503).set('Retry-After', '1');
+  return BUSY[req.lang] ?? BUSY.id;
+}
+
 export interface PlatformAuth {
   readonly service: AuthService;
   readonly publicRouter: Router;
@@ -91,14 +121,18 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     res.status(403);
     await sendPage(res, view('refused'), { pageTitle: res.locals.t('auth.csrf_heading'), back });
   };
-  /** The form's synchroniser token (per hvwa_sid) and the Origin check. */
-  const formOk = (req: Request) => originOk(req) && service.checkCsrf(req.sessionId, field(req, '_csrf'));
+  /**
+   * A form post is ours: same Origin, same-origin Sec-Fetch-Site, and the synchroniser token. The login form's
+   * token is bound to hvwa_sid; an account form's (`account`) to hvwa_sid and the sign-in (hvwa_auth).
+   */
+  const formOk = (req: Request, account: boolean) => originOk(req) && fetchSiteOk(req) &&
+    service.checkCsrf(req.sessionId, field(req, '_csrf'), account ? authTokenOf(req) : undefined);
 
-  const renderLogin = (req: Request, res: Response, next: string, failed: boolean) => {
+  const renderLogin = (req: Request, res: Response, next: string, failed: boolean, notice?: string) => {
     noStore(res);
     res.locals.platformAuth = { signedIn: false };
     return sendPage(res, view('login'), {
-      pageTitle: res.locals.t('auth.login_heading'), csrf: service.csrfToken(req.sessionId), next, failed,
+      pageTitle: res.locals.t('auth.login_heading'), csrf: service.csrfToken(req.sessionId), next, failed, notice,
     });
   };
 
@@ -109,10 +143,11 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     await renderLogin(req, res, next, false);
   });
   publicRouter.post('/login', async (req, res) => {
-    if (!formOk(req)) { await refuse(req, res, '/login'); return; }
+    if (!formOk(req, false)) { await refuse(req, res, '/login'); return; }
     const next = safeNext(field(req, 'next'));
     const result = await service.signIn(field(req, 'username'), field(req, 'password'));
     if (!result.ok) {
+      if (result.busy) { await renderLogin(req, res, next, false, busy(req, res)); return; }
       res.status(401);
       await renderLogin(req, res, next, true);
       return;
@@ -129,7 +164,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     if (session) {
       res.locals.platformAuth = {
         signedIn: true, user: session.username, defaultPassword: session.defaultPassword,
-        csrf: service.csrfToken(req.sessionId),
+        csrf: service.csrfToken(req.sessionId, authTokenOf(req)), // the layout's logout form: an account form
       };
       next();
       return;
@@ -147,28 +182,29 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
 
   const accountRouter = Router();
   accountRouter.post('/logout', async (req, res) => {
-    if (!formOk(req)) { await refuse(req, res, '/'); return; }
+    if (!formOk(req, true)) { await refuse(req, res, '/'); return; }
     service.revoke(req.cookies?.[AUTH_COOKIE]);
     noStore(res);
     res.clearCookie(AUTH_COOKIE, CLEAR);
     res.redirect(303, '/login');
   });
 
-  const renderPassword = (req: Request, res: Response, data: { error?: string; changed?: boolean }) => {
+  const renderPassword = (req: Request, res: Response, data: { error?: string; changed?: boolean; notice?: string }) => {
     noStore(res);
     return sendPage(res, view('password'), {
-      pageTitle: res.locals.t('auth.pw_heading'), csrf: service.csrfToken(req.sessionId),
-      user: res.locals.platformAuth?.user ?? '', error: data.error, changed: data.changed === true,
+      pageTitle: res.locals.t('auth.pw_heading'), csrf: service.csrfToken(req.sessionId, authTokenOf(req)),
+      user: res.locals.platformAuth?.user ?? '', error: data.error, changed: data.changed === true, notice: data.notice,
     });
   };
   accountRouter.get('/account/password', async (req, res) => {
     await renderPassword(req, res, { changed: req.query.changed === '1' });
   });
   accountRouter.post('/account/password', async (req, res) => {
-    if (!formOk(req)) { await refuse(req, res, '/account/password'); return; }
+    if (!formOk(req, true)) { await refuse(req, res, '/account/password'); return; }
     const username = res.locals.platformAuth?.user ?? '';
     const result = await service.changePassword(username, field(req, 'current'), field(req, 'password'), field(req, 'confirm'));
     if (!result.ok) {
+      if (result.error === 'busy') { await renderPassword(req, res, { notice: busy(req, res) }); return; }
       res.status(400);
       await renderPassword(req, res, { error: result.error });
       return;

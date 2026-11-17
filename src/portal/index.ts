@@ -13,6 +13,7 @@ import { challengePath } from '../core/mount.js';
 import { sendPage, diffView, escapeHtml } from '../core/render.js';
 import { submitFlag } from '../core/checker.js';
 import { unlockHint, parseTier } from '../core/hints.js';
+import { portalFramePolicy } from './frame-policy.js';
 
 /** The portal's own EJS views (the shared layout lives in core/views). */
 export const portalViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
@@ -133,6 +134,7 @@ function sourceCrumbs(c: Challenge, lang: Lang, label: string) {
 // lang / t come from res.locals (langMiddleware).
 export function portalRouter(db: DatabaseSync, challenges: ChallengeSet = REGISTRY): Router {
   const r = Router();
+  r.use(portalFramePolicy()); // frame-ancestors 'self' on portal pages, never on labs (./frame-policy.ts)
   const getChallenge = (id: string) => challenges.get(id);
 
   r.get('/', async (req, res) => {

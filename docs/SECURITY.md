@@ -114,6 +114,10 @@ same standard as the Divine levels. It is never a lab:
   (or `HVWA_ADMIN_PASSWORD` on first start), and every page shows a banner
   until you change it at `/account/password`. **Never reuse a real password for
   HVWA**: an exploited lab can read `/data`, including the password's hash.
+  `HVWA_ADMIN_PASSWORD` only sets the first password. The server deletes it from
+  its environment as soon as the configuration is loaded, because code-execution
+  labs can read the environment. If it is set but ignored, because the account
+  already exists or the login is off, the server says so without printing it.
 - **Storage.** Only a scrypt hash is stored (N = 2^15, r = 8, p = 1, a fresh
   16-byte salt per hash) in the platform database. The password is never
   stored, logged or echoed.
@@ -125,10 +129,27 @@ same standard as the Divine levels. It is never a lab:
   password revokes every token. A token is accepted only from that cookie,
   never from a URL, a header or a form. The anonymous lab session
   `hvwa_sid` is never rotated: lab progress belongs to it, not to the login.
-- **Forms.** Sign-in, sign-out and the password change carry a synchroniser
-  token, an HMAC of `hvwa_sid`, and refuse a foreign `Origin` (an absent one
-  passes). The login and password pages refuse framing (`X-Frame-Options:
-  DENY`, `frame-ancestors 'none'`) and are never cached.
+- **Forms.** Every form refuses a request from any other origin, checked three
+  ways:
+  - a synchroniser token: the sign-in form's is an HMAC of `hvwa_sid`. Sign-out
+    and the password change use an HMAC of `hvwa_sid` and the SHA-256 of the
+    `hvwa_auth` token. A page on another port of the same host shares your
+    cookie jar, so it can plant an `hvwa_sid` and learn its sign-in token, but
+    it cannot know your sign-in.
+  - the `Origin`: scheme, host and port must all match. An absent `Origin`
+    passes.
+  - `Sec-Fetch-Site`: only `same-origin` passes, or no header at all (curl,
+    older clients). `same-site`, `cross-site` and `none` are refused; `none` is a
+    typed navigation, which is never a form POST.
+
+  The login and password pages refuse framing (`X-Frame-Options: DENY`,
+  `frame-ancestors 'none'`) and are never cached.
+- **Framing.** Portal pages (`/`, `/c/<id>`, the scoreboard, View Source) send
+  `Content-Security-Policy: frame-ancestors 'self'`, and nothing else, so htmx and
+  the layout are unaffected. A page on another port of `127.0.0.1` is same-site,
+  so its frames carry your cookies, but it cannot frame these pages. Lab routes
+  are never touched: a lab's framing is set per level by the lab itself, and is
+  sometimes its lesson.
 - **Redirects.** `/login?next=` accepts only a local path: one leading slash, no
   double slash or backslash, no scheme, no CR/LF or other control characters, and
   none of those hidden behind percent-encoding. Anything else goes to `/`, so the
@@ -140,11 +161,21 @@ same standard as the Divine levels. It is never a lab:
   the same message, so neither the response nor its timing tells whether the
   username exists or the account is locked. The lock state is in the database,
   so a restart does not reset it.
+- **CPU.** That one scrypt per attempt is also a cost: a local flood could keep
+  libuv's thread pool busy, and with it the whole app. At most 2 checks run at
+  once and 8 wait in order. Any attempt beyond that is answered `503` with
+  `Retry-After: 1` at once, unchecked and not counted toward the lockout.
+  Admitted attempts still cost exactly one check each, so their timing stays
+  uniform.
 - **What it is not.** The login does **not** make it safe to expose HVWA. It
   keeps strangers out of a lab that is built to be broken, but a signed-in
   player can still exploit every lab, by design. Anyone who can reach the login
-  page can also lock the account for up to 15 minutes. **It is no substitute
-  for the rules below: never expose HVWA beyond your own machine.**
+  page can also keep the account locked out. Each lock lasts at most 15
+  minutes, but one more wrong attempt after it expires starts the next one,
+  indefinitely. On a loopback-only lab, only software on your own machine can
+  do that, so it is an accepted residual: unlock with the one-liner in the
+  README ("Login"). **The login is no substitute for the rules below: never
+  expose HVWA beyond your own machine.**
 
 ## Rules
 

@@ -34,21 +34,34 @@ afterEach(() => {
   for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 3 });
 });
 
-interface Made { app: HvwaApp; clock: { now: () => number; advance: (ms: number) => void }; verifies: string[] }
+/** With `hold`, every password check waits until the test calls one of `releases` (to fill the check slots). */
+interface Held { releases: (() => void)[]; inFlight: number; peak: number }
+interface Made { app: HvwaApp; clock: { now: () => number; advance: (ms: number) => void }; verifies: string[]; held: Held }
 /** An auth-on app with a fake clock; `verifies` records which stored hash each password check used. */
-function authApp(o: { initialPassword?: string; dbPath?: string } = {}): Made {
+function authApp(o: { initialPassword?: string; dbPath?: string; hold?: boolean } = {}): Made {
   let t = T0;
   const verifies: string[] = [];
+  const held: Held = { releases: [], inFlight: 0, peak: 0 };
   const hasher: PasswordHasher = {
     ...SCRYPT_HASHER,
-    verify: (pw, stored) => { verifies.push(stored); return SCRYPT_HASHER.verify(pw, stored); },
+    verify: async (pw, stored) => {
+      verifies.push(stored);
+      held.inFlight += 1;
+      held.peak = Math.max(held.peak, held.inFlight);
+      try {
+        if (o.hold) await new Promise<void>((r) => { held.releases.push(r); });
+        return await SCRYPT_HASHER.verify(pw, stored);
+      } finally {
+        held.inFlight -= 1;
+      }
+    },
   };
   const app = createApp({
     flagSecret: TEST_SECRET, dbPath: o.dbPath,
     auth: { now: () => t, hasher, ...(o.initialPassword === undefined ? {} : { initialPassword: o.initialPassword }) },
   });
   apps.push(app);
-  return { app, clock: { now: () => t, advance: (ms) => { t += ms; } }, verifies };
+  return { app, clock: { now: () => t, advance: (ms) => { t += ms; } }, verifies, held };
 }
 
 const csrfOf = (html: string): string => {
@@ -58,10 +71,19 @@ const csrfOf = (html: string): string => {
 };
 type Agent = ReturnType<typeof request.agent>;
 
-/** This browser's CSRF token (per hvwa_sid): from the login form, or the layout's logout form once signed in. */
+/**
+ * This browser's LOGIN-form token (bound to hvwa_sid alone). A signed-in browser is sent on from /login, so its
+ * login token is read from the login page served to its hvwa_sid without the auth cookie (an old open tab).
+ */
 async function csrfFor(agent: Agent): Promise<string> {
   const page = await agent.get('/login');
-  return csrfOf(page.status === 200 ? page.text : (await agent.get('/')).text);
+  if (page.status === 200) return csrfOf(page.text);
+  const server = (agent as unknown as { app: Parameters<typeof request>[0] }).app;
+  return csrfOf((await request(server).get('/login').set('Cookie', `hvwa_sid=${sidOf(agent)}`)).text);
+}
+/** This signed-in browser's ACCOUNT-form token (logout, password; bound to hvwa_sid AND its hvwa_auth). */
+async function accountCsrf(agent: Agent): Promise<string> {
+  return csrfOf((await agent.get('/account/password')).text);
 }
 
 /** GET /login (establishes hvwa_sid), then POST the form with this browser's token. */
@@ -292,6 +314,77 @@ describe('signing in', () => {
   });
 });
 
+/** Release held checks (one per tick, so each freed slot is handed on) until `until` settles; returns its value. */
+async function drain<T>(held: Held, until: Promise<T>): Promise<T> {
+  let settled = false;
+  const out = until.finally(() => { settled = true; });
+  const deadline = Date.now() + 15_000;
+  while (!settled) {
+    if (Date.now() > deadline) throw new Error('held checks never finished');
+    held.releases.shift()?.();
+    await new Promise((r) => setTimeout(r, 2));
+  }
+  return out;
+}
+
+describe('password checks in flight (CPU: every attempt, even a locked one, costs one scrypt)', () => {
+  it(`runs at most ${AUTH_LIMITS.checksInFlight} at once, queues ${AUTH_LIMITS.checksQueued}, and answers 503 beyond: no check, no backoff`, async () => {
+    const { app, verifies, held } = authApp({ hold: true });
+    const db = app.locals.db;
+    const agent = request.agent(app);
+    const csrf = await csrfFor(agent);
+    const attempt = (username: string) => agent.post('/login').type('form').send({ _csrf: csrf, username, password: 'wrong-pass', next: '/c/ZA-01' });
+    const capacity = AUTH_LIMITS.checksInFlight + AUTH_LIMITS.checksQueued;
+    const done: request.Response[] = [];
+    const all = Array.from({ length: capacity }, () => attempt('nobody').then((r) => { done.push(r); return r; }));
+    const full = { inFlight: AUTH_LIMITS.checksInFlight, queued: AUTH_LIMITS.checksQueued };
+    await vi.waitFor(() => {
+      expect(app.locals.auth?.checkLoad()).toEqual(full);
+      expect(held.releases).toHaveLength(AUTH_LIMITS.checksInFlight); // both in-flight checks reached scrypt
+    }, { timeout: 10_000 });
+    // Full: three more (for the real account) are refused at once, before any check or backoff bookkeeping.
+    const busy = await Promise.all([attempt('admin'), attempt('admin'), attempt('admin')]);
+    for (const r of busy) {
+      expect(r.status).toBe(503);
+      expect(r.headers['retry-after']).toBe('1');
+      expect(r.text).toContain('data-testid="auth-busy"');
+      expect(r.text).toContain('name="next" value="/c/ZA-01"');
+      expect(r.text).not.toContain('data-testid="login-error"');
+    }
+    expect(done).toHaveLength(0);
+    expect(verifies).toHaveLength(AUTH_LIMITS.checksInFlight);
+    expect(db.prepare("SELECT failures FROM auth_accounts WHERE username='admin'").get()).toEqual({ failures: 0 });
+    expect(app.locals.auth?.checkLoad()).toEqual(full);
+    // Release one check at a time: each frees its slot for the next queued attempt, never more than the cap.
+    const results = await drain(held, Promise.all(all));
+    expect(app.locals.auth?.checkLoad()).toEqual({ inFlight: 0, queued: 0 });
+    expect(held.peak).toBe(AUTH_LIMITS.checksInFlight);
+    expect(verifies).toHaveLength(capacity); // every admitted attempt: exactly one check
+    expect(results.every((r) => r.status === 401)).toBe(true);
+    expect(new Set(results.map((r) => r.text)).size).toBe(1); // admitted ones stay uniform
+  });
+
+  it('the password form is capped too: 503, nothing changed', async () => {
+    const { app, held } = authApp({ hold: true });
+    const me = request.agent(app);
+    expect((await drain(held, signIn(me))).status).toBe(303);
+    const _csrf = await accountCsrf(me);
+    const other = request.agent(app);
+    const otherCsrf = await csrfFor(other);
+    const fill = Array.from({ length: AUTH_LIMITS.checksInFlight + AUTH_LIMITS.checksQueued }, () =>
+      other.post('/login').type('form').send({ _csrf: otherCsrf, username: 'nobody', password: 'x' }).then((r) => r));
+    await vi.waitFor(() => expect(app.locals.auth?.checkLoad())
+      .toEqual({ inFlight: AUTH_LIMITS.checksInFlight, queued: AUTH_LIMITS.checksQueued }), { timeout: 10_000 });
+    const res = await me.post('/account/password').type('form')
+      .send({ _csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' });
+    expect(res.status).toBe(503);
+    expect(res.headers['retry-after']).toBe('1');
+    expect(res.text).toContain('data-testid="auth-busy"');
+    await drain(held, Promise.all(fill));
+    expect((await drain(held, signIn(request.agent(app)))).status).toBe(303); // the old password still works
+  });
+});
+
 describe('brute-force backoff (fake clock)', () => {
   it('locks the account after 5 failures; even the right password is refused, with the same message, until it expires', async () => {
     const { app, clock, verifies } = authApp();
@@ -357,9 +450,12 @@ describe('brute-force backoff (fake clock)', () => {
     const csrf = csrfOf((await agent.get('/login')).text);
     const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
       agent.post('/login').type('form').send({ _csrf: csrf, username: 'admin', password: i === 11 ? 'password' : `wrong-${i}` })));
-    expect(results.every((r) => r.status === 401 || r.status === 303)).toBe(true);
+    // Beyond the check slots (in flight + queued) an attempt is refused unchecked (503); every other one is checked.
+    expect(results.every((r) => [401, 303, 503].includes(r.status))).toBe(true);
+    const admitted = results.filter((r) => r.status !== 503).length;
+    expect(admitted).toBeGreaterThanOrEqual(AUTH_LIMITS.checksInFlight + AUTH_LIMITS.checksQueued);
     expect(verifies.filter((h) => h === stored).length).toBeLessThanOrEqual(5);
-    expect(verifies).toHaveLength(12);
+    expect(verifies).toHaveLength(admitted);
   });
 
   it('persists the lock in the platform DB (a restart does not refill the budget)', async () => {
@@ -375,9 +471,108 @@ describe('brute-force backoff (fake clock)', () => {
     second.clock.advance(30_000);
     expect((await signIn(request.agent(second.app))).status).toBe(303);
   });
+
+  it('the README recipes work as written: the unlock applies to a running app at once; the account reset re-creates it', async () => {
+    const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8');
+    const sql = [...readme.matchAll(/hvwa\.db'\)\.exec\('([^']+)'\)/g)].map((m) => m[1]);
+    expect(sql).toEqual(['UPDATE auth_accounts SET failures=0, locked_until=0', 'DELETE FROM auth_accounts; DELETE FROM auth_tokens']);
+    const dir = mkdtempSync(join(tmpdir(), 'hvwa-auth-'));
+    tempDirs.push(dir);
+    const dbPath = join(dir, 'hvwa.db');
+    const { app } = authApp({ dbPath });
+    const agent = request.agent(app);
+    const csrf = csrfOf((await agent.get('/login')).text);
+    for (let i = 0; i < 12; i++) await agent.post('/login').type('form').send({ _csrf: csrf, username: 'admin', password: 'wrong' });
+    expect((await signIn(request.agent(app))).status).toBe(401); // locked (same fake time)
+    const other = new (await import('node:sqlite')).DatabaseSync(dbPath); // another process's connection, as docker exec
+    other.exec(sql[0]);
+    expect((await signIn(request.agent(app))).status).toBe(303); // no restart, no waiting
+    other.exec(sql[1]);
+    other.close();
+    app.locals.db.close();
+    const restarted = authApp({ dbPath, initialPassword: 'Reset-Pass-123' });
+    expect(restarted.app.locals.auth?.accountCreated).toBe(true);
+    expect((await signIn(request.agent(restarted.app), { password: 'Reset-Pass-123' })).status).toBe(303);
+  });
 });
 
 describe('CSRF on the login, logout and password forms', () => {
+  // A same-host page on another port shares the cookie jar (cookies ignore ports): it can PLANT hvwa_sid and read the
+  // login page served to it, so it knows the login-form token of any sid it plants. The account forms (logout,
+  // password) are therefore bound to the sign-in too: HMAC(key, sid + sha256(hvwa_auth)), which it cannot know.
+  it('the account forms take a token bound to hvwa_sid AND the sign-in; the login form\'s or another sign-in\'s is refused', async () => {
+    const { app } = authApp();
+    const a = await signedIn(app);
+    const sid = sidOf(a.agent);
+    const mine = await accountCsrf(a.agent);
+    const loginToken = csrfOf((await withCookies(app, `hvwa_sid=${sid}`).get('/login')).text); // what a planter can read
+    expect(loginToken).not.toBe(mine);
+    // B signs in on the SAME (planted) hvwa_sid: same login token, its own sign-in.
+    const b = await withCookies(app, `hvwa_sid=${sid}`).post('/login').type('form')
+      .send({ _csrf: loginToken, username: 'admin', password: 'password' });
+    expect(b.status).toBe(303);
+    const bToken = authCookie(b) as string;
+    const asA = withCookies(app, `hvwa_sid=${sid}; hvwa_auth=${a.token}`);
+    const asB = withCookies(app, `hvwa_sid=${sid}; hvwa_auth=${bToken}`);
+    const change = { current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' };
+    for (const _csrf of [loginToken, csrfOf((await asB.get('/account/password')).text)]) {
+      expect((await asA.post('/logout').type('form').send({ _csrf })).status).toBe(403);
+      expect((await asA.post('/account/password').type('form').send({ _csrf, ...change })).status).toBe(403);
+    }
+    expect((await asA.get('/')).status).toBe(200); // still signed in, password unchanged
+    expect((await signIn(request.agent(app))).status).toBe(303);
+    // The account token is not a login token either.
+    expect((await withCookies(app, `hvwa_sid=${sid}`).post('/login').type('form')
+      .send({ _csrf: mine, username: 'admin', password: 'password' })).status).toBe(403);
+    // A new sign-in in the same browser retires the old page's token.
+    await signIn(a.agent);
+    expect((await a.agent.post('/logout').type('form').send({ _csrf: mine })).status).toBe(403);
+    expect((await a.agent.post('/logout').type('form').send({ _csrf: await accountCsrf(a.agent) })).status).toBe(303);
+  });
+
+  it('refuses a request whose Sec-Fetch-Site is not same-origin (cross-site, same-site, none); absent passes', async () => {
+    const { app } = authApp();
+    for (const site of ['cross-site', 'same-site', 'none', 'SAME-SITE']) {
+      const agent = request.agent(app);
+      const csrf = await csrfFor(agent); // first: an agent attaches its cookies when the request is created
+      const login = await agent.post('/login').set('Sec-Fetch-Site', site).type('form')
+        .send({ _csrf: csrf, username: 'admin', password: 'password' });
+      expect(login.status, `login, Sec-Fetch-Site: ${site}`).toBe(403);
+    }
+    const { agent } = await signedIn(app);
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      const _csrf = await accountCsrf(agent);
+      expect((await agent.post('/logout').set('Sec-Fetch-Site', site).type('form').send({ _csrf })).status, site).toBe(403);
+      expect((await agent.post('/account/password').set('Sec-Fetch-Site', site).type('form')
+        .send({ _csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' })).status, site).toBe(403);
+    }
+    expect((await agent.get('/')).status).toBe(200);
+    const _csrf = await accountCsrf(agent);
+    const ok = await agent.post('/account/password').set('Sec-Fetch-Site', 'same-origin').type('form')
+      .send({ _csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' });
+    expect(ok.status).toBe(303);
+    const fresh = request.agent(app);
+    const freshCsrf = await csrfFor(fresh);
+    expect((await fresh.post('/login').set('Sec-Fetch-Site', 'same-origin').type('form')
+      .send({ _csrf: freshCsrf, username: 'admin', password: 'New-Pass-123' })).status).toBe(303);
+  });
+
+  it('the Origin must match the scheme too: https://<this host> is another origin (X-Forwarded-Proto changes nothing)', async () => {
+    const { app } = authApp();
+    for (const extra of [{}, { 'X-Forwarded-Proto': 'https' }]) {
+      const agent = request.agent(app);
+      const csrf = await csrfFor(agent);
+      const res = await agent.post('/login').set('Host', '127.0.0.1:1337').set('Origin', 'https://127.0.0.1:1337').set(extra)
+        .type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
+      expect(res.status, JSON.stringify(extra)).toBe(403);
+    }
+    const agent = request.agent(app);
+    const csrf = await csrfFor(agent);
+    const ok = await agent.post('/login').set('Host', '127.0.0.1:1337').set('Origin', 'http://127.0.0.1:1337')
+      .type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
+    expect(ok.status).toBe(303);
+  });
+
   it('refuses a missing, wrong or another session\'s token with 403, before any password check', async () => {
     const { app, verifies } = authApp();
     const mine = request.agent(app);
@@ -397,11 +592,21 @@ describe('CSRF on the login, logout and password forms', () => {
 
   it('refuses a cross-origin Origin even with a valid token; allows a same-origin or absent Origin', async () => {
     const { app } = authApp();
-    for (const origin of ['http://evil.example', 'null', 'http://127.0.0.1.evil.example', 'https://evil.example:1337', 'file://']) {
+    // [Host the browser talks to, Origin it sends]. A same-host page on ANOTHER PORT is another origin (and the
+    // same site: cookies ignore ports, so it is exactly the attacker that can plant hvwa_sid).
+    for (const [host, origin] of [
+      [undefined, 'http://evil.example'], [undefined, 'null'], [undefined, 'http://127.0.0.1.evil.example'],
+      [undefined, 'https://evil.example:1337'], [undefined, 'file://'],
+      ['127.0.0.1:1337', 'http://127.0.0.1:1338'], ['127.0.0.1:1337', 'http://127.0.0.1:13370'], ['127.0.0.1:1337', 'http://127.0.0.1'],
+      ['localhost:1337', 'http://localhost:1338'], ['localhost:1337', 'http://localhost'], ['localhost', 'http://localhost:8080'],
+      ['127.0.0.1:1337', 'http://localhost:1337'],
+    ] as const) {
       const agent = request.agent(app);
       const csrf = csrfOf((await agent.get('/login')).text);
-      const res = await agent.post('/login').set('Origin', origin).type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
-      expect(res.status, origin).toBe(403);
+      const post = agent.post('/login');
+      if (host) post.set('Host', host);
+      const res = await post.set('Origin', origin).type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
+      expect(res.status, `Host ${host ?? '(default)'} Origin ${origin}`).toBe(403);
     }
     const agent = request.agent(app);
     const csrf = csrfOf((await agent.get('/login')).text);
@@ -429,7 +634,9 @@ describe('CSRF on the login, logout and password forms', () => {
 describe('the next parameter (no open redirect)', () => {
   const evil = ['//evil.example', '/\\evil.example', '\\\\evil.example', 'https://evil.example', 'http:evil.example',
     '/%2F%2Fevil.example', '%2F%2Fevil.example', '/%5Cevil.example', '/%252F%252Fevil.example', 'javascript:alert(1)',
-    '/\r\nSet-Cookie: x=1', '/%0d%0aSet-Cookie:x=1', '/\tevil', ' //evil.example', '/login'];
+    '/\r\nSet-Cookie: x=1', '/%0d%0aSet-Cookie:x=1', '/\tevil', ' //evil.example', '/login',
+    // dot segments that normalise to //evil.example (only the check on the NORMALISED path stops these)
+    '/a/..//evil.example', '/a/%2e%2e//evil.example', '/.//evil.example', '/%2e//evil.example'];
 
   it.each(evil)('POST /login with next=%j redirects to /', async (next) => {
     const { app } = authApp();
@@ -655,7 +862,7 @@ describe('hvwa_sid and lab progress survive signing in and out', () => {
       .toMatchObject({ solved: true });
     expect((await agent.post('/api/hint').send({ challengeId: 'ZA-01', tier: 1 })).body).toMatchObject({ unlocked: true });
     expect((await agent.post('/d/auth-test/counter/hit?level=acolyte')).body).toEqual({ n: 1 });
-    const logout = await agent.post('/logout').type('form').send({ _csrf: await csrfFor(agent) });
+    const logout = await agent.post('/logout').type('form').send({ _csrf: await accountCsrf(agent) });
     expect(setCookieHeader(logout, 'hvwa_sid')).toBeUndefined();
     const again = await signIn(agent);
     expect(setCookieHeader(again, 'hvwa_sid')).toBeUndefined();
@@ -668,6 +875,21 @@ describe('hvwa_sid and lab progress survive signing in and out', () => {
 });
 
 describe('storage: only hashes', () => {
+  it('a tampered account row asking for N=2^30 is a plain failed sign-in: no crash, no terabyte, the app keeps answering', async () => {
+    const { app } = authApp();
+    const db = app.locals.db;
+    const stored = (db.prepare("SELECT password_hash h FROM auth_accounts WHERE username='admin'").get() as { h: string }).h;
+    const tampered = stored.replace(/^scrypt\$\d+\$/, `scrypt$${2 ** 30}$`);
+    expect(tampered).not.toBe(stored);
+    db.prepare("UPDATE auth_accounts SET password_hash = ? WHERE username='admin'").run(tampered);
+    const t0 = performance.now();
+    const res = await signIn(request.agent(app));
+    expect(res.status).toBe(401);
+    expect(res.text).toContain('data-testid="login-error"');
+    expect(performance.now() - t0).toBeLessThan(5_000);
+    expect((await request(app).get('/healthz')).body).toEqual({ status: 'ok' });
+  });
+
   it('the DB never holds a password or a token in plaintext (rows, file and WAL)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-auth-'));
     tempDirs.push(dir);

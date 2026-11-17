@@ -378,10 +378,12 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
 - **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
   `sendLines`; the page links them by absolute path.
 
-**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** The platform sends no CSP, no `X-Frame-Options` and
-no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the clickjacking and CORS
-labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`. Nothing else
-changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages (`tests/http.spec.ts`).
+**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** On lab routes the platform sends no CSP, no
+`X-Frame-Options` and no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the
+clickjacking and CORS labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`.
+Nothing else changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages
+(`tests/http.spec.ts`). The platform's own pages carry only their own framing rule, never a lab's: portal pages
+`frame-ancestors 'self'` (`src/portal/frame-policy.ts`, skipped for every `/d/` path), the login pages `'none'`.
 
 ```ts
 // levels/divine.ts: the level decides, so View Source and the Diff show it

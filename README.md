@@ -55,6 +55,23 @@ Its compose project is named `hvwa`, like the source stack, so run only one of t
 `HVWA_TAG=<tag>` picks another image tag. `HVWA_ADMIN_PASSWORD` sets the first password (see
 [Login](#login)). Set either one in a `.env` file next to the compose file.
 
+**`:lite` is a mutable tag:** each new push of the trial moves it, and the next `pull` gets the new
+image. To stay on the exact image you tested, pin its digest. Read the digest of the image you have:
+
+```sh
+docker image inspect --format "{{index .RepoDigests 0}}" sigmajo/hvwa:lite
+```
+
+It prints `sigmajo/hvwa@sha256:<digest>`. Then put this line in the `.env` file next to the compose file:
+
+```sh
+HVWA_TAG=lite@sha256:<digest>
+```
+
+The image becomes `sigmajo/hvwa:lite@sha256:<digest>`. Docker runs exactly that digest; the tag is
+only a label. Use the same `sigmajo/hvwa@sha256:<digest>` reference in `docker create` above to copy the
+compose file out of that exact image.
+
 ## Quick start from source (Docker, recommended)
 
 Needs Docker Engine 28 or newer (any current Docker Desktop). Run this in the
@@ -110,14 +127,24 @@ the vulnerable part; the login is not one of them.
   characters and differ from the current one. Until you change it, every page shows a banner.
 - **`HVWA_ADMIN_PASSWORD`** sets the first password instead of `password` (at least 8 characters). It
   applies only while no account exists. After that, the password lives (scrypt-hashed) in the data
-  directory, and only `/account/password` changes it. It is never logged.
+  directory, and only `/account/password` changes it. Set later, it is ignored, and the server warns:
+  "set but ignored". It is never logged, and the server removes it from its environment at startup.
 - **`HVWA_AUTH`** (`on` | `off`) turns the login on or off. Unset, it is **on** when
   `NODE_ENV=production`, as in the Docker image, and **off** otherwise, as in `npm run dev` and `npm start`.
   Try it locally with `HVWA_AUTH=on npm run dev`.
 - **Lockout.** After 5 failed attempts in a row, logging in pauses for 30 seconds. Each further
-  failure doubles the pause, up to 15 minutes. Every failure shows the same message.
+  failure doubles the pause, up to 15 minutes, and the pauses keep coming while failures do. Every
+  failure shows the same message. When many attempts arrive at once, the extra ones get "server busy"
+  (HTTP 503): wait a moment.
 - **Changing the password** signs out every other browser. Lab progress is never lost: it belongs
   to your browser session, not to the login.
+- **Locked out?** Clear the lockout and keep the password and your progress. This applies at once,
+  with no restart:
+
+  ```sh
+  docker exec hvwa-app-1 node -e "new (require('node:sqlite').DatabaseSync)('/data/hvwa.db').exec('UPDATE auth_accounts SET failures=0, locked_until=0')"
+  ```
+
 - **Forgot the password?** `docker compose down -v` resets everything. To keep your progress, delete
   only the account, then restart. The account is then re-created with `HVWA_ADMIN_PASSWORD`, or with
   `password` if that is unset:
@@ -127,8 +154,9 @@ the vulnerable part; the login is not one of them.
   docker restart hvwa-app-1
   ```
 
-  This works for both compose files: their project is named `hvwa`, so the app container is `hvwa-app-1`.
-  Without Docker, stop the server, run the same `node -e` line against `data/hvwa.db`, and start it again.
+  These work with both compose files: their project is named `hvwa`, so the app container is
+  `hvwa-app-1`. Without Docker, run the same `node -e` line against `data/hvwa.db`: the unlock
+  works while the server runs, but stop the server before deleting the account.
 
 The login does not make HVWA safe to expose: see [docs/SECURITY.md](docs/SECURITY.md#the-platform-login).
 

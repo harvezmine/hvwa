@@ -4,6 +4,9 @@
   <span class="auth-mark"><svg class="icon icon-lg" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg></span>
   <h1 class="page-title" id="login-title"><%= t('auth.login_heading') %></h1>
   <p class="auth-intro"><%= t('auth.login_intro') %></p>
+<% if (notice) { -%>
+  <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
+<% } -%>
 <% if (failed) { -%>
   <p class="result result-bad" role="alert" data-testid="login-error" id="login-error"><%= t('auth.login_failed') %></p>
 <% } -%>
