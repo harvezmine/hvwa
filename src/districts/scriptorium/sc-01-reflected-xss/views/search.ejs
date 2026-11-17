@@ -1,0 +1,16 @@
+<%# SC-01 scroll search. Lab content is English by design. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Scriptorium search</h1>
+  <p class="lab-note">You are signed in as <code>pilgrim</code>. The librarian is signed in at http://citadel.test/ and opens the search links you send (the button below the lab). A search link looks like <code>http://citadel.test/search?q=&lt;words&gt;</code>.</p>
+  <form method="get">
+    <input type="hidden" name="level" value="<%= level %>">
+    <label>Search the scrolls <input name="q" type="text" autocomplete="off" spellcheck="false" value="<%= q %>"></label>
+    <button type="submit">Search</button>
+  </form>
+<% if (q !== '') { -%>
+  <p class="lab-note">Results for <code><%= q %></code>, live in a sandboxed frame (the librarian gets the same results):</p>
+  <%- preview %>
+  <p class="lab-note">This search as a link for the librarian: <code data-testid="share-link"><%= shareLink %></code></p>
+<% } -%>
+<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>
+</section>

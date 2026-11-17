@@ -1,0 +1,12 @@
+<%# SC-02 one review's page. Lab content is English by design. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+<% if (review) { -%>
+  <h1><%= scroll %>: review #<%= review.id %></h1>
+  <p class="lab-note">As you wrote it: <code><%= review.body %></code>. As this page renders it (the moderator gets the same), live in a sandboxed frame:</p>
+  <%- preview %>
+<% } else { -%>
+  <h1><%= scroll %></h1>
+  <p class="lab-message lab-error" role="status">No such review.</p>
+<% } -%>
+  <p class="lab-note"><a href="<%= base %>?level=<%= level %>">Back to the scroll</a></p>
+</section>

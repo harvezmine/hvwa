@@ -39,7 +39,36 @@ const jsString = (s: string): string =>
 const STYLE = '.hvwa-fired{font:600 13px/1.4 system-ui,sans-serif;margin:0 0 6px;padding:4px 8px;border-radius:4px;'
   + 'background:#fde68a;color:#78350f}.hvwa-fired.hvwa-yours{background:#bbf7d0;color:#14532d}';
 
-/** Runs first in the frame: hvwa() and the dialogs show a banner (as text). */
+/**
+ * A sandboxed frame never runs a javascript: URL that a click navigates to (headless Chrome 157, with or without the
+ * meta CSP), so the payloads the oracle counts on a link would never be seen firing. The shim catches the click on a
+ * link (a, area) or a submit button with a form owner (its formaction, else its form's action), decodes the URL exactly
+ * as the oracle does (core/xss/rules.ts urlText, schemeOf, javascriptSource: leading and trailing C0 controls and
+ * spaces stripped, tabs and newlines removed, the scheme compared case-insensitively, the rest percent-decoded as
+ * UTF-8 bytes; entities are already undone by the parser), cancels the navigation and runs the code as an inline
+ * script in the frame. The frame stays sandboxed (scripts only, opaque origin); a page CSP that forbids inline script
+ * blocks it, as it blocks every inline payload. tests/xss-preview.spec.ts checks the decoding against the oracle's.
+ */
+const JS_LINKS = 'function jsCode(v){if(typeof v!=="string")return null;var a=0,b=v.length;'
+  + 'while(a<b&&v.charCodeAt(a)<=32)a++;while(b>a&&v.charCodeAt(b-1)<=32)b--;'
+  + 'var s=v.slice(a,b).replace(/[\\t\\n\\r]/g,"");var m=/^([a-zA-Z][a-zA-Z0-9+\\-.]*):/.exec(s);'
+  + 'if(!m||m[1].toLowerCase()!=="javascript")return null;'
+  + 'var x=new TextEncoder().encode(s.slice(s.indexOf(":")+1)),o=new Uint8Array(x.length),n=0;'
+  + 'function h(c){return c>=48&&c<=57?c-48:c>=65&&c<=70?c-55:c>=97&&c<=102?c-87:-1;}'
+  + 'for(var i=0;i<x.length;i++){if(x[i]===37&&i+2<x.length&&h(x[i+1])>=0&&h(x[i+2])>=0){o[n++]=h(x[i+1])*16+h(x[i+2]);i+=2;}else o[n++]=x[i];}'
+  + 'return new TextDecoder().decode(o.subarray(0,n));}'
+  + 'function jsTarget(el){if(!el)return null;var t=el.localName;'
+  + 'if(t==="a"||t==="area")return el.getAttribute("href");'
+  + 'var sub=t==="button"?el.type==="submit":t==="input"&&(el.type==="submit"||el.type==="image");'
+  + 'if(!sub||!el.form)return null;'
+  + 'return el.hasAttribute("formaction")?el.getAttribute("formaction"):el.form.getAttribute("action");}'
+  + 'document.addEventListener("click",function(e){'
+  + 'var el=e.target&&e.target.closest?e.target.closest("a[href],area[href],button,input"):null;'
+  + 'var c=jsCode(jsTarget(el));if(c===null)return;e.preventDefault();'
+  + 'var s=document.createElement("script");s.textContent=c;(document.body||document.documentElement).appendChild(s);s.remove();'
+  + '},true);';
+
+/** Runs first in the frame: hvwa() and the dialogs show a banner (as text); javascript: links run (JS_LINKS). */
 function shim(nonce: string, hash: string): string {
   return '(function(){'
     + `var want=${jsString(nonce)};`
@@ -50,6 +79,7 @@ function shim(nonce: string, hash: string): string {
     + 'window.alert=function(m){say("alert("+String(m)+")");};'
     + 'window.confirm=function(m){say("confirm("+String(m)+")");return false;};'
     + 'window.prompt=function(m){say("prompt("+String(m)+")");return null;};'
+    + JS_LINKS
     + (hash === '' ? '' : `try{location.hash=${jsString(hash)};}catch(e){}`)
     + '})();';
 }

