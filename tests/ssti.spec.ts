@@ -128,6 +128,26 @@ describe('the output bound', () => {
   });
 });
 
+describe('lone surrogates: one code unit inside, three characters once copied out', () => {
+  // The guest's length is in UTF-16 code units; copying a string out turns each lone surrogate into U+FFFD, three
+  // host characters (UTF-8 in between). The host re-checks the copy, so neither cap can be passed this way.
+  it('an output of lone surrogates over the cap once copied is refused (limit: output)', async () => {
+    expect(await render(js('return String.fromCharCode(0xD800).repeat(16000)'), { autoescape: false })).toEqual({
+      ok: false, limit: 'output', error: `The rendered text is too long (over ${SSTI_LIMITS.outputChars} characters).`, shellCalls: [],
+    });
+    const under = await render(js('return String.fromCharCode(0xD800).repeat(5000)'), { autoescape: false });
+    expect([under.ok, under.output?.length]).toEqual([true, 15000]);
+  });
+
+  it('an error message of lone surrogates is clipped to SSTI_LIMITS.errorChars once copied', async () => {
+    const r = await render(js('throw String.fromCharCode(0xDC00).repeat(450)'));
+    expect(r.ok).toBe(false);
+    expect(r.limit).toBeUndefined();
+    expect(r.error).toMatch(/^Template render error: /);
+    expect(r.error?.length).toBeLessThanOrEqual(SSTI_LIMITS.errorChars);
+  });
+});
+
 describe('the deadline: QuickJS\'s interrupt handler', () => {
   const timeout = (ms: number) => ({ ok: false, limit: 'timeout', error: `The template took too long to render (over ${ms} ms).` });
 

@@ -60,6 +60,10 @@ describe('both transports agree', () => {
     { template: js('(function f() { f() })()') },
     { template: '{% macro m(n) %}{{ m(n + 1) }}{% endmacro %}{{ m(0) }}' },
     { template: '{% for i in range(0, 2000) %}0123456789{% endfor %}' },
+    // Lone surrogates: within the caps in code units, three characters each once copied out of the sandbox.
+    { template: js('return String.fromCharCode(0xD800).repeat(16000)'), autoescape: false },
+    { template: js('return String.fromCharCode(0xD800).repeat(5000)'), autoescape: false },
+    { template: js('throw String.fromCharCode(0xDC00).repeat(450)') },
     // Not here: JSON.stringify over a deep value. It runs ~0.2 s with no interrupt check, then the worker reaches
     // QuickJS's stack limit while this thread (a 1 MB native stack) overflows natively first: both 'stack', unless a
     // loaded machine lets the worker's deadline pass first. Each side is checked on its own (ssti.spec.ts, the
@@ -75,6 +79,24 @@ describe('both transports agree', () => {
       expect(w, input.template).toEqual(t);
     }
     expect((await worker.stats()).dropped).toBe(0);
+  });
+});
+
+describe('lone surrogates never get a healthy worker dropped', () => {
+  it('an output or an error that grows past its cap once copied is answered as such, and the SAME worker serves on', async () => {
+    const t = open(workerTransport());
+    expect(await t.render(job({ template: '{{ 6 * 7 }}' }))).toEqual(ok42);
+    const { threadId } = await t.stats();
+    for (let i = 0; i < 3; i++) {
+      expect(await t.render(job({ template: js('return String.fromCharCode(0xD800).repeat(16000)'), autoescape: false })))
+        .toMatchObject({ ok: false, limit: 'output' });
+      const err = await t.render(job({ template: js('throw String.fromCharCode(0xDC00).repeat(450)') }));
+      expect(err.ok).toBe(false);
+      expect(err.error?.length).toBeLessThanOrEqual(SSTI_LIMITS.errorChars);
+      expect(await t.render(job({ template: '{{ 6 * 7 }}' }))).toEqual(ok42);
+    }
+    const s = await t.stats();
+    expect([s.threadId, s.started, s.dropped]).toEqual([threadId, 1, 0]);
   });
 });
 
@@ -160,7 +182,7 @@ describe('a worker that dies, never starts or answers nonsense is dropped, and n
     ['reports that it could not load (fatal)', { workerUrl: fixture('fatal.mjs') }],
     ['throws while loading', { workerUrl: fixture('throw-on-load.mjs') }],
     ['never gets ready', { workerUrl: fixture('never-ready.mjs'), spawnTimeoutMs: 200 }],
-    ['answers past the output cap', { workerUrl: fixture('garbage.mjs') }],
+    ['answers with a shape this protocol does not have', { workerUrl: fixture('malformed.mjs') }],
     ['is not there at all', { workerUrl: fixture('no-such-worker.mjs') }],
   ] as const) {
     it(`a worker that ${name}: each render is 'crashed', one worker each, and nothing is left running`, async () => {
@@ -172,6 +194,19 @@ describe('a worker that dies, never starts or answers nonsense is dropped, and n
       expect([s.started, s.dropped, s.exiting]).toEqual([3, 3, 0]);
     });
   }
+
+  it('an answer past a size cap is bounded again here (output refused, error and commands clipped), and the worker is KEPT', async () => {
+    // A size is data a template can push on (lone surrogates once did): it must never get a healthy worker dropped.
+    const t = open(workerTransport({ workerUrl: fixture('garbage.mjs') }));
+    expect(await t.render(job({ template: 'x' }))).toEqual({
+      ok: false, limit: 'output', error: `The rendered text is too long (over ${SSTI_LIMITS.outputChars} characters).`, shellCalls: [],
+    });
+    const err = await t.render(job({ template: 'x' }));
+    expect([err.ok, err.limit, err.error?.length, err.shellCalls.map((c) => c.length)])
+      .toEqual([false, undefined, SSTI_LIMITS.errorChars, [SSTI_LIMITS.shellCallChars]]);
+    const s = await t.stats();
+    expect([s.started, s.dropped]).toEqual([1, 0]);
+  });
 });
 
 describe('the queue: one in flight, a bounded wait, then an immediate 503-style refusal', () => {

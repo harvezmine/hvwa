@@ -138,7 +138,8 @@ export function loadAssets(): EngineAssets {
 }
 
 const PAGE = 64 * 1024;
-const MESSAGES = {
+/** What a bound answers: one message per limit (the worker transport uses them too). */
+export const SSTI_MESSAGES = Object.freeze({
   timeout: (ms: number) => `The template took too long to render (over ${ms} ms).`,
   memory: 'The template ran out of memory.',
   stack: 'The template nested or recursed too deeply (stack overflow).',
@@ -146,7 +147,7 @@ const MESSAGES = {
   crashed: 'The template sandbox failed; it is restarted for the next render.',
   noText: 'The template engine returned no text.',
   failed: 'The template failed.',
-} as const;
+});
 
 const fail = (limit: SstiLimit | undefined, error: string, shellCalls: readonly string[]): SstiResult =>
   (limit === undefined ? { ok: false, error, shellCalls } : { ok: false, error, limit, shellCalls });
@@ -228,8 +229,8 @@ function evalTrusted(vm: QuickJSContext, code: string, filename: string): QuickJ
 
 /** A host exception from inside the WASM instance: a native stack overflow, or a trap/abort (the instance is unusable). */
 function hostFault(err: unknown, shellCalls: readonly string[]): SstiResult {
-  if (err instanceof RangeError && /call stack/i.test(err.message)) return fail('stack', MESSAGES.stack, shellCalls);
-  return fail('crashed', MESSAGES.crashed, shellCalls);
+  if (err instanceof RangeError && /call stack/i.test(err.message)) return fail('stack', SSTI_MESSAGES.stack, shellCalls);
+  return fail('crashed', SSTI_MESSAGES.crashed, shellCalls);
 }
 
 /**
@@ -277,20 +278,24 @@ export async function renderJob(job: SandboxJob, assets: EngineAssets): Promise<
     const r = vm.callFunction(run, vm.undefined, template, ctxJson, job.autoescape ? vm.true : vm.false);
     const late = Date.now() > due;
     deadline = 0; // reading the answer below never runs guest code; if anything did, it would be stopped at once
-    if (overMemory) return fail('memory', MESSAGES.memory, shellCalls);
-    if (interrupted || late) return fail('timeout', MESSAGES.timeout(job.timeoutMs), shellCalls);
+    if (overMemory) return fail('memory', SSTI_MESSAGES.memory, shellCalls);
+    if (interrupted || late) return fail('timeout', SSTI_MESSAGES.timeout(job.timeoutMs), shellCalls);
     if (r.error) {
       // The runner throws a primitive string of at most errorChars. Anything else (an engine error it could not turn
       // into text, or a String.prototype the template tampered with) is never read.
-      if (vm.typeof(r.error) !== 'string' || lengthOf(vm, r.error) > SSTI_LIMITS.errorChars) return fail(undefined, MESSAGES.failed, shellCalls);
-      const message = vm.getString(r.error);
-      if (/\b(out of memory|string too long)\b/.test(message)) return fail('memory', MESSAGES.memory, shellCalls);
-      if (/\bstack overflow\b/.test(message)) return fail('stack', MESSAGES.stack, shellCalls);
+      if (vm.typeof(r.error) !== 'string' || lengthOf(vm, r.error) > SSTI_LIMITS.errorChars) return fail(undefined, SSTI_MESSAGES.failed, shellCalls);
+      // The copy is checked again: the guest's length is in UTF-16 code units, and copying turns each lone surrogate
+      // into U+FFFD, three host characters (UTF-8 in between). So a copy can be up to three times longer.
+      const message = clipText(vm.getString(r.error), SSTI_LIMITS.errorChars);
+      if (/\b(out of memory|string too long)\b/.test(message)) return fail('memory', SSTI_MESSAGES.memory, shellCalls);
+      if (/\bstack overflow\b/.test(message)) return fail('stack', SSTI_MESSAGES.stack, shellCalls);
       return fail(undefined, message, shellCalls);
     }
-    if (vm.typeof(r.value) !== 'string') return fail(undefined, MESSAGES.noText, shellCalls);
-    if (lengthOf(vm, r.value) > SSTI_LIMITS.outputChars) return fail('output', MESSAGES.output, shellCalls);
-    return { ok: true, output: vm.getString(r.value), shellCalls };
+    if (vm.typeof(r.value) !== 'string') return fail(undefined, SSTI_MESSAGES.noText, shellCalls);
+    if (lengthOf(vm, r.value) > SSTI_LIMITS.outputChars) return fail('output', SSTI_MESSAGES.output, shellCalls);
+    const output = vm.getString(r.value);
+    if (output.length > SSTI_LIMITS.outputChars) return fail('output', SSTI_MESSAGES.output, shellCalls); // lone surrogates, as above
+    return { ok: true, output, shellCalls };
   } catch (err) {
     return hostFault(err, shellCalls);
   }
@@ -304,6 +309,7 @@ function installFakeNode(vm: QuickJSContext, node: NonNullable<SandboxJob['node'
     calls += 1;
     let cmd: string | undefined;
     if (vm.typeof(arg) === 'string' && lengthOf(vm, arg) <= SSTI_LIMITS.shellCommandChars) cmd = vm.getString(arg);
+    if (cmd !== undefined && cmd.length > SSTI_LIMITS.shellCommandChars) cmd = undefined; // lone surrogates grew it
     if (shellCalls.length < SSTI_LIMITS.shellCallsKept) {
       shellCalls.push(cmd === undefined ? '(an over-long command)' : clipText(cmd, SSTI_LIMITS.shellCallChars));
     }
@@ -318,9 +324,11 @@ function installFakeNode(vm: QuickJSContext, node: NonNullable<SandboxJob['node'
   if (r.error) throw new Error('ssti engine: the fake node failed to load');
 }
 
-/** A copy of at most `max` code units (a slice of a short string; never kept beyond one result). */
-function clipText(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) : s;
+/** At most `max` code units, never ending in half a surrogate pair (a slice of a short string, kept for one result). */
+export function clipText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const end = /[\uD800-\uDBFF]/.test(s[max - 1]) ? max - 1 : max;
+  return s.slice(0, end);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

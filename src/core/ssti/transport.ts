@@ -12,7 +12,7 @@
 //   blocks the caller), so never in production.
 import { Worker } from 'node:worker_threads';
 import {
-  SSTI_LIMITS, WORKER_TAG, loadAssets, renderJob, warmUp,
+  SSTI_LIMITS, SSTI_MESSAGES, WORKER_TAG, clipText, loadAssets, renderJob, warmUp,
   type EngineAssets, type FromWorker, type SandboxJob, type SstiLimit, type SstiResult, type ToWorker, type WorkerStats,
 } from './engine.js';
 
@@ -25,6 +25,8 @@ export interface SandboxTransport {
 }
 
 const STOPPED = 'The template sandbox was stopped.';
+/** How long stats() waits for the worker's counters (they queue behind a render in flight). */
+const STATS_TIMEOUT_MS = 5000;
 const BUSY = 'The template sandbox is busy; try again in a moment.';
 const CRASHED = 'The template sandbox failed; it is restarted for the next render.';
 const refusal = (limit: SstiLimit, error: string): SstiResult => ({ ok: false, error, limit, shellCalls: [] });
@@ -214,7 +216,7 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       const timer = setTimeout(() => {
         if (inFlight?.p !== p) return;
         drop(l); // the interrupt handler did not stop it: a native operation, or a wedged instance
-        finish(refusal('timeout', `The template took too long to render (over ${p.job.timeoutMs} ms).`));
+        finish(refusal('timeout', SSTI_MESSAGES.timeout(p.job.timeoutMs)));
       }, watchdogMs(p.job)).unref();
       inFlight = { p, timer };
       l.worker.postMessage({ type: 'render', id: p.id, job: p.job } satisfies ToWorker);
@@ -245,11 +247,17 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       if (l !== undefined && l.ready) {
         const id = nextId++;
         l.worker.ref(); // a reply is awaited: keep the process up until it comes
+        // A worker that never answers (not our engine) gets no stats, rather than a caller waiting forever.
+        const giveUp = setTimeout(() => {
+          l.statsWaiters.get(id)?.(undefined);
+          l.statsWaiters.delete(id);
+        }, STATS_TIMEOUT_MS);
         worker = await new Promise<WorkerStats | undefined>((resolve) => {
           l.statsWaiters.set(id, resolve);
           l.worker.postMessage({ type: 'stats', id } satisfies ToWorker);
         });
-        heapUsed = await l.worker.getHeapStatistics().then((h) => h.used_heap_size, () => undefined);
+        clearTimeout(giveUp);
+        if (worker !== undefined) heapUsed = await l.worker.getHeapStatistics().then((h) => h.used_heap_size, () => undefined);
         idle();
       }
       return {
@@ -273,22 +281,25 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
 }
 
 const LIMITS: ReadonlySet<string> = new Set<SstiLimit>(['input', 'timeout', 'memory', 'stack', 'output', 'busy', 'crashed']);
-/** The engine's fixed messages may be a little longer than a clipped template error. */
-const MAX_ERROR = SSTI_LIMITS.errorChars + 200;
 
-/** A worker's answer, checked against the bounds again before a lab sees it (undefined: malformed, the worker goes). */
+/**
+ * A worker's answer, checked again before a lab sees it. A malformed SHAPE means the worker is not running our
+ * engine any more: undefined, and the worker goes. A SIZE past a cap is data a template may push on (lone surrogates
+ * once grew a string threefold on its way out), so it is bounded here instead and the worker stays: an output over the
+ * cap is refused (`limit: 'output'`), an error and the commands are clipped.
+ */
 function checked(r: unknown): SstiResult | undefined {
   if (r === null || typeof r !== 'object') return undefined;
   const { ok, output, error, limit, shellCalls } = r as Record<string, unknown>;
-  if (typeof ok !== 'boolean' || !Array.isArray(shellCalls) || shellCalls.length > SSTI_LIMITS.shellCallsKept) return undefined;
-  if (!shellCalls.every((c) => typeof c === 'string' && c.length <= SSTI_LIMITS.shellCallChars + 32)) return undefined;
-  const calls = shellCalls as string[];
+  if (typeof ok !== 'boolean' || !Array.isArray(shellCalls) || !shellCalls.every((c) => typeof c === 'string')) return undefined;
+  const calls = (shellCalls as string[]).slice(0, SSTI_LIMITS.shellCallsKept).map((c) => clipText(c, SSTI_LIMITS.shellCallChars));
   if (ok) {
-    if (typeof output !== 'string' || output.length > SSTI_LIMITS.outputChars || error !== undefined || limit !== undefined) return undefined;
+    if (typeof output !== 'string' || error !== undefined || limit !== undefined) return undefined;
+    if (output.length > SSTI_LIMITS.outputChars) return { ok: false, error: SSTI_MESSAGES.output, limit: 'output', shellCalls: calls };
     return { ok, output, shellCalls: calls };
   }
-  if (typeof error !== 'string' || error.length > MAX_ERROR || output !== undefined) return undefined;
-  if (limit === undefined) return { ok, error, shellCalls: calls };
-  if (typeof limit !== 'string' || !LIMITS.has(limit)) return undefined;
-  return { ok, error, limit: limit as SstiLimit, shellCalls: calls };
+  if (typeof error !== 'string' || output !== undefined) return undefined;
+  if (limit !== undefined && (typeof limit !== 'string' || !LIMITS.has(limit))) return undefined;
+  const clipped = clipText(error, SSTI_LIMITS.errorChars);
+  return limit === undefined ? { ok, error: clipped, shellCalls: calls } : { ok, error: clipped, limit: limit as SstiLimit, shellCalls: calls };
 }
