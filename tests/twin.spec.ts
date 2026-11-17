@@ -400,6 +400,9 @@ describe('twin: Visit', () => {
 
   it('simVisitOf: the victim\'s request on the citadel, base \'\'', () => {
     const r = { query: new URLSearchParams('x=1'), cookies: { a_divine: 'v' } } as unknown as SimRequest;
-    expect(simVisitOf('divine', r)).toEqual({ level: 'divine', query: r.query, cookies: r.cookies, base: '' });
+    const v = simVisitOf('divine', r);
+    expect(v).toMatchObject({ level: 'divine', query: r.query, cookies: r.cookies, base: '' });
+    // E1b adds the request itself (tests/twin-visit.spec.ts); a bare request gives empty parts and the citadel as self.
+    expect([v.method, { ...v.headers }, { ...v.body }, v.text, v.self]).toEqual(['GET', {}, {}, '', 'http://citadel.test']);
   });
 });

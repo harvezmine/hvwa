@@ -9,8 +9,10 @@ import type { Request, Response } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
 import { labPath } from './lab.js';
 import type { Level } from './levels.js';
+import { Buffer } from 'node:buffer';
 import { REDIRECT_STATUSES, type SimRequest, type SimResponse } from './sim/browser.js';
-import { SIM_LIMITS } from './sim/limits.js';
+import { bodyFields, mimeEssence } from './sim/cross.js';
+import { SIM_LIMITS, clip, str } from './sim/limits.js';
 import { CITADEL_ORIGIN, classifySimUrl, labHref } from './sim/url.js';
 import { sendSimRedirect, type SimRedirectStatus } from './victim.js';
 
@@ -168,27 +170,120 @@ export interface Visit {
   readonly base: string;
 }
 
+/** The bounds on what a RequestVisit copies out of a request. */
+export const TWIN_LIMITS = Object.freeze({
+  /** A header value: one past the URL cap, so an over-long Origin or Referer stays too long to be a sim URL. */
+  headerLength: SIM_LIMITS.urlLength + 1,
+  /** The body as text, and each body field: what twinBody() reads at most (8 KiB). */
+  textLength: 8 * 1024,
+});
+
+/**
+ * The request headers every RequestVisit carries when present (lower-case): what a CSRF, CORS or clickjacking level
+ * checks. A lab adds its own with `headerNames` (visitOf / simVisitOf). Never cookie, host or user-agent.
+ */
+export const VISIT_HEADERS: readonly string[] = Object.freeze([
+  'origin', 'referer', 'content-type', 'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-dest', 'sec-fetch-user', 'x-requested-with',
+]);
+
+/**
+ * A Visit with the request itself (E1b), for the levels whose lesson is where a request came from (FP-01 to FP-04):
+ * `visitOf` and `simVisitOf` return one. Every value is a bounded copy (TWIN_LIMITS); records have no prototype.
+ */
+export interface RequestVisit extends Visit {
+  /** 'GET' or 'POST' (the real route: its method as Express has it). */
+  readonly method: string;
+  /** VISIT_HEADERS and the ones the lab named, lower-case, when the request had them. */
+  readonly headers: Readonly<Record<string, string | undefined>>;
+  /**
+   * The body's string fields, as bodyFields reads `text`: an urlencoded form's (a repeated name keeps its first value),
+   * a JSON object's string members; none for any other body (text/plain: read `text`).
+   */
+  readonly body: Readonly<Record<string, string>>;
+  /**
+   * The body as text. In the sim it is the body as sent. On the real route the app's own parsers have already read a
+   * JSON or urlencoded body, so it is re-serialised from req.body (the same fields, not byte for byte: key order and
+   * escapes may differ); a text/plain body is read whole only on a route that mounts twinBody(). '' for a GET.
+   */
+  readonly text: string;
+  /**
+   * This browser's own origin for the lab: CITADEL_ORIGIN in the sim, `<protocol>://<Host>` on the real route. A level
+   * that checks Origin compares `visit.headers.origin === visit.self`, never a hard-coded citadel origin (the player's
+   * browser sends `http://127.0.0.1:<port>`).
+   */
+  readonly self: string;
+}
+
 /**
  * The real request as a Visit: the raw query (from req.originalUrl) and only the named lab cookies that are strings
- * (pass this level's names, e.g. `[sessionCookie(req.level)]`), with labPath(res) as the base.
+ * (pass this level's names, e.g. `[sessionCookie(req.level)]`), with labPath(res) as the base; plus the request
+ * (RequestVisit): its method, VISIT_HEADERS and `headerNames`, its body, and the lab's own origin as `self`.
  */
-export function visitOf(req: Request, res: Response, cookieNames: readonly string[]): Visit {
+export function visitOf(req: Request, res: Response, cookieNames: readonly string[], headerNames: readonly string[] = []): RequestVisit {
   // Everything after the FIRST '?': a URL in a parameter (next=http://x/a?b=1&level=...) keeps its own '?' and the rest.
   // The slice keeps that first '?', which URLSearchParams drops (exactly one), so a query starting '??' keeps its second.
   const q = req.originalUrl.indexOf('?');
+  const type = str(req.headers?.['content-type']);
+  const host = typeof req.get === 'function' ? req.get('host') : undefined;
   return {
     level: req.level, query: new URLSearchParams(q === -1 ? '' : req.originalUrl.slice(q)),
     cookies: namedCookies(req.cookies, cookieNames), base: labPath(res),
+    method: str(req.method) || 'GET', headers: namedHeaders(req.headers, headerNames), ...bodyOf(type, textOfBody(type, req.body)),
+    self: clip(`${str(req.protocol) || 'http'}://${host ?? ''}`, TWIN_LIMITS.headerLength),
   };
 }
 
 /**
  * The victim's request on the citadel as a Visit at `level`: its query as the simulated browser sent it, base ''. Pass
  * the same `cookieNames` as to visitOf, so a page function sees the same cookies in both browsers; without them every
- * cookie the simulated browser sent is kept (the behaviour before the filter existed).
+ * cookie the simulated browser sent is kept (the behaviour before the filter existed). The request as for visitOf, with
+ * `self` = CITADEL_ORIGIN; pass the same `headerNames` too.
  */
-export function simVisitOf(level: Level, r: SimRequest, cookieNames?: readonly string[]): Visit {
-  return { level, query: r.query, cookies: cookieNames === undefined ? r.cookies : namedCookies(r.cookies, cookieNames), base: '' };
+export function simVisitOf(level: Level, r: SimRequest, cookieNames?: readonly string[], headerNames: readonly string[] = []): RequestVisit {
+  return {
+    level, query: r.query, cookies: cookieNames === undefined ? r.cookies : namedCookies(r.cookies, cookieNames), base: '',
+    method: str(r.method) || 'GET', headers: namedHeaders(r.headers, headerNames), ...bodyOf(str(r.headers?.['content-type']), str(r.rawBody)),
+    self: CITADEL_ORIGIN,
+  };
+}
+
+/** VISIT_HEADERS and the lab's names that the request has as strings, lower-case keys, values clipped copies. */
+function namedHeaders(from: unknown, headerNames: readonly string[]): Record<string, string | undefined> {
+  const raw = (from ?? {}) as Record<string, unknown>;
+  const out: Record<string, string | undefined> = Object.create(null);
+  for (const name of [...VISIT_HEADERS, ...headerNames.map((h) => h.toLowerCase())]) {
+    const value = raw[name];
+    if (typeof value === 'string' && !Object.hasOwn(out, name)) out[name] = clip(value, TWIN_LIMITS.headerLength);
+  }
+  return out;
+}
+
+/** The body's fields (from the whole text, each a clipped copy) and the text, clipped. */
+function bodyOf(type: string, text: string): { readonly body: Record<string, string>; readonly text: string } {
+  const body = bodyFields(type, text);
+  for (const k of Object.keys(body)) body[k] = clip(body[k], TWIN_LIMITS.textLength);
+  return { body, text: clip(text, TWIN_LIMITS.textLength) };
+}
+
+/**
+ * The real route's body as text. A string is what twinBody() (express.text) read. An object is what the app's own
+ * express.json() or express.urlencoded() made of it: re-serialised, as JSON or as a form (nested names as `a[b]`,
+ * arrays as repeated names), so bodyFields reads the same fields the sim reads from the raw bytes. Anything else is ''.
+ */
+function textOfBody(type: string, body: unknown): string {
+  if (typeof body === 'string') return body;
+  if (body === null || typeof body !== 'object' || Buffer.isBuffer(body)) return '';
+  const essence = mimeEssence(type);
+  if (essence === 'application/json') return JSON.stringify(body);
+  if (essence !== 'application/x-www-form-urlencoded') return '';
+  const pairs: [string, string][] = [];
+  const walk = (name: string, v: unknown, depth: number): void => {
+    if (typeof v === 'string') pairs.push([name, v]);
+    else if (Array.isArray(v)) for (const x of v) walk(name, x, depth + 1);
+    else if (v !== null && typeof v === 'object' && depth < 8) for (const [k, x] of Object.entries(v)) walk(name === '' ? k : `${name}[${k}]`, x, depth + 1);
+  };
+  walk('', body, 0);
+  return new URLSearchParams(pairs).toString();
 }
 
 /** Only the named cookies that are strings, in a null-prototype record (no name can reach Object.prototype). */

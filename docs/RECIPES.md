@@ -738,6 +738,25 @@ browser's answer:
   page function sees the same cookies in both browsers. (`simVisitOf` without names keeps every cookie the simulated
   browser sent: the behaviour before the filter, kept so older callers still compile; GK-10, 11 and 16 pass names.)
   The page function takes the `Visit` and never sees Express or the sim.
+- **The request itself** (`RequestVisit`, a `Visit` plus the request; E1b): `visitOf` and `simVisitOf` return one, and
+  take a fourth argument, `headerNames`, for headers the lab reads besides the usual ones. A level whose lesson is where
+  a request came from (FP-01 to FP-04) types its page function's argument as `RequestVisit`:
+  - `method` (`'GET'` or `'POST'`);
+  - `headers`: `VISIT_HEADERS` (`origin`, `referer`, `content-type`, `sec-fetch-site`, `-mode`, `-dest`, `-user`,
+    `x-requested-with`) plus the lab's names, lower-case, only those the request had; never cookie, host or user-agent;
+  - `body`: the body's string fields as `bodyFields` reads `text` (an urlencoded form's, the first value of a repeated
+    name; a JSON object's string members; none for text/plain);
+  - `text`: the body as text. In the sim it is exactly what was sent. On the real route the app's global
+    `express.json()` / `express.urlencoded()` have already parsed a JSON or form body, so `text` is **re-serialised from
+    `req.body`**: the same fields, not the same bytes (key order, escapes, `a[]` names may differ). A text/plain body is
+    read only on a route that mounts `twinBody()` (below);
+  - `self`: this browser's own origin for the lab: `CITADEL_ORIGIN` in the sim, `<protocol>://<Host>` on the real route.
+
+  Every value is a bounded copy (`TWIN_LIMITS`: a header 2049 characters, the text and each field 8 KiB) and the
+  records have no prototype. **A level that checks Origin compares `visit.headers.origin === visit.self`, never a
+  hard-coded `http://citadel.test`**: the player's own browser sends `Origin: http://127.0.0.1:<port>`, and a level
+  that hard-codes the citadel refuses the player's legitimate form at Divine. `tests/twin-visit.spec.ts` checks that
+  equivalent requests give equal Visits in both browsers, `self` aside.
 
 ```ts
 // model.ts: one page function, both browsers
@@ -996,9 +1015,9 @@ hit nothing.
   `setLabHeaders` (`core/http.ts`, from the SC XSS batch), the citadel twin in its `SimResponse` headers with the same
   values (`labHeaders(h)` there builds them from the same object). The sim reads them from the `SimResponse` only. CSP `frame-ancestors` is modelled (with X-Frame-Options), so FP-04's Divine fix is real; the XSS rule "a level
   whose only fix is a CSP is not a Divine" is about script CSP, which the XSS oracle does not evaluate.
-- A level's Origin, Referer, Content-Type or custom-header check reads `r.headers` and `r.rawBody` in the sim. The real
-  route sees the player's own browser (Origin `http://127.0.0.1:<port>`), so a page function that checks Origin compares
-  against the lab's own origin in each browser, not a hard-coded `http://citadel.test`.
+- A level's Origin, Referer, Content-Type or custom-header check takes a `RequestVisit` (the twin, above): the same
+  `headers`, `body` and `text` in both browsers, and the Origin check is `visit.headers.origin === visit.self`, never
+  a hard-coded `http://citadel.test` (the real route sees `Origin: http://127.0.0.1:<port>`).
 
 **Memory.** Nothing here is a new store: the primitives keep only the world's visits and log entries (copies, under their
 caps) and a frame handle the browser holds weakly, and the presets keep nothing, so the byte budget weights are unchanged
