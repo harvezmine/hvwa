@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
-import { editionFrom, type Config } from './config.js';
+import { authModeFrom, editionFrom, type Config } from './config.js';
 import { editionChallengeIds, type Edition } from './editions.js';
 import { challengeSet, getChallenge, type ChallengeSet } from './core/registry.js';
 import { setFlagSecret } from './core/flags.js';
@@ -18,6 +18,7 @@ import { checkerRouter } from './core/checker.js';
 import { errorHandler, notFoundHandler } from './core/errors.js';
 import { mountChallenges } from './core/mount.js';
 import { portalRouter } from './portal/index.js';
+import { platformAuth, type AuthOptions, type AuthService } from './auth/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Vendored htmx (pinned dependency), served locally — no network at runtime.
@@ -56,15 +57,23 @@ export interface AppOptions {
    * passes the validated config value; tests/support/setup.ts pins HVWA_EDITION=full for every spec.
    */
   edition?: Edition;
+  /**
+   * The platform login (src/auth): false = off, true or an AuthOptions object = on (`initialPassword` is
+   * the admin's first password, used only when no account exists yet; `now` a clock for tests).
+   * Overrides the environment; when omitted, HVWA_AUTH decides, and unset/blank HVWA_AUTH means ON only
+   * when NODE_ENV=production (config.ts authModeFrom). server.ts passes the validated config value;
+   * tests/support/setup.ts pins HVWA_AUTH=off, so only specs that pass `auth` run with the login.
+   */
+  auth?: boolean | AuthOptions;
 }
 
 /**
  * The options server.ts builds the app with: the DB in the data dir, the
- * configured or persisted flag secret (created on first use), and the extra
- * Host names from HVWA_ALLOWED_HOSTS.
+ * configured or persisted flag secret (created on first use), the extra
+ * Host names from HVWA_ALLOWED_HOSTS, the edition and the login.
  */
 export function appOptionsFromConfig(
-  config: Pick<Config, 'FLAG_SECRET' | 'HVWA_ALLOWED_HOSTS' | 'HVWA_EDITION'>,
+  config: Pick<Config, 'FLAG_SECRET' | 'HVWA_ALLOWED_HOSTS' | 'HVWA_EDITION' | 'HVWA_AUTH' | 'HVWA_ADMIN_PASSWORD'>,
   dataDir: string,
 ): AppOptions {
   return {
@@ -72,14 +81,18 @@ export function appOptionsFromConfig(
     flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
     allowedHosts: config.HVWA_ALLOWED_HOSTS,
     edition: config.HVWA_EDITION,
+    auth: config.HVWA_AUTH === 'on' ? { initialPassword: config.HVWA_ADMIN_PASSWORD } : false,
   };
 }
 
 /**
- * The Express app plus its typed platform DB handle on `locals.db`, and the edition it serves
- * (`locals.challenges` is what it mounts, lists and scores; server.ts prints its count).
+ * The Express app plus its typed platform DB handle on `locals.db`, the edition it serves
+ * (`locals.challenges` is what it mounts, lists and scores; server.ts prints its count), and the
+ * login service when auth is on (`locals.auth`, undefined when off).
  */
-export type HvwaApp = Express & { locals: { db: DatabaseSync; edition: Edition; challenges: ChallengeSet } };
+export type HvwaApp = Express & {
+  locals: { db: DatabaseSync; edition: Edition; challenges: ChallengeSet; auth: AuthService | undefined };
+};
 
 /** The ChallengeSet of an edition. Every challenge the edition lists must be registered by now. */
 function editionSet(edition: Edition): ChallengeSet {
@@ -96,15 +109,17 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   if (opts.flagSecret) setFlagSecret(opts.flagSecret);
   const edition = opts.edition ?? editionFrom(process.env);
   const challenges = editionSet(edition);
+  const authOn = opts.auth === undefined ? authModeFrom(process.env) === 'on' : opts.auth !== false;
 
   const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);
+  const login = authOn ? platformAuth(db, typeof opts.auth === 'object' ? opts.auth : {}) : undefined;
 
   // The app's DB handle: closed by server.ts on shutdown, and by tests that
   // use a file DB (Windows cannot delete a file SQLite still holds open).
   // Object.assign keeps the same locals object and yields the typed shape.
   const base = express();
-  const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db, edition, challenges }) });
+  const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db, edition, challenges, auth: login?.service }) });
 
   // FIRST: requests for a foreign Host (DNS rebinding) never reach anything else.
   app.use(hostGuard(opts.allowedHosts));
@@ -120,6 +135,13 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use('/static', express.static(join(here, 'public'), { index: false }));
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
+  // The platform login: /login stays open; EVERYTHING after the gate (the API, every lab, the portal,
+  // the 404 page) needs a signed-in admin. Off: nothing is mounted and the portal is exactly as before.
+  if (login) {
+    app.use(login.publicRouter);
+    app.use(login.gate);
+    app.use(login.accountRouter);
+  }
   app.use('/api', checkerRouter(db, challenges));
   mountChallenges(app, { now: opts.resetClock, challenges }); // the edition's challenges at /d/<district>/<slug>
   app.use('/', portalRouter(db, challenges));

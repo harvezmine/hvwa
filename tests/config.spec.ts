@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseConfig, loadConfig, isLoopbackHost, bindRefusal, editionFrom } from '../src/config.js';
+import { parseConfig, loadConfig, isLoopbackHost, bindRefusal, editionFrom, authModeFrom } from '../src/config.js';
 import { resolveFlagSecret } from '../src/core/secrets.js';
 
 const dirs: string[] = [];
@@ -16,9 +16,10 @@ describe('parseConfig', () => {
     expect(c).toEqual({
       HOST: '127.0.0.1', PORT: 1337, AI_BACKEND: 'sim',
       FLAG_SECRET: undefined, HVWA_ALLOW_REMOTE: false, HVWA_DATA_DIR: undefined, HVWA_ALLOWED_HOSTS: [],
-      HVWA_EDITION: 'full',
+      HVWA_EDITION: 'full', HVWA_AUTH: 'off', HVWA_ADMIN_PASSWORD: undefined,
     });
     expect(parseConfig({ SESSION_SECRET: 'x' })).not.toHaveProperty('SESSION_SECRET');
+    expect(parseConfig({ NODE_ENV: 'production' })).not.toHaveProperty('NODE_ENV'); // read for HVWA_AUTH only
   });
 
   it.each(['', '   '])('blank HOST and PORT (%j) mean "unset"', (blank) => {
@@ -90,6 +91,43 @@ describe('parseConfig', () => {
     expect(editionFrom({ HVWA_EDITION: 'lite' })).toBe('lite');
     expect(editionFrom({ HVWA_EDITION: 'lite', PORT: '99999' })).toBe('lite'); // other settings are not its business
     expect(() => editionFrom({ HVWA_EDITION: 'mini' })).toThrow(/^HVWA_EDITION: /);
+  });
+
+  it('HVWA_AUTH: on/off wins; unset or blank means ON only when NODE_ENV=production (the Docker image)', () => {
+    expect(parseConfig({}).HVWA_AUTH).toBe('off'); // npm run dev, npm start, the tests
+    expect(parseConfig({ NODE_ENV: 'production' }).HVWA_AUTH).toBe('on');
+    expect(parseConfig({ NODE_ENV: ' Production ' }).HVWA_AUTH).toBe('on'); // never fail open on spelling
+    for (const NODE_ENV of ['development', 'test', '', 'prod']) expect(parseConfig({ NODE_ENV }).HVWA_AUTH, NODE_ENV).toBe('off');
+    expect(parseConfig({ NODE_ENV: 'production', HVWA_AUTH: '  ' }).HVWA_AUTH).toBe('on');
+    expect(parseConfig({ NODE_ENV: 'production', HVWA_AUTH: 'off' }).HVWA_AUTH).toBe('off');
+    expect(parseConfig({ NODE_ENV: 'development', HVWA_AUTH: 'on' }).HVWA_AUTH).toBe('on');
+    for (const HVWA_AUTH of ['yes', 'ON', '1', 'true', 'of']) {
+      const r = loadConfig({ HVWA_AUTH });
+      expect(r.ok, HVWA_AUTH).toBe(false);
+      if (!r.ok) expect(r.errors).toEqual([expect.stringMatching(/^HVWA_AUTH: \S/)]);
+    }
+  });
+
+  it('authModeFrom(env), the default of createApp(), applies the same rule to HVWA_AUTH and NODE_ENV alone', () => {
+    expect(authModeFrom({})).toBe('off');
+    expect(authModeFrom({ NODE_ENV: 'production' })).toBe('on');
+    expect(authModeFrom({ NODE_ENV: 'production', HVWA_AUTH: 'off' })).toBe('off');
+    expect(authModeFrom({ HVWA_AUTH: 'on', PORT: '99999' })).toBe('on');
+    expect(() => authModeFrom({ HVWA_AUTH: 'yes' })).toThrow(/^HVWA_AUTH: /);
+  });
+
+  it('HVWA_ADMIN_PASSWORD: optional (blank = unset), 8 to 1024 characters, kept verbatim, never echoed in errors', () => {
+    expect(parseConfig({}).HVWA_ADMIN_PASSWORD).toBeUndefined();
+    expect(parseConfig({ HVWA_ADMIN_PASSWORD: '   ' }).HVWA_ADMIN_PASSWORD).toBeUndefined();
+    expect(parseConfig({ HVWA_ADMIN_PASSWORD: ' My Pass 1 ' }).HVWA_ADMIN_PASSWORD).toBe(' My Pass 1 ');
+    expect(parseConfig({ HVWA_ADMIN_PASSWORD: 'x'.repeat(1024) }).HVWA_ADMIN_PASSWORD).toHaveLength(1024);
+    for (const HVWA_ADMIN_PASSWORD of ['Short-7', 'x'.repeat(1025), 'Tab\there-123']) {
+      const r = loadConfig({ HVWA_ADMIN_PASSWORD });
+      expect(r.ok).toBe(false);
+      if (r.ok) continue;
+      expect(r.errors).toEqual([expect.stringMatching(/^HVWA_ADMIN_PASSWORD: must (be at least 8 characters|be at most 1024 characters|not contain control characters)$/)]);
+      expect(r.errors.join('\n')).not.toContain(HVWA_ADMIN_PASSWORD.slice(0, 20));
+    }
   });
 
   it('an empty FLAG_SECRET falls back to the persisted secret', () => {

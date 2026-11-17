@@ -28,6 +28,16 @@ declare global {
       challenge?: Challenge;
       /** The simulated-victim panel, built at render time; set only on routes of a challenge with a victim. */
       simPanel?: () => SimPanel;
+      /**
+       * The platform login's state for the layout (src/auth): set only when auth is on. Signed in: the
+       * account bar (logout form with its CSRF token) and, while the default password is in use, the banner.
+       */
+      platformAuth?: {
+        readonly signedIn: boolean;
+        readonly user?: string;
+        readonly defaultPassword?: boolean;
+        readonly csrf?: string;
+      };
     }
   }
 }

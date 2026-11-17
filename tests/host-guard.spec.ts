@@ -198,12 +198,17 @@ describe('absolute-form request targets', () => {
 describe('appOptionsFromConfig (what server.ts passes to createApp)', () => {
   const SECRET16 = '0123456789abcdef';
 
-  it('maps the data dir, flag secret, HVWA_ALLOWED_HOSTS and HVWA_EDITION', () => {
+  it('maps the data dir, flag secret, HVWA_ALLOWED_HOSTS, HVWA_EDITION and the login settings', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-opts-'));
     dirs.push(dir);
     const opts = appOptionsFromConfig(parseConfig({ FLAG_SECRET: SECRET16, HVWA_ALLOWED_HOSTS: 'hvwa.lab' }), dir);
-    expect(opts).toEqual({ dbPath: join(dir, 'hvwa.db'), flagSecret: SECRET16, allowedHosts: ['hvwa.lab'], edition: 'full' });
+    expect(opts).toEqual({ dbPath: join(dir, 'hvwa.db'), flagSecret: SECRET16, allowedHosts: ['hvwa.lab'], edition: 'full', auth: false });
     expect(appOptionsFromConfig(parseConfig({ HVWA_EDITION: 'lite' }), dir).edition).toBe('lite');
+    // The login: on in production (NODE_ENV) or with HVWA_AUTH=on, with HVWA_ADMIN_PASSWORD as the first password.
+    expect(appOptionsFromConfig(parseConfig({ NODE_ENV: 'production' }), dir).auth).toEqual({ initialPassword: undefined });
+    expect(appOptionsFromConfig(parseConfig({ HVWA_AUTH: 'on', HVWA_ADMIN_PASSWORD: 'First-Pass-1' }), dir).auth)
+      .toEqual({ initialPassword: 'First-Pass-1' });
+    expect(appOptionsFromConfig(parseConfig({ NODE_ENV: 'production', HVWA_AUTH: 'off' }), dir).auth).toBe(false);
   });
 
   it('without FLAG_SECRET, uses the secret persisted in the data dir', () => {

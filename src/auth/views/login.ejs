@@ -1,0 +1,18 @@
+<h1 class="page-title"><%= t('auth.login_heading') %></h1>
+<section class="card panel auth-card">
+  <p class="muted small"><%= t('auth.login_intro') %></p>
+<% if (failed) { -%>
+  <p class="result result-bad" role="alert" data-testid="login-error"><%= t('auth.login_failed') %></p>
+<% } -%>
+  <form method="post" action="/login" class="auth-form">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <input type="hidden" name="next" value="<%= next %>">
+    <label><%= t('auth.username') %>
+      <input type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus>
+    </label>
+    <label><%= t('auth.password') %>
+      <input type="password" name="password" autocomplete="current-password" maxlength="1024" required>
+    </label>
+    <button type="submit"><%= t('auth.login_button') %></button>
+  </form>
+</section>

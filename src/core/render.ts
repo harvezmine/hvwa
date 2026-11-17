@@ -36,12 +36,13 @@ function serverEjsOptions(): Options {
  * Data keys a view may not set: ejs's own template-function locals
  * (escapeFn, include, rethrow, __append, __output, locals) and the context
  * the engine provides (body, labBar and simPanel for the layout; t and lang
- * from res.locals; challenge, level and labPath on challenge routes), plus title: the document <title> is the
+ * from res.locals; challenge, level and labPath on challenge routes; platformAuth, the login's account bar
+ * and default-password banner, from res.locals), plus title: the document <title> is the
  * platform's (portal pages pass pageTitle, which stays unreserved; a lab page gets labBar.pageTitle).
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title',
+  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */
@@ -107,7 +108,9 @@ export async function page(res: Response, viewFile: string, data: Record<string,
   const ctx: Record<string, unknown> = { ...res.locals, ...data };
   const body = await renderFile(viewFile, ctx, serverEjsOptions());
   const simPanel = typeof res.locals.simPanel === 'function' ? res.locals.simPanel() : undefined;
-  return renderFile(layoutFile, { ...ctx, body, labBar: labBar(res.locals), simPanel }, serverEjsOptions());
+  // platformAuth comes from res.locals only (src/auth sets it; reserved, so no view data can fake it).
+  const platformAuth = res.locals.platformAuth;
+  return renderFile(layoutFile, { ...ctx, body, labBar: labBar(res.locals), simPanel, platformAuth }, serverEjsOptions());
 }
 
 /**

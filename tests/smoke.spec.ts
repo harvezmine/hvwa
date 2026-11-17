@@ -35,8 +35,8 @@ describe('smoke', () => {
     const check = openDb(dbPath);
     handles.push(check);
     const names = check.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
-    expect(names.map((r) => r.name)).toEqual(['events', 'hint_unlocks', 'solves']);
-    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 1 });
+    expect(names.map((r) => r.name)).toEqual(['auth_accounts', 'auth_tokens', 'events', 'hint_unlocks', 'solves']);
+    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 });
 
     // Release both handles, then the temp dir must be removable.
     check.close();

@@ -136,3 +136,18 @@ a:hover { text-decoration: underline; }
 .sim-body { white-space: pre-wrap; margin: 0.25rem 0; }
 .sim-panel p { margin: 0.25rem 0; }
 .sim-panel a { color: var(--accent); }
+
+/* platform login (src/auth): the default-password banner, the account bar, the login and password forms */
+.default-password-banner { background: #78350f; color: #fef3c7; font-size: 0.875rem; font-weight: 600; padding: 0.5rem 1rem; text-align: center; }
+.default-password-banner a { text-decoration: underline; }
+.account-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; font-size: 0.875rem; color: var(--muted); }
+.account-nav a:hover { color: var(--text); }
+.logout-form { display: inline; margin: 0; }
+.logout-form button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.125rem 0.5rem; cursor: pointer; }
+.logout-form button:hover { color: var(--text); border-color: var(--muted); }
+.auth-card { max-width: 26rem; }
+.auth-form { display: grid; gap: 0.75rem; }
+.auth-form label { display: grid; gap: 0.25rem; font-size: 0.875rem; color: var(--muted); }
+.auth-form input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.4rem 0.5rem; }
+.auth-form button { justify-self: start; font: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: 0.25rem; padding: 0.4rem 1rem; font-weight: 600; cursor: pointer; }
+.auth-card .result-bad { color: var(--danger-text); }

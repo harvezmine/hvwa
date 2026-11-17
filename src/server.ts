@@ -50,7 +50,12 @@ try {
   process.exit(1);
 }
 const served = app.locals.challenges.all().length; // the edition's challenges (HVWA_EDITION)
-for (const line of startupBanner(listenUrl(config.HOST, config.PORT), served, { edition: app.locals.edition })) console.log(line);
+const login = app.locals.auth !== undefined;
+for (const line of startupBanner(listenUrl(config.HOST, config.PORT), served, { edition: app.locals.edition, login })) console.log(line);
+// Never the password itself: only whether the DVWA-style default is still in use.
+if (app.locals.auth?.usesDefaultPassword()) {
+  console.warn('HVWA: the admin account still uses the DEFAULT password: sign in and change it at /account/password');
+}
 
 // Graceful stop: wait for server.close() to finish, then close the DB, then exit.
 let stopping = false;

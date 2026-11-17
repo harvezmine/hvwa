@@ -23,6 +23,8 @@ export type Migration = (db: DatabaseSync) => void;
 export const MIGRATIONS: readonly Migration[] = Object.freeze([
   // 1: platform schema (solves, hint_unlocks, events)
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'schema.sql'), 'utf8')),
+  // 2: the platform login (auth_accounts, auth_tokens; src/auth). Created whether or not auth is on.
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'auth.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

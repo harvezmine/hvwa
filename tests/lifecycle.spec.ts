@@ -94,6 +94,10 @@ describe('startupBanner()', () => {
       'HVWA: 5 challenge(s) registered',
       'HVWA: edition lite',
     ]);
+    expect(startupBanner('http://127.0.0.1:1337', 5, { edition: 'lite', login: true }).slice(2))
+      .toEqual(['HVWA: edition lite', 'HVWA: login on (user admin)']);
+    expect(startupBanner('http://127.0.0.1:1337', 5, { login: false }).slice(2))
+      .toEqual(['HVWA: login off (HVWA_AUTH=on requires it)']);
   });
 });
 

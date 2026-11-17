@@ -10,15 +10,27 @@
 </head>
 <body>
   <div class="safety-banner" role="alert"><%= t('safety.warning') %></div>
+<% if (platformAuth && platformAuth.defaultPassword) { -%>
+  <div class="default-password-banner" role="alert" data-testid="default-password-banner"><%= t('auth.default_banner') %> <a href="/account/password"><%= t('auth.change_password') %></a></div>
+<% } -%>
   <header class="site-header">
     <a href="/" class="brand"><%= t('app.title') %></a>
+<% if (!platformAuth || platformAuth.signedIn) { -%>
     <nav class="site-nav">
       <a href="/"><%= t('nav.districts') %></a>
       <a href="/scoreboard"><%= t('nav.scoreboard') %></a>
     </nav>
+<% } -%>
     <span class="lang-switch">
       <a href="?lang=id">ID</a> · <a href="?lang=en">EN</a>
     </span>
+<% if (platformAuth && platformAuth.signedIn) { -%>
+    <span class="account-nav" data-testid="account-nav">
+      <span class="muted"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong></span>
+      <a href="/account/password"><%= t('auth.change_password') %></a>
+      <form method="post" action="/logout" class="logout-form"><input type="hidden" name="_csrf" value="<%= platformAuth.csrf %>"><button type="submit" data-testid="logout"><%= t('auth.logout') %></button></form>
+    </span>
+<% } -%>
   </header>
   <main class="content">
 <% if (labBar) { -%>

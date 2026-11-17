@@ -14,12 +14,14 @@ export function listenUrl(host: string, port: number): string {
 export interface BannerInfo {
   /** The edition served (src/editions.ts). */
   edition?: Edition;
+  /** Whether the platform login is on (src/auth). */
+  login?: boolean;
 }
 
 /**
  * Lines printed once listening: the URL with the safety warning, then the
  * number of challenges served (the edition's; verify:dist compares it with
- * what the portal links), then the edition when given.
+ * what the portal links), then the edition and the login state when given.
  */
 export function startupBanner(url: string, challengeCount: number, info: BannerInfo = {}): string[] {
   const lines = [
@@ -27,6 +29,9 @@ export function startupBanner(url: string, challengeCount: number, info: BannerI
     `HVWA: ${challengeCount} challenge(s) registered`,
   ];
   if (info.edition) lines.push(`HVWA: edition ${info.edition}`);
+  if (info.login !== undefined) {
+    lines.push(info.login ? 'HVWA: login on (user admin)' : 'HVWA: login off (HVWA_AUTH=on requires it)');
+  }
   return lines;
 }
 
