@@ -234,6 +234,14 @@ function evalTrusted(vm: QuickJSContext, code: string, filename: string): QuickJ
   return r.value;
 }
 
+/**
+ * The linear memory of one instance: 16 MiB to start (the module's own minimum) and never more than 48 MiB. The last
+ * of the three memory layers (SSTI_LIMITS): the interrupt's check and QuickJS's limit always stop a render first.
+ */
+export function instanceMemory(): WebAssembly.Memory {
+  return new WebAssembly.Memory({ initial: SSTI_LIMITS.wasmInitialBytes / PAGE, maximum: SSTI_LIMITS.wasmMaxBytes / PAGE });
+}
+
 /** A host exception from inside the WASM instance: a native stack overflow, or a trap/abort (the instance is unusable). */
 function hostFault(err: unknown, shellCalls: readonly string[]): SstiResult {
   if (err instanceof RangeError && /call stack/i.test(err.message)) return fail('stack', SSTI_MESSAGES.stack, shellCalls);
@@ -254,7 +262,7 @@ function hostFault(err: unknown, shellCalls: readonly string[]): SstiResult {
 export async function renderJob(job: SandboxJob, assets: EngineAssets, started?: () => void): Promise<SstiResult> {
   const shellCalls: string[] = [];
   try {
-    const memory = new WebAssembly.Memory({ initial: SSTI_LIMITS.wasmInitialBytes / PAGE, maximum: SSTI_LIMITS.wasmMaxBytes / PAGE });
+    const memory = instanceMemory();
     const qjs = await newQuickJSWASMModuleFromVariant(newVariant(releaseSync, { wasmModule: assets.wasm, wasmMemory: memory }));
     const rt = qjs.newRuntime();
     rt.setMemoryLimit(SSTI_LIMITS.memoryBytes);
@@ -295,10 +303,10 @@ export async function renderJob(job: SandboxJob, assets: EngineAssets, started?:
       if (vm.typeof(r.error) !== 'string' || lengthOf(vm, r.error) > SSTI_LIMITS.errorChars) return fail(undefined, SSTI_MESSAGES.failed, shellCalls);
       // The copy is checked again: the guest's length is in UTF-16 code units, and copying turns each lone surrogate
       // into U+FFFD, three host characters (UTF-8 in between). So a copy can be up to three times longer.
-      const message = clipText(vm.getString(r.error), SSTI_LIMITS.errorChars);
-      if (/\b(out of memory|string too long)\b/.test(message)) return fail('memory', SSTI_MESSAGES.memory, shellCalls);
-      if (/\bstack overflow\b/.test(message)) return fail('stack', SSTI_MESSAGES.stack, shellCalls);
-      return fail(undefined, message, shellCalls);
+      // An error's TEXT never decides a limit: the template writes it (`throw 'stack overflow'`). QuickJS's own "out of
+      // memory" and "stack overflow" are errors the template can catch, so they are its errors too. Every limit above
+      // and in hostFault comes from a host signal (the interrupt handler's flags, the clock, a host exception).
+      return fail(undefined, clipText(vm.getString(r.error), SSTI_LIMITS.errorChars), shellCalls);
     }
     if (vm.typeof(r.value) !== 'string') return fail(undefined, SSTI_MESSAGES.noText, shellCalls);
     if (lengthOf(vm, r.value) > SSTI_LIMITS.outputChars) return fail('output', SSTI_MESSAGES.output, shellCalls);

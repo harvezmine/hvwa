@@ -282,8 +282,9 @@ const FLOW: readonly (SandboxInput & { readonly expect: Record<string, unknown> 
   { template: "{{ range.constructor(\"return process.mainModule.require('fs')\")() }}", node: NODE, expect: { ok: false } },
   { template: '{% include "/etc/passwd" %}', expect: { ok: false } },
   { template: '{{ range.constructor("while (true) {}")() }}', timeoutMs: 50, expect: { limit: 'timeout' } },
-  { template: '{{ range.constructor("var a = []; while (true) a.push(new ArrayBuffer(1 << 20))")() }}', timeoutMs: 1000, expect: { limit: 'memory' } },
-  { template: '{{ range.constructor("(function f() { f() })()")() }}', expect: { limit: 'stack' } },
+  { template: '{{ range.constructor("var a = []; while (true) a.push({ i: a.length })")() }}', timeoutMs: 1000, expect: { limit: 'memory' } },
+  { template: '{{ range.constructor("return new ArrayBuffer(1e9).byteLength")() }}', expect: { ok: false } },
+  { template: '{{ range.constructor("(function f() { f() })()")() }}', expect: { ok: false } },
   { template: '{% for i in range(0, 2000) %}0123456789{% endfor %}', expect: { limit: 'output' } },
 ];
 async function wholeFlow(): Promise<void> {

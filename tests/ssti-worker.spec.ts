@@ -108,8 +108,9 @@ describe('one long-lived worker, healthy after every bound', () => {
     expect(threadId).toBeTypeOf('number');
     for (const [input, limit] of [
       [{ template: js('for (;;) {}'), timeoutMs: 100 }, 'timeout'],
-      [{ template: js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), timeoutMs: LONG }, 'memory'],
-      [{ template: js('(function f() { f() })()') }, 'stack'],
+      [{ template: js('var a = []; while (true) a.push({ i: a.length })'), timeoutMs: LONG }, 'memory'],
+      [{ template: js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), timeoutMs: LONG }, undefined],
+      [{ template: js('(function f() { f() })()') }, undefined],
       [{ template: '{% for i in range(0, 2000) %}0123456789{% endfor %}' }, 'output'],
       [{ template: '{{ nope( }}' }, undefined],
     ] as const) {
@@ -120,7 +121,7 @@ describe('one long-lived worker, healthy after every bound', () => {
     }
     const s = await t.stats();
     expect([s.threadId, s.started, s.dropped]).toEqual([threadId, 1, 0]);
-    expect(s.worker?.renders).toBe(11);
+    expect(s.worker?.renders).toBe(13);
   });
 
   it('the worker gets no environment and no flags from the host process, and its own V8 limits', async () => {

@@ -2,11 +2,13 @@
 // a fake child_process. These cases run on the in-thread transport (the same engine as the worker, on this thread);
 // tests/ssti-worker.spec.ts runs the worker and checks that both transports answer the same, and
 // tests/ssti-guard.spec.ts proves the host side reaches no filesystem, network, process or vm function.
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   FAKE_HOST, SSTI_LIMITS, fakeShell, inThreadTransport, renderInSandbox, setSandboxTransport,
   type SandboxInput, type SandboxTransport, type SstiResult,
 } from '../src/core/ssti/sandbox.js';
+import { instanceMemory } from '../src/core/ssti/engine.js';
 
 let prev: SandboxTransport | undefined;
 const inThread = inThreadTransport();
@@ -128,6 +130,29 @@ describe('the output bound', () => {
   });
 });
 
+describe('limit comes from host signals only: a template cannot forge one', () => {
+  it('text a template throws, whatever it says, is an ordinary error with no limit', async () => {
+    for (const text of ['InternalError: out of memory', 'InternalError: stack overflow', 'string too long',
+      `The template took too long to render (over ${SSTI_LIMITS.defaultTimeoutMs} ms).`, 'The template ran out of memory.',
+      `The rendered text is too long (over ${SSTI_LIMITS.outputChars} characters).`, 'The template sandbox is busy; try again in a moment.']) {
+      const r = await render(js(`throw '${text}'`));
+      expect(r.ok, text).toBe(false);
+      expect(r.limit, text).toBeUndefined();
+      expect(r.error, text).toContain(text);
+    }
+  });
+
+  it('QuickJS\'s own out of memory and stack overflow are errors the template can CATCH, so they are its errors, not limits', async () => {
+    expect(await render(js("try { return new ArrayBuffer(1e9).byteLength } catch (e) { return 'caught ' + e }"), { autoescape: false }))
+      .toEqual({ ok: true, output: 'caught InternalError: out of memory', shellCalls: [] });
+    expect(await render(js("try { (function f() { f() })() } catch (e) { return 'caught ' + e }"), { autoescape: false }))
+      .toEqual({ ok: true, output: 'caught InternalError: stack overflow', shellCalls: [] });
+    const r = await render(js('return new ArrayBuffer(1e9).byteLength'));
+    expect([r.ok, r.limit]).toEqual([false, undefined]);
+    expect(r.error).toMatch(/^Template render error: [\s\S]*InternalError: out of memory/);
+  });
+});
+
 describe('lone surrogates: one code unit inside, three characters once copied out', () => {
   // The guest's length is in UTF-16 code units; copying a string out turns each lone surrogate into U+FFFD, three
   // host characters (UTF-8 in between). The host re-checks the copy, so neither cap can be passed this way.
@@ -137,6 +162,11 @@ describe('lone surrogates: one code unit inside, three characters once copied ou
     });
     const under = await render(js('return String.fromCharCode(0xD800).repeat(5000)'), { autoescape: false });
     expect([under.ok, under.output?.length]).toEqual([true, 15000]);
+  });
+
+  it('a shell command of lone surrogates that grows past its cap once copied is refused as too long', async () => {
+    const r = await render(js("try { return process.mainModule.require('child_process').execSync(String.fromCharCode(0xD800).repeat(400)) } catch (e) { return e.status + ' ' + e.stderr }"), { node: NODE });
+    expect(r).toEqual({ ok: true, output: '2 sh: 1: command too long', shellCalls: ['(an over-long command)'] });
   });
 
   it('an error message of lone surrogates is clipped to SSTI_LIMITS.errorChars once copied', async () => {
@@ -181,55 +211,76 @@ describe('the deadline: QuickJS\'s interrupt handler', () => {
   });
 });
 
-describe('memory: QuickJS\'s allocation limit and the WASM memory maximum', () => {
-  const memory = { ok: false, limit: 'memory', error: 'The template ran out of memory.' };
+describe('memory: three layers, each seen alone', () => {
+  const stopped = { ok: false, limit: 'memory', error: 'The template ran out of memory.' };
+  const MiB = 1024 * 1024;
 
-  it('an unbounded allocation is stopped by the memory limit', async () => {
-    expect(await render(js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), LONG)).toMatchObject(memory);
-  });
-
-  it('many small allocations are stopped too, and the template cannot catch it', async () => {
-    // Without the interrupt handler's memory check, QuickJS reaches its limit with no room left for the error object,
-    // throws null, and Nunjucks reports a TypeError. The interrupt is uncatchable, so the try/catch sees nothing.
-    for (const body of ['var a = []; while (true) a.push({ i: a.length })',
-      "try { var a = []; while (true) a.push({ i: a.length }) } catch (e) { return 'caught ' + e }"]) {
-      expect(await render(js(body), LONG), body).toMatchObject(memory);
+  it('1. the interrupt handler stops a render once its WASM memory passes 28 MiB: uncatchable, a host signal (limit: memory)', async () => {
+    // Without it, many small allocations reach QuickJS's limit with no room left for the error object: QuickJS throws
+    // null and Nunjucks reports a TypeError. The interrupt cannot be caught, so the try/catch sees nothing.
+    for (const t of [js('var a = []; while (true) a.push({ i: a.length })'),
+      js("try { var a = []; while (true) a.push({ i: a.length }) } catch (e) { return 'caught ' + e }"),
+      '{% set a = [] %}{% for i in range(0, 1000) %}{% set _ = a.push(range(0, 100000)) %}{% endfor %}']) {
+      expect(await render(t, LONG), t).toEqual({ ...stopped, shellCalls: [] });
     }
   });
 
-  it('one huge allocation is refused at once', async () => {
-    for (const body of ["return 'x'.repeat(1e9).length", 'return new ArrayBuffer(1e9).byteLength', 'return new Array(1e9).fill(0).length']) {
-      expect(await render(js(body), LONG), body).toMatchObject(memory);
-    }
+  it('2. QuickJS\'s own 32 MiB allocation limit, alone: a 30 MiB buffer fits, 33 MiB (inside the 48 MiB WASM memory) is refused', async () => {
+    expect(await render(js(`return new ArrayBuffer(${30 * MiB}).byteLength`), LONG)).toEqual({ ok: true, output: String(30 * MiB), shellCalls: [] });
+    // A refused allocation is an error the template sees (and could catch): its error, not a limit.
+    const r = await render(js(`return new ArrayBuffer(${33 * MiB}).byteLength`), LONG);
+    expect([r.ok, r.limit]).toEqual([false, undefined]);
+    expect(r.error).toMatch(/InternalError: out of memory$/);
   });
 
-  it('Nunjucks-only memory bombs (a string doubled 40 times, an array grown in a loop) are stopped too', async () => {
-    expect(await render('{% set s = "xxxxxxxxxx" %}{% for i in range(0, 40) %}{% set s = s + s %}{% endfor %}{{ s | length }}', LONG))
-      .toMatchObject(memory);
-    expect(await render('{% set a = [] %}{% for i in range(0, 1000) %}{% set _ = a.push(range(0, 100000)) %}{% endfor %}', LONG))
-      .toMatchObject(memory);
+  it('2. one huge allocation, or a loop of big ones, is refused the same way, at once', async () => {
+    for (const body of ["return 'x'.repeat(1e9).length", 'return new ArrayBuffer(1e9).byteLength', 'return new Array(1e9).fill(0).length',
+      'var a = []; while (true) a.push(new ArrayBuffer(1 << 20))']) {
+      const r = await render(js(body), LONG);
+      expect([r.ok, r.limit], body).toEqual([false, undefined]);
+      expect(r.error, body).toMatch(/InternalError: out of memory$/);
+    }
+    const doubling = await render('{% set s = "xxxxxxxxxx" %}{% for i in range(0, 40) %}{% set s = s + s %}{% endfor %}{{ s | length }}', LONG);
+    expect([doubling.ok, doubling.limit]).toEqual([false, undefined]);
+    expect(doubling.error).toMatch(/InternalError: string too long$/);
+  });
+
+  it('3. an instance\'s WebAssembly.Memory starts at 16 MiB and can never grow past 48 MiB (the backstop the other two always reach first)', () => {
+    const memory = instanceMemory();
+    expect(memory.buffer.byteLength).toBe(SSTI_LIMITS.wasmInitialBytes);
+    memory.grow((SSTI_LIMITS.wasmMaxBytes - SSTI_LIMITS.wasmInitialBytes) / 65536);
+    expect(memory.buffer.byteLength).toBe(SSTI_LIMITS.wasmMaxBytes);
+    expect(() => memory.grow(1)).toThrow(RangeError);
+    // And it is the memory every render gets: the engine makes WebAssembly.Memory in this one place.
+    const engine = readFileSync(new URL('../src/core/ssti/engine.ts', import.meta.url), 'utf8');
+    expect(engine.match(/new WebAssembly\.Memory\(/g)).toHaveLength(1);
+    expect(engine).toMatch(/const memory = instanceMemory\(\);/);
   });
 });
 
-describe('the stack: QuickJS\'s stack limit', () => {
-  const stack = { ok: false, limit: 'stack', error: 'The template nested or recursed too deeply (stack overflow).' };
-
-  it('deep JavaScript recursion is a catchable stack overflow, never a host crash', async () => {
-    expect(await render(js('(function f() { f() })()'))).toMatchObject(stack);
+describe('the stack', () => {
+  it('QuickJS\'s 128 KiB stack: deep recursion is a CATCHABLE InternalError, well before 1000 frames', async () => {
+    const r = await render(js("var d = 0; try { (function f() { d++; f() })() } catch (e) { return (e instanceof InternalError) + ' ' + e.message + ' ' + d } return 'no limit'"), { autoescape: false });
+    const m = /^true stack overflow (\d+)$/.exec(r.output ?? '');
+    expect(m, r.output ?? r.error).not.toBeNull();
+    expect(Number(m?.[1])).toBeGreaterThan(200);
+    expect(Number(m?.[1])).toBeLessThan(1000);
   });
 
-  it('a recursive macro is stopped', async () => {
-    expect(await render('{% macro m(n) %}{{ m(n + 1) }}{% endmacro %}{{ m(0) }}')).toMatchObject(stack);
-  });
-
-  it('deeply nested template syntax is stopped in Nunjucks\' parser', async () => {
+  it('so recursion, a recursive macro and deeply nested template syntax are the template\'s own errors, never a host crash', async () => {
     const depth = (SSTI_LIMITS.templateChars - 8) / 2;
-    expect(await render(`{{ ${'('.repeat(depth)}1${')'.repeat(depth)} }}`)).toMatchObject(stack);
+    for (const t of [js('(function f() { f() })()'), '{% macro m(n) %}{{ m(n + 1) }}{% endmacro %}{{ m(0) }}',
+      `{{ ${'('.repeat(depth)}1${')'.repeat(depth)} }}`]) {
+      const r = await render(t);
+      expect([r.ok, r.limit], t.slice(0, 60)).toEqual([false, undefined]);
+      expect(r.error, t.slice(0, 60)).toMatch(/InternalError: stack overflow$/);
+    }
   });
 
-  it('native recursion over a deep value (JSON.stringify) is stopped', async () => {
-    expect(await render(js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a).length')))
-      .toMatchObject(stack);
+  it('a native stack overflow under QuickJS (this thread\'s 1 MB stack: JSON.stringify of a deep value) is a host signal (limit: stack)', async () => {
+    expect(await render(js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a).length'))).toEqual({
+      ok: false, limit: 'stack', error: 'The template nested or recursed too deeply (stack overflow).', shellCalls: [],
+    });
   });
 });
 
@@ -243,13 +294,35 @@ describe('no host reach', () => {
     expect(r).toEqual({ ok: true, output: HOST_NAMES.map(() => 'undefined').join(','), shellCalls: [] });
   });
 
-  it('the sandbox global holds only the language and Nunjucks', async () => {
-    const r = await render(js("return Object.getOwnPropertyNames(Function('return this')()).join(',')"));
-    expect(r.ok).toBe(true);
-    const names = (r.output ?? '').split(',');
-    expect(names).toContain('nunjucks');
-    expect(names).toContain('Function');
-    expect(names.filter((n) => HOST_NAMES.includes(n))).toEqual([]);
+  /** QuickJS's own globals (the language), exactly: anything more is a binding someone added. */
+  const LANGUAGE = ['AggregateError', 'Array', 'ArrayBuffer', 'BigInt', 'BigInt64Array', 'BigUint64Array', 'Boolean', 'DataView',
+    'Date', 'Error', 'EvalError', 'FinalizationRegistry', 'Float16Array', 'Float32Array', 'Float64Array', 'Function', 'Infinity',
+    'Int16Array', 'Int32Array', 'Int8Array', 'InternalError', 'Iterator', 'JSON', 'Map', 'Math', 'NaN', 'Number', 'Object',
+    'Promise', 'Proxy', 'RangeError', 'ReferenceError', 'Reflect', 'RegExp', 'Set', 'SharedArrayBuffer', 'String', 'Symbol',
+    'SyntaxError', 'TypeError', 'URIError', 'Uint16Array', 'Uint32Array', 'Uint8Array', 'Uint8ClampedArray', 'WeakMap', 'WeakRef',
+    'WeakSet', 'decodeURI', 'decodeURIComponent', 'encodeURI', 'encodeURIComponent', 'escape', 'eval', 'globalThis', 'isFinite',
+    'isNaN', 'parseFloat', 'parseInt', 'undefined', 'unescape'];
+  const globalNames = async (extra: Omit<SandboxInput, 'template'> = {}) =>
+    (await render(js("return Object.getOwnPropertyNames(Function('return this')()).sort().join(',')"), { autoescape: false, ...extra })).output?.split(',');
+
+  it('the sandbox global holds EXACTLY the language and nunjucks; a planted host adds exactly process and global', async () => {
+    expect(await globalNames()).toEqual([...LANGUAGE, 'nunjucks'].sort());
+    expect(await globalNames({ node: NODE })).toEqual([...LANGUAGE, 'nunjucks', 'process', 'global'].sort());
+  });
+
+  it('the fake process, its mainModule and its child_process have exactly these members (execSync the only door)', async () => {
+    const shape = js("var cp = process.mainModule.require('child_process'); return [process, process.mainModule, cp].map(function (o) { return Object.getOwnPropertyNames(o).sort().join(',') }).join(' | ')");
+    expect((await render(shape, { node: NODE, autoescape: false })).output).toBe(
+      'arch,argv,cwd,env,execPath,mainModule,pid,platform,title,version,versions | filename,id,loaded,paths,require | execSync');
+  });
+
+  it('the fake require knows child_process (as node:child_process too) and no other module', async () => {
+    const MODULES = ['child_process', 'node:child_process', 'fs', 'node:fs', 'fs/promises', 'os', 'node:os', 'path', 'net', 'http',
+      'https', 'http2', 'tls', 'dgram', 'dns', 'vm', 'worker_threads', 'process', 'module', 'crypto', 'util', 'events', 'buffer',
+      'inspector', 'v8', 'cluster', 'repl', 'readline', 'zlib', 'stream', 'url', 'querystring', 'assert', 'perf_hooks', 'timers'];
+    const list = MODULES.map((m) => `'${m}'`).join(',');
+    const r = await render(js(`var ok = []; [${list}].forEach(function (m) { try { process.mainModule.require(m); ok.push(m) } catch (e) {} }); return ok.join(',')`), { node: NODE });
+    expect(r.output).toBe('child_process,node:child_process');
   });
 
   it('the usual ways to name process, require or a module fail', async () => {
@@ -376,6 +449,17 @@ describe('fakeShell: a tiny allow-list over the planted machine', () => {
     expect(sh('whoami\npwd')).toEqual(ok('scribe\n/srv/forum\n'));
   });
 
+  it('the allow-list is exactly these commands: every other name is "not found"', () => {
+    const ALLOWED = ['cat', 'cd', 'echo', 'env', 'hostname', 'id', 'ls', 'printenv', 'pwd', 'uname', 'whoami'];
+    const OTHERS = ['wget', 'curl', 'nc', 'ncat', 'socat', 'telnet', 'ssh', 'scp', 'ping', 'bash', 'sh', 'zsh', 'dash', 'python', 'python3',
+      'node', 'perl', 'ruby', 'php', 'lua', 'base64', 'xxd', 'od', 'head', 'tail', 'less', 'more', 'grep', 'find', 'sed', 'awk', 'ps',
+      'kill', 'rm', 'cp', 'mv', 'touch', 'mkdir', 'chmod', 'chown', 'ln', 'sudo', 'su', 'tar', 'gzip', 'dd', 'strings', 'file', 'which',
+      'whereis', 'export', 'set', 'source', 'exec', 'eval', 'true', 'false', 'test', 'stat', 'readlink', 'realpath', 'printf', 'tee',
+      'xargs', 'crontab', 'systemctl', 'apt', 'apk', 'npm', 'npx', 'git', 'openssl', 'date', 'sleep', 'mount', 'ip', 'ifconfig',
+      'netstat', 'ss', 'reboot', 'shutdown', 'nohup', 'env2', 'cats', 'Id', 'ID'];
+    expect([...ALLOWED, ...OTHERS].filter((c) => sh(c).status !== 127).sort()).toEqual(ALLOWED);
+  });
+
   it('refuses everything else the way sh would, and never pipes, redirects or substitutes', () => {
     expect(sh('nc -e /bin/sh attacker.test 4444')).toEqual({ status: 127, stdout: '', stderr: 'sh: 1: nc: not found' });
     expect(sh('cat /srv')).toEqual({ status: 1, stdout: '', stderr: 'cat: /srv: Is a directory' });
@@ -413,14 +497,15 @@ describe('isolation between renders, and health after every bound', () => {
   it('after a timeout, an allocation bomb, a stack overflow, an output overflow or a template error, the next render is healthy', async () => {
     const failing: readonly [string, string | undefined][] = [
       [js('while (true) {}'), 'timeout'],
-      [js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), 'memory'],
-      [js('(function f() { f() })()'), 'stack'],
+      [js('var a = []; while (true) a.push({ i: a.length })'), 'memory'],
+      [js('var a = []; while (true) a.push(new ArrayBuffer(1 << 20))'), undefined],
+      [js('(function f() { f() })()'), undefined],
       [js('var a = []; for (var i = 0; i < 200000; i++) a = [a]; return JSON.stringify(a)'), 'stack'],
       [`{% for i in range(0, 3000) %}xxxxxxxxxx{% endfor %}`, 'output'],
       ['{{ foo( }}', undefined],
     ];
     for (const [t, limit] of failing) {
-      const r = await render(t, limit === 'memory' ? LONG : {});
+      const r = await render(t, limit === 'timeout' ? {} : LONG);
       expect(r.ok, t).toBe(false);
       expect(r.limit, t).toBe(limit);
       expect(await render('Hi {{ name }}', { ctx: { name: 'pilgrim' } }), `after ${t}`).toEqual({ ok: true, output: 'Hi pilgrim', shellCalls: [] });
