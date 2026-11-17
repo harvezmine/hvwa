@@ -1,0 +1,7 @@
+<%# Fixture view of the Archive API shell test (tests/api-lab.spec.ts): the shared partials, as a lab page includes them. %>
+<h1>Reading Room API (fixture)</h1>
+<% if (result) { %><p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>"><%= result.text %></p><% } %>
+<%- include('../../src/districts/archive-api/_shared/views/key', { apiKey: apiKey }) %>
+<%- include('../../src/districts/archive-api/_shared/views/endpoints', { endpoints: endpoints, base: base, served: served }) %>
+<%- include('../../src/districts/archive-api/_shared/views/console', { requestConsole: requestConsole }) %>
+<%- include('../../src/districts/_shared/views/curl-note', { curl: curl }) %>
