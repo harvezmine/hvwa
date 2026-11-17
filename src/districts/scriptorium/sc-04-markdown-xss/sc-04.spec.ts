@@ -111,6 +111,11 @@ describe('SC-04 Markdown lab', () => {
     expect(renderMarkdown('divine', '![a "b" <c>](seal.png "t" onerror="x")')).toBe('<p><img src="seal.png" alt="a &quot;b&quot; &lt;c&gt;" title="t&quot; onerror=&quot;x"></p>');
     const v = xssOracle(renderMarkdown('divine', PAYLOADS.inquisitor(M)), M);
     expect([v.executes, v.reachedMarker]).toEqual([false, true]);
+    // A link's target is an attribute too: an allowed scheme does not make its quotes harmless.
+    const link = renderMarkdown('divine', `[x](https://x.test/"onmouseover="${M})`);
+    expect(link).toBe(`<p><a href="https://x.test/&quot;onmouseover=&quot;hvwa(&#39;${'0123456789abcdef'}&#39;)">x</a></p>`);
+    const w = xssOracle(link, M);
+    expect([w.executes, w.reachedMarker]).toEqual([false, true]);
   });
 
   it('a hostile note costs little: the inline grammar on the longest note stays fast at every level', () => {
