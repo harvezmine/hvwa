@@ -114,6 +114,9 @@ describe('FP-05 bio lab', () => {
     expect(renderBio('<b onclick="x()">a</b> <a href="https://psalms.test/?a=1&b=2" title="t">c</a>'))
       .toBe('<div class="bio"><b>a</b> <a href="https://psalms.test/?a=1&amp;b=2">c</a></div>');
     expect(renderBio('<a href="mailto:pilgrim@citadel.test">mail</a>')).toBe('<div class="bio"><a href="mailto:pilgrim@citadel.test">mail</a></div>');
+    // No attribute but a link's href survives: not style either (CSS can hide, overlay or restyle the page).
+    expect(renderBio('<b style="position:fixed;inset:0">a</b><i style=x>b</i><a href="https://x.test/" style="x">c</a>'))
+      .toBe('<div class="bio"><b>a</b><i>b</i><a href="https://x.test/">c</a></div>');
     expect(renderBio(`<a href="java\nscript:${M}">x</a>`)).toBe('<div class="bio">x</div>');
     expect(renderBio('A pilgrim" title="x')).toBe('<div class="bio">A pilgrim&quot; title=&quot;x</div>');
     const corpus = [
