@@ -1767,11 +1767,10 @@ has no `<summary>`).
   its handler. It now reads comments, CDATA and processing instructions past whole, strips inside each start tag only
   (any XML name starts one, not only ASCII letters), drops `srcdoc`, and drops a `javascript:` URL from `href`, `src`,
   `action` and `formaction` under any prefix once character references are undone and tabs and newlines removed, so
-  only SVG's own gap is left: SMIL events and a SMIL `href` animation. **Preview fidelity** (Chrome 157, after the
-  `javascript:` shim): an SVG `<a href="javascript:...">` fires in the preview when clicked, but an SVG
-  `xlink:href="javascript:..."` link and a SMIL `href` animation do not (the shim matches `a[href]` and reads the
-  `href` attribute), although the oracle, and Chrome outside a sandbox, run both. Those solves earn the flag without
-  a banner.
+  only SVG's own gap is left: SMIL events and a SMIL `href` animation. **Preview fidelity:** every SVG link solve
+  fires in the preview when clicked (Chrome 157, on the level-built preview): `href`, `xlink:href` with or without an
+  `xmlns:xlink` declaration, and an `href` set by SMIL `animate` or `set` (the shim reads an SVG anchor's effective
+  `href`, below).
 - **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
   order (`a`, `area`, `form`, `img`/`srcset`, CSS `url()`/`@import` ...), parsed with scripting off as a mail client
   parses. Build the mail's `links` from it, and classify each URL with `classifySimUrl`. It reports `link` with
@@ -1834,7 +1833,11 @@ Every string kept is a copy.
 - **`javascript:` links run in the preview through the shim.** A `sandbox="allow-scripts"` frame never runs a
   `javascript:` URL a click navigates to (Chrome 157, with or without the meta CSP), so a link payload the oracle
   counts would never be seen firing. The shim catches the click on an `a` or `area`, or on a submit button with a form
-  owner (its `formaction`, else the form's `action`), decodes the URL exactly as the oracle does (`urlText`,
+  owner (its `formaction`, else the form's `action`), and reads the link's EFFECTIVE URL: an HTML `a` or `area` its
+  `href` attribute, an SVG `a` its `href.animVal` (the `href` attribute, else `xlink:href` whether its namespace was
+  declared or not, or while a SMIL `animate` or `set` of `href` runs, the value it set). An anchor that is no link (no `href`, or an
+  SVG anchor whose effective `href` is empty) lets the click go on to the nearest link or button around it. The shim
+  decodes the URL exactly as the oracle does (`urlText`,
   `schemeOf`, `javascriptSource`: C0 controls and spaces trimmed, tabs and newlines removed, the scheme compared
   case-insensitively, the rest percent-decoded as UTF-8; entities are undone by the parser), cancels the navigation and
   runs the code as an inline script in the frame. The frame stays sandboxed with no `allow-same-origin`; a page CSP
