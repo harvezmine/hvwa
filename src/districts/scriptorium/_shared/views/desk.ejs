@@ -1,4 +1,4 @@
-<%# Scriptorium scroll desk (SC-07, SC-08). Lab content is English by design. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%# Scriptorium scroll desk (SC-07, SC-08, SC-09). Lab content is English by design. Every value goes through the escaped output tag; the lab's partial is included raw, and escapes its own values. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <section class="lab">
   <h1><%= heading %></h1>
   <p class="lab-note">You are signed in as <code>pilgrim</code>. <%= blurb %> Stored scrolls are listed below and served at <code><%= base %>/uploads?name=...</code> (add <code>&amp;level=<%= level %></code>).</p>
@@ -10,12 +10,17 @@
 <% if (result) { -%>
   <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
 <% } -%>
+<% if (partial) { -%>
+  <%- include(partial) %>
+<% } -%>
+<% if (statementNote) { -%>
   <%- include('statement-note') %>
+<% } -%>
   <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
   <h2>Stored scrolls</h2>
   <ul class="desk-files" data-testid="desk-files">
 <% for (const f of files) { -%>
-    <li data-path="<%= f.shown %>"><a href="<%= base %>/uploads?level=<%= level %>&amp;name=<%= f.href %>"><%= f.shown %></a></li>
+    <li data-path="<%= f.shown %>"><a href="<%= base %>/uploads?level=<%= level %>&amp;name=<%= f.href %>"><%= f.shown %></a><% if (f.preview) { %> <img class="desk-preview" src="<%= base %>/preview?level=<%= level %>&amp;name=<%= f.href %>" alt="" width="128" height="128" style="<%= previewBox %>"><% } %></li>
 <% } -%>
   </ul>
 </section>

@@ -48,6 +48,12 @@ const STYLE = '.hvwa-fired{font:600 13px/1.4 system-ui,sans-serif;margin:0 0 6px
  * UTF-8 bytes; entities are already undone by the parser), cancels the navigation and runs the code as an inline
  * script in the frame. The frame stays sandboxed (scripts only, opaque origin); a page CSP that forbids inline script
  * blocks it, as it blocks every inline payload. tests/xss-preview.spec.ts checks the decoding against the oracle's.
+ *
+ * Which URL a link follows is its EFFECTIVE one. An HTML a or area: its href attribute. An SVG a: `el.href.animVal`
+ * (an SVGAnimatedString), which is the href attribute, else xlink:href (declared or not: the HTML parser puts
+ * xlink:href in the XLink namespace either way), else what a SMIL animation of href (animate, set) made it now. An
+ * anchor that is no link (an HTML a or area with no href, an SVG a whose effective href is empty) does not stop the
+ * click: the nearest link or button around it takes it, as `a[href]` in closest() did before SVG anchors counted.
  */
 const JS_LINKS = 'function jsCode(v){if(typeof v!=="string")return null;var a=0,b=v.length;'
   + 'while(a<b&&v.charCodeAt(a)<=32)a++;while(b>a&&v.charCodeAt(b-1)<=32)b--;'
@@ -57,13 +63,22 @@ const JS_LINKS = 'function jsCode(v){if(typeof v!=="string")return null;var a=0,
   + 'function h(c){return c>=48&&c<=57?c-48:c>=65&&c<=70?c-55:c>=97&&c<=102?c-87:-1;}'
   + 'for(var i=0;i<x.length;i++){if(x[i]===37&&i+2<x.length&&h(x[i+1])>=0&&h(x[i+2])>=0){o[n++]=h(x[i+1])*16+h(x[i+2]);i+=2;}else o[n++]=x[i];}'
   + 'return new TextDecoder().decode(o.subarray(0,n));}'
+  + 'var SVG_NS="http://www.w3.org/2000/svg";'
+  + 'function svgA(el){return el.localName==="a"&&el.namespaceURI===SVG_NS;}'
+  + 'function svgHref(el){var h=el.href;return h&&typeof h.animVal==="string"?h.animVal:"";}'
+  + 'function activated(n){var sel="a,area,button,input";'
+  + 'for(var el=n&&n.closest?n.closest(sel):null;el;el=el.parentElement?el.parentElement.closest(sel):null){'
+  + 'if(svgA(el)){if(svgHref(el)!=="")return el;continue;}'
+  + 'if((el.localName==="a"||el.localName==="area")&&!el.hasAttribute("href"))continue;'
+  + 'return el;}return null;}'
   + 'function jsTarget(el){if(!el)return null;var t=el.localName;'
+  + 'if(svgA(el))return svgHref(el);'
   + 'if(t==="a"||t==="area")return el.getAttribute("href");'
   + 'var sub=t==="button"?el.type==="submit":t==="input"&&(el.type==="submit"||el.type==="image");'
   + 'if(!sub||!el.form)return null;'
   + 'return el.hasAttribute("formaction")?el.getAttribute("formaction"):el.form.getAttribute("action");}'
   + 'document.addEventListener("click",function(e){'
-  + 'var el=e.target&&e.target.closest?e.target.closest("a[href],area[href],button,input"):null;'
+  + 'var el=e.target?activated(e.target):null;'
   + 'var c=jsCode(jsTarget(el));if(c===null)return;e.preventDefault();'
   + 'var s=document.createElement("script");s.textContent=c;(document.body||document.documentElement).appendChild(s);s.remove();'
   + '},true);';

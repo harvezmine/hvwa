@@ -27,18 +27,30 @@ function shimOf(frameHtml: string): string {
   return scripts[0].childNodes.map((c) => ('value' in c ? c.value : '')).join('');
 }
 
-/** A fake element the shim reads: attributes, a tag name, a form owner, a type. */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const HTML_NS = 'http://www.w3.org/1999/xhtml';
+
+/**
+ * A fake element the shim reads: attributes (by qualified name, so `xlink:href` is not `href`), a tag name, a namespace
+ * (default HTML), a parent, a form owner, a type. An SVG element's `href` is an SVGAnimatedString, as in a browser:
+ * `baseVal` is its href attribute, else its xlink:href, and `animVal` is that unless a SMIL animation set it (`animVal`).
+ */
 interface FakeEl {
   readonly localName: string;
+  readonly ns?: string;
   readonly type?: string;
   readonly form?: FakeEl | null;
+  readonly parent?: FakeEl;
   readonly attrs: Readonly<Record<string, string>>;
+  /** SVG only: the href a SMIL animation gives the element now (its animVal), whatever its attributes say. */
+  readonly animVal?: string;
 }
 
 /**
- * The shim run over a fake DOM: `click(el)` dispatches a click whose target's closest link or button is `el` (or null),
- * and answers whether the shim cancelled the navigation. Scripts the shim appends run in the same context, as in a
- * browser; `ran` records their code, `banners` the shim's banners.
+ * The shim run over a fake DOM: `click(el)` dispatches a click on `el` (or on nothing); `closest(selectors)` walks `el`
+ * and its parents for the first whose tag name and required attribute match one of the selectors (`name` or
+ * `name[attr]`), as the browser's closest() does. Answers whether the shim cancelled the navigation. Scripts the shim
+ * appends run in the same context, as in a browser; `ran` records their code, `banners` the shim's banners.
  */
 function frame(marker = M) {
   const listeners: ((e: unknown) => void)[] = [];
@@ -67,16 +79,36 @@ function frame(marker = M) {
   createContext(ctx);
   runInContext(shimOf(previewFrame('<p>x</p>', { marker })), ctx);
   interface DomEl {
-    readonly localName: string; readonly type: string; readonly form: DomEl | null;
-    hasAttribute(n: string): boolean; getAttribute(n: string): string | null;
+    readonly localName: string; readonly namespaceURI: string; readonly type: string; readonly form: DomEl | null;
+    readonly parentElement: DomEl | null; readonly href: unknown;
+    hasAttribute(n: string): boolean; getAttribute(n: string): string | null; closest(selectors: string): DomEl | null;
   }
-  const wrap = (el: FakeEl | null): DomEl | null => el === null ? null : {
-    localName: el.localName, type: el.type ?? '', form: el.form === undefined || el.form === null ? null : wrap(el.form),
-    hasAttribute: (n: string) => Object.hasOwn(el.attrs, n), getAttribute: (n: string) => (Object.hasOwn(el.attrs, n) ? el.attrs[n] : null),
+  const matches = (el: FakeEl, selector: string): boolean => {
+    const m = /^([a-z]+)(?:\[([a-z:-]+)\])?$/.exec(selector.trim());
+    if (m === null) throw new Error(`fake closest(): unsupported selector ${selector}`);
+    return el.localName === m[1] && (m[2] === undefined || Object.hasOwn(el.attrs, m[2]));
+  };
+  const wrap = (el: FakeEl | null | undefined): DomEl | null => {
+    if (el === null || el === undefined) return null;
+    const ns = el.ns ?? HTML_NS;
+    const base = el.attrs.href ?? el.attrs['xlink:href'] ?? '';
+    return {
+      localName: el.localName, namespaceURI: ns, type: el.type ?? '', form: wrap(el.form), parentElement: wrap(el.parent),
+      // HTMLAnchorElement.href is a URL string; SVGAElement.href is an SVGAnimatedString.
+      href: ns === SVG_NS ? { baseVal: base, animVal: el.animVal ?? base } : el.attrs.href,
+      hasAttribute: (n: string) => Object.hasOwn(el.attrs, n), getAttribute: (n: string) => (Object.hasOwn(el.attrs, n) ? el.attrs[n] : null),
+      closest: (selectors: string) => {
+        for (let at: FakeEl | undefined = el; at !== undefined; at = at.parent) {
+          const here = at;
+          if (selectors.split(',').some((sel) => matches(here, sel))) return wrap(here);
+        }
+        return null;
+      },
+    };
   };
   const click = (el: FakeEl | null): boolean => {
     let prevented = false;
-    const target = { closest: () => wrap(el) };
+    const target = el === null ? { closest: () => null } : wrap(el);
     for (const fn of listeners) fn({ target, preventDefault: () => { prevented = true; } });
     return prevented;
   };
@@ -156,6 +188,53 @@ describe('preview: a javascript: link runs inside the sandboxed frame, decoded a
     const f = frame();
     expect(f.click(null)).toBe(false); // a click on nothing that navigates
     expect(f.ran).toEqual([]);
+  });
+
+  it('an SVG anchor runs its EFFECTIVE href (animVal): href, xlink:href, or what a SMIL animation set', () => {
+    const svgA = (attrs: Record<string, string>, animVal?: string): FakeEl => ({ localName: 'a', ns: SVG_NS, attrs, ...(animVal === undefined ? {} : { animVal }) });
+    const cases: [string, FakeEl, string[]][] = [
+      ['href', svgA({ href: `javascript:${M}` }), [M]],
+      ['xlink:href', svgA({ 'xlink:href': `javascript:${M}` }), [M]],
+      ['xlink:href, decoded as the oracle does', svgA({ 'xlink:href': `\u0001 JAVA\tscript:hvwa(%27${N}%27)` }), [M]],
+      ['a SMIL animation of href (no href attribute at all)', svgA({}, `javascript:${M}`), [M]],
+      ['a SMIL animation over a harmless href', svgA({ href: '#top' }, `javascript:${M}`), [M]],
+      ['a SMIL animation to a harmless href over a javascript: one', svgA({ href: `javascript:${M}` }, '#top'), []],
+      ['an SVG anchor with no href', svgA({}), []],
+    ];
+    for (const [name, el, ran] of cases) {
+      const f = frame();
+      expect(f.click(el), name).toBe(ran.length > 0);
+      expect(f.ran, name).toEqual(ran);
+    }
+    // the code it runs is exactly the oracle's reading of the effective URL
+    const href = `java\nscript:hvwa(%27${N}%27)`;
+    const f = frame();
+    f.click(svgA({}, href));
+    expect(f.ran).toEqual([oracleCode(href)]);
+    expect(f.banners).toEqual([`hvwa('${N}') ran: your marker`]);
+  });
+
+  it('a click inside an SVG anchor finds it; an anchor that is no link lets the click reach the button around it', () => {
+    const svgA: FakeEl = { localName: 'a', ns: SVG_NS, attrs: { 'xlink:href': `javascript:${M}` } };
+    const rect: FakeEl = { localName: 'rect', ns: SVG_NS, attrs: {}, parent: { localName: 'g', ns: SVG_NS, attrs: {}, parent: svgA } };
+    const f = frame();
+    expect(f.click(rect)).toBe(true);
+    expect(f.ran).toEqual([M]);
+    const form: FakeEl = { localName: 'form', attrs: {} };
+    const button: FakeEl = { localName: 'button', type: 'submit', form, attrs: { formaction: `javascript:${M}` } };
+    const inside: [string, FakeEl][] = [
+      ['an SVG anchor with no href', { localName: 'a', ns: SVG_NS, attrs: {}, parent: button }],
+      ['an HTML anchor with no href', { localName: 'a', attrs: {}, parent: button }],
+    ];
+    for (const [name, inner] of inside) {
+      const g = frame();
+      expect(g.click(inner), name).toBe(true);
+      expect(g.ran, name).toEqual([M]);
+    }
+    // an HTML anchor still reads its href attribute, never an SVG-only property
+    const h = frame();
+    expect(h.click({ localName: 'a', attrs: { 'xlink:href': `javascript:${M}` } })).toBe(false);
+    expect(h.ran).toEqual([]);
   });
 
   it('the frame stays what it was: sandboxed scripts only, no same-origin, one shim, no eval', () => {

@@ -6,7 +6,8 @@ import { cappedBudgetUsage, perSession } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { ADMIN_MAILBOX, SIM_LIMITS, simWorld, type SimRequest, type SimResponse, type SimWorld } from '../src/core/sim.js';
 import {
-  XSS_LIMITS, XSS_STEAL_URL, markerCall, newMarker, xssBrowser, type XssBrowser, type XssMarker, type XssPage, type XssVictimOptions,
+  DOCUMENT_MIME_TYPES, XSS_LIMITS, XSS_STEAL_URL, markerCall, newMarker, rendersDocument, xssBrowser,
+  type XssBrowser, type XssMarker, type XssPage, type XssVictimOptions,
 } from '../src/core/xss.js';
 
 /** A full GC: vitest.config.ts starts the test workers with --expose-gc. */
@@ -458,5 +459,25 @@ describe('memory: what xssBrowser keeps is its own copy', () => {
     // visits keep their own 2000-char clips of each body, as the sim always does).
     expect(process.memoryUsage().heapUsed - before).toBeLessThan(1.5 * 1024 * 1024);
     expect(labs.every((l) => l.admin.verdicts.length === SIM_LIMITS.visits && steals(l).length === SIM_LIMITS.visits)).toBe(true);
+  });
+});
+
+describe('rendersDocument / DOCUMENT_MIME_TYPES: the rule xssBrowser judges by, exported for labs that show it (SC-05)', () => {
+  it('the document types', () => {
+    expect([...DOCUMENT_MIME_TYPES].sort()).toEqual(['application/xhtml+xml', 'application/xml', 'image/svg+xml', 'text/html', 'text/xml']);
+  });
+
+  it('HTML for text/html or no type, XML for the XML types (any case, with parameters), nothing for other types or an attachment', () => {
+    expect(rendersDocument(undefined)).toBe('html');
+    expect(rendersDocument({})).toBe('html');
+    expect(rendersDocument({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Disposition': 'inline' })).toBe('html');
+    expect(rendersDocument({ 'content-type': ' ' })).toBe('html');
+    for (const t of ['image/svg+xml', 'IMAGE/SVG+XML; charset=x', 'application/xhtml+xml', 'text/xml', 'application/xml']) {
+      expect(rendersDocument({ 'Content-Type': t }), t).toBe('xml');
+    }
+    for (const t of ['application/octet-stream', 'image/png', 'text/plain', 'application/json']) expect(rendersDocument({ 'Content-Type': t }), t).toBeUndefined();
+    expect(rendersDocument({ 'Content-Type': 'image/svg+xml', 'Content-Disposition': 'attachment; filename=x.svg' })).toBeUndefined();
+    expect(rendersDocument({ 'CONTENT-DISPOSITION': ' Attachment', 'Content-Type': 'text/html' })).toBeUndefined();
+    expect(rendersDocument({ 'Content-Type': ['image/svg+xml', 'text/html'] })).toBe('xml'); // the first value, as the browser does
   });
 });

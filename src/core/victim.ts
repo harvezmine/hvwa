@@ -694,11 +694,17 @@ function headerLists(res: SimResponse): Map<string, string[]> {
 }
 
 /**
- * How a browser renders the response: as an HTML document ('html': text/html, or no type, as labs answer by default),
- * as an XML document ('xml': image/svg+xml, application/xhtml+xml, text/xml, application/xml: read as XML, with
- * namespaces), or not as a document that can run script (undefined: any other type, or a download).
+ * How a browser renders a response with these headers: as an HTML document ('html': text/html, or no type, as labs
+ * answer by default), as an XML document ('xml': image/svg+xml, application/xhtml+xml, text/xml, application/xml: read
+ * as XML, with namespaces), or not as a document that can run script (undefined: any other type, or a download). The
+ * rule xssBrowser judges by, exported so a lab that tells the player how the victim's browser reads an answer (SC-05)
+ * uses the same one. Header names in any case; a repeated header counts by its first value.
  */
-function rendersDocument(h: Map<string, string[]>): 'html' | 'xml' | undefined {
+export function rendersDocument(headers: SimResponse['headers']): 'html' | 'xml' | undefined {
+  return documentSyntax(headerLists({ status: 200, headers }));
+}
+
+function documentSyntax(h: Map<string, string[]>): 'html' | 'xml' | undefined {
   if (/^\s*attachment\b/i.test(h.get('content-disposition')?.[0] ?? '')) return undefined;
   const type = h.get('content-type')?.[0];
   if (type === undefined) return 'html';
@@ -831,7 +837,7 @@ class XssVictimBrowser implements XssBrowser {
       return res;
     }
     const framed = this.framedIn === undefined || framingOf(h, classifySimUrl(r.url), [this.framedIn]) === 'allowed';
-    const syntax = framed ? rendersDocument(h) : undefined; // a page that refuses the frame is never shown: nothing runs
+    const syntax = framed ? documentSyntax(h) : undefined; // a page that refuses the frame is never shown: nothing runs
     if (syntax !== undefined) this.judge(r, res, h, syntax);
     if (h.has('refresh')) this.hash = ''; // the next page is a new navigation
     return res;

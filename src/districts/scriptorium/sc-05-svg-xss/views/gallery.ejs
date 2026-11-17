@@ -1,0 +1,42 @@
+<%# SC-05 sigil gallery. Lab content is English by design. Every value goes through the escaped output tag; the one raw value is the preview, a sandboxed iframe whose document is escaped into its srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Sigil Gallery</h1>
+  <p class="lab-note">You are signed in as <code>pilgrim</code>. Upload an SVG sigil (at most <%= maxBytes %> bytes) for your pilgrim card. A moderator reviews it at <code>/review</code> while signed in to the gallery. Your marker, the call a payload makes where a real one would send the moderator's cookie home: <code data-marker><%= marker %></code></p>
+  <form method="post" enctype="multipart/form-data">
+    <label>Sigil <input name="sigil" type="file" accept=".svg,image/svg+xml"></label>
+    <label>Caption <input name="caption" type="text" value="<%= caption %>" autocomplete="off"></label>
+    <button type="submit">Upload</button>
+  </form>
+<% if (result) { -%>
+  <p class="lab-message <%= result.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="lab-message"><%= result.text %></p>
+<% } -%>
+  <h2>Your sigil</h2>
+<% if (sigil) { -%>
+  <p class="lab-note">Stored: <%= sigil.bytes %> bytes, <a href="<%= base %>/sigil?level=<%= level %>">download</a> (always a download here). Its source<%= sigil.clipped ? ' (the start)' : '' %>:</p>
+  <pre data-testid="sigil-source"><%= sigil.source %></pre>
+  <p class="lab-note">The gallery answers the moderator's <code>GET /review</code> with these headers:</p>
+  <ul data-testid="review-headers">
+<% for (const h of sigil.headers) { -%>
+    <li><code><%= h %></code></li>
+<% } -%>
+  </ul>
+<% if (sigil.readAs === 'html') { -%>
+  <p class="lab-note" data-testid="review-read">The moderator's browser reads it as an HTML page. The preview below shows that page, inside a sandboxed frame that cannot reach this site.</p>
+<% } else if (sigil.readAs === 'xml') { -%>
+  <p class="lab-note" data-testid="review-read">The moderator's browser reads it as an XML document. The preview below draws the same bytes inside an HTML page (a sandboxed frame that cannot reach this site), which forgives more than an XML reader does.</p>
+<% } else { -%>
+  <p class="lab-note" data-testid="review-read">The moderator's browser downloads it: nothing is rendered.</p>
+<% } -%>
+  <%- sigil.preview %>
+<% } else { -%>
+  <p class="lab-note">No sigil yet.</p>
+<% } -%>
+  <h2>Moderator sign-in</h2>
+  <p class="lab-note">The gallery's sign-in takes a moderator's session value.</p>
+  <form method="post">
+    <input type="hidden" name="intent" value="sign-in">
+    <label>Session <input name="session" type="text" value="<%= session %>" autocomplete="off"></label>
+    <button type="submit">Sign in</button>
+  </form>
+  <%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>
