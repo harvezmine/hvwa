@@ -327,7 +327,10 @@ describe('SimBrowser: requests to the citadel go to the lab\'s in-process handle
     expect(r).toMatchObject({ method: 'GET', url: 'http://citadel.test/home?x=1&x=2&y=%20', path: '/home' });
     expect(r.query.getAll('x')).toEqual(['1', '2']);
     expect(r.query.get('y')).toBe(' ');
-    expect(r.headers).toEqual({ host: 'citadel.test', 'user-agent': SIM_USER_AGENT });
+    expect(r.headers).toEqual({ // a link opened from mail: started by the victim, so Sec-Fetch-Site none (E1 review)
+      host: 'citadel.test', 'user-agent': SIM_USER_AGENT,
+      'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', 'sec-fetch-user': '?1',
+    });
     expect({ ...r.cookies }).toEqual({});
     expect({ ...r.body }).toEqual({});
     expect(w.attackerLog.entries()).toEqual([]);
@@ -713,17 +716,18 @@ describe('SimBrowser cookie jar (citadel.test only, never real cookies)', () => 
     expect(b.cookies.list()).toEqual([]);
   });
 
-  it('Domain must be citadel.test; Secure needs https (as browsers enforce)', () => {
+  it('Domain must be citadel.test; Secure is kept from http too: citadel.test is a secure context, like loopback (E1)', () => {
+    // Before E1 the jar refused a Secure cookie from http://citadel.test, as a browser does on plain http. It now
+    // treats the citadel as browsers treat http://localhost, so a TwinCookie with `SameSite=None; Secure` works in both
+    // browsers (tests/sim-cross.spec.ts has the rest).
     const w = world();
     const cookies = ['a=1; Domain=attacker.test', 'b=2; Domain=citadel.test', 'c=3; Domain=.CITADEL.TEST', 'd=4; Domain=test', 'e=5; Domain=x.citadel.test', 'f=6; Secure'];
     const s = site({ '/set': { status: 200, headers: { 'set-cookie': cookies } }, '/me': { status: 200 } });
     const b = inSession(() => w.browser(s.handler));
     b.follow('http://citadel.test/set');
-    expect(b.cookies.list().map((c) => c.name)).toEqual(['b', 'c']);
-    b.follow('https://citadel.test/set');
     expect(b.cookies.list().map((c) => c.name)).toEqual(['b', 'c', 'f']);
     b.follow('http://citadel.test/me');
-    expect(s.seen.at(-1)?.headers.cookie).toBe('b=2; c=3');
+    expect(s.seen.at(-1)?.headers.cookie).toBe('b=2; c=3; f=6');
     b.follow('https://citadel.test/me');
     expect(s.seen.at(-1)?.headers.cookie).toBe('b=2; c=3; f=6');
   });
@@ -996,7 +1000,7 @@ describe('no real network', () => {
   });
 
   it('src/core/sim/ imports only what the allow-list names, never loads code dynamically, and names no network global', () => {
-    expect(SIM_FILES).toEqual(['browser.ts', 'cookies.ts', 'limits.ts', 'url.ts', 'world.ts']);
+    expect(SIM_FILES).toEqual(['browser.ts', 'cookies.ts', 'cross.ts', 'limits.ts', 'url.ts', 'world.ts']);
     for (const file of SIM_FILES) {
       const { runtime, problems } = simSourceCheck(readFileSync(new URL(file, SIM_DIR), 'utf8'));
       expect(runtime.filter((m) => !SIM_ALLOWED_IMPORTS.has(m)), file).toEqual([]);
@@ -1070,6 +1074,26 @@ describe('no real network', () => {
       const v = inSession(() => w.browser(s.handler)).follow('http://citadel.test/a?code=1');
       expect(v.outcome).toBe('attacker');
       inSession(() => w.browser(s.handler)).follow('http://example.com/');
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      releaseSpies(spies);
+    }
+  });
+
+  it('the cross-site primitives (E1: link, form, fetch, frame, click) touch no network function either', () => {
+    const spies = installNetSpies();
+    try {
+      const w = world();
+      const s = site({
+        '/api': { status: 200, headers: { 'access-control-allow-origin': 'http://attacker.test', 'access-control-allow-credentials': 'true' }, body: 'x' },
+        '/form': { status: 200 }, '/go': redirect('http://attacker.test/landed', 307),
+      });
+      const b = inSession(() => w.browser(s.handler));
+      b.crossSiteLink('http://citadel.test/form');
+      expect(b.crossSitePost('http://citadel.test/go', { a: '1' }).outcome).toBe('attacker');
+      expect(b.corsFetch('http://citadel.test/api', { credentials: 'include' }).verdict).toBe('readable');
+      expect(b.corsFetch('http://example.com/').verdict).toBe('no-answer');
+      expect(b.clickThrough(b.frame('http://citadel.test/form'), '/form', { a: '1' }).clicked).toBe(true);
       for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     } finally {
       releaseSpies(spies);

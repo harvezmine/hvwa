@@ -40,7 +40,7 @@ answers 502.
 The stack runs the app non-root on a read-only filesystem, on an internal
 network with **no internet access and no route to your machine**, behind a
 proxy published on loopback only. To check all of that on your machine (needs
-Node 22.16+ and Docker):
+Node 22.18+ and Docker):
 
 ```sh
 npm run verify:docker
