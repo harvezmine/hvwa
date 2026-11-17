@@ -198,11 +198,12 @@ describe('absolute-form request targets', () => {
 describe('appOptionsFromConfig (what server.ts passes to createApp)', () => {
   const SECRET16 = '0123456789abcdef';
 
-  it('maps the data dir, flag secret and HVWA_ALLOWED_HOSTS', () => {
+  it('maps the data dir, flag secret, HVWA_ALLOWED_HOSTS and HVWA_EDITION', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-opts-'));
     dirs.push(dir);
     const opts = appOptionsFromConfig(parseConfig({ FLAG_SECRET: SECRET16, HVWA_ALLOWED_HOSTS: 'hvwa.lab' }), dir);
-    expect(opts).toEqual({ dbPath: join(dir, 'hvwa.db'), flagSecret: SECRET16, allowedHosts: ['hvwa.lab'] });
+    expect(opts).toEqual({ dbPath: join(dir, 'hvwa.db'), flagSecret: SECRET16, allowedHosts: ['hvwa.lab'], edition: 'full' });
+    expect(appOptionsFromConfig(parseConfig({ HVWA_EDITION: 'lite' }), dir).edition).toBe('lite');
   });
 
   it('without FLAG_SECRET, uses the secret persisted in the data dir', () => {

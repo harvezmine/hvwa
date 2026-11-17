@@ -3,7 +3,7 @@ import { Router, type Request } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { allChallenges, getChallenge, type Challenge } from '../core/registry.js';
+import { REGISTRY, type Challenge, type ChallengeSet } from '../core/registry.js';
 import { scoreFor, progress, bestSolve } from '../core/scoreboard.js';
 import { unlockedTiers } from '../core/hints.js';
 import { isLevel, levelRank, FLAG_LEVELS, LEVELS, type Level } from '../core/levels.js';
@@ -74,14 +74,16 @@ function diffPair(c: Challenge): { vuln: string; secure: string; level: Level } 
   return vuln === undefined || secure === undefined ? undefined : { vuln, secure, level: low };
 }
 
-// Reads only the registry; never imports a challenge directly.
+// Reads only the registry (through `challenges`, the app's edition); never imports a challenge directly.
+// A challenge outside `challenges` is unknown on every page (404) and absent from every list and count.
 // lang / t come from res.locals (langMiddleware).
-export function portalRouter(db: DatabaseSync): Router {
+export function portalRouter(db: DatabaseSync, challenges: ChallengeSet = REGISTRY): Router {
   const r = Router();
+  const getChallenge = (id: string) => challenges.get(id);
 
   r.get('/', async (_req, res) => {
     const byDistrict = new Map<string, Challenge[]>();
-    for (const c of allChallenges()) {
+    for (const c of challenges.all()) {
       const list = byDistrict.get(c.district) ?? [];
       list.push(c);
       byDistrict.set(c.district, list);
@@ -123,7 +125,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const c = getChallenge(req.params.id);
     if (!c) { next(); return; }
     const answer = typeof req.body?.submission === 'string' ? req.body.submission : '';
-    const result = await submitFlag(db, req.sessionId, c.id, answer);
+    const result = await submitFlag(db, req.sessionId, c.id, answer, challenges);
     const view: Flash = result.status === 'wrong' || result.status === 'unknown_challenge'
       ? { key: 'wrong' }
       : result.status === 'new_best'
@@ -139,7 +141,7 @@ export function portalRouter(db: DatabaseSync): Router {
     const c = getChallenge(req.params.id);
     if (!c) { next(); return; }
     const tier = parseTier(req.body?.tier);
-    const result = tier === undefined ? undefined : unlockHint(db, req.sessionId, c.id, tier);
+    const result = tier === undefined ? undefined : unlockHint(db, req.sessionId, c.id, tier, challenges);
     if (result?.ok) {
       if (isHtmx(req)) {
         res.type('html').send(`<p class="hint-text" data-tier="${result.hint.id}">${escapeHtml(result.hint.text[req.lang])}</p>`);
@@ -177,8 +179,8 @@ export function portalRouter(db: DatabaseSync): Router {
     const sid = req.sessionId;
     await sendPage(res, view('scoreboard'), {
       pageTitle: res.locals.t('scoreboard.title'),
-      score: scoreFor(db, sid),
-      solved: progress(db, sid).solved,
+      score: scoreFor(db, sid, challenges.only),
+      solved: progress(db, sid, challenges.only).solved,
     });
   });
 

@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
-import type { Config } from './config.js';
+import { editionFrom, type Config } from './config.js';
+import { editionChallengeIds, type Edition } from './editions.js';
+import { challengeSet, getChallenge, type ChallengeSet } from './core/registry.js';
 import { setFlagSecret } from './core/flags.js';
 import { hostGuard } from './core/host-guard.js';
 import { resolveFlagSecret } from './core/secrets.js';
@@ -48,6 +50,12 @@ export interface AppOptions {
    * (DNS-rebinding guard). server.ts passes HVWA_ALLOWED_HOSTS.
    */
   allowedHosts?: readonly string[];
+  /**
+   * Which challenges to serve (src/editions.ts): 'full' = every registered one, 'lite' = the lite list.
+   * Overrides the environment; when omitted, HVWA_EDITION decides (blank/unset = 'full'). server.ts
+   * passes the validated config value; tests/support/setup.ts pins HVWA_EDITION=full for every spec.
+   */
+  edition?: Edition;
 }
 
 /**
@@ -56,21 +64,38 @@ export interface AppOptions {
  * Host names from HVWA_ALLOWED_HOSTS.
  */
 export function appOptionsFromConfig(
-  config: Pick<Config, 'FLAG_SECRET' | 'HVWA_ALLOWED_HOSTS'>,
+  config: Pick<Config, 'FLAG_SECRET' | 'HVWA_ALLOWED_HOSTS' | 'HVWA_EDITION'>,
   dataDir: string,
 ): AppOptions {
   return {
     dbPath: join(dataDir, 'hvwa.db'),
     flagSecret: resolveFlagSecret(dataDir, config.FLAG_SECRET),
     allowedHosts: config.HVWA_ALLOWED_HOSTS,
+    edition: config.HVWA_EDITION,
   };
 }
 
-/** The Express app plus its typed platform DB handle on `locals.db`. */
-export type HvwaApp = Express & { locals: { db: DatabaseSync } };
+/**
+ * The Express app plus its typed platform DB handle on `locals.db`, and the edition it serves
+ * (`locals.challenges` is what it mounts, lists and scores; server.ts prints its count).
+ */
+export type HvwaApp = Express & { locals: { db: DatabaseSync; edition: Edition; challenges: ChallengeSet } };
+
+/** The ChallengeSet of an edition. Every challenge the edition lists must be registered by now. */
+function editionSet(edition: Edition): ChallengeSet {
+  const ids = editionChallengeIds(edition);
+  const missing = (ids ?? []).filter((id) => getChallenge(id) === undefined);
+  if (missing.length > 0) {
+    throw new Error(`createApp: the ${edition} edition lists ${missing.join(', ')}, which ${missing.length === 1 ? 'is' : 'are'} not ` +
+      'registered (import src/districts/index.js before createApp, or fix src/editions.ts)');
+  }
+  return challengeSet(ids);
+}
 
 export function createApp(opts: AppOptions = {}): HvwaApp {
   if (opts.flagSecret) setFlagSecret(opts.flagSecret);
+  const edition = opts.edition ?? editionFrom(process.env);
+  const challenges = editionSet(edition);
 
   const db = openDb(opts.dbPath ?? ':memory:');
   migrate(db);
@@ -79,7 +104,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   // use a file DB (Windows cannot delete a file SQLite still holds open).
   // Object.assign keeps the same locals object and yields the typed shape.
   const base = express();
-  const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db }) });
+  const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db, edition, challenges }) });
 
   // FIRST: requests for a foreign Host (DNS rebinding) never reach anything else.
   app.use(hostGuard(opts.allowedHosts));
@@ -95,9 +120,9 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use('/static', express.static(join(here, 'public'), { index: false }));
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
-  app.use('/api', checkerRouter(db));
-  mountChallenges(app, { now: opts.resetClock }); // every registered challenge at /d/<district>/<slug>
-  app.use('/', portalRouter(db));
+  app.use('/api', checkerRouter(db, challenges));
+  mountChallenges(app, { now: opts.resetClock, challenges }); // the edition's challenges at /d/<district>/<slug>
+  app.use('/', portalRouter(db, challenges));
 
   app.use(notFoundHandler());
   app.use(errorHandler()); // must stay last

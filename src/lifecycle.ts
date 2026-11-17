@@ -2,6 +2,7 @@
 import type { Server } from 'node:http';
 import type { DatabaseSync } from 'node:sqlite';
 import type { HvwaApp } from './app.js';
+import type { Edition } from './editions.js';
 
 /** Printable URL for host:port; IPv6 literals get brackets (http://[::1]:1337). */
 export function listenUrl(host: string, port: number): string {
@@ -9,16 +10,24 @@ export function listenUrl(host: string, port: number): string {
   return `http://${h}:${port}`;
 }
 
+/** What the server runs with, for the banner lines after the count. */
+export interface BannerInfo {
+  /** The edition served (src/editions.ts). */
+  edition?: Edition;
+}
+
 /**
  * Lines printed once listening: the URL with the safety warning, then the
- * number of registered challenges (verify:dist compares it with what the
- * portal links).
+ * number of challenges served (the edition's; verify:dist compares it with
+ * what the portal links), then the edition when given.
  */
-export function startupBanner(url: string, challengeCount: number): string[] {
-  return [
+export function startupBanner(url: string, challengeCount: number, info: BannerInfo = {}): string[] {
+  const lines = [
     `HVWA on ${url} — DO NOT expose to untrusted networks`,
     `HVWA: ${challengeCount} challenge(s) registered`,
   ];
+  if (info.edition) lines.push(`HVWA: edition ${info.edition}`);
+  return lines;
 }
 
 /** Listen on host:port; resolves once listening, rejects on bind errors (e.g. EADDRINUSE). */

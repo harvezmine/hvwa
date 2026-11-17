@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseConfig, loadConfig, isLoopbackHost, bindRefusal } from '../src/config.js';
+import { parseConfig, loadConfig, isLoopbackHost, bindRefusal, editionFrom } from '../src/config.js';
 import { resolveFlagSecret } from '../src/core/secrets.js';
 
 const dirs: string[] = [];
@@ -16,6 +16,7 @@ describe('parseConfig', () => {
     expect(c).toEqual({
       HOST: '127.0.0.1', PORT: 1337, AI_BACKEND: 'sim',
       FLAG_SECRET: undefined, HVWA_ALLOW_REMOTE: false, HVWA_DATA_DIR: undefined, HVWA_ALLOWED_HOSTS: [],
+      HVWA_EDITION: 'full',
     });
     expect(parseConfig({ SESSION_SECRET: 'x' })).not.toHaveProperty('SESSION_SECRET');
   });
@@ -70,6 +71,26 @@ describe('parseConfig', () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.errors).toEqual([expect.stringMatching(/^HVWA_ALLOWED_HOSTS: \S/)]);
     });
+
+  it('HVWA_EDITION is full (default, blank) or lite; anything else is a readable error', () => {
+    expect(parseConfig({}).HVWA_EDITION).toBe('full');
+    expect(parseConfig({ HVWA_EDITION: ' ' }).HVWA_EDITION).toBe('full');
+    expect(parseConfig({ HVWA_EDITION: 'full' }).HVWA_EDITION).toBe('full');
+    expect(parseConfig({ HVWA_EDITION: 'lite' }).HVWA_EDITION).toBe('lite');
+    for (const HVWA_EDITION of ['LITE', 'mini', 'lite ', '1']) {
+      const r = loadConfig({ HVWA_EDITION });
+      expect(r.ok, HVWA_EDITION).toBe(false);
+      if (!r.ok) expect(r.errors).toEqual([expect.stringMatching(/^HVWA_EDITION: \S/)]);
+    }
+  });
+
+  it('editionFrom(env), the default of createApp(), applies the same rule to HVWA_EDITION alone', () => {
+    expect(editionFrom({})).toBe('full');
+    expect(editionFrom({ HVWA_EDITION: '' })).toBe('full');
+    expect(editionFrom({ HVWA_EDITION: 'lite' })).toBe('lite');
+    expect(editionFrom({ HVWA_EDITION: 'lite', PORT: '99999' })).toBe('lite'); // other settings are not its business
+    expect(() => editionFrom({ HVWA_EDITION: 'mini' })).toThrow(/^HVWA_EDITION: /);
+  });
 
   it('an empty FLAG_SECRET falls back to the persisted secret', () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-config-'));

@@ -32,6 +32,7 @@ const dataDir = config.HVWA_DATA_DIR
 mkdirSync(dataDir, { recursive: true });
 
 // A wrong challenge dir or a missing level file fails at startup, not on first View Source.
+// Every registered challenge is checked, whichever edition is served: they all ship in dist/.
 for (const c of allChallenges()) assertChallengeFiles(c);
 
 const app = createApp(appOptionsFromConfig(config, dataDir));
@@ -48,7 +49,8 @@ try {
   app.locals.db.close();
   process.exit(1);
 }
-for (const line of startupBanner(listenUrl(config.HOST, config.PORT), allChallenges().length)) console.log(line);
+const served = app.locals.challenges.all().length; // the edition's challenges (HVWA_EDITION)
+for (const line of startupBanner(listenUrl(config.HOST, config.PORT), served, { edition: app.locals.edition })) console.log(line);
 
 // Graceful stop: wait for server.close() to finish, then close the DB, then exit.
 let stopping = false;

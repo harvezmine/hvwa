@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MIN_FLAG_SECRET_LENGTH } from './core/flags.js';
+import { DEFAULT_EDITION, EDITIONS, type Edition } from './editions.js';
 
 // Blank / whitespace-only env values (e.g. `PORT=` in a .env file) mean
 // "unset" — the default applies — rather than a validation error.
@@ -10,6 +11,10 @@ const unsetIfBlank = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(blankTo
 // inner hyphens) or a bracketed IPv6 literal. No scheme, port, path or wildcard.
 const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
 const ALLOWED_HOST_RE = new RegExp(`^(?:${LABEL}(?:\\.${LABEL})*|\\[[0-9a-f:.]+\\])$`);
+
+// Which challenges this server serves (src/editions.ts). createApp() reads the same rule when it gets
+// no `edition` option (editionFrom below).
+const EDITION_SETTING = unsetIfBlank(z.enum(EDITIONS).default(DEFAULT_EDITION));
 
 const schema = z.object({
   HOST: unsetIfBlank(z.string().trim().min(1).default('127.0.0.1')),
@@ -35,6 +40,7 @@ const schema = z.object({
     }
     return hosts;
   }),
+  HVWA_EDITION: EDITION_SETTING,
 });
 
 export type Config = z.infer<typeof schema>;
@@ -57,6 +63,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ok: false,
     errors: r.error.issues.map((i) => `${i.path.join('.') || '(env)'}: ${i.message.replace(/\s+/g, ' ')}`),
   };
+}
+
+/** One setting parsed on its own (createApp()'s defaults), or a readable Error naming it. */
+function setting<T>(name: string, s: z.ZodType<T, z.ZodTypeDef, unknown>, env: Record<string, string | undefined>): T {
+  const r = s.safeParse(env[name]);
+  if (r.success) return r.data;
+  throw new Error(`${name}: ${r.error.issues.map((i) => i.message).join('; ')}`);
+}
+
+/** HVWA_EDITION alone: createApp()'s edition when it is given none. Throws on an invalid value. */
+export function editionFrom(env: Record<string, string | undefined> = process.env): Edition {
+  return setting('HVWA_EDITION', EDITION_SETTING, env);
 }
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);

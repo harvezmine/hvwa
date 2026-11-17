@@ -5,3 +5,7 @@
 import { setPerSessionDefaults } from '../../src/core/lab.js';
 
 setPerSessionDefaults({ maxNewPerMinute: Infinity });
+
+// createApp() reads HVWA_EDITION when it gets no `edition` option. Pin the full edition, so a developer's
+// shell (HVWA_EDITION=lite) never changes what the suite serves; the edition specs pass `edition` explicitly.
+process.env.HVWA_EDITION = 'full';
