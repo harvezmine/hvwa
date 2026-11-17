@@ -25,6 +25,8 @@ declare global {
       t: (key: string) => string;
       /** Colour theme for the layout (themeMiddleware: ?theme= → hvwa_theme cookie → system). */
       uiTheme?: Theme;
+      /** The page query the language and theme toggles keep, ending in '&' (themeMiddleware, keptQuery); '' if none. */
+      prefQuery?: string;
       /** Clamped level; set only on challenge routes. */
       level?: Level;
       /** The challenge being served; set only on challenge routes. */

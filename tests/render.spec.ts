@@ -143,11 +143,11 @@ describe('page() / sendPage() guards', () => {
   it('reserves exactly the keys ejs and the layout depend on', () => {
     expect([...RESERVED_VIEW_KEYS].sort()).toEqual(
       ['__append', '__output', 'body', 'challenge', 'escapeFn', 'include', 'labBar', 'lang', 'level', 'locals',
-        'labPath', 'platformAuth', 'rethrow', 'simPanel', 't', 'title', 'uiTheme'].sort());
+        'labPath', 'platformAuth', 'rethrow', 'simPanel', 't', 'title', 'uiTheme', 'prefQuery'].sort());
   });
 
   it.each(['escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-    'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme'])(
+    'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery'])(
     'rejects reserved data key %s', async (key) => {
       const app = appWith(async (_req, res) => { res.send(await page(res, fixture, { name: 'x', [key]: 'y' })); });
       const res = await request(app).get('/');

@@ -29,6 +29,40 @@ const get = (path: string, cookie?: string) => {
   return cookie ? r.set('Cookie', cookie) : r;
 };
 
+describe('language and theme toggles keep the page query (keptQuery)', () => {
+  it('keeps other query params and drops lang/theme, so a toggle never loses ?next= or ?level=', async () => {
+    const res = await get('/d/shell-test/one?level=templar&lang=id&theme=dark&q=a%20b');
+    expect(res.text).toContain('href="?level=templar&amp;q=a+b&amp;lang=en"');
+    expect(res.text).toContain('href="?level=templar&amp;q=a+b&amp;lang=id"');
+    expect(res.text).toContain('href="?level=templar&amp;q=a+b&amp;theme=light"');
+    expect(res.text).not.toContain('lang=id&amp;lang=');
+  });
+
+  it('percent-encodes kept values, so a reflected payload never breaks out of the href', async () => {
+    const res = await get('/d/shell-test/one?q=%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E');
+    expect(res.text).toContain('href="?q=%22%3E%3Cscript%3Ealert%281%29%3C%2Fscript%3E&amp;lang=en"');
+    expect(res.text).not.toContain('<script>alert(1)');
+  });
+
+  it('drops a long query instead of copying it into every toggle (lab pages have a 16 KiB budget)', async () => {
+    const res = await get(`/d/shell-test/one?q=${'x'.repeat(600)}`);
+    expect(res.text).toContain('href="?lang=en"');
+    expect(res.text).toContain('href="?theme=light"');
+    expect(res.text).not.toContain('x'.repeat(600) + '&amp;lang=');
+  });
+
+  it('never carries the one-shot flag-result params (r, lvl, g), so a toggle cannot replay a result', async () => {
+    const res = await get('/d/shell-test/one?r=new_best&lvl=templar&g=999999&level=templar');
+    expect(res.text).toContain('href="?level=templar&amp;lang=en"');
+    expect(res.text).not.toContain('999999');
+  });
+
+  it('a plain page keeps the bare toggles', async () => {
+    const res = await get('/');
+    expect(res.text).toContain('href="?lang=id"');
+  });
+});
+
 describe('theme preference (core/theme.ts) and toggle', () => {
   it('defaults to the system theme: no data-theme, both toggle links, no cookie', async () => {
     const res = await get('/');

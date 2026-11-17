@@ -37,12 +37,13 @@ function serverEjsOptions(): Options {
  * (escapeFn, include, rethrow, __append, __output, locals) and the context
  * the engine provides (body, labBar and simPanel for the layout; t and lang
  * from res.locals; challenge, level and labPath on challenge routes; platformAuth, the login's account bar
- * and default-password banner, from res.locals; uiTheme, the colour theme, from res.locals), plus title: the document <title> is the
+ * and default-password banner, from res.locals; uiTheme, the colour theme, and prefQuery, the query the
+ * language and theme toggles keep, from res.locals), plus title: the document <title> is the
  * platform's (portal pages pass pageTitle, which stays unreserved; a lab page gets labBar.pageTitle).
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme',
+  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */

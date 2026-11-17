@@ -1,4 +1,5 @@
 <!doctype html>
+<% const keep = typeof prefQuery === 'string' ? prefQuery : ''; -%>
 <html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>"<% if (typeof uiTheme !== 'undefined' && (uiTheme === 'dark' || uiTheme === 'light')) { %> data-theme="<%= uiTheme %>"<% } %>>
 <head>
   <meta charset="utf-8">
@@ -38,14 +39,14 @@
 <% } -%>
       <div class="topbar-tools">
         <div class="seg seg-compact lang-switch" role="group" aria-label="<%= t('nav.language') %>">
-          <a href="?lang=en" class="seg-item" hreflang="en" lang="en" aria-label="<%= t('nav.lang_en') %>"<% if (lang === 'en') { %> aria-current="true"<% } %>>EN</a>
-          <a href="?lang=id" class="seg-item" hreflang="id" lang="id" aria-label="<%= t('nav.lang_id') %>"<% if (lang === 'id') { %> aria-current="true"<% } %>>ID</a>
+          <a href="?<%= keep %>lang=en" class="seg-item" hreflang="en" lang="en" aria-label="<%= t('nav.lang_en') %>"<% if (lang === 'en') { %> aria-current="true"<% } %>>EN</a>
+          <a href="?<%= keep %>lang=id" class="seg-item" hreflang="id" lang="id" aria-label="<%= t('nav.lang_id') %>"<% if (lang === 'id') { %> aria-current="true"<% } %>>ID</a>
         </div>
 <% if (typeof uiTheme === 'undefined' || uiTheme !== 'light') { -%>
-        <a href="?theme=light" class="icon-btn theme-toggle theme-to-light" aria-label="<%= t('theme.to_light') %>" title="<%= t('theme.to_light') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sun"></use></svg></a>
+        <a href="?<%= keep %>theme=light" class="icon-btn theme-toggle theme-to-light" aria-label="<%= t('theme.to_light') %>" title="<%= t('theme.to_light') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sun"></use></svg></a>
 <% } -%>
 <% if (typeof uiTheme === 'undefined' || uiTheme !== 'dark') { -%>
-        <a href="?theme=dark" class="icon-btn theme-toggle theme-to-dark" aria-label="<%= t('theme.to_dark') %>" title="<%= t('theme.to_dark') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-moon"></use></svg></a>
+        <a href="?<%= keep %>theme=dark" class="icon-btn theme-toggle theme-to-dark" aria-label="<%= t('theme.to_dark') %>" title="<%= t('theme.to_dark') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-moon"></use></svg></a>
 <% } -%>
 <% if (platformAuth && platformAuth.signedIn) { -%>
         <details class="menu account-menu" data-testid="account-nav">
