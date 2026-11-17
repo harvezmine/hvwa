@@ -1,0 +1,27 @@
+<%# Archive API: the JSON request console (decision Q16, no GraphiQL). A plain form, no script: it posts back to the lab root with a hidden intent, and the lab answers in the output box. What the player typed is only ever output through the escaped tag, as text. Include it with the data of apiView (requestConsole). Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<% if (requestConsole) { -%>
+<section class="lab-note" data-testid="console">
+  <h2>Request console</h2>
+  <form method="post">
+    <input type="hidden" name="intent" value="console">
+    <label>Method
+      <select name="method">
+<% requestConsole.methods.forEach(function (m) { -%>
+        <option value="<%= m %>"<%= requestConsole.typed.method === m ? ' selected' : '' %>><%= m %></option>
+<% }); -%>
+      </select>
+    </label>
+    <label>Path <input type="text" name="path" value="<%= requestConsole.typed.path %>" placeholder="/api/..." maxlength="300"></label>
+    <label>Headers, one <code>Name: value</code> per line
+      <textarea name="headers" rows="3" maxlength="2000"><%= requestConsole.typed.headers %></textarea>
+    </label>
+    <label>Body
+      <textarea name="body" rows="6" maxlength="8192"><%= requestConsole.typed.body %></textarea>
+    </label>
+    <button type="submit">Send</button>
+  </form>
+<% if (requestConsole.output !== null) { -%>
+  <pre data-testid="console-output"><%= requestConsole.output %></pre>
+<% } -%>
+</section>
+<% } -%>

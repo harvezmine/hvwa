@@ -1,7 +1,7 @@
 // The upload engine never reaches the real filesystem, the network, or anything that runs code: core/upload.ts,
 // core/upload-zip.ts and core/simfs.ts are parsed with the TypeScript compiler and may import only an allow-list
 // (node:buffer, node:zlib, each other, core/sim/limits.ts, and core/lab.ts for simfs's per-session cap), never load
-// code dynamically and name no network or code-loading global. Then a full upload, archive and interpreter run is
+// code dynamically and name no network or code-loading global. Then a full upload, archive, interpreter and include run is
 // made with the fs, network, child-process and vm functions spied (for ES-module importers too, through
 // syncBuiltinESMExports): none may be called. (Same style as the core/sim/ guard in tests/sim.spec.ts.)
 import { readFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { afterAll, describe, it, expect, vi } from 'vitest';
 import { perSession } from '../src/core/lab.js';
 import { looksLikeImage, parseMultipart } from '../src/core/upload.js';
 import { readZip } from '../src/core/upload-zip.js';
-import { simFs, simInterpret } from '../src/core/simfs.js';
+import { simFs, simInclude, simInterpret } from '../src/core/simfs.js';
 import { multipart, uploadReq, zipOf } from './support/uploads.js';
 
 const socketConnect = vi.spyOn(net.Socket.prototype, 'connect');
@@ -34,7 +34,7 @@ const ALLOWED: ReadonlySet<string> = new Set([
  * in the engine's own code. It is NOT a sandbox against hostile code: a computed name (`({})['con' + 'structor']`), a
  * template substitution or `String.fromCharCode(...)` still spells a way to Function that no source scan can see.
  * The backstop is the runtime traps below: every fs, network, child-process and vm function throws during the whole
- * flow. (Uploaded bytes never reach any of this as code: simInterpret only pattern-matches them.)
+ * flow. (Uploaded bytes never reach any of this as code: simInterpret and simInclude only pattern-match them.)
  */
 
 /**
@@ -193,6 +193,10 @@ async function wholeFlow(sessionId: string): Promise<void> {
   expect(fs.read('/srv/app/templates/welcome.txt')?.bytes.toString()).toBe("hvwa('CANARY')");
   expect(simInterpret(fs.read('/srv/app/uploads/restore/shell.php')?.bytes ?? Buffer.alloc(0), 'canary')).toBe('canary');
   expect(simInterpret(fs.read('/srv/app/uploads/x.gif')?.bytes ?? Buffer.alloc(0), 'canary')).toBe('canary');
+  // The simulated include (SC-13): a poisoned log is printed with the statement replaced; nothing runs.
+  fs.write('/var/log/scriptorium/access.log', '127.0.0.1 "GET /" 200 "<?hvwa CANARY ?>"', { pinned: true });
+  expect(simInclude(fs.read('/var/log/scriptorium/access.log')?.bytes ?? Buffer.alloc(0), () => 'canary')).toEqual({ output: '127.0.0.1 "GET /" 200 "canary"', ran: true });
+  expect(simInclude(fs.read('/srv/app/templates/welcome.txt')?.bytes ?? Buffer.alloc(0), 'canary').ran).toBe(false);
 }
 
 describe('a whole upload, archive and "execution" touches no filesystem, network, child-process or vm function', () => {

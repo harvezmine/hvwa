@@ -5,3 +5,4 @@ import './gatekeeper/index.js';
 import './relic-market/index.js';
 import './scriptorium/index.js';
 import './forum-of-pilgrims/index.js';
+import './archive-api/index.js';
