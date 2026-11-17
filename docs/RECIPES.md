@@ -1461,6 +1461,22 @@ has no `<summary>`).
   applies; other CSP directives are not evaluated. Per the SC-05
   amendment, the citadel serves the sigil inline inside an HTML page, the real route always sends an inert download,
   and the payload fires only in the preview.
+- **SC-05, the worked example of served markup** (`scriptorium/sc-05-svg-xss/`). Each level exports `accept(svg)`
+  (its upload filter: refuse, or the text to store) and `review(sigil)`: the gallery's WHOLE answer to the moderator's
+  `GET /review`, every header and the body, which the citadel handler returns as a raw `SimResponse` (a `Reply`
+  carries no Content-Type or Content-Disposition). Acolyte and Templar answer an HTML page with the sigil inline,
+  Inquisitor the file itself as `image/svg+xml` (read as XML), Divine an HTML page with the source escaped in a `<pre>`
+  and a download link. No level puts a CSP on the review page: a `sandbox` there would hide a Divine that inlines (the
+  oracle would see nothing run), and other directives are not evaluated anyway. One sigil per player (an upload
+  replaces it), at most 12 KiB (`receive(req, 'sigil', { maxFileBytes: 12 * 1024 })`), so every review page stays under
+  the oracle's 16 KiB and is judged whole (the spec checks the largest sigil at every level). The victim is a custom
+  action (follow `/review`, after re-arming the moderator's session) that returns a note when the payload did not run:
+  the verdict's `wellFormed: false`, `limited`, or `reachedMarker` with nothing run. The preview frame shows the
+  review's body whenever the moderator's browser renders it. **At Inquisitor that body is XML, but the preview draws it
+  inside an HTML page**, which forgives what an XML reader refuses (a missing `xmlns`, an unclosed tag): the page says
+  so, and the note tells the player why the moderator's browser ran nothing. The real `GET /sigil` (and the citadel's)
+  is the inert download at every level. Inquisitor and Divine refuse any `<!DOCTYPE` (a superset of "an internal
+  subset": a quoted `>` in the external id cannot slip a subset past it).
 - **HTML mail (FP-12).** Mail clients run no script. `linkSinks(html)` lists every link and resource URL in document
   order (`a`, `area`, `form`, `img`/`srcset`, CSS `url()`/`@import` ...), parsed with scripting off as a mail client
   parses. Build the mail's `links` from it, and classify each URL with `classifySimUrl`. It reports `link` with
