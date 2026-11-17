@@ -1,6 +1,11 @@
 // scripts/verify-dist.mjs — `npm run verify:dist` (NOT part of `npm test`).
 // Builds, boots dist/server.js on a free loopback port with a throwaway data
 // dir, probes it, then shuts it down. Exit code 0 = the production build runs.
+//
+// It boots the build the way the Docker image does: NODE_ENV=production, so the platform login is ON
+// (unless HVWA_AUTH=off is set for this run), and signs in with the default admin / password before
+// probing. HVWA_EDITION is passed through: `HVWA_EDITION=lite npm run verify:dist` expects exactly the
+// lite edition's 5 challenges.
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -11,25 +16,91 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const say = (msg) => console.log(`verify:dist ${msg}`);
 
+// What this run expects, from the same variables the server reads (blank = unset, as in config.ts).
+const setting = (name) => (process.env[name] ?? '').trim();
+const EDITION = setting('HVWA_EDITION') || 'full';
+if (!['full', 'lite'].includes(EDITION)) throw new Error(`verify:dist: HVWA_EDITION must be full or lite (got "${EDITION}")`);
+const AUTH = setting('HVWA_AUTH') || 'on'; // NODE_ENV=production below: unset means on
+if (!['on', 'off'].includes(AUTH)) throw new Error(`verify:dist: HVWA_AUTH must be on or off (got "${AUTH}")`);
+/** The lite edition's size (src/editions.ts holds the list; the server's banner line names the edition). */
+const LITE_COUNT = 5;
+const DEFAULT_LOGIN = { username: 'admin', password: 'password' };
+
 // A tiny cookie jar, so this script behaves like a browser: the first response's hvwa_sid (and any
 // other Set-Cookie) is sent on every later request. Without it every request mints a NEW session and
 // trips the server's new-session issuance limit (60/min) once enough challenges are registered.
-// Platform cookies are Path=/; sending every cookie everywhere is enough for these probes.
+// Platform cookies are Path=/; sending every cookie everywhere is enough for these probes. A cookie
+// set to '' (a cleared one: logout) is dropped. Redirects are never followed: a 303 to /login must
+// show up as a 303, not as the login page's 200.
 const jar = new Map();
 const sidsSeen = new Set();
 const MAX_SIDS = 2; // one for the whole run; one spare
 async function jfetch(url, init = {}) {
-  const res = await fetch(url, { ...init, headers: { ...init.headers, ...(jar.size ? { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') } : {}) } });
+  const res = await fetch(url, {
+    ...init, redirect: 'manual',
+    headers: { ...init.headers, ...(jar.size ? { cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') } : {}) },
+  });
   for (const line of res.headers.getSetCookie()) {
     const [pair] = line.split(';');
     const eq = pair.indexOf('=');
     if (eq < 1) continue;
     const name = pair.slice(0, eq).trim();
     const value = pair.slice(eq + 1).trim();
-    jar.set(name, value);
+    if (value === '') jar.delete(name);
+    else jar.set(name, value);
     if (name === 'hvwa_sid') sidsSeen.add(value);
   }
   return res;
+}
+
+/** POST an urlencoded form through the jar. */
+const postForm = (url, fields) => jfetch(url, {
+  method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString(),
+});
+const csrfOf = (html) => {
+  const v = /name="_csrf" value="([^"]+)"/.exec(html)?.[1];
+  if (!v) throw new Error('no _csrf field on the page');
+  return v;
+};
+
+/**
+ * The platform login, end to end: a signed-out browser is sent to /login (303) and the API answers 401;
+ * the default admin / password signs in (303, hvwa_auth) and the default-password banner shows.
+ */
+async function signIn(base) {
+  const gated = await jfetch(`${base}/`);
+  await gated.arrayBuffer();
+  if (gated.status !== 303 || gated.headers.get('location') !== '/login?next=%2F') {
+    throw new Error(`signed out, GET / -> ${gated.status} ${gated.headers.get('location') ?? ''} (expected 303 to /login?next=%2F)`);
+  }
+  const api = await jfetch(`${base}/api/submit`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  const apiBody = await api.text();
+  if (api.status !== 401 || JSON.parse(apiBody).error !== 'unauthorized') throw new Error(`signed out, POST /api/submit -> ${api.status} ${apiBody}`);
+  const page = await jfetch(`${base}/login`);
+  const html = await page.text();
+  if (page.status !== 200 || !html.includes('action="/login"')) throw new Error(`GET /login -> ${page.status}`);
+  const wrong = await postForm(`${base}/login`, { _csrf: csrfOf(html), username: 'admin', password: 'not-the-password' });
+  await wrong.arrayBuffer();
+  if (wrong.status !== 401) throw new Error(`a wrong password -> ${wrong.status} (expected 401)`);
+  const res = await postForm(`${base}/login`, { _csrf: csrfOf(html), ...DEFAULT_LOGIN, next: '/' });
+  await res.arrayBuffer();
+  if (res.status !== 303 || res.headers.get('location') !== '/') throw new Error(`POST /login as admin -> ${res.status} (expected 303 to /)`);
+  if (!jar.get('hvwa_auth')) throw new Error('POST /login set no hvwa_auth cookie');
+  say('login: signed out -> 303 /login and /api 401; admin / password (the default) -> 303 + hvwa_auth');
+}
+
+/** Sign out at the end: the token is revoked and the portal is gated again. */
+async function signOut(base) {
+  const page = await jfetch(`${base}/account/password`);
+  const html = await page.text();
+  if (page.status !== 200) throw new Error(`GET /account/password -> ${page.status}`);
+  const res = await postForm(`${base}/logout`, { _csrf: csrfOf(html) });
+  await res.arrayBuffer();
+  if (res.status !== 303 || res.headers.get('location') !== '/login') throw new Error(`POST /logout -> ${res.status}`);
+  const after = await jfetch(`${base}/`);
+  await after.arrayBuffer();
+  if (after.status !== 303) throw new Error(`after logout, GET / -> ${after.status} (expected 303)`);
+  say('logout: 303 /login, the portal is gated again');
 }
 
 function freePort() {
@@ -157,10 +228,14 @@ async function main() {
   const port = await freePort();
   const dataDir = mkdtempSync(join(tmpdir(), 'hvwa-verify-'));
   const base = `http://127.0.0.1:${port}`;
-  say(`booting dist/server.js on ${base} (HVWA_DATA_DIR=${dataDir})`);
+  say(`booting dist/server.js on ${base} (HVWA_DATA_DIR=${dataDir}, NODE_ENV=production, edition ${EDITION}, login ${AUTH})`);
   const child = spawn(process.execPath, [join(root, 'dist', 'server.js')], {
     cwd: root,
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), HVWA_DATA_DIR: dataDir, HVWA_ALLOW_REMOTE: '0' },
+    env: {
+      ...process.env, HOST: '127.0.0.1', PORT: String(port), HVWA_DATA_DIR: dataDir, HVWA_ALLOW_REMOTE: '0',
+      // As in the Docker image. A fresh data dir and no HVWA_ADMIN_PASSWORD: the account starts as admin / password.
+      NODE_ENV: 'production', HVWA_EDITION: EDITION, HVWA_AUTH: AUTH, HVWA_ADMIN_PASSWORD: '',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -175,11 +250,28 @@ async function main() {
     await expectOk(base, '/healthz', (b) => {
       if (JSON.parse(b).status !== 'ok') throw new Error(`/healthz body ${b}`);
     });
-    const index = await expectOk(base, '/', (b) => {
-      if (!/^<!doctype html>/i.test(b) || !b.includes('/static/app.css')) throw new Error('/ is not the portal page');
-    });
+    // The static assets are open even before signing in (the login page needs them).
     await expectOk(base, '/static/app.css', () => {});
     await expectOk(base, '/static/vendor/htmx.min.js', () => {});
+
+    await waitForOutput(() => output, new RegExp(`^HVWA: edition ${EDITION}\\r?$`, 'm'), 5000);
+    await waitForOutput(() => output, AUTH === 'on' ? /^HVWA: login on \(user admin\)\r?$/m : /^HVWA: login off/m, 5000);
+    if (AUTH === 'on') {
+      await waitForOutput(() => output, /^HVWA: the admin account still uses the DEFAULT password/m, 5000);
+      await signIn(base);
+    } else {
+      const login = await jfetch(`${base}/login`);
+      await login.arrayBuffer();
+      if (login.status !== 404) throw new Error(`HVWA_AUTH=off but GET /login -> ${login.status} (expected 404)`);
+      say('login: off (HVWA_AUTH=off): no /login, the portal is open');
+    }
+
+    const index = await expectOk(base, '/', (b) => {
+      if (!/^<!doctype html>/i.test(b) || !b.includes('/static/app.css')) throw new Error('/ is not the portal page');
+      const banner = b.includes('data-testid="default-password-banner"');
+      if (AUTH === 'on' && !banner) throw new Error('signed in with the default password, but / shows no default-password banner');
+      if (AUTH === 'off' && (banner || b.includes('data-testid="account-nav"'))) throw new Error('login off, but / shows login markup');
+    });
 
     const ids = await verifyChallenges(base, index);
     say(`checked ${ids.length} challenge(s) discovered over HTTP: ${ids.join(', ')}`);
@@ -189,7 +281,12 @@ async function main() {
     if (Number(count) !== ids.length) {
       throw new Error(`the server registered ${count} challenge(s) but ${ids.length} were discovered over HTTP`);
     }
-    say(`server registered ${count} challenge(s): all discovered`);
+    if (EDITION === 'lite' && ids.length !== LITE_COUNT) {
+      throw new Error(`the lite edition serves ${ids.length} challenge(s), expected exactly ${LITE_COUNT}`);
+    }
+    say(`server registered ${count} challenge(s) (edition ${EDITION}): all discovered`);
+
+    if (AUTH === 'on') await signOut(base);
 
     // Guard: a client that keeps its cookie jar is handed ONE session. More means the jar broke and
     // the run is leaning on (and soon tripping) the session issuance limit.

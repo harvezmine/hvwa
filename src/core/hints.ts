@@ -1,6 +1,6 @@
 // src/core/hints.ts
 import type { DatabaseSync } from 'node:sqlite';
-import { getChallenge, type HintTier } from './registry.js';
+import { REGISTRY, type ChallengeSet, type HintTier } from './registry.js';
 
 /** A hint tier from client input: integer 1..3 (number or numeric string), else undefined. */
 export function parseTier(raw: unknown): HintTier['id'] | undefined {
@@ -14,9 +14,12 @@ export type UnlockResult =
 
 // Unlock a hint tier for a session. The cost is stored with the unlock, so a
 // later change to (or removal of) the challenge never rewrites past scores.
-// Idempotent: unlocking twice records (and costs) once.
-export function unlockHint(db: DatabaseSync, sid: string, cid: string, tier: HintTier['id']): UnlockResult {
-  const ch = getChallenge(cid);
+// Idempotent: unlocking twice records (and costs) once. A challenge outside `challenges` (the app's
+// edition) is unknown.
+export function unlockHint(
+  db: DatabaseSync, sid: string, cid: string, tier: HintTier['id'], challenges: ChallengeSet = REGISTRY,
+): UnlockResult {
+  const ch = challenges.get(cid);
   if (!ch) return { ok: false, error: 'unknown_challenge' };
   const hint = ch.hints.find((h) => h.id === tier);
   if (!hint) return { ok: false, error: 'unknown_tier' };
@@ -33,9 +36,11 @@ export function unlockedTiers(db: DatabaseSync, sid: string, cid: string): numbe
 }
 
 // Total hint cost spent by a session (deducted from the raw score), from the
-// costs stored at unlock time.
-export function hintCost(db: DatabaseSync, sid: string): number {
-  const r = db.prepare('SELECT COALESCE(SUM(cost),0) AS total FROM hint_unlocks WHERE session_id=?')
-    .get(sid) as { total: number };
+// costs stored at unlock time; with `only`, just those challenges' (scoreFor()).
+export function hintCost(db: DatabaseSync, sid: string, only?: ReadonlySet<string>): number {
+  const r = (only === undefined
+    ? db.prepare('SELECT COALESCE(SUM(cost),0) AS total FROM hint_unlocks WHERE session_id=?').get(sid)
+    : db.prepare('SELECT COALESCE(SUM(cost),0) AS total FROM hint_unlocks WHERE session_id=? AND challenge_id IN (SELECT value FROM json_each(?))')
+      .get(sid, JSON.stringify([...only]))) as { total: number };
   return Number(r.total);
 }

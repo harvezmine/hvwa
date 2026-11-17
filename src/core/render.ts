@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { renderFile, type Options } from 'ejs';
 import { fileURLToPath } from 'node:url';
 import { dirname, isAbsolute, join } from 'node:path';
-import { t, DEFAULT_LANG, type Lang } from './i18n.js';
+import { t, districtName, DEFAULT_LANG, type Lang } from './i18n.js';
 import { LEVELS, type Level } from './levels.js';
 import { diffLines } from './diff.js';
 import { challengePath } from './mount.js';
@@ -36,12 +36,14 @@ function serverEjsOptions(): Options {
  * Data keys a view may not set: ejs's own template-function locals
  * (escapeFn, include, rethrow, __append, __output, locals) and the context
  * the engine provides (body, labBar and simPanel for the layout; t and lang
- * from res.locals; challenge, level and labPath on challenge routes), plus title: the document <title> is the
+ * from res.locals; challenge, level and labPath on challenge routes; platformAuth, the login's account bar
+ * and default-password banner, from res.locals; uiTheme, the colour theme, and prefQuery, the query the
+ * language and theme toggles keep, from res.locals), plus title: the document <title> is the
  * platform's (portal pages pass pageTitle, which stays unreserved; a lab page gets labBar.pageTitle).
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title',
+  'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */
@@ -59,7 +61,11 @@ export interface LabBar {
   /** One-shot notice text after a refused (cooling-down) restart; only for challenges with a reset hook. */
   readonly restartNotice?: string;
   /** One link per implemented level, rank order; Divine is labelled as the secure reference. */
-  readonly levels: readonly { id: Level; href: string; label: string; current: boolean }[];
+  readonly levels: readonly { id: Level; href: string; label: string; current: boolean; meaning: string }[];
+  /** What the served level means, one line (level_meaning.<level>). */
+  readonly levelMeaning: string;
+  /** The breadcrumb's district: its name (current lang) and its portal page, /d/<district>. */
+  readonly district: { readonly id: string; readonly name: string; readonly href: string };
 }
 
 /** Lab bar for a challenge route (res.locals.challenge and .level are set by mountChallenges), else undefined. */
@@ -79,7 +85,10 @@ function labBar(locals: Response['locals']): LabBar | undefined {
       href: `${challengePath(c)}?level=${l}`,
       label: t(l === 'divine' ? 'challenge.divine_tab' : `level.${l}`, lang),
       current: l === level,
+      meaning: t(`level_meaning.${l}`, lang),
     })),
+    levelMeaning: t(`level_meaning.${level}`, lang),
+    district: { id: c.district, name: districtName(c.district, lang), href: `/d/${c.district}` },
   };
 }
 
@@ -107,7 +116,9 @@ export async function page(res: Response, viewFile: string, data: Record<string,
   const ctx: Record<string, unknown> = { ...res.locals, ...data };
   const body = await renderFile(viewFile, ctx, serverEjsOptions());
   const simPanel = typeof res.locals.simPanel === 'function' ? res.locals.simPanel() : undefined;
-  return renderFile(layoutFile, { ...ctx, body, labBar: labBar(res.locals), simPanel }, serverEjsOptions());
+  // platformAuth comes from res.locals only (src/auth sets it; reserved, so no view data can fake it).
+  const platformAuth = res.locals.platformAuth;
+  return renderFile(layoutFile, { ...ctx, body, labBar: labBar(res.locals), simPanel, platformAuth }, serverEjsOptions());
 }
 
 /**

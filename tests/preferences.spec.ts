@@ -75,24 +75,26 @@ describe('level preference', () => {
 });
 
 describe('lang preference', () => {
-  it('defaults to id', async () => {
+  it('defaults to en, and sets no cookie', async () => {
     const res = await request(app()).get('/probe');
-    expect(res.body).toMatchObject({ lang: 'id', nav: 'Distrik' });
+    expect(res.body).toMatchObject({ lang: 'en', nav: 'Districts' });
+    expect(cookieFor(res, 'hvwa_lang')).toBeUndefined();
   });
 
+  // Indonesian (not the default) so "remembered" cannot pass by falling back to the default.
   it('a valid ?lang= is used, persisted in an httpOnly cookie, and remembered', async () => {
     const agent = request.agent(app());
-    const r1 = await agent.get('/probe?lang=en');
-    expect(r1.body).toMatchObject({ lang: 'en', nav: 'Districts' });
-    expect(cookieFor(r1, 'hvwa_lang')).toMatch(/hvwa_lang=en;.*HttpOnly/i);
+    const r1 = await agent.get('/probe?lang=id');
+    expect(r1.body).toMatchObject({ lang: 'id', nav: 'Distrik' });
+    expect(cookieFor(r1, 'hvwa_lang')).toMatch(/hvwa_lang=id;.*HttpOnly/i);
     expect(cookieFor(r1, 'hvwa_lang')).toMatch(/SameSite=Lax/i);
     const r2 = await agent.get('/probe');
-    expect(r2.body.lang).toBe('en');
+    expect(r2.body.lang).toBe('id');
   });
 
   it('an invalid ?lang= falls back to the cookie', async () => {
-    const res = await request(app()).get('/probe?lang=fr').set('Cookie', 'hvwa_lang=en');
-    expect(res.body.lang).toBe('en');
+    const res = await request(app()).get('/probe?lang=fr').set('Cookie', 'hvwa_lang=id');
+    expect(res.body.lang).toBe('id');
     expect(cookieFor(res, 'hvwa_lang')).toBeUndefined();
   });
 

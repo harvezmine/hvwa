@@ -403,6 +403,11 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   deliberately client-writable counter: no); never a name starting with `hvwa_` (the platform's). A victim-driven lab
   sets them through its `Reply` (`TwinCookie`: `httpOnly` and `sameSite` default to HttpOnly and Lax, section 8).
   Tests: `describeLabCookies` (`victim-lab.testkit.ts`) checks the name per level, the canonical path and HttpOnly.
+- **The platform's cookies are off limits:** `hvwa_sid` (the anonymous session every lab is keyed by), `hvwa_level`,
+  `hvwa_lang`, `hvwa_theme` (the colour theme, core/theme.ts) and `hvwa_auth` (the platform login's token, src/auth; HttpOnly, SameSite=Lax, Path=/). A lab never
+  reads, echoes, sets or clears any of them; lab state belongs to `hvwa_sid` (via `perSession`), never to the login.
+  With the login on (the Docker image), every lab route sits behind it: a lab test that needs that runs with
+  `createApp({ auth: true })`; every other spec runs with the login off (`tests/support/setup.ts`).
 - **A request without the lab's cookie must not change lab state.** Probing a page (an admin page, a wrong guess)
   must not mint sessions, advance generators or push activity entries; only the pages the player uses to get a
   session do. Pin entries the lab depends on (the admin's session, the admin's activity line) so trimming a list
@@ -417,10 +422,12 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
 - **Fixtures** (wordlists, leaked lists) live in `fixtures/`, are read once with `fixtureLines` and served with
   `sendLines`; the page links them by absolute path.
 
-**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** The platform sends no CSP, no `X-Frame-Options` and
-no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the clickjacking and CORS
-labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`. Nothing else
-changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages (`tests/http.spec.ts`).
+**Lab headers (route-scoped, `core/http.ts`; owner decision Q4).** On lab routes the platform sends no CSP, no
+`X-Frame-Options` and no CORS headers, and no lab changes that globally: a lab that needs them (an XSS Divine's CSP, the
+clickjacking and CORS labs' per-level framing and CORS answers) sets them on its OWN response with `setLabHeaders(res, h)`.
+Nothing else changes: not the lab's other routes, not another lab, not the portal, not the platform's own pages
+(`tests/http.spec.ts`). The platform's own pages carry only their own framing rule, never a lab's: portal pages
+`frame-ancestors 'self'` (`src/portal/frame-policy.ts`, skipped for every `/d/` path), the login pages `'none'`.
 
 ```ts
 // levels/divine.ts: the level decides, so View Source and the Diff show it
@@ -460,13 +467,16 @@ return { status: 200, headers: labHeaders(impl.for(level).headers ?? {}), body }
 
 ## 5. Views, language and hints
 
+- **Look and markup: see [`docs/UI.md`](UI.md)** (the "Sanctum" style guide): tokens, components, the CSP and
+  page-size rules (no inline script, handler or style; a whole lab page stays under the XSS oracle's 16 KiB), and
+  section 5 there, "Writing a lab view". A lab view needs no CSS of its own: `.lab` and its descendants are styled.
 - **Language policy.** Content inside a lab (the vulnerable app's own headings,
   labels, messages) is English by design: it is a realistic target. All player
-  guidance is bilingual (ID/EN): `title`, `summary` and `hints` are `Text`
+  guidance is bilingual (EN default, ID): `title`, `summary` and `hints` are `Text`
   values; platform strings go in `core/i18n.ts`.
-- **The lab bar is automatic.** The layout shows the id, title, summary, served
-  level, a level switcher and a link back to `/c/<id>` on every challenge route,
-  and sets `<title>` to `<id> — <title>`. Do not repeat these in the view. A view cannot pass `title`: it is a
+- **The lab bar is automatic.** The layout shows the breadcrumb, id, title, summary, served
+  level (and what it means), a level switcher, Restart (with a reset hook) and a link back to `/c/<id>` on every
+  challenge route, and sets `<title>` to `<id> — <title>`. Do not repeat these in the view. A view cannot pass `title`: it is a
   reserved key (sendPage throws), so the platform owns the document `<title>`; name a heading `heading`.
 - **Lab views** (see `gk-01-sqli-login/views/login.ejs`): wrap the app in
   `<section class="lab">`; show messages in `<p class="lab-message lab-success|lab-error">`;

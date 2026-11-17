@@ -7,6 +7,7 @@ import { assertChallengeFiles } from './core/source.js';
 import { appOptionsFromConfig, createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
 import { listen, closeGracefully, listenUrl, startupBanner } from './lifecycle.js';
+import { adminPasswordNotice, scrubEnv } from './auth/startup.js';
 import type { Server } from 'node:http';
 
 // Validate the environment: one readable line per problem, then exit 1.
@@ -17,6 +18,8 @@ if (!loaded.ok) {
   process.exit(1);
 }
 const { config } = loaded;
+// The config holds it now; labs are built to leak, and code-execution ones reach process.env.
+scrubEnv(process.env, ['HVWA_ADMIN_PASSWORD']);
 
 // Deliberately vulnerable: refuse a non-loopback bind unless explicitly allowed.
 const refusal = bindRefusal(config);
@@ -32,6 +35,7 @@ const dataDir = config.HVWA_DATA_DIR
 mkdirSync(dataDir, { recursive: true });
 
 // A wrong challenge dir or a missing level file fails at startup, not on first View Source.
+// Every registered challenge is checked, whichever edition is served: they all ship in dist/.
 for (const c of allChallenges()) assertChallengeFiles(c);
 
 const app = createApp(appOptionsFromConfig(config, dataDir));
@@ -48,7 +52,15 @@ try {
   app.locals.db.close();
   process.exit(1);
 }
-for (const line of startupBanner(listenUrl(config.HOST, config.PORT), allChallenges().length)) console.log(line);
+const served = app.locals.challenges.all().length; // the edition's challenges (HVWA_EDITION)
+const login = app.locals.auth !== undefined;
+for (const line of startupBanner(listenUrl(config.HOST, config.PORT), served, { edition: app.locals.edition, login })) console.log(line);
+// Never the password itself: only whether one was configured and ignored, or the default is still in use.
+const adminNotice = adminPasswordNotice(config.HVWA_ADMIN_PASSWORD !== undefined, app.locals.auth);
+if (adminNotice) console.warn(adminNotice);
+if (app.locals.auth?.usesDefaultPassword()) {
+  console.warn('HVWA: the admin account still uses the DEFAULT password: sign in and change it at /account/password');
+}
 
 // Graceful stop: wait for server.close() to finish, then close the DB, then exit.
 let stopping = false;

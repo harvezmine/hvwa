@@ -1,4 +1,4 @@
-# Build context = package*.json, tsconfig.json, scripts/, src/ only.
+# Build context = package*.json, tsconfig.json, scripts/, src/ and docker-compose.hub.yml only.
 node_modules
 dist
 data
@@ -13,11 +13,16 @@ docs
 *.db-journal
 *.db-wal
 *.db-shm
+# ...at any depth (a stray data dir or lab DB under src/ never reaches the image).
+**/*.db*
 # Never bake secrets into the image.
 .env
 .env.*
+**/.env*
 docker
-docker-compose.yml
+docker-compose*.yml
+# ...except the pull-only one, which the image ships (Dockerfile COPY).
+!docker-compose.hub.yml
 Dockerfile
 .dockerignore
 *.md

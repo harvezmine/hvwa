@@ -2,7 +2,7 @@
 // pure functions the portal reuses. /api is JSON-only; HTML lives in the portal.
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
-import { getChallenge } from './registry.js';
+import { REGISTRY, type ChallengeSet } from './registry.js';
 import { recordSolve, bestSolve } from './scoreboard.js';
 import { FLAG_LEVELS, pointsForLevel, type Level } from './levels.js';
 import { unlockHint, parseTier } from './hints.js';
@@ -28,12 +28,13 @@ export type SubmitResult =
 /**
  * Check a submission. The client sends only { challengeId, submission }; the
  * server decides which level (if any) it proves, so points cannot be inflated
- * by a client-chosen level. A throwing check() propagates to the caller.
+ * by a client-chosen level. A throwing check() propagates to the caller. A challenge outside
+ * `challenges` (the app's edition) is unknown.
  */
 export async function submitFlag(
-  db: DatabaseSync, sid: string, challengeId: string, submission: string,
+  db: DatabaseSync, sid: string, challengeId: string, submission: string, challenges: ChallengeSet = REGISTRY,
 ): Promise<SubmitResult> {
-  const ch = getChallenge(challengeId);
+  const ch = challenges.get(challengeId);
   if (!ch) return { status: 'unknown_challenge' };
   for (const level of SCORED_LEVELS_DESC) {
     if (!ch.levels.includes(level)) continue;
@@ -53,13 +54,13 @@ export async function submitFlag(
   return { status: 'wrong' };
 }
 
-export function checkerRouter(db: DatabaseSync): Router {
+export function checkerRouter(db: DatabaseSync, challenges: ChallengeSet = REGISTRY): Router {
   const r = Router();
 
   r.post('/submit', async (req, res) => {
     const { challengeId, submission } = req.body ?? {};
     const result = await submitFlag(
-      db, req.sessionId, String(challengeId ?? ''), typeof submission === 'string' ? submission : '',
+      db, req.sessionId, String(challengeId ?? ''), typeof submission === 'string' ? submission : '', challenges,
     );
     if (result.status === 'unknown_challenge') {
       res.status(404).json({ solved: false, error: 'unknown_challenge' });
@@ -75,7 +76,7 @@ export function checkerRouter(db: DatabaseSync): Router {
   r.post('/hint', (req, res) => {
     const { challengeId, tier: rawTier } = req.body ?? {};
     const cid = String(challengeId ?? '');
-    if (!getChallenge(cid)) {
+    if (!challenges.get(cid)) {
       res.status(404).json({ unlocked: false, error: 'unknown_challenge' });
       return;
     }
@@ -84,7 +85,7 @@ export function checkerRouter(db: DatabaseSync): Router {
       res.status(400).json({ unlocked: false, error: 'invalid_tier' });
       return;
     }
-    const result = unlockHint(db, req.sessionId, cid, tier);
+    const result = unlockHint(db, req.sessionId, cid, tier, challenges);
     if (!result.ok) {
       res.status(404).json({ unlocked: false, error: result.error });
       return;

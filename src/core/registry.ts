@@ -172,3 +172,32 @@ export function register(c: Challenge): Challenge {
 
 export function allChallenges(): Challenge[] { return [...byId.values()]; }
 export function getChallenge(id: string): Challenge | undefined { return byId.get(id); }
+
+/**
+ * The challenges one app serves (its edition, src/editions.ts): a LIVE view of the registry, so a
+ * challenge registered after createApp() shows up exactly as it does without a limit. The engine
+ * mounts `all()`, the portal lists it, the checker and hints resolve ids with `get()`, and the
+ * scoreboard counts only `only` (when set). An id outside the set is unknown everywhere (404).
+ */
+export interface ChallengeSet {
+  /** Every served challenge, in registration order. */
+  all(): Challenge[];
+  /** The served challenge with this id; undefined for an unknown OR unserved id. */
+  get(id: string): Challenge | undefined;
+  /** The ids the set is limited to; undefined = everything registered (the full edition). */
+  readonly only?: ReadonlySet<string>;
+}
+
+/** Everything registered: the full edition, and the default of every engine function that takes a set. */
+export const REGISTRY: ChallengeSet = Object.freeze({ all: allChallenges, get: getChallenge });
+
+/** The registry limited to `only` (an edition's ids), or the whole REGISTRY when `only` is undefined. */
+export function challengeSet(only?: readonly string[]): ChallengeSet {
+  if (only === undefined) return REGISTRY;
+  const ids: ReadonlySet<string> = new Set(only);
+  return Object.freeze({
+    all: () => allChallenges().filter((c) => ids.has(c.id)),
+    get: (id: string) => (ids.has(id) ? getChallenge(id) : undefined),
+    only: ids,
+  });
+}

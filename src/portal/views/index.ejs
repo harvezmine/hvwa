@@ -1,24 +1,105 @@
-<h1 class="page-title"><%= t('portal.heading') %></h1>
-<% if (districts.length === 0) { %>
-  <p class="muted"><%= t('portal.no_challenges') %></p>
-<% } %>
-<div class="district-grid">
-<% districts.forEach(function (d) { %>
-  <section class="card district" data-district="<%= d.id %>">
-    <h2 class="district-name"><%= d.id %>
-      <span class="muted small">(<%= d.challenges.length %> <%= t('portal.challenges') %>)</span>
-    </h2>
-    <ul class="challenge-list">
-    <% d.challenges.forEach(function (c) { %>
-      <li>
-        <a href="/c/<%= c.id %>">
-          <span class="challenge-id"><%= c.id %></span>
-          — <%= c.title[lang] %>
-        </a>
-        <span class="muted">[<%= c.levels.join(', ') %>]</span>
-      </li>
-    <% }); %>
+<%# Portal home: hero, progress, district cards. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-text">
+    <p class="eyebrow"><%= t('home.eyebrow') %></p>
+    <h1 id="hero-title"><%= t('home.title') %></h1>
+    <p class="hero-lead"><%= t('home.lead') %></p>
+    <div class="hero-actions">
+      <a class="btn btn-secondary" href="#how-to-play"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-compass"></use></svg><%= t('home.how_link') %></a>
+      <a class="btn btn-ghost" href="#districts"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><%= t('portal.heading') %></a>
+    </div>
+  </div>
+<% if (nextUp) { -%>
+  <aside class="card next-up" aria-labelledby="next-up-title">
+    <p class="eyebrow"><%= t('home.next_up') %></p>
+    <p class="next-up-meta"><span class="next-id"><%= nextUp.id %></span> <span class="muted"><%= nextUp.districtName %></span></p>
+    <h2 class="next-up-title" id="next-up-title"><%= nextUp.title %></h2>
+    <p class="next-up-summary"><%= nextUp.summary %></p>
+    <ul class="level-chips" aria-label="<%= t('challenge.levels') %>">
+<% nextUp.levels.forEach(function (l) { -%>
+      <li class="level-chip level-<%= l %>"><%= t('level.' + l) %></li>
+<% }); -%>
     </ul>
-  </section>
-<% }); %>
+    <a class="btn btn-primary btn-lg btn-block" href="/c/<%= nextUp.id %>"><%= t('home.next').replace('{id}', nextUp.id) %> <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg></a>
+  </aside>
+<% } else if (total > 0) { -%>
+  <aside class="card next-up" aria-labelledby="next-up-title">
+    <p class="eyebrow"><%= t('home.next_up') %></p>
+    <h2 class="next-up-title" id="next-up-title"><%= t('home.all_done') %></h2>
+    <a class="btn btn-primary btn-block" href="/scoreboard"><%= t('nav.scoreboard') %></a>
+  </aside>
+<% } -%>
+</section>
+
+<section aria-labelledby="progress-title">
+  <h2 class="sr-only" id="progress-title"><%= t('home.progress') %></h2>
+  <div class="stats">
+    <div class="card stat">
+      <div class="stat-label"><%= t('home.stat_solved') %></div>
+      <div class="stat-value" data-testid="home-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></div>
+      <progress class="progress" max="<%= Math.max(total, 1) %>" value="<%= solved %>" aria-label="<%= t('home.stat_solved') %>"><%= solved %> / <%= total %></progress>
+    </div>
+    <div class="card stat">
+      <div class="stat-label"><%= t('home.stat_score') %></div>
+      <div class="stat-value accent" data-testid="home-score"><%= score %></div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label"><%= t('home.stat_districts') %></div>
+      <div class="stat-value"><%= districts.length %></div>
+    </div>
+  </div>
+</section>
+
+<h2 class="section-title" id="districts"><%= t('portal.heading') %></h2>
+<% if (districts.length === 0) { -%>
+<div class="empty">
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-landmark"></use></svg>
+  <p><%= t('portal.no_challenges') %></p>
 </div>
+<% } -%>
+<div class="district-grid">
+<% districts.forEach(function (d) { -%>
+  <section class="card district-card" data-district="<%= d.id %>" data-challenges="<%= d.total %>" aria-labelledby="district-<%= d.id %>">
+    <div class="district-head">
+      <span class="district-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-<%= d.icon %>"></use></svg></span>
+      <div>
+        <h3 class="district-name" id="district-<%= d.id %>"><%= d.name %></h3>
+        <span class="muted small"><%= d.total %> <%= t('portal.challenges') %></span>
+      </div>
+    </div>
+    <p class="district-desc"><%= d.desc %></p>
+    <div>
+      <p class="progress-label"><span><%= t('district.solved_of').replace('{solved}', d.solved).replace('{total}', d.total) %></span><span><%= d.total ? Math.round(100 * d.solved / d.total) : 0 %>%</span></p>
+      <progress class="progress" max="<%= Math.max(d.total, 1) %>" value="<%= d.solved %>" aria-label="<%= d.name %>"><%= d.solved %> / <%= d.total %></progress>
+    </div>
+    <details class="accordion district-list">
+      <summary><%= t('district.list') %> <span class="count"><%= d.total %></span></summary>
+      <div class="accordion-body">
+        <ul class="challenge-list">
+<% d.challenges.forEach(function (c) { -%>
+          <li><a href="/c/<%= c.id %>"><span class="challenge-id"><%= c.id %></span> <span><%= c.title %></span><% if (c.solved) { %><svg class="icon icon-sm is-solved" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-check"></use></svg><span class="sr-only"><%= t('challenge.solved') %></span><% } %></a></li>
+<% }); -%>
+        </ul>
+      </div>
+    </details>
+    <div class="district-actions">
+      <a class="btn btn-secondary" href="<%= d.href %>"><%= t('district.enter') %> <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg></a>
+    </div>
+  </section>
+<% }); -%>
+</div>
+
+<section class="card panel" id="how-to-play" aria-labelledby="howto-title">
+  <h2 id="howto-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-compass"></use></svg><%= t('howto.heading') %></h2>
+  <ol class="howto">
+    <li><span><%= t('howto.step1') %></span></li>
+    <li><span><%= t('howto.step2') %></span></li>
+    <li><span><%= t('howto.step3') %></span></li>
+    <li><span><%= t('howto.step4') %></span></li>
+  </ol>
+  <dl class="level-legend">
+<% ['acolyte', 'templar', 'inquisitor', 'divine'].forEach(function (l) { -%>
+    <div><dt><span class="badge level-badge" data-level="<%= l %>"><%= t('level.' + l) %></span></dt><dd><%= t('level_meaning.' + l) %></dd></div>
+<% }); -%>
+  </dl>
+</section>

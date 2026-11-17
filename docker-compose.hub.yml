@@ -1,0 +1,201 @@
+# HVWA from Docker Hub — the hardened lab stack for people who only PULL.
+# HVWA is DELIBERATELY VULNERABLE: never expose it to an untrusted network.
+# HVWA sengaja dibuat rentan: jangan pernah mengeksposnya ke jaringan yang tidak tepercaya.
+#
+#   host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root)
+#                           networks: edge + lab            networks: lab ONLY
+#
+# The same two services and the same hardening as docker-compose.yml, with two
+# differences: the app is the published image sigmajo/hvwa (no build), and the
+# proxy's nginx.conf is inline below (HVWA_NGINX_CONF), so this ONE file is all
+# you need. `lab` is internal with an isolated gateway: the app has no route to
+# the internet, your LAN or the Docker host. Needs Docker Engine 28 or newer.
+#
+#   docker create --name hvwa-compose sigmajo/hvwa:lite        (this file ships in
+#   docker cp hvwa-compose:/app/docker-compose.hub.yml .       the image: get it
+#   docker rm hvwa-compose                                     without a checkout)
+#   docker compose -f docker-compose.hub.yml up -d     -> http://127.0.0.1:1337
+#   sign in as admin / password, then change the password (the banner links it)
+#   docker compose -f docker-compose.hub.yml down      (keeps your progress)
+#   docker compose -f docker-compose.hub.yml down -v   (resets everything)
+#
+# HVWA_TAG picks the image tag (default: lite, the 5-challenge trial edition).
+# Optional, in a .env file next to this one: HVWA_ADMIN_PASSWORD (the FIRST
+# password, used only while no account exists yet) and FLAG_SECRET. Never put
+# real secrets there: the labs are built to leak configuration.
+
+# Fixed project name: containers, networks and the volume are always hvwa_*,
+# and `docker compose -p hvwa down` works from any directory.
+name: hvwa
+
+services:
+  app:
+    image: sigmajo/hvwa:${HVWA_TAG:-lite}
+    init: true
+    networks: [lab]
+    expose: ["1337"]
+    environment:
+      # Optional. Blank = use the random secret persisted in the data volume.
+      FLAG_SECRET: ${FLAG_SECRET:-}
+      # Optional extra Host names (DNS-rebinding guard). The proxy enforces its
+      # own list in HVWA_NGINX_CONF below, so a name must be added there too.
+      HVWA_ALLOWED_HOSTS: ${HVWA_ALLOWED_HOSTS:-}
+      # The platform login is ON in the image (NODE_ENV=production). Blank = on.
+      HVWA_AUTH: ${HVWA_AUTH:-}
+      # Optional first password of the admin account (blank = "password").
+      HVWA_ADMIN_PASSWORD: ${HVWA_ADMIN_PASSWORD:-}
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1337/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 1s
+
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.30.6-alpine3.24
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [edge, lab]
+    ports:
+      - "127.0.0.1:1337:8080" # loopback ONLY — never 0.0.0.0
+    # No bind mount (a pull-only user has no docker/proxy/nginx.conf): the shell
+    # writes HVWA_NGINX_CONF to the noexec /tmp tmpfs and execs nginx on it. The
+    # rootfs stays read-only. (Compose `configs:` with `content:` would copy the
+    # file into the container, which Docker refuses on a read-only rootfs.)
+    command: ["/bin/sh", "-c", "printf '%s' \"$$HVWA_NGINX_CONF\" > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g 'daemon off;'"]
+    environment:
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+      # docker/proxy/nginx.conf verbatim, every $ doubled for compose
+      # (tests/docker-files.spec.ts keeps the two identical).
+      HVWA_NGINX_CONF: |
+        # docker/proxy/nginx.conf — the ONLY way into HVWA. Mounted read-only into an
+        # unprivileged nginx (uid 101, port 8080, read-only rootfs, cap_drop ALL).
+        # docker-compose.hub.yml carries a verbatim copy inline (HVWA_NGINX_CONF, every
+        # $$ doubled for compose) for pull-only users; tests/docker-files.spec.ts keeps
+        # the two identical, so edit this file and copy it there.
+        # The proxy must stay transparent: it adds no security headers and filters no
+        # payloads (the labs are meant to be exploitable); it only forwards to app:1337.
+        # One exception, the DNS-rebinding guard: only the loopback Host names are
+        # forwarded. Anything else is answered 421 here and never reaches the app,
+        # which enforces the same rule itself (src/core/host-guard.ts).
+
+        worker_processes 1;
+        pid /tmp/nginx.pid;
+        error_log /dev/stderr notice;
+
+        events {
+            worker_connections 512;
+        }
+
+        http {
+            # Read-only rootfs: every path nginx writes to lives on the /tmp tmpfs.
+            client_body_temp_path /tmp/client_temp;
+            proxy_temp_path       /tmp/proxy_temp;
+            fastcgi_temp_path     /tmp/fastcgi_temp;
+            uwsgi_temp_path       /tmp/uwsgi_temp;
+            scgi_temp_path        /tmp/scgi_temp;
+
+            access_log /dev/stdout;
+            server_tokens off;
+
+            # Docker's embedded DNS: re-resolve `app` so a restarted container is found.
+            resolver 127.0.0.11 valid=10s ipv6=off;
+
+            map $$http_upgrade $$connection_upgrade {
+                default upgrade;
+                ''      close;
+            }
+
+            # Any Host that matches no server_name below, or no Host at all, ends up
+            # here. (nginx compares $$host: lowercased, port and trailing dot dropped,
+            # taken from an absolute-form request line if present.)
+            server {
+                listen 8080 default_server;
+                server_name _;
+                default_type text/plain;
+                return 421 "421 Misdirected Request (HVWA proxy): HVWA only answers to localhost, 127.0.0.1 and [::1]. This blocks DNS-rebinding attacks; see docs/SECURITY.md.\n";
+            }
+
+            server {
+                listen 8080;
+                # The loopback names a local browser sends, on any port. To allow an
+                # extra name (advanced, see docs/SECURITY.md), add it here AND to
+                # HVWA_ALLOWED_HOSTS.
+                server_name localhost 127.0.0.1 "~^\[::1\]$$";
+
+                # Upload labs need room; header/cookie/JWT labs need big headers, and
+                # header-name tricks (underscores, odd names) must reach the app.
+                client_max_body_size 25m;
+                large_client_header_buffers 4 32k;
+                underscores_in_headers on;
+                ignore_invalid_headers off;
+                merge_slashes off;
+
+                location / {
+                    # A variable upstream is resolved per request (see resolver above);
+                    # with no URI part the client's request URI is passed unchanged.
+                    set $$hvwa_upstream http://app:1337;
+                    proxy_pass $$hvwa_upstream;
+
+                    # Transparent: the client's Host (with its port) goes through as
+                    # sent, and NO X-Real-IP / X-Forwarded-* are set or appended.
+                    # Those headers are client input that labs read (e.g. GK-03
+                    # trusts X-Real-IP); rewriting them would change the labs. The
+                    # server block was already chosen on $$host, and the app re-checks
+                    # Host, so a mismatched absolute-form request fails closed there.
+                    proxy_http_version 1.1;
+                    proxy_set_header Host       $$http_host;
+                    proxy_set_header Upgrade    $$http_upgrade;
+                    proxy_set_header Connection $$connection_upgrade;
+                    proxy_redirect off;
+
+                    # No caching anywhere: every request reaches the lab. Bodies are
+                    # streamed, not spooled to the small /tmp tmpfs (uploads up to
+                    # client_max_body_size).
+                    proxy_cache off;
+                    proxy_buffering off;
+                    proxy_request_buffering off;
+                }
+            }
+        }
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=1m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      start_interval: 1s
+
+networks:
+  edge: {}
+  lab:
+    internal: true
+    driver_opts:
+      # `internal` alone removes the default route but still gives the HOST an
+      # address (.1) on this bridge, so the app could connect to the host's
+      # own services. `isolated` (Docker Engine 28+) puts no host address on it.
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+
+volumes:
+  data: {}
