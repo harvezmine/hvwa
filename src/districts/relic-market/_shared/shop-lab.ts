@@ -2,79 +2,20 @@
 // shared view data and the flag lines. Plumbing only: a lab's routes call its levels/*.ts for every decision (how a
 // request becomes a line, what a checkout may charge) and its model.ts for the proof. Not a challenge: nothing here is
 // served by View Source.
-import type { Request, Response, Router } from 'express';
+import type { Request, Response } from 'express';
 import { field, labPath } from '../../../core/lab.js';
 import { flagFor } from '../../../core/mount.js';
 import type { Challenge } from '../../../core/registry.js';
 import { curlFor, type CurlSpec } from '../../_shared/curl.js';
+import { refusal, type Endpoint, type Intent } from '../../_shared/intents.js';
 import type { Result } from '../../_shared/result.js';
 import { CUSTOMER, allOrders, formatMoney, setLine, type CartTotals, type Order, type Product, type ShopState } from './shop.js';
 
 export type { Result } from '../../_shared/result.js';
-
-/**
- * What an intent came to: the message to show and, optionally, the response status. mountIntents adds `intent`, the
- * name of the intent that ran (undefined for an unknown action), before it calls render.
- */
-export interface Outcome { readonly result: Result | null; readonly status?: number; readonly intent?: string }
-
-/** One action of a shop page: a hidden `intent` on `POST /`, and its own path (`POST <lab><path>`) for curl. */
-export interface Intent {
-  readonly path: string;
-  /** The body fields it reads, for the page's endpoint list (documentation only). */
-  readonly fields?: readonly string[];
-  readonly run: (req: Request, res: Response) => Outcome | Promise<Outcome>;
-}
-
-/** An intent's own door, as the page's endpoint list shows it. */
-export interface Endpoint { readonly method: 'POST'; readonly path: string; readonly intent: string; readonly fields: readonly string[] }
-
-/** The doors of an intent table, in its order. */
-export function endpointsOf(intents: Readonly<Record<string, Intent>>): Endpoint[] {
-  return Object.entries(intents).map(([intent, i]) => ({ method: 'POST', path: i.path, intent, fields: [...(i.fields ?? [])] }));
-}
-
-/** Paths an intent may not take: POST / dispatches, and the engine mounts Restart and the victim's actions. */
-const isReserved = (path: string): boolean => path === '/' || path === '/_reset' || path === '/victim' || path.startsWith('/victim/');
-
-/** Renders the lab page after an intent ran. */
-export type Render = (req: Request, res: Response, outcome: Outcome) => Promise<void>;
-
-/** The answer to a missing or unknown intent (200, never a 500). */
-export const UNKNOWN_ACTION: Result = Object.freeze({ ok: false, text: 'Unknown action.' });
-
-/** An intent's refusal. */
-export const refusal = (text: string): Outcome => ({ result: { ok: false, text } });
-/** An intent's success. */
-export const success = (text: string): Outcome => ({ result: { ok: true, text } });
-
-/**
- * Mount a shop page's actions: `POST /` dispatches on the body's `intent` field (the page's forms post back with no
- * action and a hidden intent), and each intent is also mounted on its own path. Then `render` draws the page with the
- * outcome and the intent's name. A missing, unknown or non-string intent answers 200 with UNKNOWN_ACTION. Throws at
- * mount time on a path that is relative, repeated, `/`, or one of the engine's (`/_reset`, `/victim/...`). Returns the
- * table's endpoints (endpointsOf).
- */
-export function mountIntents(router: Router, intents: Readonly<Record<string, Intent>>, render: Render): Endpoint[] {
-  const table = new Map(Object.entries(intents)); // a Map: `constructor` or `__proto__` is no intent
-  const paths = new Set<string>();
-  for (const [name, i] of table) {
-    if (!i.path.startsWith('/') || isReserved(i.path)) throw new Error(`mountIntents: intent "${name}" may not use the path "${i.path}"`);
-    if (paths.has(i.path)) throw new Error(`mountIntents: two intents use the path "${i.path}"`);
-    paths.add(i.path);
-  }
-  const answer = async (req: Request, res: Response, name: string | undefined): Promise<void> => {
-    const intent = name === undefined ? undefined : table.get(name);
-    const outcome: Outcome = intent === undefined ? { result: UNKNOWN_ACTION } : await intent.run(req, res);
-    if (outcome.status !== undefined) res.status(outcome.status);
-    await render(req, res, { ...outcome, intent: intent === undefined ? undefined : name });
-  };
-  router.post('/', async (req, res) => { await answer(req, res, field(req, 'intent')); });
-  for (const [name, intent] of table) {
-    router.post(intent.path, async (req, res) => { await answer(req, res, name); });
-  }
-  return endpointsOf(intents);
-}
+// The intent routing lives in districts/_shared/intents.ts (any district's labs use it, Q15); re-exported so every Relic
+// Market lab and spec keeps importing it from here.
+export { endpointsOf, mountIntents, refusal, success, UNKNOWN_ACTION } from '../../_shared/intents.js';
+export type { Endpoint, Intent, Outcome, Render } from '../../_shared/intents.js';
 
 /**
  * The cart's Remove button (plumbing, the same at every level): `POST <lab>/cart/remove` with `sku` (and
