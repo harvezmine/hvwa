@@ -1,5 +1,9 @@
-<h1 class="page-title"><%= t('auth.csrf_heading') %></h1>
-<section class="card panel auth-card">
+<%# Refused form (bad CSRF token or foreign Origin). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<div class="auth-shell">
+<section class="card auth-card" aria-labelledby="refused-title">
+  <span class="auth-mark"><svg class="icon icon-lg" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-shield"></use></svg></span>
+  <h1 class="page-title" id="refused-title"><%= t('auth.csrf_heading') %></h1>
   <p class="result result-bad" role="alert" data-testid="csrf-error"><%= t('auth.csrf_failed') %></p>
-  <p><a href="<%= back %>"><%= t('auth.csrf_back') %></a></p>
+  <p><a class="btn btn-primary btn-block" href="<%= back %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-left"></use></svg><%= t('auth.csrf_back') %></a></p>
 </section>
+</div>

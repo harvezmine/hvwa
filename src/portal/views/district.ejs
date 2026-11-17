@@ -1,0 +1,55 @@
+<%# District page (/d/<district>): the district's challenges as cards, filtered by ?show= (plain links). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head" data-district="<%= d.id %>">
+  <p class="eyebrow"><%= t('district.eyebrow') %></p>
+  <h1 class="page-title"><span class="district-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-<%= d.icon %>"></use></svg></span><%= d.name %></h1>
+  <p class="page-lead"><%= d.desc %></p>
+</header>
+
+<div class="toolbar">
+  <div class="score-bar">
+    <p class="progress-label"><span><%= t('district.solved_of').replace('{solved}', d.solved).replace('{total}', d.total) %></span></p>
+    <progress class="progress" max="<%= Math.max(d.total, 1) %>" value="<%= d.solved %>" aria-label="<%= d.name %>"><%= d.solved %> / <%= d.total %></progress>
+  </div>
+  <nav class="seg" aria-label="<%= t('district.filter') %>">
+    <a class="seg-item" href="<%= d.href %>"<% if (show === 'all') { %> aria-current="page"<% } %>><%= t('district.filter_all') %> <span class="count"><%= d.total %></span></a>
+    <a class="seg-item" href="<%= d.href %>?show=todo"<% if (show === 'todo') { %> aria-current="page"<% } %>><%= t('district.filter_todo') %> <span class="count"><%= d.total - d.solved %></span></a>
+    <a class="seg-item" href="<%= d.href %>?show=done"<% if (show === 'done') { %> aria-current="page"<% } %>><%= t('district.filter_done') %> <span class="count"><%= d.solved %></span></a>
+  </nav>
+</div>
+
+<% if (shown.length === 0) { -%>
+<div class="empty">
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-target"></use></svg>
+  <p><%= t('district.filter_empty') %></p>
+  <a class="btn btn-secondary btn-sm" href="<%= d.href %>"><%= t('district.show_all') %></a>
+</div>
+<% } else { -%>
+<ul class="challenge-grid" data-testid="challenge-grid">
+<% shown.forEach(function (c) { -%>
+  <li>
+    <a class="card challenge-card<%= c.solved ? ' is-solved' : '' %>" href="/c/<%= c.id %>" data-challenge="<%= c.id %>" data-solved="<%= c.solved ? 'true' : 'false' %>">
+      <span class="challenge-card-top">
+        <span class="challenge-id"><%= c.id %></span>
+<% if (c.owasp) { -%>
+        <span class="tag"><%= c.owasp %></span>
+<% } -%>
+      </span>
+      <span class="challenge-card-title"><%= c.title %></span>
+      <span class="challenge-card-summary"><%= c.summary %></span>
+      <span class="challenge-card-foot">
+        <span class="level-chips">
+<% c.levels.forEach(function (l) { -%>
+          <span class="level-chip level-<%= l %><%= c.best && l !== 'divine' && ['acolyte', 'templar', 'inquisitor'].indexOf(l) <= ['acolyte', 'templar', 'inquisitor'].indexOf(c.best) ? ' is-solved' : '' %>"><%= t('level.' + l) %></span>
+<% }); -%>
+        </span>
+<% if (c.solved) { -%>
+        <span class="status status-solved"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-check-circle"></use></svg><%= t('challenge.solved_at').replace('{level}', t('level.' + c.best)) %></span>
+<% } else { -%>
+        <span class="status"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-circle"></use></svg><%= t('challenge.unsolved') %></span>
+<% } -%>
+      </span>
+    </a>
+  </li>
+<% }); -%>
+</ul>
+<% } -%>

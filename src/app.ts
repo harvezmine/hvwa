@@ -14,6 +14,7 @@ import { resolveFlagSecret } from './core/secrets.js';
 import { sessionMiddleware } from './core/session.js';
 import { levelMiddleware } from './core/difficulty.js';
 import { langMiddleware } from './core/i18n.js';
+import { themeMiddleware } from './core/theme.js';
 import { checkerRouter } from './core/checker.js';
 import { errorHandler, notFoundHandler } from './core/errors.js';
 import { mountChallenges } from './core/mount.js';
@@ -129,6 +130,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock }));
   app.use(levelMiddleware());
   app.use(langMiddleware());
+  app.use(themeMiddleware());
   app.get('/static/vendor/htmx.min.js', (_req, res, next) => {
     res.sendFile('htmx.min.js', { root: htmxDistDir }, (err) => { if (err) next(err); });
   });

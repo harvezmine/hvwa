@@ -2,6 +2,7 @@
 // (including every challenge route) never need `(req as any)`.
 import type { Level } from '../core/levels.js';
 import type { Lang } from '../core/i18n.js';
+import type { Theme } from '../core/theme.js';
 import type { Challenge } from '../core/registry.js';
 import type { SimPanel } from '../core/victim.js';
 
@@ -22,6 +23,8 @@ declare global {
       lang: Lang;
       /** Platform-string translator bound to `lang`. */
       t: (key: string) => string;
+      /** Colour theme for the layout (themeMiddleware: ?theme= → hvwa_theme cookie → system). */
+      uiTheme?: Theme;
       /** Clamped level; set only on challenge routes. */
       level?: Level;
       /** The challenge being served; set only on challenge routes. */

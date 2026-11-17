@@ -360,7 +360,7 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   sets them through its `Reply` (`TwinCookie`: `httpOnly` and `sameSite` default to HttpOnly and Lax, section 8).
   Tests: `describeLabCookies` (`victim-lab.testkit.ts`) checks the name per level, the canonical path and HttpOnly.
 - **The platform's cookies are off limits:** `hvwa_sid` (the anonymous session every lab is keyed by), `hvwa_level`,
-  `hvwa_lang` and `hvwa_auth` (the platform login's token, src/auth; HttpOnly, SameSite=Lax, Path=/). A lab never
+  `hvwa_lang`, `hvwa_theme` (the colour theme, core/theme.ts) and `hvwa_auth` (the platform login's token, src/auth; HttpOnly, SameSite=Lax, Path=/). A lab never
   reads, echoes, sets or clears any of them; lab state belongs to `hvwa_sid` (via `perSession`), never to the login.
   With the login on (the Docker image), every lab route sits behind it: a lab test that needs that runs with
   `createApp({ auth: true })`; every other spec runs with the login off (`tests/support/setup.ts`).

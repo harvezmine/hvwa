@@ -1,4 +1,8 @@
-<h1 class="page-title"><%= t('scoreboard.title') %></h1>
+<%# Scoreboard: totals (data-testid score / solved), then per district and per level. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('scoreboard.title') %></h1>
+  <p class="page-lead"><%= t('scoreboard.lead') %></p>
+</header>
 <div class="stat-row">
   <div class="card stat">
     <div class="stat-label"><%= t('scoreboard.score') %></div>
@@ -7,5 +11,55 @@
   <div class="card stat">
     <div class="stat-label"><%= t('scoreboard.solved') %></div>
     <div class="stat-value" data-testid="solved"><%= solved %></div>
+    <progress class="progress" max="<%= Math.max(total, 1) %>" value="<%= solved %>" aria-label="<%= t('scoreboard.solved') %>"><%= solved %> / <%= total %></progress>
   </div>
+  <div class="card stat">
+    <div class="stat-label"><%= t('scoreboard.hint_cost') %></div>
+    <div class="stat-value" data-testid="hint-cost"><%= hintCost > 0 ? '−' + hintCost : 0 %></div>
+  </div>
+</div>
+<% if (solved === 0) { -%>
+<div class="empty">
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg>
+  <p><%= t('scoreboard.empty') %></p>
+  <a class="btn btn-primary btn-sm" href="/#districts"><%= t('nav.districts') %></a>
+</div>
+<% } -%>
+
+<h2 class="section-title"><%= t('scoreboard.by_district') %></h2>
+<div class="table-wrap">
+  <table class="table" data-testid="by-district">
+    <thead><tr><th scope="col"><%= t('scoreboard.col_district') %></th><th scope="col" class="num"><%= t('scoreboard.col_solved') %></th><th scope="col"><span class="sr-only"><%= t('scoreboard.col_solved') %> %</span></th><th scope="col" class="num"><%= t('scoreboard.col_points') %></th></tr></thead>
+    <tbody>
+<% districts.forEach(function (d) { -%>
+      <tr data-district="<%= d.id %>">
+        <th scope="row"><a href="<%= d.href %>"><%= d.name %></a></th>
+        <td class="num"><%= d.solved %> / <%= d.total %></td>
+        <td><progress class="progress" max="<%= Math.max(d.total, 1) %>" value="<%= d.solved %>" aria-label="<%= d.name %>"><%= d.solved %> / <%= d.total %></progress></td>
+        <td class="num"><%= d.points %></td>
+      </tr>
+<% }); -%>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-title"><%= t('scoreboard.by_level') %></h2>
+<div class="table-wrap">
+  <table class="table" data-testid="by-level">
+    <thead><tr><th scope="col"><%= t('scoreboard.col_level') %></th><th scope="col" class="num"><%= t('scoreboard.col_multiplier') %></th><th scope="col" class="num"><%= t('scoreboard.col_best') %></th></tr></thead>
+    <tbody>
+<% byLevel.forEach(function (l) { -%>
+      <tr data-level="<%= l.id %>">
+        <th scope="row"><span class="badge level-badge" data-level="<%= l.id %>"><%= t('level.' + l.id) %></span></th>
+        <td class="num">× <%= l.multiplier %></td>
+        <td class="num"><%= l.count %></td>
+      </tr>
+<% }); -%>
+      <tr data-level="divine">
+        <th scope="row"><span class="badge level-badge" data-level="divine"><%= t('level.divine') %></span></th>
+        <td class="num">× 0</td>
+        <td class="num muted"><%= t('scoreboard.not_scored') %></td>
+      </tr>
+    </tbody>
+  </table>
 </div>

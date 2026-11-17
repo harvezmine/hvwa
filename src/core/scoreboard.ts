@@ -39,3 +39,12 @@ export function progress(db: DatabaseSync, sid: string, only?: ReadonlySet<strin
     : db.prepare(`SELECT COUNT(*) c FROM solves WHERE session_id=? AND ${ONLY}`).get(sid, JSON.stringify([...only]))) as { c: number };
   return { solved: r.c };
 }
+
+/** Every stored (best) solve of a session, by challenge id: the portal's per-district and per-level views. */
+export function solvesOf(db: DatabaseSync, sid: string): Map<string, { level: Level; points: number }> {
+  const rows = db.prepare('SELECT challenge_id, level, points FROM solves WHERE session_id=?')
+    .all(sid) as { challenge_id: string; level: string; points: number }[];
+  const out = new Map<string, { level: Level; points: number }>();
+  for (const r of rows) if (isLevel(r.level)) out.set(r.challenge_id, { level: r.level, points: Number(r.points) });
+  return out;
+}

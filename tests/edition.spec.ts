@@ -19,10 +19,10 @@ function liteApp(): HvwaApp { return createApp({ edition: 'lite', flagSecret: TE
 /** Challenge ids the portal index links, sorted. */
 const indexIds = (html: string) => [...new Set([...html.matchAll(/href="\/c\/([A-Z]{2}-\d{2})"/g)].map((m) => m[1]))].sort(byId);
 
-/** district -> the count its heading shows, from the portal index. */
+/** district -> the count its card shows ("N challenges" under the name), from the portal index. */
 function districtCounts(html: string): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const m of html.matchAll(/data-district="([a-z0-9-]+)">\s*<h2 class="district-name">[^<]*<span class="muted small">\((\d+) /g)) {
+  for (const m of html.matchAll(/data-district="([a-z0-9-]+)"[^>]*>[\s\S]*?<h3 class="district-name"[^>]*>[^<]*<\/h3>\s*<span class="muted small">(\d+) /g)) {
     out[m[1]] = Number(m[2]);
   }
   return out;
