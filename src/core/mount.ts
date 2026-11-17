@@ -1,6 +1,6 @@
 // src/core/mount.ts — the engine mounts every registered challenge.
 import { Router, type Express, type Request } from 'express';
-import { allChallenges, type Challenge } from './registry.js';
+import { REGISTRY, type Challenge, type ChallengeSet } from './registry.js';
 import { clampLevel } from './levels.js';
 import { issueFlag } from './flags.js';
 import { mountVictim } from './victim.js';
@@ -11,7 +11,8 @@ export function challengePath(c: Pick<Challenge, 'district' | 'slug'>): string {
 }
 
 /**
- * Mount every challenge registered so far at /d/<district>/<slug>. Each gets
+ * Mount every challenge of `opts.challenges` (default: every one registered so far; an edition
+ * passes its ChallengeSet) at /d/<district>/<slug>. Each gets
  * its own Router whose first middleware clamps req.level to the challenge's
  * implemented levels and sets res.locals.level / res.locals.challenge; then
  * challenge.mount(router) attaches its RELATIVE routes. Called by createApp()
@@ -21,9 +22,9 @@ export function challengePath(c: Pick<Challenge, 'district' | 'slug'>): string {
 export const DEFAULT_RESET_COOLDOWN_MS = 10_000;
 const MAX_COOLDOWN_ENTRIES = 5000;
 
-export function mountChallenges(app: Express, opts: { now?: () => number } = {}): void {
+export function mountChallenges(app: Express, opts: { now?: () => number; challenges?: ChallengeSet } = {}): void {
   const now = opts.now ?? Date.now;
-  for (const c of allChallenges()) {
+  for (const c of (opts.challenges ?? REGISTRY).all()) {
     const router = Router();
     router.use((req, res, next) => {
       req.level = clampLevel(req.level, c.levels);

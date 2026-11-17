@@ -16,10 +16,13 @@ const tables = (db: DatabaseSync) =>
     .map((r) => r.name);
 
 describe('db', () => {
-  it('the platform schema holds only platform state: solves, hint_unlocks, events', () => {
+  it('the platform schema holds only platform state: solves, hint_unlocks, events and the login (auth_*)', () => {
     const db = openDb(':memory:');
     migrate(db);
-    expect(tables(db)).toEqual(['events', 'hint_unlocks', 'solves']);
+    expect(tables(db)).toEqual(['auth_accounts', 'auth_tokens', 'events', 'hint_unlocks', 'solves']);
+    // The login keeps hashes only (src/auth): no column could hold a password or a token in plaintext.
+    expect(columns(db, 'auth_accounts')).toEqual(['username', 'password_hash', 'is_default', 'failures', 'locked_until', 'changed_at']);
+    expect(columns(db, 'auth_tokens')).toEqual(['token_hash', 'username', 'created_at', 'last_seen_at']);
     expect(columns(db, 'solves')).toEqual(
       expect.arrayContaining(['session_id', 'challenge_id', 'level', 'points', 'solved_at']));
     expect(columns(db, 'hint_unlocks')).toEqual(

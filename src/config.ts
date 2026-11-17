@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { MIN_FLAG_SECRET_LENGTH } from './core/flags.js';
+import { DEFAULT_EDITION, EDITIONS, type Edition } from './editions.js';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './auth/service.js';
 
 // Blank / whitespace-only env values (e.g. `PORT=` in a .env file) mean
 // "unset" — the default applies — rather than a validation error.
@@ -10,6 +12,21 @@ const unsetIfBlank = <T extends z.ZodTypeAny>(schema: T) => z.preprocess(blankTo
 // inner hyphens) or a bracketed IPv6 literal. No scheme, port, path or wildcard.
 const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
 const ALLOWED_HOST_RE = new RegExp(`^(?:${LABEL}(?:\\.${LABEL})*|\\[[0-9a-f:.]+\\])$`);
+
+// Which challenges this server serves (src/editions.ts). createApp() reads the same rule when it gets
+// no `edition` option (editionFrom below).
+const EDITION_SETTING = unsetIfBlank(z.enum(EDITIONS).default(DEFAULT_EDITION));
+
+// The platform login (src/auth). Unset or blank: ON only when NODE_ENV=production (the Docker image sets
+// it), so `npm run dev`, `npm start` and the test suite run without it. createApp() reads the same rule
+// when it gets no `auth` option (authModeFrom below).
+const AUTH_SETTING = unsetIfBlank(z.enum(['on', 'off']).optional());
+export type AuthMode = 'on' | 'off';
+
+/** HVWA_AUTH's default: 'on' for NODE_ENV=production (any case or padding: never fail open on spelling). */
+export function defaultAuthMode(nodeEnv: string | undefined): AuthMode {
+  return nodeEnv?.trim().toLowerCase() === 'production' ? 'on' : 'off';
+}
 
 const schema = z.object({
   HOST: unsetIfBlank(z.string().trim().min(1).default('127.0.0.1')),
@@ -35,7 +52,17 @@ const schema = z.object({
     }
     return hosts;
   }),
-});
+  HVWA_EDITION: EDITION_SETTING,
+  HVWA_AUTH: AUTH_SETTING,
+  // The admin account's FIRST password (used only when the account does not exist yet). Never logged,
+  // never echoed: zod's messages below do not include the value.
+  HVWA_ADMIN_PASSWORD: unsetIfBlank(z.string()
+    .min(PASSWORD_MIN_LENGTH, `must be at least ${PASSWORD_MIN_LENGTH} characters`)
+    .max(PASSWORD_MAX_LENGTH, `must be at most ${PASSWORD_MAX_LENGTH} characters`)
+    .refine((v) => !/[\u0000-\u001f\u007f]/.test(v), 'must not contain control characters').optional()),
+  // Read only to resolve HVWA_AUTH's default; not part of Config.
+  NODE_ENV: z.string().optional(),
+}).transform(({ NODE_ENV, HVWA_AUTH, ...rest }) => ({ ...rest, HVWA_AUTH: HVWA_AUTH ?? defaultAuthMode(NODE_ENV) }));
 
 export type Config = z.infer<typeof schema>;
 
@@ -57,6 +84,23 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     ok: false,
     errors: r.error.issues.map((i) => `${i.path.join('.') || '(env)'}: ${i.message.replace(/\s+/g, ' ')}`),
   };
+}
+
+/** One setting parsed on its own (createApp()'s defaults), or a readable Error naming it. */
+function setting<T>(name: string, s: z.ZodType<T, z.ZodTypeDef, unknown>, env: Record<string, string | undefined>): T {
+  const r = s.safeParse(env[name]);
+  if (r.success) return r.data;
+  throw new Error(`${name}: ${r.error.issues.map((i) => i.message).join('; ')}`);
+}
+
+/** HVWA_EDITION alone: createApp()'s edition when it is given none. Throws on an invalid value. */
+export function editionFrom(env: Record<string, string | undefined> = process.env): Edition {
+  return setting('HVWA_EDITION', EDITION_SETTING, env);
+}
+
+/** HVWA_AUTH (and NODE_ENV for its default) alone: createApp()'s login mode when it is given no `auth` option. */
+export function authModeFrom(env: Record<string, string | undefined> = process.env): AuthMode {
+  return setting('HVWA_AUTH', AUTH_SETTING, env) ?? defaultAuthMode(env.NODE_ENV);
 }
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);

@@ -1,8 +1,18 @@
-<h1 class="page-title"><span class="challenge-id"><%= c.id %></span> — <%= c.title[lang] %></h1>
-<p><a href="/c/<%= c.id %>"><%= t('challenge.back') %></a></p>
+<%# View Source (one level, escaped into a pre) and Diff (render.ts diffView builds escaped HTML). Every other value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><span class="challenge-id"><%= c.id %></span> — <%= c.title[lang] %></h1>
+  <p><a class="btn btn-secondary btn-sm" href="/c/<%= c.id %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-left"></use></svg><%= t('challenge.back') %></a></p>
+</header>
 <% if (diff !== undefined) { %>
+  <p class="page-lead"><%= t('challenge.diff_lead') %></p>
+  <p class="diff-legend"><span class="legend-del"><%= t('diff.vulnerable') %></span><span class="legend-add"><%= t('diff.secure') %></span></p>
+  <div class="diff-wrap">
   <%- diff %>
+  </div>
 <% } else { %>
-  <h2><%= t('level.' + srcLevel) %></h2>
+  <div class="source-head" data-level="<%= srcLevel %>">
+<h2><%= t('level.' + srcLevel) %></h2>
+    <p class="muted small"><%= t('level_meaning.' + srcLevel) %></p>
+  </div>
   <pre class="source-view"><code><%= src %></code></pre>
 <% } %>

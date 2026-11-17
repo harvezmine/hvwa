@@ -1,43 +1,112 @@
 <!doctype html>
-<html lang="<%= typeof lang !== 'undefined' ? lang : 'id' %>">
+<% const keep = typeof prefQuery === 'string' ? prefQuery : ''; -%>
+<html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>"<% if (typeof uiTheme !== 'undefined' && (uiTheme === 'dark' || uiTheme === 'light')) { %> data-theme="<%= uiTheme %>"<% } %>>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
   <title><%= typeof pageTitle !== 'undefined' ? pageTitle : (labBar ? labBar.pageTitle : t('app.title')) %></title>
   <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/ui.js" defer></script>
 </head>
 <body>
-  <div class="safety-banner" role="alert"><%= t('safety.warning') %></div>
-  <header class="site-header">
-    <a href="/" class="brand"><%= t('app.title') %></a>
-    <nav class="site-nav">
-      <a href="/"><%= t('nav.districts') %></a>
-      <a href="/scoreboard"><%= t('nav.scoreboard') %></a>
-    </nav>
-    <span class="lang-switch">
-      <a href="?lang=id">ID</a> · <a href="?lang=en">EN</a>
-    </span>
+<%# The shared page shell (render.ts page()). Every value goes through the escaped output tag; only the rendered view body and the platform partials are included raw. Icons come from the /static/icons.svg sprite, so a page stays small (the XSS oracle reads whole lab pages, up to XSS_LIMITS.htmlLength). The theme toggle and the language switch are plain links (no JavaScript needed); static/ui.js only enhances. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <a class="skip-link" href="#main"><%= t('nav.skip') %></a>
+  <div class="safety-banner" role="note"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t('safety.warning') %></span></div>
+<% if (platformAuth && platformAuth.defaultPassword) { -%>
+  <div class="default-password-banner" role="alert" data-testid="default-password-banner">
+    <div class="banner-inner">
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg>
+      <span class="banner-text"><%= t('auth.default_banner') %></span>
+      <a class="btn btn-xs btn-primary" href="/account/password"><%= t('auth.change_password') %></a>
+    </div>
+  </div>
+<% } -%>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/" class="brand">
+        <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg>
+        <span class="brand-name">HVWA</span>
+        <span class="brand-sub"><%= t('app.title').replace(/^HVWA — /, '') %></span>
+      </a>
+<% if (!platformAuth || platformAuth.signedIn) { -%>
+      <nav class="site-nav" aria-label="<%= t('nav.main') %>">
+        <a href="/" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><span><%= t('nav.districts') %></span></a>
+        <a href="/scoreboard" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.scoreboard') %></span></a>
+      </nav>
+<% } -%>
+      <div class="topbar-tools">
+        <div class="seg seg-compact lang-switch" role="group" aria-label="<%= t('nav.language') %>">
+          <a href="?<%= keep %>lang=en" class="seg-item" hreflang="en" lang="en" aria-label="<%= t('nav.lang_en') %>"<% if (lang === 'en') { %> aria-current="true"<% } %>>EN</a>
+          <a href="?<%= keep %>lang=id" class="seg-item" hreflang="id" lang="id" aria-label="<%= t('nav.lang_id') %>"<% if (lang === 'id') { %> aria-current="true"<% } %>>ID</a>
+        </div>
+<% if (typeof uiTheme === 'undefined' || uiTheme !== 'light') { -%>
+        <a href="?<%= keep %>theme=light" class="icon-btn theme-toggle theme-to-light" aria-label="<%= t('theme.to_light') %>" title="<%= t('theme.to_light') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sun"></use></svg></a>
+<% } -%>
+<% if (typeof uiTheme === 'undefined' || uiTheme !== 'dark') { -%>
+        <a href="?<%= keep %>theme=dark" class="icon-btn theme-toggle theme-to-dark" aria-label="<%= t('theme.to_dark') %>" title="<%= t('theme.to_dark') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-moon"></use></svg></a>
+<% } -%>
+<% if (platformAuth && platformAuth.signedIn) { -%>
+        <details class="menu account-menu" data-testid="account-nav">
+          <summary class="menu-trigger">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-user"></use></svg>
+            <span class="sr-only"><%= t('nav.account') %>: </span><span class="menu-user"><%= platformAuth.user %></span>
+            <svg class="icon icon-sm menu-caret" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-down"></use></svg>
+          </summary>
+          <div class="menu-panel">
+            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong></p>
+            <a class="menu-item" href="/account/password"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg><%= t('auth.change_password') %></a>
+            <form method="post" action="/logout" class="logout-form"><input type="hidden" name="_csrf" value="<%= platformAuth.csrf %>"><button type="submit" class="menu-item menu-item-danger" data-testid="logout"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-log-out"></use></svg><%= t('auth.logout') %></button></form>
+          </div>
+        </details>
+<% } -%>
+      </div>
+    </div>
   </header>
-  <main class="content">
+  <main class="content<%= labBar ? ' content-lab' : '' %>" id="main" tabindex="-1">
+<% if (!labBar && typeof crumbs !== 'undefined' && crumbs && crumbs.length > 0) { -%>
+    <nav class="crumbs-nav" aria-label="<%= t('nav.breadcrumb') %>">
+      <ol class="crumbs">
+<% crumbs.forEach(function (c, i) { -%>
+        <li><% if (c.href && i < crumbs.length - 1) { %><a href="<%= c.href %>"><%= c.label %></a><% } else { %><span aria-current="page"><%= c.label %></span><% } %></li>
+<% }); -%>
+      </ol>
+    </nav>
+<% } -%>
 <% if (labBar) { -%>
-    <nav class="lab-bar" data-testid="lab-bar" aria-label="<%= t('lab.bar_label') %>">
+    <nav class="lab-bar" data-testid="lab-bar" aria-label="<%= t('lab.bar_label') %>" data-level="<%= labBar.level %>">
+      <div class="lab-bar-top">
+        <ol class="crumbs" aria-label="<%= t('nav.breadcrumb') %>">
+          <li><a href="/"><%= t('nav.home') %></a></li>
+          <li><a href="<%= labBar.district.href %>"><%= labBar.district.name %></a></li>
+          <li><a href="<%= labBar.backHref %>"><%= labBar.id %></a></li>
+          <li><span aria-current="page"><%= t('lab.crumb') %></span></li>
+        </ol>
+        <div class="lab-bar-actions">
+<% if (labBar.resetAction) { -%>
+          <form method="post" action="<%= labBar.resetAction %>" class="lab-restart"><button type="submit" class="btn btn-secondary btn-sm" data-testid="lab-restart" title="<%= t('lab.restart_help') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-rotate"></use></svg><%= labBar.resetLabel %></button></form>
+<% } -%>
+          <a class="lab-bar-back" href="<%= labBar.backHref %>"><%= t('challenge.back') %></a>
+        </div>
+      </div>
       <div class="lab-bar-head">
         <span class="challenge-id"><%= labBar.id %></span>
         <span class="lab-bar-title"><%= labBar.title %></span>
-        <span class="badge lab-bar-level" title="<%= t('lab.current_level') %>" data-testid="lab-level" data-level="<%= labBar.level %>"><%= labBar.levelLabel %></span>
-        <a class="lab-bar-back" href="<%= labBar.backHref %>"><%= t('challenge.back') %></a>
+        <span class="badge lab-bar-level level-badge" title="<%= t('lab.current_level') %>" data-testid="lab-level" data-level="<%= labBar.level %>"><%= labBar.levelLabel %></span>
       </div>
       <p class="lab-bar-summary"><%= labBar.summary %></p>
-      <ul class="lab-levels" aria-label="<%= t('lab.switch_level') %>">
+      <div class="lab-bar-controls">
+        <div class="lab-bar-switch">
+          <ul class="lab-levels" aria-label="<%= t('lab.switch_level') %>">
 <% labBar.levels.forEach(function (l) { -%>
-        <li><a href="<%= l.href %>" data-level="<%= l.id %>"<% if (l.current) { %> aria-current="page" class="current"<% } %>><%= l.label %></a></li>
+            <li><a href="<%= l.href %>" data-level="<%= l.id %>"<% if (l.current) { %> aria-current="page" class="current"<% } %>><%= l.label %></a></li>
 <% }); -%>
-      </ul>
-<% if (labBar.resetAction) { -%>
-      <form method="post" action="<%= labBar.resetAction %>" class="lab-restart"><button type="submit" data-testid="lab-restart"><%= labBar.resetLabel %></button></form>
-<% } -%>
+          </ul>
+          <p class="lab-level-meaning"><span class="lab-level-now"><%= t('lab.you_are_on') %> <%= labBar.levelLabel %>:</span> <%= labBar.levelMeaning %></p>
+        </div>
+      </div>
 <% if (labBar.restartNotice) { -%>
       <p class="lab-restart-notice" data-testid="lab-restart-notice" role="status"><%= labBar.restartNotice %></p>
 <% } -%>
@@ -48,5 +117,12 @@
 <%- include('sim-panel') %>
 <% } -%>
   </main>
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg>HVWA</span>
+      <span><%= t('app.tagline') %></span>
+      <span><%= t('app.footer') %></span>
+    </div>
+  </footer>
 </body>
 </html>

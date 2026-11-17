@@ -194,7 +194,7 @@ describe('setLabHeaders: on this lab route\'s own response only', () => {
 });
 
 describe('setLabHeaders over HTTP: route-scoped, nothing global', () => {
-  it('the lab route carries its headers; its other routes, other labs, the portal and the platform carry none', async () => {
+  it('the lab route carries its headers; its other routes, other labs, the portal and the platform carry none of them', async () => {
     const { agent } = await freshSession();
     const all = await agent.get(`${LAB}/all?level=acolyte`);
     expect(all.status).toBe(200);
@@ -204,8 +204,14 @@ describe('setLabHeaders over HTTP: route-scoped, nothing global', () => {
     expect(all.headers['access-control-allow-credentials']).toBe('true');
     expect(all.headers.vary).toMatch(/Origin/);
     // ...and right after it, nothing leaks anywhere else, in the same app and the same session.
-    for (const url of [`${LAB}/none?level=acolyte`, `${LAB}?level=acolyte`, '/', '/healthz', '/c/XH-01', '/nope', '/scoreboard']) {
+    for (const url of [`${LAB}/none?level=acolyte`, `${LAB}?level=acolyte`, '/healthz']) {
       noLabHeaders((await agent.get(url)).headers, url);
+    }
+    // Portal pages carry only the platform's own frame-ancestors 'self' (src/portal/frame-policy.ts), never the lab's.
+    for (const url of ['/', '/c/XH-01', '/nope', '/scoreboard']) {
+      const { headers } = await agent.get(url);
+      expect(headers['content-security-policy'], url).toBe("frame-ancestors 'self'");
+      noLabHeaders({ ...headers, 'content-security-policy': undefined }, url);
     }
   });
 

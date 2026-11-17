@@ -87,12 +87,25 @@ describe('startupBanner()', () => {
     ]);
     expect(startupBanner('http://[::1]:80', 0)[1]).toBe('HVWA: 0 challenge(s) registered');
   });
+
+  it('names the edition after the count when given (the count is the edition\'s)', () => {
+    expect(startupBanner('http://127.0.0.1:1337', 5, { edition: 'lite' })).toEqual([
+      'HVWA on http://127.0.0.1:1337 — DO NOT expose to untrusted networks',
+      'HVWA: 5 challenge(s) registered',
+      'HVWA: edition lite',
+    ]);
+    expect(startupBanner('http://127.0.0.1:1337', 5, { edition: 'lite', login: true }).slice(2))
+      .toEqual(['HVWA: edition lite', 'HVWA: login on (user admin)']);
+    expect(startupBanner('http://127.0.0.1:1337', 5, { login: false }).slice(2))
+      .toEqual(['HVWA: login off (HVWA_AUTH=on requires it)']);
+  });
 });
 
 describe('server.ts', () => {
-  it('prints the startup banner with the registered challenge count', async () => {
+  it('prints the startup banner with the count of the challenges it serves (its edition)', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('../src/server.ts', import.meta.url), 'utf8');
-    expect(src).toMatch(/startupBanner\(listenUrl\(config\.HOST, config\.PORT\), allChallenges\(\)\.length\)/);
+    expect(src).toMatch(/const served = app\.locals\.challenges\.all\(\)\.length;/);
+    expect(src).toMatch(/startupBanner\(listenUrl\(config\.HOST, config\.PORT\), served, \{ edition: app\.locals\.edition/);
   });
 });
