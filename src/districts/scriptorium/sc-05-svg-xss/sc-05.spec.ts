@@ -18,6 +18,8 @@ import { SIGIL, impl, labFor } from './model.js';
 
 const LAB = '/d/scriptorium/svg-xss';
 const NS = 'xmlns="http://www.w3.org/2000/svg"';
+const XLINK = 'xmlns:xlink="http://www.w3.org/1999/xlink"';
+const XHTML = 'http://www.w3.org/1999/xhtml';
 const LEVELS = ['acolyte', 'templar', 'inquisitor', 'divine'] as const;
 
 interface Ctx { agent: Agent; level: Level; sid: string }
@@ -295,6 +297,84 @@ describe('SC-05 each level\'s filter', () => {
     expect(clean(`<svg ${NS}><a href=" JavaScript:a()"><text>x</text></a></svg>`)).toBe(`<svg ${NS}><a><text>x</text></a></svg>`);
     expect(clean(`<svg ${NS}><set attributeName="x" onbegin="a()" onend="b()"/></svg>`)).toBe(`<svg ${NS}><set attributeName="x" onbegin="a()" onend="b()"/></svg>`);
     expect(clean(`<!DOCTYPE svg><svg ${NS}/>`)).toBe('refused: A DOCTYPE is not accepted in a sigil.');
+  });
+
+  it('Inquisitor strips only inside start tags: a quote in text, a comment or CDATA hides no handler; text is left alone', () => {
+    const i = impl.for('inquisitor');
+    const clean = (svg: string) => { const a = i.accept(svg); return a.ok ? a.svg : `refused: ${a.text}`; };
+    expect(clean(`<svg ${NS}><desc> a='</desc><svg onload="a()"/><desc>'</desc></svg>`)).toBe(`<svg ${NS}><desc> a='</desc><svg/><desc>'</desc></svg>`);
+    expect(clean(`<svg ${NS}><desc><![CDATA[<x a=']]></desc><svg onload="a()"/><desc><![CDATA[']]></desc></svg>`))
+      .toBe(`<svg ${NS}><desc><![CDATA[<x a=']]></desc><svg/><desc><![CDATA[']]></desc></svg>`);
+    expect(clean(`<svg ${NS}><!-- a=' --><svg onload="a()"/><!-- ' --></svg>`)).toBe(`<svg ${NS}><!-- a=' --><svg/><!-- ' --></svg>`);
+    expect(clean(`<svg ${NS}><?pi a=' ?><svg onload="a()"/><?pi ' ?></svg>`)).toBe(`<svg ${NS}><?pi a=' ?><svg/><?pi ' ?></svg>`);
+    // any XML name starts a tag, not only ASCII letters; a script with any prefix is cut
+    expect(clean(`<é xmlns="${XHTML}" onclick="a()">x</é>`)).toBe(`<é xmlns="${XHTML}">x</é>`);
+    expect(clean(`<svg ${NS}><é:script xmlns:é="${XHTML}">a()</é:script></svg>`)).toBe(`<svg ${NS}></svg>`);
+    // text that only looks like an attribute is text: nothing to strip
+    expect(clean(`<svg ${NS}><desc> onload="a()" </desc></svg>`)).toBe(`<svg ${NS}><desc> onload="a()" </desc></svg>`);
+  });
+
+  it('Inquisitor drops srcdoc, and javascript: in src, action and formaction as in href and xlink:href (entities and tabs undone first)', () => {
+    const i = impl.for('inquisitor');
+    const clean = (svg: string) => { const a = i.accept(svg); return a.ok ? a.svg : `refused: ${a.text}`; };
+    expect(clean(`<iframe xmlns="${XHTML}" srcdoc="&lt;b&gt;x&lt;/b&gt;"/>`)).toBe(`<iframe xmlns="${XHTML}"/>`);
+    expect(clean(`<iframe xmlns="${XHTML}" src="javascript:a()"/>`)).toBe(`<iframe xmlns="${XHTML}"/>`);
+    expect(clean(`<form xmlns="${XHTML}" action="javascript:a()"><button formaction=' javascript:b()'>x</button></form>`))
+      .toBe(`<form xmlns="${XHTML}"><button>x</button></form>`);
+    expect(clean(`<svg ${NS} ${XLINK}><a xlink:href="javascript:a()"><text>x</text></a></svg>`)).toBe(`<svg ${NS} ${XLINK}><a><text>x</text></a></svg>`);
+    expect(clean(`<a href="&#106;avascript:a()">x</a><a href="java&#x9;script:b()">y</a><a href="JAVA&#10;SCRIPT:c()">z</a>`)).toBe('<a>x</a><a>y</a><a>z</a>');
+    // ordinary links and sources are kept
+    expect(clean(`<image href="sigil.png"/><iframe xmlns="${XHTML}" src="https://example.test/"/><a href="#top">t</a>`))
+      .toBe(`<image href="sigil.png"/><iframe xmlns="${XHTML}" src="https://example.test/"/><a href="#top">t</a>`);
+  });
+
+  it('Inquisitor end to end: only SVG\'s own animation (SMIL events, a SMIL href animation) gets through; Templar\'s payloads and the rest do not', async () => {
+    const c = await fresh('inquisitor');
+    const m = lab(c).marker.call;
+    const refused: Record<string, string> = {
+      'a quote in text hides a handler': `<svg ${NS}><desc> a='</desc><svg onload="${m}"/><desc>'</desc></svg>`,
+      'CDATA hides a handler': `<svg ${NS}><desc><![CDATA[<x a=']]></desc><svg onload="${m}"/><desc><![CDATA[']]></desc></svg>`,
+      'a comment hides a handler': `<svg ${NS}><!-- a=' --><svg onload="${m}"/><!-- ' --></svg>`,
+      'a script with a non-ASCII prefix': `<svg ${NS}><foreignObject><é:script xmlns:é="${XHTML}">${m}</é:script></foreignObject></svg>`,
+      'an XHTML iframe srcdoc': `<svg ${NS}><foreignObject width="9" height="9"><iframe xmlns="${XHTML}" srcdoc="&lt;script&gt;${m}&lt;/script&gt;"/></foreignObject></svg>`,
+      'an XHTML iframe javascript: src': `<svg ${NS}><foreignObject width="9" height="9"><iframe xmlns="${XHTML}" src="javascript:${m}"/></foreignObject></svg>`,
+      'an XHTML form javascript: action': `<svg ${NS}><foreignObject width="50" height="50"><form xmlns="${XHTML}" action="javascript:${m}"><button>go</button></form></foreignObject></svg>`,
+      'an XHTML javascript: formaction': `<svg ${NS}><foreignObject width="50" height="50"><form xmlns="${XHTML}"><button formaction="javascript:${m}">go</button></form></foreignObject></svg>`,
+      'an entity-encoded javascript: href': `<svg ${NS}><a href="&#106;avascript:${m}"><text y="20">x</text></a></svg>`,
+      'Templar: an svg load handler': TEMPLAR(m),
+      'Templar: a javascript: xlink:href': `<svg ${NS} ${XLINK}><a xlink:href="javascript:${m}"><text y="20">x</text></a></svg>`,
+      'Templar: foreignObject with an XHTML img': `<svg ${NS}><foreignObject><img xmlns="${XHTML}" src="x" onerror="${m}"/></foreignObject></svg>`,
+    };
+    for (const [name, svg] of Object.entries(refused)) {
+      await upload(c.agent, 'inquisitor', [sigil(svg)]);
+      await review(c.agent, 'inquisitor');
+      expect(lastVerdict(c)?.fired, name).toBe(false);
+    }
+    expect(attackerHits((await page(c.agent, 'inquisitor')).text)).toEqual([]);
+    const kept: Record<string, string> = {
+      'SMIL onbegin': INQUISITOR(m),
+      'SMIL onend': `<svg ${NS}><animate attributeName="x" dur="0.1s" onend="${m}"/></svg>`,
+      'a SMIL href animation': `<svg ${NS}><a><animate attributeName="href" values="javascript:${m}"/><text y="20">x</text></a></svg>`,
+    };
+    for (const [name, svg] of Object.entries(kept)) {
+      await upload(c.agent, 'inquisitor', [sigil(svg)]);
+      await review(c.agent, 'inquisitor');
+      expect(lastVerdict(c)?.fired, name).toBe(true);
+    }
+  });
+
+  it('one sigil per player: a second upload replaces the first, and the moderator reviews only the newest', async () => {
+    const c = await fresh('acolyte');
+    await upload(c.agent, 'acolyte', [sigil(ACOLYTE(lab(c).marker.call))]);
+    await upload(c.agent, 'acolyte', [sigil(PLAIN)]);
+    expect(stored(c)).toBe(PLAIN);
+    expect(lab(c).fs.list().map((f) => f.path)).toEqual([SIGIL]);
+    const text = (await page(c.agent, 'acolyte')).text;
+    expect(text.match(/data-testid="sigil-source"/g)?.length).toBe(1);
+    expect(unescapeHtml(/<pre data-testid="sigil-source">([^<]*)<\/pre>/.exec(text)?.[1] ?? '')).toBe(PLAIN);
+    await review(c.agent, 'acolyte');
+    expect(lastVerdict(c)?.fired).toBe(false);
+    expect(attackerHits((await page(c.agent, 'acolyte')).text)).toEqual([]);
   });
 
   it('Divine stores the sigil as it is (it is never rendered) and refuses only a DOCTYPE', async () => {
