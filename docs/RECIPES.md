@@ -86,6 +86,15 @@ src/districts/index.ts              imports each district index
   - `curl.testkit.ts`: `describeCurlExample({ challenge, path, curl: (level) => ExpectedCurl })`, the front page's curl
     line at every level. `curl.spec.ts` tests the helpers and the partial.
   - `victim-lab.testkit.ts`: the victim-lab test kit (section 8, Testing).
+  - `xss-lab.ts` + `views/xss-proof.ejs`: what the server-sink XSS labs share (SC-01, SC-02, SC-04, FP-05; section 13):
+    `xssVictim(cookie, handler)` (in the `perSession` factory: a world, the player's marker, the admin's session key and
+    XSS browser, signed in), `rearmVictim(cookie, victimFor)` (the presets' `rearm`), `signOutPage(cookie)` (the
+    citadel's `/logout`), `keySignIn(req, challenge, typed, victim, who)` (the proof: the whole key below Divine shows
+    the flag) and `proofView(...)` for the partial (the marker in `<code data-marker>` and the sign-in form,
+    `intent=sign-in`), included with `<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>`.
+  - `xss-lab.testkit.ts`: `describeXssLab({ challenge, path, victimOf, attack, preview, fragment, payloads,
+    divineSanitizes? })` (section 13, Testing), `xssExploit(path, attack)` (an exploit as the player plays it), and the
+    page readers `markerOn`, `stealsOn`, `stolenKey`, `previewSrcdoc`, `signIn`, `labPage`.
 - **The Relic Market shop shell** (`relic-market/_shared/`: money, cart, orders, intents, the shop page, its test kit)
   is section 10; its race and time primitives are sections 11 and 12.
 - **Shared pieces of the pilgrim labs** (sign in as `pilgrim`, take over the admin's data or page: GK-12 ... GK-18),
@@ -590,7 +599,9 @@ hand-written parser); the classifier is the ground truth for where the victim's 
 ### What is simulated
 
 - **`simWorld({ mailboxes })`**: one player's world at one level: `world.inbox`, `world.attackerLog`, the victim's recent
-  visits (`world.visits`) and a clock (`world.now`, a test seam like `state.now`).
+  visits (`world.visits`) and a clock (`world.now`, a test seam like `state.now`). **`world.visits` starts afresh with
+  every victim action** (the action's start clears it): it holds that action's visits, and any made after it, newest
+  `SIM_LIMITS.visits`. A spec that presses the button twice reads the visits after each press, not both at the end.
 - **`world.inbox`**: fixed mailboxes, `PLAYER_MAILBOX` (`pilgrim@citadel.test`) always plus the ones named (usually
   `ADMIN_MAILBOX`); mail to any other address bounces (`deliver()` returns `undefined`), so no map is keyed by attacker
   input. `deliver({ from, to, subject, body, links })`, `newest(address)`, `list(address)` (newest first). Links are an
@@ -655,7 +666,11 @@ the container has 512 MB:
 - At most `SIM_LIMITS.newWorldsPerMinute` (30) new instances a minute per holder, by default and as a ceiling: a lab may
   pass a lower `maxNewPerMinute`, never higher (asking for more fails at the first factory run).
 - Tests may shrink the budget with `setCappedBudget(bytes)` from `core/lab.ts` (restore the value it returns), and read
-  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`).
+  it with `cappedBudgetUsage()` (`{ bytes, instances, budget }`). **A spec that checks what one new instance adds to
+  the budget makes room first**: a busy spec file fills the shared budget, and the eviction the new instance causes
+  gives bytes back, so the difference comes out short. Raise the budget for the check and restore it in a `finally`:
+  `const prev = setCappedBudget(cappedBudgetUsage().bytes + 64 * 1024 * 1024); try { ... } finally { setCappedBudget(prev); }`
+  (SC-02, FP-05).
 
 Keep the world and the victim's browser in the lab's own per-session state, next to whatever else the lab tracks
 (accounts, tokens, codes), so one eviction or one `reset` drops all of it together:
@@ -1529,6 +1544,15 @@ Every string kept is a copy.
   (`default-src 'none'`), and a shim that turns `hvwa()` and `alert()` into a text banner naming the player's own
   marker. Checked in headless Chrome 157. A route-scoped CSP on the lab page applies inside it too, because srcdoc
   inherits it.
+- **`javascript:` links run in the preview through the shim.** A `sandbox="allow-scripts"` frame never runs a
+  `javascript:` URL a click navigates to (Chrome 157, with or without the meta CSP), so a link payload the oracle
+  counts would never be seen firing. The shim catches the click on an `a` or `area`, or on a submit button with a form
+  owner (its `formaction`, else the form's `action`), decodes the URL exactly as the oracle does (`urlText`,
+  `schemeOf`, `javascriptSource`: C0 controls and spaces trimmed, tabs and newlines removed, the scheme compared
+  case-insensitively, the rest percent-decoded as UTF-8; entities are undone by the parser), cancels the navigation and
+  runs the code as an inline script in the frame. The frame stays sandboxed with no `allow-same-origin`; a page CSP
+  without `'unsafe-inline'` blocks it, as it blocks every inline payload. `tests/xss-preview.spec.ts` checks the
+  decoding against the oracle's own functions.
 - `hvwa_sid` is HttpOnly and `SameSite=Lax`: no script anywhere reads the player's session.
 - Raw lab input reaches only the preview frame; everything else is escaped. Residual risk, accepted: all labs share
   the loopback origin, so a payload the player pastes into their own address bar or devtools can script their own
@@ -1542,13 +1566,17 @@ Every string kept is a copy.
   select pass, SMIL `href`, precision, form owners, `data:` images and tracks, XML documents and DTDs), escaped
   negatives, mXSS corpora, marker reachability,
   per-player isolation, the bounds (including the linear-time and mocked-clock cases), `linkSinks` and the preview's
-  attributes. It also guards imports: `core/xss/` imports
+  attributes (`tests/xss-preview.spec.ts`: its `javascript:` link runner). It also guards imports: `core/xss/` imports
   only parse5 and `sim/limits.ts` (the copying clip), with no dynamic `import()`, no network, file system, `vm`,
   `child_process` or code-loading global; parse5 and entities import no Node builtin at all; `core/sim/` never
   reaches `core/xss/`.
 - **The victim wrap (`tests/xss-victim.spec.ts`).** In process: what renders, what fires, the canary (read after the
   page's `Set-Cookie`), content types (XML read as XML), CSP sandbox, the `dom` twin, its hash and its failures, and
   the bound on kept verdicts.
+- **The XSS lab kit (`src/districts/_shared/xss-lab.testkit.ts`, section 1).** `describeXssLab` runs the cases below
+  that every server-sink XSS lab shares (the preview holds the fragment and runs it only isolated, one steal with no
+  Referer, Divine never fires, only the whole session key signs in, players and levels isolated); a lab spec adds its
+  own (re-arm, bounds, Restart, the Divine sanitizer on a corpus).
 - **A lab spec**, like XV-01, scripts the exploit as a player would. It reads the marker from the page (put it in
   `<code data-marker>`), sends the link (`POST <lab>/victim/send-link`), reads the canary from the attacker log
   (`attackerHits(html)`, the hit whose URL starts with `XSS_STEAL_URL`), then completes the attack.
@@ -1556,7 +1584,11 @@ Every string kept is a copy.
   - the preview's srcdoc ends with `<body>` + the level's fragment + `</body></html>`;
   - `xssOracle(labPage.text, marker)` finds the marker sinks only `isolated` (the payload never runs on the platform
     page);
-  - Divine's librarian saw the marker as text (`labFor(...).admin.verdicts`: `reachedMarker` true, `fired` false);
+  - Divine's admin never fired (`labFor(...).admin.verdicts`: `fired` false, no `limited`) and saw the marker as text
+    (`reachedMarker` true). **The "as text" half holds for an ESCAPING Divine only**: a sanitizing Divine drops the
+    marker together with the attribute or element it sat in, so there only some payloads reach the page as text;
+    `describeXssLab({ ..., divineSanitizes: true })` then asks for at least one (SC-02, FP-05, and SC-04, whose refused
+    link keeps only its label);
   - players and levels are isolated;
   - a logout link does not wedge the victim (re-arm);
   - for a level that serves player XML: Divine never produces `limited: 'dtd'` (it refuses a DOCTYPE with an
