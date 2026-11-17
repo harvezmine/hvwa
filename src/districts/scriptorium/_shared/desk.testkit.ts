@@ -1,6 +1,7 @@
-// src/districts/scriptorium/_shared/desk.testkit.ts — the checks every scroll-desk lab (SC-07, SC-08) repeats: the page, the
-// upload route (cap, gate, odd requests), the inert download, how names are shown, isolation and Restart. A test kit
-// (docs/RECIPES.md section 1): `*.testkit.ts` is never collected as a spec and never reaches dist/.
+// src/districts/scriptorium/_shared/desk.testkit.ts — the checks every scroll-desk lab (SC-07, SC-08, SC-09) repeats: the
+// page, the upload route (cap, gate, odd requests), the inert download, the raster preview (on or off), how names are
+// shown, isolation and Restart. A test kit (docs/RECIPES.md section 1): `*.testkit.ts` is never collected as a spec and
+// never reaches dist/.
 import type { AddressInfo } from 'node:net';
 import { request as httpRequest } from 'node:http';
 import { describe, it, expect, onTestFinished, vi } from 'vitest';
@@ -20,12 +21,27 @@ export interface DeskKit {
   readonly heading: string;
   /** The test seam: the lab state of one player at one level. */
   readonly labFor: (req: { sessionId: string; level: Level }) => DeskState;
+  /** The pinned seed the lab gave newDesk (default: newDesk's own, README.txt holding 'Scrolls go here.\n'). */
+  readonly seed?: { readonly name: string; readonly body: string | Buffer };
+  /**
+   * What the kit's own uploads look like, so that the lab's Acolyte and Divine store them (default: as written, claimed
+   * text/plain). An image lab (SC-09) claims an image type and starts every body with an image header.
+   */
+  readonly accepted?: { readonly contentType: string; readonly prefix: Buffer };
+  /** Whether the lab turned on the raster preview (DeskOptions.preview). Default false: no /preview route, no image. */
+  readonly preview?: boolean;
 }
 
-const scroll = (filename: string | Buffer, value: string | Buffer, contentType = 'text/plain'): Part => ({ name: 'scroll', filename, value, contentType });
+const README = { name: 'README.txt', body: 'Scrolls go here.\n' };
 
 export function describeDeskBasics(k: DeskKit): void {
   const levels = LEVELS.filter((l) => k.challenge.levels.includes(l));
+  const seed = k.seed ?? README;
+  const seedPath = `${UPLOADS_DIR}/${seed.name}`;
+  /** A file part as this lab's Acolyte and Divine store it (see DeskKit.accepted). */
+  const scroll = (filename: string | Buffer, value: string | Buffer, contentType = 'text/plain'): Part => (k.accepted === undefined
+    ? { name: 'scroll', filename, value, contentType }
+    : { name: 'scroll', filename, value: Buffer.concat([k.accepted.prefix, Buffer.from(value)]), contentType: k.accepted.contentType });
   const upload = (agent: Agent, level: Level, parts: readonly Part[]) => {
     const m = multipart(parts);
     return agent.post(`${k.path}?level=${level}`).set('Content-Type', m.contentType).send(m.body);
@@ -33,15 +49,15 @@ export function describeDeskBasics(k: DeskKit): void {
   const listed = (sid: string, level: Level) => k.labFor({ sessionId: sid, level }).fs.list().map((f) => f.path);
 
   describe(`${k.challenge.id} scroll desk`, () => {
-    it('GET / at every level: the lab, the seed scroll, a form with no action, the simulated server\'s one statement, a curl line', async () => {
+    it('GET / at every level: the lab, the seed, a form with no action, the simulated server\'s one statement, a curl line', async () => {
       const { agent, sid } = await freshSession();
       for (const level of levels) {
         const page = await agent.get(`${k.path}?level=${level}`);
         expect(page.status, level).toBe(200);
         expect(page.text, level).toContain(k.heading);
         expect(page.text, level).toContain('You are signed in as <code>pilgrim</code>');
-        expect(page.text, level).toContain(`data-path="${UPLOADS_DIR}/README.txt"`);
-        expect(page.text, level).toContain(`href="${k.path}/uploads?level=${level}&amp;name=README.txt"`);
+        expect(page.text, level).toContain(`data-path="${seedPath}"`);
+        expect(page.text, level).toContain(`href="${k.path}/uploads?level=${level}&amp;name=${encodeURIComponent(seed.name)}"`);
         expect(page.text, level).toMatch(/<form method="post" enctype="multipart\/form-data">/);
         // The page documents the simulated server's single statement and says that nothing really runs.
         expect(page.text, level).toContain('<code>&lt;?hvwa CANARY ?&gt;</code>');
@@ -54,17 +70,39 @@ export function describeDeskBasics(k: DeskKit): void {
       }
     });
 
-    it('the seed scroll is served as an inert download at every level, whatever it is called', async () => {
+    it('the seed is served as an inert download at every level, whatever it is called', async () => {
       const { agent } = await freshSession();
       for (const level of levels) {
-        const r = await agent.get(`${k.path}/uploads?level=${level}&name=README.txt`);
+        const r = await agent.get(`${k.path}/uploads?level=${level}&name=${encodeURIComponent(seed.name)}`);
         expect(r.status, level).toBe(200);
         expect(r.headers['content-type'], level).toBe('application/octet-stream');
         expect([r.headers['x-content-type-options'], r.headers['content-disposition'], r.headers['content-security-policy']], level)
           .toEqual(['nosniff', 'attachment', 'sandbox']);
-        expect(r.body.toString(), level).toBe('Scrolls go here.\n');
+        expect(Buffer.compare(r.body as Buffer, Buffer.from(seed.body)), level).toBe(0);
       }
     });
+
+    if (k.preview === true) {
+      it('the raster preview: the seed in a fixed box, served as the type its header says, nosniff, CSP sandbox', async () => {
+        const { agent } = await freshSession();
+        for (const level of levels) {
+          const page = await agent.get(`${k.path}?level=${level}`);
+          expect(page.text, level).toContain(`<img class="desk-preview" src="${k.path}/preview?level=${level}&amp;name=${encodeURIComponent(seed.name)}" alt="" width="128" height="128" style="width: 8rem; height: 8rem; object-fit: contain">`);
+          const r = await agent.get(`${k.path}/preview?level=${level}&name=${encodeURIComponent(seed.name)}`);
+          expect(r.status, level).toBe(200);
+          expect(r.headers['content-type'], level).toMatch(/^image\/(gif|png|jpeg|webp)$/);
+          expect([r.headers['x-content-type-options'], r.headers['content-security-policy']], level).toEqual(['nosniff', 'sandbox']);
+        }
+      });
+    } else {
+      it('no raster preview: no /preview route and no preview image on the page', async () => {
+        const { agent } = await freshSession();
+        for (const level of levels) {
+          expect((await agent.get(`${k.path}?level=${level}`)).text, level).not.toContain('desk-preview');
+          expect((await agent.get(`${k.path}/preview?level=${level}&name=${encodeURIComponent(seed.name)}`)).status, level).toBe(404);
+        }
+      });
+    }
 
     it('a scroll that does not run is never sent to the real browser as an active type; no flag in it', async () => {
       const { agent } = await freshSession();
@@ -104,7 +142,7 @@ export function describeDeskBasics(k: DeskKit): void {
       expect(r.status).toBe(413);
       expect(r.text).toContain(k.heading);
       expect(r.text).toContain('The scroll is too large (at most 2 MiB).');
-      expect(listed(sid, 'acolyte')).toEqual([`${UPLOADS_DIR}/README.txt`]);
+      expect(listed(sid, 'acolyte')).toEqual([seedPath]);
     });
 
     it('the upload route is behind uploadGate: with every slot held by a stalled upload, the next one gets 503; hanging up frees them', async () => {
@@ -149,11 +187,11 @@ export function describeDeskBasics(k: DeskKit): void {
       expect((await b.agent.get(`${k.path}/uploads?level=acolyte&name=mine.txt`)).status).toBe(404);
     });
 
-    it('the seed scroll is pinned: it survives more uploads than the file system holds', async () => {
+    it('the seed is pinned: it survives more uploads than the file system holds', async () => {
       const { agent, sid } = await freshSession();
       for (let i = 0; i < 40; i++) await upload(agent, 'acolyte', [scroll(`s${i}.txt`, `n${i}`)]);
       const files = listed(sid, 'acolyte');
-      expect(files).toContain(`${UPLOADS_DIR}/README.txt`);
+      expect(files).toContain(seedPath);
       expect(files.length).toBeLessThanOrEqual(32);
     });
 
@@ -181,7 +219,7 @@ export function describeDeskBasics(k: DeskKit): void {
       await upload(agent, 'acolyte', [scroll('mine.txt', 'x')]);
       await upload(agent, 'divine', [scroll('mine.txt', 'x')]);
       expect(await agent.post(`${k.path}/_reset?level=acolyte`)).toMatchObject({ status: 303 });
-      expect(listed(sid, 'acolyte')).toEqual([`${UPLOADS_DIR}/README.txt`]);
+      expect(listed(sid, 'acolyte')).toEqual([seedPath]);
       expect(listed(sid, 'divine').length).toBe(2);
     });
   });

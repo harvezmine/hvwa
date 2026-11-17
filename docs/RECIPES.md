@@ -1058,7 +1058,32 @@ active type**, whatever was claimed or sniffed. A route that hands a stored file
 application/octet-stream`, `X-Content-Type-Options: nosniff`, `Content-Disposition: attachment` and
 `Content-Security-Policy: sandbox`. What the simulated server would have sent (its content type, whether the file
 ran, what it printed) goes on a lab page as escaped text. An SVG or HTML payload that must be seen firing (SC-05)
-goes only through E0's sandboxed preview frame.
+goes only through E0's sandboxed preview frame. The one other way out is the scroll desk's **raster preview** (below):
+a file whose bytes start like a PNG, JPEG, GIF or WebP, sent as the type that header names (never the claim), with
+`nosniff` and a CSP `sandbox`, and drawn in a fixed CSS box. A raster image of its own type never runs script.
+
+### The Scroll Desk (`scriptorium/_shared/desk.ts`: SC-07, SC-08, SC-09)
+
+A shell for the upload-filter labs: the uploader page, `POST /` (the upload), `GET /uploads?name=` (the simulated
+archive server: the inert download, or the interpreter's output when the level says the file runs) and, opt-in,
+`GET /preview?name=`. Every decision is a `DeskLevel` callback in the lab's `levels/*.ts`: `store(fs, file)` (refuse,
+or write and say where) and `serve(fs, name)` (find the file, and whether it runs). `mountDesk(router, options)`:
+
+- `newDesk({ seed?, separators? })` in the `perSession` factory: a `simFs` with one pinned seed under `/srv/uploads`
+  (default `README.txt`, "Scrolls go here."; SC-09 seeds a server-made sample image) and the simulated OS's separators.
+- `partial` (an absolute `.ejs` path) and `extra(req, res)`: the lab's own content, drawn under the message. The
+  partial sees the desk's view data plus `extra` (one key, so it never collides with the desk's or the engine's keys)
+  and escapes its own values. Display only: no filter or decision lives there.
+- `statementNote` (default true): the note on `<?hvwa CANARY ?>`. A desk whose server runs files keeps it.
+- `preview` (default false): `GET /preview?name=` looks the file up with the level's `serve` (never running it) and
+  serves only a raster, as the type its header names, `nosniff` and `Content-Security-Policy: sandbox`; anything else
+  is a plain-text 404. **At Divine it sends `placeholderImage(sniff)`**, never a stored byte, so the secure reference
+  never shows the player's bytes even if a level kept them. The page draws each raster file as
+  `<img class="desk-preview" ... width="128" height="128" style="width: 8rem; height: 8rem; object-fit: contain">`.
+- The test kit `describeDeskBasics({ challenge, path, heading, labFor, seed?, accepted?, preview? })`: `seed` is the
+  lab's seed (name and body), `accepted` the content type and body prefix the lab's Acolyte and Divine store (an image
+  lab claims an image type and starts with an image header), `preview` whether the route exists. The options' own cases
+  are in `tests/desk-shell.spec.ts` (fixture lab DK-01).
 
 ### Testing
 
