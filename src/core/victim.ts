@@ -711,10 +711,10 @@ function cspSandbox(values: readonly string[] | undefined): string | undefined {
   return allowed === undefined ? undefined : [...allowed].join(' ');
 }
 
-/** The fragment of a URL as `location.hash` gives it ('' when there is none or the URL does not parse). A copy. */
 /** Where an attacker page a lab declared is (the browser checks it and throws for one off attacker.test). */
 const pageOrigin = (page: Pick<SimAttackerPage, 'url'> | undefined): SimUrl => classifySimUrl(page?.url ?? ATTACKER_PAGE_URL);
 
+/** The fragment of a URL as `location.hash` gives it ('' when there is none or the URL does not parse). A copy. */
 function fragmentOf(url: unknown, base?: string): string {
   if (typeof url !== 'string' || url.length > SIM_LIMITS.urlLength) return '';
   try {

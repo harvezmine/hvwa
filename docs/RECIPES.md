@@ -718,7 +718,9 @@ browser's answer:
   carries, stay visible.
 - **Cookies** (`TwinCookie`): `{ name, value, path, clear?, maxAgeSec?, httpOnly?, sameSite?, secure? }`. The path is
   `cookiePath(base)` (`base || '/'`). The defaults are HttpOnly and `SameSite=Lax` (as `hvwa_sid`), not Secure; both
-  browsers get the same attributes. `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
+  browsers get the same attributes, and the line always NAMES its SameSite. **Never set a session cookie without an
+  explicit SameSite** (no raw `res.cookie` or `Set-Cookie` without it): Chrome treats such a cookie as Lax but still sends
+  it on a cross-site POST for its first 2 minutes, which the sim does not model ("Across sites" below). `httpOnly: false` is for a cookie the lab means to be read or edited client-side.
   `sameSite: 'Strict' | 'Lax' | 'None'`: a lab whose lesson is SameSite (CSRF) sets it per level IN THE LEVEL FILE, so
   View Source and the Diff show it (Acolyte's `sameSite: 'None'` with `secure: true` is the realistic
   misconfiguration). Any other value throws, and so does `'None'` without `secure: true`, set or cleared: browsers
@@ -870,9 +872,12 @@ over http (see "The twin" above).
 | a citadel page in the top-level window that moves on (`Refresh`) | yes | sent | sent | sent |
 
 A cross-site answer that is not a top-level navigation's (a fetch, a frame) may store only `SameSite=None` cookies: it can
-neither set nor delete the admin's Lax session. **Modelling choices (current Chrome):** no "Lax-allowing-unsafe" exception
-(Chrome still sends a cookie that has NO SameSite attribute and is under 2 minutes old on a cross-site top-level POST; the
-twin always writes the attribute, so a lab never meets it); third-party cookies are on, as in Chrome's default, so a
+neither set nor delete the admin's Lax session. **Modelling choices (current Chrome):** no "Lax-allowing-unsafe" exception.
+Chrome 157 still sends a cookie that has NO SameSite attribute and is under 2 minutes old on a cross-site top-level POST
+(the E1 review saw it), and the sim does not model that, so **a lab must NEVER set a session cookie without an explicit
+SameSite**: in the real browser a fresh session would ride along on a cross-site POST that the sim refuses, and the lab
+would teach the wrong thing. Set every lab cookie through a TwinCookie (it always writes the attribute, `Lax` by default),
+and give a raw `Set-Cookie` line in a citadel handler or test an explicit `SameSite` too. Third-party cookies are on, as in Chrome's default, so a
 `SameSite=None` cookie reaches a frame or a credentialed fetch (Firefox's Total Cookie Protection partitions it and Safari
 blocks it, so in those browsers a framed or fetched citadel is signed out even then); `http://citadel.test` and
 `https://citadel.test` are different origins.
@@ -1683,8 +1688,9 @@ Every string kept is a copy.
 - Raw lab input reaches only the preview frame; everything else is escaped. Residual risk, accepted: all labs share
   the loopback origin, so a payload the player pastes into their own address bar or devtools can script their own
   platform page.
-- No route-scoped header helper exists yet (`core/http.ts setLabHeaders` is engine task E1). Until then a Divine
-  level that adds CSP sets the header on its own route only, never globally.
+- Route-scoped headers come from `setLabHeaders` in `core/http.ts`, which ships with the SC XSS batch (with `labHeaders(h)`
+  for the same headers in a `SimResponse`); until it is on master, a Divine level that adds CSP sets the header on its
+  own route only, never globally.
 
 ### Testing
 

@@ -48,7 +48,8 @@ export const SAME_SITE_NAVIGATION: SimCookieContext = Object.freeze({ site: 'sam
  * Whether a cookie with `sameSite` is sent on a request in `ctx` (RFC 6265bis 5.6.7, current Chrome):
  * Strict only same-site; Lax same-site, or cross-site on a top-level navigation with a safe method (GET); None always.
  * Not modelled: Chrome's "Lax-allowing-unsafe" exception (a cookie with NO SameSite attribute, under 2 minutes old,
- * is also sent on a cross-site top-level POST). Labs whose lesson is SameSite set the attribute (TwinCookie always writes one).
+ * is also sent on a cross-site top-level POST; Chrome 157 still does it). So a lab must NEVER set a session cookie without
+ * an explicit SameSite: TwinCookie always writes one, and a raw Set-Cookie line must too.
  */
 export function sameSiteSends(sameSite: SimSameSite, ctx: SimCookieContext): boolean {
   if (sameSite === 'None') return true;
