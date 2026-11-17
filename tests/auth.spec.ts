@@ -471,6 +471,29 @@ describe('brute-force backoff (fake clock)', () => {
     second.clock.advance(30_000);
     expect((await signIn(request.agent(second.app))).status).toBe(303);
   });
+
+  it('the README recipes work as written: the unlock applies to a running app at once; the account reset re-creates it', async () => {
+    const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8');
+    const sql = [...readme.matchAll(/hvwa\.db'\)\.exec\('([^']+)'\)/g)].map((m) => m[1]);
+    expect(sql).toEqual(['UPDATE auth_accounts SET failures=0, locked_until=0', 'DELETE FROM auth_accounts; DELETE FROM auth_tokens']);
+    const dir = mkdtempSync(join(tmpdir(), 'hvwa-auth-'));
+    tempDirs.push(dir);
+    const dbPath = join(dir, 'hvwa.db');
+    const { app } = authApp({ dbPath });
+    const agent = request.agent(app);
+    const csrf = csrfOf((await agent.get('/login')).text);
+    for (let i = 0; i < 12; i++) await agent.post('/login').type('form').send({ _csrf: csrf, username: 'admin', password: 'wrong' });
+    expect((await signIn(request.agent(app))).status).toBe(401); // locked (same fake time)
+    const other = new (await import('node:sqlite')).DatabaseSync(dbPath); // another process's connection, as docker exec
+    other.exec(sql[0]);
+    expect((await signIn(request.agent(app))).status).toBe(303); // no restart, no waiting
+    other.exec(sql[1]);
+    other.close();
+    app.locals.db.close();
+    const restarted = authApp({ dbPath, initialPassword: 'Reset-Pass-123' });
+    expect(restarted.app.locals.auth?.accountCreated).toBe(true);
+    expect((await signIn(request.agent(restarted.app), { password: 'Reset-Pass-123' })).status).toBe(303);
+  });
 });
 
 describe('CSRF on the login, logout and password forms', () => {
