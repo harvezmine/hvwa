@@ -116,8 +116,8 @@ describe('SC-01 search lab', () => {
       const v = xssOracle(impl.for('divine').results(make(call)), call);
       expect([v.executes, v.reachedMarker], make(call)).toEqual([false, true]);
     }
-    // A platform page in the same session carries no policy.
-    expect((await agent.get('/')).headers['content-security-policy']).toBeUndefined();
+    // A platform page in the same session carries none of the lab's policy: only the portal's own frame-ancestors.
+    expect((await agent.get('/')).headers['content-security-policy']).toBe("frame-ancestors 'self'");
   });
 
   it("the librarian's search page carries exactly the CSP your page carries, at every level (the citadel twin)", async () => {
