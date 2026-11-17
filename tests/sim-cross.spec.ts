@@ -1018,6 +1018,8 @@ describe('sendAttackerPageAction: your page lives at the link you send', () => {
     expect([f.seen, f.w.attackerLog.entries(), f.w.visits]).toEqual([[], [], []]);
     f.state.page = undefined;
     expect((send(f).run(REQ, { url: 'http://attacker.test/' }) as { en: string }).en).toMatch(/not written your attacker page/);
+    // The link is checked first, page or no page: the player learns the link is refused, not that a page is missing.
+    expect((send(f).run(REQ, { url: 'http://citadel.test/' }) as { en: string }).en).toMatch(/not on your server/);
   });
 });
 
@@ -1135,6 +1137,24 @@ describe('budget, caps and copies: across sites adds no state', () => {
     expect(f.w.visits).toHaveLength(SIM_LIMITS.visits);
     expect(f.w.attackerLog.entries()).toHaveLength(SIM_LIMITS.logEntries);
     expect(f.w.attackerLog.total).toBe(40);
+  });
+
+  it('a frame handle is held weakly: the frames a lab drops are freed, however many the admin was shown', () => {
+    // The browser remembers each frame (for clickThrough) in a WeakMap keyed by the SimFrame. A Map would keep every frame
+    // ever loaded, with its visit and URLs, for the browser's whole life: about 20 KB each here.
+    const gc = (globalThis as { gc?: () => void }).gc;
+    if (typeof gc !== 'function') throw new Error('globalThis.gc is missing: run the specs with --expose-gc (vitest.config.ts)');
+    const w = world();
+    const b = inSession(() => w.browser(() => ({ status: 200, body: 'Approve? [Approve]' })));
+    const page = { url: `http://attacker.test/${'p'.repeat(1900)}` };
+    let last = b.frame('http://citadel.test/warm', { page });
+    gc(); gc();
+    const before = process.memoryUsage().heapUsed;
+    for (let i = 0; i < 1000; i++) last = b.frame(`http://citadel.test/f${i}?${'q'.repeat(1900)}`, { page });
+    gc(); gc();
+    // Weak: only the last handle (kept here) and the world's 5 visits stay. Strong: 1000 x ~20 KB = ~20 MB.
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(2 * 1024 * 1024);
+    expect(b.clickThrough(last, '/grant', {}).clicked).toBe(true); // the kept one still works
   });
 
   it('what they keep is a copy: a huge answer, form or page URL does not stay alive behind a short kept string', () => {
