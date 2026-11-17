@@ -314,11 +314,13 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   font-size: var(--fs-sm);
 }
 .banner-inner {
-  max-width: var(--content); margin: 0 auto; padding: var(--sp-2) var(--sp-4);
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
+  max-width: var(--content); margin: 0 auto; padding: var(--sp-1) var(--sp-4);
+  display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-3);
+  min-height: 2.25rem;
 }
-.banner-inner > .icon { color: var(--warning); }
-.banner-text { flex: 1 1 14rem; font-weight: 600; }
+.banner-inner > .icon { display: none; color: var(--warning); width: 1rem; height: 1rem; }
+.banner-text { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: var(--fs-xs); line-height: 1.35; }
+.banner-inner > .btn { flex: none; }
 
 .topbar {
   position: sticky; top: 0; z-index: var(--z-header);
@@ -428,6 +430,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   max-width: var(--content); margin: 0 auto; padding: var(--sp-5) var(--sp-4) var(--sp-7);
 }
 .content:focus { outline: none; }
+.content-lab { max-width: 60rem; }
 
 .crumbs-nav { margin: 0 0 var(--sp-4); }
 .crumbs {
@@ -484,6 +487,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .btn-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
 .btn-danger:hover { color: var(--danger); }
 .btn-sm { min-height: 36px; padding: 0 var(--sp-3); font-size: var(--fs-xs); }
+/* Compact button (banners): drawn 28 px tall, its hit area is extended to 44 px. */
+.btn-xs { min-height: 28px; padding: 0 var(--sp-3); font-size: var(--fs-xs); border-radius: var(--radius-sm); }
+.btn-xs::before { content: ""; position: absolute; inset: -8px -4px; }
 .btn-lg { min-height: 52px; padding: 0 var(--sp-5); font-size: var(--fs-md); }
 .btn-block { width: 100%; }
 .btn .icon { width: 1.125rem; height: 1.125rem; }
@@ -673,6 +679,7 @@ form.htmx-request button[type="submit"]::before {
    5. Portal pages
    ========================================================================== */
 .page-head { margin: 0 0 var(--sp-5); }
+.page-lead + .diff-legend { margin-top: var(--sp-3); }
 .page-title { font-size: var(--fs-xl); font-weight: 700; margin: 0 0 var(--sp-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3); }
 .page-lead { color: var(--text-muted); max-width: 70ch; margin: 0; }
 .challenge-id { font-family: var(--mono); color: var(--primary-text); font-weight: 700; letter-spacing: 0.02em; }
@@ -691,14 +698,19 @@ form.htmx-request button[type="submit"]::before {
     radial-gradient(60rem 18rem at 85% -20%, var(--hero-glow), transparent 70%),
     var(--surface);
 }
-.hero::after {
-  content: ""; position: absolute; right: -2rem; bottom: -3rem; width: 14rem; height: 18rem;
-  border: 2px solid var(--border); border-bottom: 0; border-radius: 50% 50% 0 0 / 60% 60% 0 0;
-  opacity: 0.7; pointer-events: none;
-}
 .hero h1 { font-size: var(--fs-2xl); max-width: 22ch; margin: 0 0 var(--sp-3); }
 .hero-lead { color: var(--text-muted); font-size: var(--fs-lg); max-width: 60ch; margin: 0 0 var(--sp-5); }
-.hero-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.hero { display: grid; gap: var(--sp-5); align-items: center; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.hero-lead { margin-bottom: var(--sp-4); }
+.next-up { position: relative; display: grid; gap: var(--sp-2); padding: var(--sp-5); background: var(--surface-2); border-color: var(--border-strong); box-shadow: var(--shadow-2); }
+.next-up::before { content: ""; position: absolute; left: var(--sp-5); right: var(--sp-5); top: -1px; height: 2px; background: linear-gradient(90deg, transparent, var(--primary), transparent); }
+.next-up .eyebrow { margin: 0; }
+.next-up-meta { margin: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: baseline; font-size: var(--fs-sm); }
+.next-id { font-family: var(--mono); color: var(--primary-text); font-weight: 700; }
+.next-up-title { margin: 0; font-size: var(--fs-xl); }
+.next-up-summary { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.next-up .level-chips { margin: var(--sp-1) 0 var(--sp-2); }
 
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); margin: var(--sp-4) 0 0; }
 .stats > :first-child { grid-column: 1 / -1; }
@@ -724,8 +736,8 @@ form.htmx-request button[type="submit"]::before {
 .district-name { font-size: var(--fs-lg); font-weight: 700; margin: 0; }
 .district-desc { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); flex: 1 0 auto; }
 .district-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; justify-content: space-between; }
-.district-list { margin: 0; }
-.district-list > summary { font-size: var(--fs-sm); }
+.district-list { margin: 0; background: transparent; border-style: dashed; }
+.district-list > summary { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
 .challenge-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: var(--fs-sm); }
 .challenge-list a {
   display: flex; align-items: center; gap: var(--sp-2);
@@ -762,7 +774,8 @@ form.htmx-request button[type="submit"]::before {
 .status-solved { color: var(--success); }
 
 .level-legend { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); margin: var(--sp-5) 0 0; padding-top: var(--sp-4); border-top: 1px solid var(--border); }
-.level-legend > div { display: grid; grid-template-columns: 7.5rem 1fr; gap: var(--sp-3); align-items: center; }
+.level-legend > div { display: grid; grid-template-columns: 1fr; gap: var(--sp-1); }
+.level-legend .level-badge { min-width: 6.5rem; justify-content: center; }
 .level-legend dt, .level-legend dd { margin: 0; }
 .level-legend dd { color: var(--text-muted); font-size: var(--fs-sm); }
 
@@ -781,9 +794,15 @@ form.htmx-request button[type="submit"]::before {
   transition: transform var(--dur) var(--ease);
 }
 .level-tab::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; border-radius: var(--radius) 0 0 var(--radius); background: var(--lv); }
-.level-tab:hover { color: var(--text); text-decoration: none; transform: translateY(-1px); border-color: var(--lv); }
+.level-tab:hover { color: var(--text); text-decoration: none; transform: translateY(-1px); border-color: var(--border-strong); }
+/* Exactly one selected card: the level the lab opens at (aria-current), ringed and checked in its own colour. */
 .level-tab[aria-current] { border-color: var(--lv); background: var(--lv-bg); box-shadow: inset 0 0 0 1px var(--lv); }
-.level-tabs > li[data-level="divine"] .level-tab { border-color: var(--primary); }
+.level-tab[aria-current]::after {
+  content: "\2713"; content: "\2713" / "";
+  position: absolute; right: var(--sp-3); bottom: var(--sp-3);
+  display: flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--lv); color: var(--on-level); font-size: 0.8rem; font-weight: 800;
+}
 .level-tab-meaning { display: block; margin-top: 0.15rem; font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); }
 .level-tab-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); font-size: var(--fs-xs); font-weight: 600; color: var(--lv); }
 .level-tabs > li > .badge { position: absolute; top: var(--sp-3); right: var(--sp-3); }
@@ -887,6 +906,7 @@ form.htmx-request button[type="submit"]::before {
 .lab-bar[data-level="divine"] { --lv: var(--lv-divine); --lv-bg: var(--lv-divine-bg); }
 .lab-bar::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 5px; border-radius: var(--radius-lg) 0 0 var(--radius-lg); background: var(--lv); }
 .lab-bar-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-4); }
+.lab-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .lab-bar-back {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   min-height: 36px; padding: 0 var(--sp-3);
@@ -900,7 +920,7 @@ form.htmx-request button[type="submit"]::before {
 .lab-bar-level { font-size: var(--fs-xs); }
 .lab-bar-summary { margin: 0; color: var(--text-muted); max-width: 80ch; }
 .lab-bar-controls { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
-.lab-bar-switch { display: grid; gap: var(--sp-2); flex: 1 1 26rem; min-width: 0; }
+.lab-bar-switch { display: grid; gap: var(--sp-2); flex: 1 1 100%; min-width: 0; }
 /* The level switcher: a segmented control, each segment in its level's colour. */
 .lab-levels {
   list-style: none; margin: 0; padding: 3px;
@@ -998,7 +1018,7 @@ form.htmx-request button[type="submit"]::before {
 .lab ul[class] > li > p:last-child, .lab ol[class] > li > p:last-child { margin-bottom: 0; }
 .lab ul[class] > li > form, .lab ol[class] > li > form { margin-top: var(--sp-2); }
 .lab table {
-  display: block; width: 100%; max-width: 100%; overflow-x: auto;
+  display: block; width: max-content; max-width: 100%; overflow-x: auto;
   border-collapse: collapse; margin: 0 0 var(--sp-4);
   font-size: var(--fs-sm); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
@@ -1018,11 +1038,38 @@ form.htmx-request button[type="submit"]::before {
   animation: fade-in var(--dur) var(--ease);
 }
 .lab-message::before { content: "i"; content: "i" / ""; color: var(--info); }
-.lab-success { border-color: var(--success-border); border-left-color: var(--success); background: var(--success-bg); }
-.lab-success::before { content: "\2713"; content: "\2713" / ""; color: var(--success); }
-.lab-error { border-color: var(--danger-border); border-left-color: var(--danger); background: var(--danger-bg); }
-.lab-error::before { content: "!"; content: "!" / ""; color: var(--danger); }
+.lab-message.lab-success { border-color: var(--success-border); border-left-color: var(--success); background: var(--success-bg); }
+.lab-message.lab-success::before { content: "\2713"; content: "\2713" / ""; color: var(--success); }
+.lab-message.lab-error { border-color: var(--danger-border); border-left-color: var(--danger); background: var(--danger-bg); }
+.lab-message.lab-error::before { content: "!"; content: "!" / ""; color: var(--danger); }
+/* The same modifiers on an inline element (a flag inside a note): a pill, no glyph. */
+span.lab-success { padding: 0.05em 0.4em; border-radius: 4px; color: var(--success); background: var(--success-bg); border: 1px solid var(--success-border); font-family: var(--mono); font-weight: 650; overflow-wrap: anywhere; }
+span.lab-error { padding: 0.05em 0.4em; border-radius: 4px; color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-border); font-weight: 650; }
 .lab-mailbox, .mail-link { overflow-wrap: anywhere; }
+/* Sub-sections of a lab view (an order's detail, a feed): an inset panel. */
+.lab section { margin: var(--sp-4) 0; padding: var(--sp-4); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.lab section > h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.lab select { font-family: var(--sans); cursor: pointer; }
+.lab pre code { background: none; border: 0; padding: 0; }
+/* Archive restore report (SC-10): each line says restored or skipped in words; the edge repeats it. */
+.restore-report > li.restore-ok { border-left: 4px solid var(--success); }
+.restore-report > li.restore-skipped { border-left: 4px solid var(--warning); }
+/* Relic Market shop views (relic-market/_shared/views) */
+.lab .shop-catalog { grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: var(--sp-3); }
+.lab .shop-catalog > li { display: flex; flex-direction: column; gap: var(--sp-2); }
+.lab .shop-catalog > li > p { flex: 1 0 auto; margin: 0; }
+.lab .shop-catalog form { margin: 0; gap: var(--sp-2); }
+.lab .shop-cart td, .lab .shop-cart tfoot td { font-variant-numeric: tabular-nums; }
+.lab .shop-cart tfoot td, .lab [data-testid="wallet"] { color: var(--primary-text); }
+.lab .shop-api > li, .lab .shop-endpoints td { font-size: var(--fs-sm); }
+.lab .shop-api code a { font-weight: 650; }
+.lab ol.shop-steps { counter-reset: step; }
+.lab ol.shop-steps > li { counter-increment: step; position: relative; padding-left: 3rem; }
+.lab ol.shop-steps > li::before {
+  content: counter(step); position: absolute; left: var(--sp-3); top: var(--sp-3);
+  display: flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  border: 1px solid var(--primary); color: var(--primary-text); font-size: var(--fs-xs); font-weight: 750;
+}
 
 /* core/xss/preview.ts: the sandboxed frame an XSS lab shows its vulnerable fragment in. The frame draws its own
    white page, so it is framed like a browser window; only the frame's styling lives here (never its sandbox). */
@@ -1094,6 +1141,10 @@ form.htmx-request button[type="submit"]::before {
 /* ==========================================================================
    9. Responsive: mobile first; 768 / 1024 / 1440
    ========================================================================== */
+@media (min-width: 480px) {
+  .level-legend > div { grid-template-columns: 7.5rem 1fr; gap: var(--sp-3); align-items: center; }
+  .banner-inner > .icon { display: inline; }
+}
 @media (min-width: 640px) {
   .lab-levels { grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); }
   .menu-user { display: inline; }
@@ -1113,6 +1164,8 @@ form.htmx-request button[type="submit"]::before {
   .lab-bar { padding: var(--sp-4) var(--sp-5) var(--sp-4) calc(var(--sp-5) + 4px); }
 }
 @media (min-width: 1024px) {
+  .hero { grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 1fr); gap: var(--sp-6); }
+  .banner-text { font-size: var(--fs-sm); }
   .brand-sub { display: inline; }
   .lab-cta-inline { display: none; }
   .player { grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 1fr); }

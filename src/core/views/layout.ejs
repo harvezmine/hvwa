@@ -19,7 +19,7 @@
     <div class="banner-inner">
       <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg>
       <span class="banner-text"><%= t('auth.default_banner') %></span>
-      <a class="btn btn-sm btn-primary" href="/account/password"><%= t('auth.change_password') %></a>
+      <a class="btn btn-xs btn-primary" href="/account/password"><%= t('auth.change_password') %></a>
     </div>
   </div>
 <% } -%>
@@ -64,7 +64,7 @@
       </div>
     </div>
   </header>
-  <main class="content" id="main" tabindex="-1">
+  <main class="content<%= labBar ? ' content-lab' : '' %>" id="main" tabindex="-1">
 <% if (!labBar && typeof crumbs !== 'undefined' && crumbs && crumbs.length > 0) { -%>
     <nav class="crumbs-nav" aria-label="<%= t('nav.breadcrumb') %>">
       <ol class="crumbs">
@@ -83,7 +83,12 @@
           <li><a href="<%= labBar.backHref %>"><%= labBar.id %></a></li>
           <li><span aria-current="page"><%= t('lab.crumb') %></span></li>
         </ol>
-        <a class="lab-bar-back" href="<%= labBar.backHref %>"><%= t('challenge.back') %></a>
+        <div class="lab-bar-actions">
+<% if (labBar.resetAction) { -%>
+          <form method="post" action="<%= labBar.resetAction %>" class="lab-restart"><button type="submit" class="btn btn-secondary btn-sm" data-testid="lab-restart" title="<%= t('lab.restart_help') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-rotate"></use></svg><%= labBar.resetLabel %></button></form>
+<% } -%>
+          <a class="lab-bar-back" href="<%= labBar.backHref %>"><%= t('challenge.back') %></a>
+        </div>
       </div>
       <div class="lab-bar-head">
         <span class="challenge-id"><%= labBar.id %></span>
@@ -100,9 +105,6 @@
           </ul>
           <p class="lab-level-meaning"><span class="lab-level-now"><%= t('lab.you_are_on') %> <%= labBar.levelLabel %>:</span> <%= labBar.levelMeaning %></p>
         </div>
-<% if (labBar.resetAction) { -%>
-        <form method="post" action="<%= labBar.resetAction %>" class="lab-restart"><button type="submit" class="btn btn-secondary" data-testid="lab-restart" title="<%= t('lab.restart_help') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-rotate"></use></svg><%= labBar.resetLabel %></button></form>
-<% } -%>
       </div>
 <% if (labBar.restartNotice) { -%>
       <p class="lab-restart-notice" data-testid="lab-restart-notice" role="status"><%= labBar.restartNotice %></p>

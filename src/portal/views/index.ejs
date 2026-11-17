@@ -1,16 +1,34 @@
 <%# Portal home: hero, progress, district cards. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <section class="hero" aria-labelledby="hero-title">
-  <p class="eyebrow"><%= t('home.eyebrow') %></p>
-  <h1 id="hero-title"><%= t('home.title') %></h1>
-  <p class="hero-lead"><%= t('home.lead') %></p>
-  <div class="hero-actions">
-<% if (nextUp) { -%>
-    <a class="btn btn-primary btn-lg" href="/c/<%= nextUp.id %>"><%= t('home.next').replace('{id}', nextUp.id) %> <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg></a>
-<% } else if (total > 0) { -%>
-    <span class="badge badge-solved"><%= t('home.all_done') %></span>
-<% } -%>
-    <a class="btn btn-secondary btn-lg" href="#how-to-play"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-compass"></use></svg><%= t('home.how_link') %></a>
+  <div class="hero-text">
+    <p class="eyebrow"><%= t('home.eyebrow') %></p>
+    <h1 id="hero-title"><%= t('home.title') %></h1>
+    <p class="hero-lead"><%= t('home.lead') %></p>
+    <div class="hero-actions">
+      <a class="btn btn-secondary" href="#how-to-play"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-compass"></use></svg><%= t('home.how_link') %></a>
+      <a class="btn btn-ghost" href="#districts"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><%= t('portal.heading') %></a>
+    </div>
   </div>
+<% if (nextUp) { -%>
+  <aside class="card next-up" aria-labelledby="next-up-title">
+    <p class="eyebrow"><%= t('home.next_up') %></p>
+    <p class="next-up-meta"><span class="next-id"><%= nextUp.id %></span> <span class="muted"><%= nextUp.districtName %></span></p>
+    <h2 class="next-up-title" id="next-up-title"><%= nextUp.title %></h2>
+    <p class="next-up-summary"><%= nextUp.summary %></p>
+    <ul class="level-chips" aria-label="<%= t('challenge.levels') %>">
+<% nextUp.levels.forEach(function (l) { -%>
+      <li class="level-chip level-<%= l %>"><%= t('level.' + l) %></li>
+<% }); -%>
+    </ul>
+    <a class="btn btn-primary btn-lg btn-block" href="/c/<%= nextUp.id %>"><%= t('home.next').replace('{id}', nextUp.id) %> <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg></a>
+  </aside>
+<% } else if (total > 0) { -%>
+  <aside class="card next-up" aria-labelledby="next-up-title">
+    <p class="eyebrow"><%= t('home.next_up') %></p>
+    <h2 class="next-up-title" id="next-up-title"><%= t('home.all_done') %></h2>
+    <a class="btn btn-primary btn-block" href="/scoreboard"><%= t('nav.scoreboard') %></a>
+  </aside>
+<% } -%>
 </section>
 
 <section aria-labelledby="progress-title">

@@ -101,16 +101,17 @@ function districtsOf(all: readonly Challenge[], solves: Solves, lang: Lang) {
   return [...byDistrict.entries()]
     .sort((a, b) => districtRank(a[0]) - districtRank(b[0]) || a[0].localeCompare(b[0]))
     .map(([id, list]) => {
+      const name = districtName(id, lang);
       const challenges = [...list].sort(byId).map((c) => {
         const best = solves.get(c.id);
         return {
-          id: c.id, title: c.title[lang], summary: c.summary[lang], owasp: owaspOf(c),
+          id: c.id, title: c.title[lang], summary: c.summary[lang], owasp: owaspOf(c), districtName: name,
           levels: LEVELS.filter((l) => c.levels.includes(l)),
           solved: best !== undefined, best: best?.level, points: best?.points ?? 0,
         };
       });
       return {
-        id, name: districtName(id, lang), desc: districtBlurb(id, lang), icon: DISTRICT_ICONS[id] ?? 'landmark', href: `/d/${id}`,
+        id, name, desc: districtBlurb(id, lang), icon: DISTRICT_ICONS[id] ?? 'landmark', href: `/d/${id}`,
         challenges, total: challenges.length, solved: challenges.filter((c) => c.solved).length,
         points: challenges.reduce((n, c) => n + c.points, 0),
       };

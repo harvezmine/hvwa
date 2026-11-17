@@ -39,6 +39,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   },
   'home.next': { id: 'Lanjutkan: {id}', en: 'Continue: {id}' },
   'home.all_done': { id: 'Semua tantangan terpecahkan', en: 'Every challenge solved' },
+  'home.next_up': { id: 'Berikutnya', en: 'Next up' },
   'home.how_link': { id: 'Cara bermain', en: 'How to play' },
   'home.progress': { id: 'Kemajuan Anda', en: 'Your progress' },
   'home.stat_solved': { id: 'Tantangan terpecahkan', en: 'Challenges solved' },
