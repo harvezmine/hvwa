@@ -10,7 +10,8 @@ import { CITADEL_ORIGIN, type SimBrowser } from '../../../core/sim.js';
 import { challengeDir } from '../../../core/source.js';
 import { previewFrame, type XssPageVerdict } from '../../../core/xss.js';
 import { mountUpload, receive, uploadCurl, type Result } from '../_shared/lab.js';
-import { DOWNLOAD_HEADERS, SESSION, SIGIL, SIGIL_MAX_BYTES, impl, labFor, resetLab, type Review } from './model.js';
+import { setLabHeaders } from '../../../core/http.js';
+import { DOWNLOAD_HEADERS, DOWNLOAD_LAB_HEADERS, SESSION, SIGIL, SIGIL_MAX_BYTES, impl, labFor, resetLab, type Review } from './model.js';
 
 const dir = challengeDir(import.meta.url);
 const view = join(dir, 'views', 'gallery.ejs');
@@ -142,15 +143,22 @@ export const SC05 = register(defineChallenge({
       const size = Buffer.byteLength(kept, 'utf8');
       const changed = kept === text ? '' : `; the filter changed it (${text.length} characters before, ${kept.length} after)`;
       return show(req, res, { ok: true, text: `Sigil stored (${size} bytes)${changed}.` }, { caption });
-    }, (req, res) => show(req, res, { ok: false, text: 'The sigil is too large (at most 2 MiB).' }));
+    }, (req, res) => show(req, res, {
+      ok: false,
+      // A body over the engine's 2 MiB cap never reaches the parser; the cap that matters to the player is the sigil's.
+      text: req.lang === 'id' ? 'Unggahan terlalu besar (sebuah sigil paling banyak 12 KiB).' : 'The upload is too large (a sigil is at most 12 KiB).',
+    }));
 
     // The stored sigil in the player's real browser: always an inert download, at every level (plan amendment after
-    // the E2 review). The payload fires only inside the sandboxed preview on the lab page.
-    // TODO(sc-b1): switch to core/http.ts setLabHeaders once it lands on master; plain res.set until then.
+    // the E2 review). The payload fires only inside the sandboxed preview on the lab page. The CSP goes through the
+    // route-scoped lab-header helper; the download's own framing (type, nosniff, disposition) is outside its
+    // allow-list, so plain res.set writes it.
     router.get('/sigil', (req, res) => {
       const file = labFor(req).fs.read(SIGIL);
       if (file === undefined) return res.status(404).set({ 'X-Content-Type-Options': 'nosniff' }).type('text/plain').send('No sigil.');
-      return res.set({ ...DOWNLOAD_HEADERS }).send(file.bytes);
+      res.set({ ...DOWNLOAD_HEADERS });
+      setLabHeaders(res, DOWNLOAD_LAB_HEADERS);
+      return res.send(file.bytes);
     });
   },
 }));

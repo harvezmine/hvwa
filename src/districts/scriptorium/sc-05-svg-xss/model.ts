@@ -1,6 +1,7 @@
 // model.ts — SC-05's lab state, the contract every levels/<level>.ts implements, and the simulated gallery the
 // moderator's browser visits (the citadel handler). Not served: View Source shows only levels/*.ts. Victim-driven, so
 // the level modules are gathered here (the handler needs them); the level files import only types from this file.
+import { labHeaders, type LabHeaders } from '../../../core/http.js';
 import { byLevel, perSession } from '../../../core/lab.js';
 import type { Level } from '../../../core/levels.js';
 import { simWorld, type SimRequest, type SimResponse, type SimWorld } from '../../../core/sim.js';
@@ -44,12 +45,14 @@ export const impl = byLevel<SigilLevel>({ acolyte, templar, inquisitor, divine }
 /**
  * The stored sigil handed back as a file, by both browsers' GET /sigil: never as an active type, whatever it holds
  * (docs/RECIPES.md section 9). The same at every level: the lesson is the review, and the player's real browser must
- * never render an uploaded SVG outside the sandboxed preview.
+ * never render an uploaded SVG outside the sandboxed preview. The download's framing (these) is written as is; its
+ * CSP goes through the lab-header helper (DOWNLOAD_LAB_HEADERS: setLabHeaders on the real route, labHeaders here).
  */
 export const DOWNLOAD_HEADERS: Readonly<Record<string, string>> = Object.freeze({
-  'Content-Type': 'application/octet-stream', 'X-Content-Type-Options': 'nosniff',
-  'Content-Disposition': 'attachment', 'Content-Security-Policy': 'sandbox',
+  'Content-Type': 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'attachment',
 });
+/** The download's CSP: a sandbox, in case a browser ever renders it anyway. */
+export const DOWNLOAD_LAB_HEADERS: LabHeaders = Object.freeze({ csp: 'sandbox' });
 
 /** One player's gallery at one level. */
 export interface SigilLab {
@@ -74,7 +77,7 @@ export function citadel(level: Level, lab: SigilLab, r: SimRequest): SimResponse
   if (r.path === '/sigil') {
     const file = lab.fs.read(SIGIL);
     if (file === undefined) return { status: 404, headers: { 'Content-Type': 'text/plain' }, body: 'No sigil.' };
-    return { status: 200, headers: { ...DOWNLOAD_HEADERS }, body: file.bytes.toString('utf8') };
+    return { status: 200, headers: { ...DOWNLOAD_HEADERS, ...labHeaders(DOWNLOAD_LAB_HEADERS) }, body: file.bytes.toString('utf8') };
   }
   if (r.path === '/') return html('<h1>Sigil gallery</h1>');
   return { status: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Not found' };

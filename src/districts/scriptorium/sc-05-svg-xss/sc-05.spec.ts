@@ -14,7 +14,7 @@ import type { Level } from '../../../core/levels.js';
 import { XSS_LIMITS, XSS_STEAL_URL, xssOracle } from '../../../core/xss.js';
 import { describeVictimAction } from '../../_shared/victim-lab.testkit.js';
 import { SC05 } from './challenge.js'; // registers SC-05 before createApp() inside freshSession
-import { SIGIL, impl, labFor } from './model.js';
+import { SIGIL, citadel, impl, labFor } from './model.js';
 
 const LAB = '/d/scriptorium/svg-xss';
 const NS = 'xmlns="http://www.w3.org/2000/svg"';
@@ -268,6 +268,13 @@ describe('SC-05 the player\'s browser: the sandboxed preview, and the real /sigi
     const visit = lab(c).moderator.follow('http://citadel.test/sigil');
     expect([visit.outcome, visit.page?.status]).toEqual(['page', 200]);
     expect(lab(c).moderator.verdicts).toEqual([]); // a download is never rendered, so never judged
+    // The twin sends exactly the real route's headers (the CSP through labHeaders there, setLabHeaders here).
+    const r = { method: 'GET', url: 'http://citadel.test/sigil', path: '/sigil', query: new URLSearchParams(), headers: {}, cookies: {}, body: {} };
+    const twin = citadel('divine', lab(c), r as unknown as Parameters<typeof citadel>[2]);
+    const real = await c.agent.get(`${LAB}/sigil?level=divine`);
+    const names = ['Content-Type', 'X-Content-Type-Options', 'Content-Disposition', 'Content-Security-Policy'];
+    expect(Object.keys(twin.headers ?? {}).sort()).toEqual([...names].sort());
+    for (const h of names) expect(real.headers[h.toLowerCase()], h).toBe(twin.headers?.[h]);
   });
 });
 
@@ -442,6 +449,21 @@ describe('SC-05 the moderator and the lab state', () => {
     const r = await upload(c.agent, 'acolyte', [sigil(Buffer.from([0x3c, 0x73, 0x76, 0x67, 0xff, 0xfe, 0x3e]))]);
     expect(r.status).toBe(200);
     expect(stored(c)).toBe('<svg��>');
+  });
+
+  it('a body over the upload cap gets the lab page at 413, saying a sigil is at most 12 KiB, in the player\'s language', async () => {
+    const big = multipart([sigil(Buffer.alloc(2 * 1024 * 1024 + 1, 0x61))]);
+    for (const [lang, text] of [
+      ['en', 'The upload is too large (a sigil is at most 12 KiB).'],
+      ['id', 'Unggahan terlalu besar (sebuah sigil paling banyak 12 KiB).'],
+    ] as const) {
+      const c = await fresh('acolyte');
+      const r = await c.agent.post(`${LAB}?level=acolyte&lang=${lang}`).set('Content-Type', big.contentType).send(big.body);
+      expect(r.status, lang).toBe(413);
+      expect(r.text, lang).toContain('Sigil Gallery');
+      expect(r.text, lang).toContain(`<p class="lab-message lab-error" role="status" data-testid="lab-message">${text}</p>`);
+      expect(stored(c), lang).toBeUndefined();
+    }
   });
 
   it('keeps the caption and the session field escaped, and names the sigil field in the curl line', async () => {
