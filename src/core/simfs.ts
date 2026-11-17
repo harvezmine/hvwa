@@ -9,6 +9,9 @@
 //
 // simInterpret(): the "webshell". NOTHING EXECUTES (owner decision Q7): it pattern-matches one statement.
 //
+// simInclude(): a simulated "include" of a file (SC-13, LFI -> log poisoning). Same statement, same rule: it prints the
+// file as text and replaces the statement by the canary. NOTHING EXECUTES here either.
+//
 // Pure: no real filesystem, no network. Its only runtime imports are node:buffer, core/lab.ts (capPerSessionHolder),
 // core/sim/limits.ts and core/upload.ts (tests/upload-guard.spec.ts).
 import { Buffer } from 'node:buffer';
@@ -214,6 +217,7 @@ export function simFs(opts: SimFsOptions = {}): SimFs {
 /** The one statement the simulated interpreter knows. Running a file that holds it prints the lab's canary. */
 export const SIM_SCRIPT_STATEMENT = '<?hvwa CANARY ?>';
 const STATEMENT = /<\?hvwa[\t\n\r ]+CANARY[\t\n\r ]*\?>/; // linear: no nested or overlapping quantifiers
+const STATEMENT_ALL = new RegExp(STATEMENT.source, 'g');
 
 /**
  * The simulated interpreter: what "running" an uploaded file prints (SC-07, SC-08, SC-09 "the webshell executes").
@@ -228,4 +232,37 @@ export function simInterpret(bytes: Uint8Array, canary: string | (() => string))
   const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (!STATEMENT.test(b.toString('latin1'))) return null;
   return typeof canary === 'function' ? canary() : canary;
+}
+
+/** What an include printed. */
+export interface SimInclude {
+  /** The file's text (Latin-1), each statement replaced by the canary, clipped to SIM_INCLUDE_OUTPUT_CHARS. */
+  readonly output: string;
+  /** Whether the file held the statement (and so the canary was asked for), even if the clip then cut it off. */
+  readonly ran: boolean;
+}
+
+/** The most an include prints: 16 KiB of characters (SC-13 shows it escaped in a <pre>). */
+export const SIM_INCLUDE_OUTPUT_CHARS = 16 * 1024;
+
+/**
+ * The simulated include (SC-13, "LFI to log poisoning"): what PHP's `include` prints for a file. Non-code text is
+ * printed as it is, and the one statement the simulated interpreter knows, `<?hvwa CANARY ?>` (SIM_SCRIPT_STATEMENT,
+ * the same tolerant match as simInterpret), is replaced by the canary: so a statement a player planted indirectly
+ * (a User-Agent in an access log) runs when the log is included. Any other `<?hvwa ...?>` block, and every other
+ * "code", stays text. NOTHING EXECUTES (owner decision Q7): no PHP, EJS, Node, eval, vm or child process.
+ *
+ * The bytes are decoded as Latin-1 (so any file works, byte for byte). The scan covers at most the first
+ * SIMFS_LIMITS.fileBytes bytes (the largest file a simFs holds). A function canary is called at most once, and only
+ * if a statement is present, so a lab may pass `() => flagFor(req, C)`. The output is clipped to
+ * SIM_INCLUDE_OUTPUT_CHARS. WHETHER and WHAT a level includes (its flawed path rule) is decided before this is called;
+ * the lab shows the output escaped, never as HTML.
+ */
+export function simInclude(bytes: Uint8Array, canary: string | (() => string)): SimInclude {
+  const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const text = b.subarray(0, SIMFS_LIMITS.fileBytes).toString('latin1');
+  if (!STATEMENT.test(text)) return { output: clip(text, SIM_INCLUDE_OUTPUT_CHARS), ran: false };
+  const printed = typeof canary === 'function' ? canary() : canary;
+  // A function replacer: the canary is inserted as it is (a `$&` in it is not a pattern).
+  return { output: clip(text.replace(STATEMENT_ALL, () => printed), SIM_INCLUDE_OUTPUT_CHARS), ran: true };
 }

@@ -6,7 +6,7 @@ import { CAPPED_BUDGET_BYTES, cappedBudgetUsage, perSession, setCappedBudget } f
 import type { Level } from '../src/core/levels.js';
 import { SIM_LIMITS, simWorld } from '../src/core/sim.js';
 import {
-  SIMFS_LIMITS, SIM_SCRIPT_STATEMENT, SimFsError, resolveSimPath, simFs, simInterpret, type SimFs, type SimFsOptions,
+  SIMFS_LIMITS, SIM_INCLUDE_OUTPUT_CHARS, SIM_SCRIPT_STATEMENT, SimFsError, resolveSimPath, simFs, simInclude, simInterpret, type SimFs, type SimFsOptions,
 } from '../src/core/simfs.js';
 
 let n = 0;
@@ -433,6 +433,67 @@ describe('simInterpret: the simulated interpreter (nothing executes; one stateme
     for (const body of nearMisses) {
       const t = performance.now();
       expect(simInterpret(body, canary)).toBeNull();
+      expect(performance.now() - t).toBeLessThan(200);
+    }
+  });
+});
+
+describe('simInclude: the simulated include (nothing executes; the file is printed, the one statement is replaced)', () => {
+  const canary = 'HVWA{canary}';
+  const log = 'GET /?page=rules HTTP/1.1" 200 - "-" "<?hvwa CANARY ?>"\n';
+
+  it('prints the file as text and replaces each statement by the canary, whatever its whitespace', () => {
+    expect(simInclude(Buffer.from(`before ${SIM_SCRIPT_STATEMENT} after`), canary)).toEqual({ output: `before ${canary} after`, ran: true });
+    expect(simInclude(Buffer.from(`a<?hvwa  CANARY?>b<?hvwa\nCANARY\n?>c${SIM_SCRIPT_STATEMENT}`), canary))
+      .toEqual({ output: `a${canary}b${canary}c${canary}`, ran: true });
+    expect(simInclude(Buffer.from(log), canary).output).toBe(`GET /?page=rules HTTP/1.1" 200 - "-" "${canary}"\n`);
+  });
+
+  it('a file without the statement prints as it is and did not run; other <?hvwa ...?> blocks and code stay text', () => {
+    const text = "Rules of the Scriptorium <?hvwa canary ?> <?hvwa ECHO ?> <?php system('id'); ?> <%= 1 %> <script>x()</script>";
+    expect(simInclude(Buffer.from(text), canary)).toEqual({ output: text, ran: false });
+    expect(simInclude(Buffer.alloc(0), canary)).toEqual({ output: '', ran: false });
+    expect(simInclude(Buffer.from(`<?hvwa ECHO ?>${SIM_SCRIPT_STATEMENT}`), canary)).toEqual({ output: `<?hvwa ECHO ?>${canary}`, ran: true });
+  });
+
+  it('is byte for byte: Latin-1 text, binary, and a Uint8Array that is a view of a bigger buffer', () => {
+    expect(simInclude(Buffer.from([0x41, 0xe9, 0x00, 0xff]), canary).output).toBe('Aé\u0000ÿ');
+    const big = Buffer.from(`xx${SIM_SCRIPT_STATEMENT}yy`);
+    expect(simInclude(new Uint8Array(big.buffer, big.byteOffset + 2, SIM_SCRIPT_STATEMENT.length), canary)).toEqual({ output: canary, ran: true });
+  });
+
+  it('a canary function is called once, and only if the statement is there; a canary string is inserted literally', () => {
+    let calls = 0;
+    const make = () => { calls++; return canary; };
+    expect(simInclude(Buffer.from('nothing here'), make).ran).toBe(false);
+    expect(calls).toBe(0);
+    expect(simInclude(Buffer.from(SIM_SCRIPT_STATEMENT.repeat(5)), make).output).toBe(canary.repeat(5));
+    expect(calls).toBe(1);
+    expect(simInclude(Buffer.from(SIM_SCRIPT_STATEMENT), "$& $1 $` $'").output).toBe("$& $1 $` $'");
+  });
+
+  it('the output is clipped to 16 KiB (the canary too, if it falls past the clip), and only the first fileBytes are scanned', () => {
+    expect(SIM_INCLUDE_OUTPUT_CHARS).toBe(16 * 1024);
+    const late = simInclude(Buffer.from(`${'x'.repeat(SIM_INCLUDE_OUTPUT_CHARS + 10)}${SIM_SCRIPT_STATEMENT}`), canary);
+    expect(late.output).toBe('x'.repeat(SIM_INCLUDE_OUTPUT_CHARS));
+    expect(late.ran).toBe(true);
+    expect(simInclude(Buffer.from('y'.repeat(SIMFS_LIMITS.fileBytes + 50)), canary).output).toHaveLength(SIM_INCLUDE_OUTPUT_CHARS);
+    expect(simInclude(Buffer.from(`${' '.repeat(SIMFS_LIMITS.fileBytes)}${SIM_SCRIPT_STATEMENT}`), canary).ran).toBe(false);
+    expect(simInclude(Buffer.from(SIM_SCRIPT_STATEMENT.repeat(100)), 'z'.repeat(1000)).output).toHaveLength(SIM_INCLUDE_OUTPUT_CHARS);
+  });
+
+  it('works on a file a simFs holds (a poisoned log), and never changes it', () => {
+    const fs = fresh();
+    fs.write('/var/log/scriptorium/access.log', log, { pinned: true });
+    expect(simInclude(fs.read('/var/log/scriptorium/access.log')?.bytes ?? Buffer.alloc(0), canary).ran).toBe(true);
+    expect(text(fs, '/var/log/scriptorium/access.log')).toBe(log);
+  });
+
+  it('the scan is linear: a quarter megabyte of near-misses takes milliseconds', () => {
+    const nearMisses = [Buffer.from('<?hvwa '.repeat(40_000)), Buffer.from(`<?hvwa${' '.repeat(SIMFS_LIMITS.fileBytes - 10)}X`), Buffer.from(`<?hvwa CANARY${' '.repeat(SIMFS_LIMITS.fileBytes - 20)}`)];
+    for (const body of nearMisses) {
+      const t = performance.now();
+      expect(simInclude(body, canary).ran).toBe(false);
       expect(performance.now() - t).toBeLessThan(200);
     }
   });
