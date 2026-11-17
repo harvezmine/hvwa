@@ -1,0 +1,16 @@
+<%# SC-04 Markdown note editor. Lab content is English by design. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1>Scriptorium notes</h1>
+  <p class="lab-note">You are signed in as <code>pilgrim</code>. Notes are written in Markdown: <code>#</code> headings, <code>**strong**</code>, <code>*emphasis*</code>, <code>`code`</code>, links <code>[text](target)</code> and images <code>![alt](source "title")</code>; a blank line starts a new paragraph. A note is shared as a link, <code>http://citadel.test/note?md=&lt;the note&gt;</code>, and the librarian, signed in at http://citadel.test/, opens the note links you send (the button below the lab).</p>
+  <form method="get">
+    <input type="hidden" name="level" value="<%= level %>">
+    <label>Your note<br><textarea name="md" rows="6" cols="60" autocomplete="off" spellcheck="false"><%= md %></textarea></label>
+    <button type="submit">Preview</button>
+  </form>
+<% if (md !== '') { -%>
+  <p class="lab-note">Preview of your note, live in a sandboxed frame (the librarian's page renders the same):</p>
+  <%- preview %>
+  <p class="lab-note">This note as a link for the librarian: <code data-testid="share-link"><%= shareLink %></code></p>
+<% } -%>
+<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>
+</section>

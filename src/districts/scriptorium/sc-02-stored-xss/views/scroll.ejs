@@ -1,0 +1,27 @@
+<%# SC-02 scroll page with its reviews. Lab content is English by design. Every value goes through the escaped output tag except the preview: previewFrame escapes its whole document into one srcdoc attribute. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section class="lab">
+  <h1><%= scroll %></h1>
+  <p class="lab-note">You are signed in as <code>pilgrim</code>. Reviews are stored, and may use bold and italic words. The moderator is signed in at http://citadel.test/ and, when asked (the button below the lab), opens http://citadel.test/scroll and reads the newest review on its own page, http://citadel.test/review/&lt;number&gt;.</p>
+  <h2>Reviews</h2>
+<% if (reviews.length === 0) { -%>
+  <p class="lab-note">No reviews yet.</p>
+<% } else { -%>
+  <ul class="reviews" data-testid="reviews">
+<% reviews.forEach(function (r) { -%>
+    <li data-review="<%= r.id %>"><a href="<%= base %>/review/<%= r.id %>?level=<%= level %>">Review #<%= r.id %></a>, as you wrote it: <code><%= r.body %></code></li>
+<% }); -%>
+  </ul>
+  <p class="lab-note">Review #<%= newest %> (the newest), as its page renders it, live in a sandboxed frame:</p>
+  <%- preview %>
+<% } -%>
+  <form method="post">
+    <input type="hidden" name="intent" value="review">
+    <label>Your review <input name="review" type="text" autocomplete="off" spellcheck="false" value="<%= draft %>"></label>
+    <button type="submit">Post review</button>
+  </form>
+<% if (posted) { -%>
+  <p class="lab-message <%= posted.ok ? 'lab-success' : 'lab-error' %>" role="status" data-testid="posted"><%= posted.text %></p>
+<% } -%>
+<%- include('../../../_shared/views/xss-proof', { proof: proof }) %>
+<%- include('../../../_shared/views/curl-note', { curl: curl }) %>
+</section>
