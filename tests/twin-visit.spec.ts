@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { perSession } from '../src/core/lab.js';
 import { defineChallenge, register } from '../src/core/registry.js';
 import {
-  CITADEL_ORIGIN, SIM_LIMITS, TWIN_LIMITS, VISIT_HEADERS, simVisitOf, simWorld, visitOf, type RequestVisit, type SimRequest,
+  CITADEL_ORIGIN, SIM_LIMITS, TWIN_LIMITS, VISIT_HEADERS, simVisitOf, simWorld, twinBody, visitOf, type RequestVisit, type SimRequest,
 } from '../src/core/sim.js';
 import { freshSession } from './helpers.js';
 
@@ -28,6 +28,8 @@ register(defineChallenge({
   title: { id: 't', en: 't' }, summary: { id: 's', en: 's' }, maps: [], levels: ['acolyte', 'divine'], hints: [],
   mount: (router) => {
     router.all('/echo', (req, res) => { res.json(echo(visitOf(req, res, COOKIES, NAMED))); });
+    // A state-changing route that reads a text/plain body too (FP-01 Inquisitor, FP-02): twinBody() first.
+    router.post('/text', twinBody(), (req, res) => { res.json(echo(visitOf(req, res, COOKIES, NAMED))); });
   },
 }));
 
@@ -133,5 +135,50 @@ describe('RequestVisit: the request, the same in both browsers (E1b)', () => {
     const r = { method: 'GET', url: 'http://citadel.test/', path: '/', query: new URLSearchParams(''), headers: {}, cookies: { a: '1' }, body: {}, rawBody: '' } as SimRequest;
     const v = simVisitOf('divine', r);
     expect([{ ...v.cookies }, v.method, { ...v.headers }, { ...v.body }, v.text, v.self, v.base]).toEqual([{ a: '1' }, 'GET', {}, {}, '', CITADEL_ORIGIN, '']);
+  });
+});
+
+describe('twinBody(): a route that reads a text/plain body (E1b)', () => {
+  const JSON_TEXT = '{"notify":"all","x":"="}';
+
+  it('reads a text/plain body whole into text, as the sim\'s fetch sends it: the same Visit in both browsers', async () => {
+    const { agent } = await freshSession();
+    const real = (await agent.post(`${LAB}/text?level=acolyte`).set('Content-Type', 'text/plain;charset=UTF-8').send(JSON_TEXT)).body as Echo;
+    const s = sim();
+    s.b.corsFetch('http://citadel.test/text?level=acolyte', { method: 'POST', body: JSON_TEXT }); // text/plain;charset=UTF-8
+    expect(shared(real, ['content-type'])).toEqual(shared(s.seen[0], ['content-type']));
+    expect(real).toMatchObject({ method: 'POST', text: JSON_TEXT, body: {} });
+    expect(JSON.parse(real.text)).toEqual({ notify: 'all', x: '=' }); // what a level that JSON-parses text/plain reads
+  });
+
+  it('without it, the app parses no text/plain body: text is empty (why a state-changing FP route mounts it)', async () => {
+    const { agent } = await freshSession();
+    const real = (await agent.post(`${LAB}/echo?level=acolyte`).set('Content-Type', 'text/plain').send(JSON_TEXT)).body as Echo;
+    expect([real.text, real.body]).toEqual(['', {}]);
+  });
+
+  it('JSON and urlencoded bodies on the same route: the app\'s global parsers read them first, so text is re-serialised', async () => {
+    const { agent } = await freshSession();
+    const json = (await agent.post(`${LAB}/text?level=acolyte`).set('Content-Type', 'application/json').send('{ "notify" : "all", "n": 1 }')).body as Echo;
+    expect([json.text, json.body]).toEqual(['{"notify":"all","n":1}', { notify: 'all' }]); // the same fields, not the same bytes
+    const form = (await agent.post(`${LAB}/text?level=acolyte`).type('form').send('a=1&a=2&b[c]=x&d=%20')).body as Echo;
+    expect([form.text, form.body]).toEqual(['a=1&a=2&b%5Bc%5D=x&d=+', { a: '1', 'b[c]': 'x', d: ' ' }]);
+    // ... and the sim reads the same fields from the raw bytes:
+    const r = { method: 'POST', url: 'http://citadel.test/text', path: '/text', query: new URLSearchParams(''),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' }, cookies: {}, body: {}, rawBody: 'a=1&a=2&b[c]=x&d=%20' } as SimRequest;
+    expect({ ...simVisitOf('acolyte', r).body }).toEqual(form.body);
+  });
+
+  it(`refuses a text/plain body over ${TWIN_LIMITS.textLength} bytes (413, before the route runs)`, async () => {
+    const { agent } = await freshSession();
+    const ok = await agent.post(`${LAB}/text?level=acolyte`).set('Content-Type', 'text/plain').send('x'.repeat(TWIN_LIMITS.textLength));
+    expect([ok.status, (ok.body as Echo).text.length]).toEqual([200, TWIN_LIMITS.textLength]);
+    const big = await agent.post(`${LAB}/text?level=acolyte`).set('Content-Type', 'text/plain').send('x'.repeat(TWIN_LIMITS.textLength + 1));
+    expect(big.status).toBe(413);
+  });
+
+  it('is route-local: a fresh handler each call, reading only text/plain', () => {
+    expect(typeof twinBody()).toBe('function');
+    expect(twinBody()).not.toBe(twinBody());
   });
 });

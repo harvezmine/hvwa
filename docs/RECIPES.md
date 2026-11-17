@@ -161,7 +161,8 @@ case (g)). Divine resists every exploit.
 | `visitAttackerPageAction({ browser, page, rearm })`, `sendAttackerPageAction({ browser, page, rearm })`, `frameAndClickAction({ browser, click, rearm, page? })`, `ATTACKER_EXFIL_URL` | `core/sim` | the cross-site victim actions: the admin opens your page (CSRF, CORS) or your framing page (clickjacking), with a required re-arm (section 8, "Across sites") |
 | `sendSimRedirect(res, location, status?)` | `core/sim` | a real route answering a level's redirect: a citadel URL goes to the same place in the lab, anything else gets a "your browser would go to ..." page, never a real redirect off the lab (section 8) |
 | `Reply`, `toSim(reply)`, `sendReply(res, reply, render)`, `cookiePath(base)`, `TwinCookie` | `core/sim` (`core/twin.ts`) | one page answer for both browsers: a `SimResponse` for the citadel handler, the real route's answer (cookies with their attributes, redirects through `sendSimRedirect`, a forward as a note) (section 8) |
-| `visitOf(req, res, cookieNames)`, `simVisitOf(level, r, cookieNames?)`, `Visit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base` (section 8) |
+| `visitOf(req, res, cookieNames, headerNames?)`, `simVisitOf(level, r, cookieNames?, headerNames?)`, `Visit`, `RequestVisit` | `core/sim` (`core/twin.ts`) | what a page function needs from either browser's request: level, raw query, the lab's own cookies, `base`; and (RequestVisit) its method, headers, body, text and `self`, the lab's own origin (section 8) |
+| `twinBody()` | `core/sim` (`core/twin.ts`) | route-local `express.text` (text/plain, 8 KiB) for a state-changing route whose levels read a text/plain body (section 8) |
 | `REDIRECT_STATUSES` | `core/sim` | the statuses a browser follows a `Location` on (301, 302, 303, 307, 308) |
 | `parseMultipart(req, limits?)`, `settle(p)`, `UPLOAD_LIMITS`, `UploadError` | `core/upload` | upload labs: the raw multipart body `express.raw` read on the upload route, parsed and capped; `tryDb(req, await settle(parseMultipart(req)), 'Upload error')` (section 9) |
 | `looksLikeImage(bytes)`, `sniffImage(bytes)`, `placeholderImage(sniff)` | `core/upload` | PNG/JPEG/GIF/WebP magic bytes and size, from the header ONLY (SC-09's polyglot lesson; never a safety check); the constant-size GIF a safe level serves instead (section 9) |
@@ -757,6 +758,12 @@ browser's answer:
   hard-coded `http://citadel.test`**: the player's own browser sends `Origin: http://127.0.0.1:<port>`, and a level
   that hard-codes the citadel refuses the player's legitimate form at Divine. `tests/twin-visit.spec.ts` checks that
   equivalent requests give equal Visits in both browsers, `self` aside.
+- **`twinBody()`**: a state-changing route whose levels read a text/plain body (FP-01 Inquisitor's text/plain form,
+  FP-02's JSON sent as text/plain) mounts it first: `router.post('/account/prefs', twinBody(), handler)`. The app's global
+  parsers read no text/plain, so without it `text` is empty on the real route. It is route-local (as `express.raw` on the
+  upload routes, owner decision Q6), reads `text/plain` only, at most 8 KiB (a bigger body gets 413 before the route
+  runs); a JSON or urlencoded body on the same route was already parsed by the global parsers, so its `text` is still
+  re-serialised. A GET route needs nothing.
 
 ```ts
 // model.ts: one page function, both browsers

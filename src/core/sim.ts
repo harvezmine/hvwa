@@ -42,6 +42,6 @@ export {
   type VictimRearm,
 } from './victim.js';
 export {
-  TWIN_LIMITS, VISIT_HEADERS, cookiePath, forwardNote, sendReply, simVisitOf, toSim, visitOf,
+  TWIN_LIMITS, VISIT_HEADERS, cookiePath, forwardNote, sendReply, simVisitOf, toSim, twinBody, visitOf,
   type ForwardNote, type Reply, type RequestVisit, type TwinCookie, type TwinSameSite, type Visit,
 } from './twin.js';

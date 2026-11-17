@@ -5,11 +5,11 @@
 // needs from either browser's request (visitOf for the real one, simVisitOf on the citadel).
 // Plumbing only: which cookie (and its attributes), which Location, which Referrer-Policy is the level's decision, never
 // this file's. Imported through core/sim.ts.
-import type { Request, Response } from 'express';
+import { Buffer } from 'node:buffer';
+import express, { type Request, type RequestHandler, type Response } from 'express';
 import { DEFAULT_LANG, isLang, t, type Lang } from './i18n.js';
 import { labPath } from './lab.js';
 import type { Level } from './levels.js';
-import { Buffer } from 'node:buffer';
 import { REDIRECT_STATUSES, type SimRequest, type SimResponse } from './sim/browser.js';
 import { bodyFields, mimeEssence } from './sim/cross.js';
 import { SIM_LIMITS, clip, str } from './sim/limits.js';
@@ -245,6 +245,19 @@ export function simVisitOf(level: Level, r: SimRequest, cookieNames?: readonly s
     method: str(r.method) || 'GET', headers: namedHeaders(r.headers, headerNames), ...bodyOf(str(r.headers?.['content-type']), str(r.rawBody)),
     self: CITADEL_ORIGIN,
   };
+}
+
+/**
+ * The route-local body reader for a state-changing route whose levels read a text/plain body (FP-01 Inquisitor's
+ * text/plain form, FP-02's JSON sent as text/plain): `router.post('/account/prefs', twinBody(), handler)`. The app's
+ * global express.json() and express.urlencoded() parse neither, so without it a text/plain body never reaches visitOf.
+ * It reads `text/plain` only (any charset), at most TWIN_LIMITS.textLength bytes: a bigger body is refused with 413
+ * before the route runs. JSON and urlencoded bodies were already parsed by the global parsers, which run first, so on
+ * this route `text` is still re-serialised for them (RequestVisit.text). Route-local, as `express.raw` on the upload
+ * routes (owner decision Q6): never mounted app-wide.
+ */
+export function twinBody(): RequestHandler {
+  return express.text({ type: 'text/plain', limit: TWIN_LIMITS.textLength });
 }
 
 /** VISIT_HEADERS and the lab's names that the request has as strings, lower-case keys, values clipped copies. */
