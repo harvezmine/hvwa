@@ -2,5 +2,6 @@
 import './sc-05-svg-xss/challenge.js';
 import './sc-07-upload-webshell/challenge.js';
 import './sc-08-upload-double-ext/challenge.js';
+import './sc-09-polyglot-image/challenge.js';
 import './sc-10-zip-slip/challenge.js';
 import './sc-11-path-traversal/challenge.js';

@@ -1,0 +1,8 @@
+<%# SC-09's own part of the scroll desk page: the "verified" badge and what an image reader sees in each stored file. Lab content is English. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <p class="lab-note" data-testid="verified-badge"><strong>Verified images only.</strong> Every profile image is checked to be a real image before it is stored.</p>
+  <p class="lab-note">What an image reader sees in each stored file, from its header:</p>
+  <ul data-testid="image-headers">
+<% for (const i of extra.images) { -%>
+    <li><code><%= i.name %></code>: <%= i.header %></li>
+<% } -%>
+  </ul>

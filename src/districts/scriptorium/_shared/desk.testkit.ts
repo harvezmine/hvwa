@@ -95,11 +95,15 @@ export function describeDeskBasics(k: DeskKit): void {
         }
       });
     } else {
-      it('no raster preview: no /preview route and no preview image on the page', async () => {
+      it('no raster preview: no /preview route and no preview image on the page, even for a stored raster', async () => {
         const { agent } = await freshSession();
+        // A real GIF header, stored under its own name by the lab's Acolyte: a raster the preview would serve if it existed.
+        await upload(agent, 'acolyte', [scroll('pic.gif', Buffer.from('GIF89a\x01\x00\x01\x00\x80\x00\x00', 'latin1'), 'image/gif')]);
         for (const level of levels) {
           expect((await agent.get(`${k.path}?level=${level}`)).text, level).not.toContain('desk-preview');
-          expect((await agent.get(`${k.path}/preview?level=${level}&name=${encodeURIComponent(seed.name)}`)).status, level).toBe(404);
+          for (const name of [seed.name, 'pic.gif']) {
+            expect((await agent.get(`${k.path}/preview?level=${level}&name=${encodeURIComponent(name)}`)).status, `${level} ${name}`).toBe(404);
+          }
         }
       });
     }
@@ -131,7 +135,8 @@ export function describeDeskBasics(k: DeskKit): void {
       // No file part, or an empty file input (the browser's empty part is dropped): asked to choose one, nothing stored.
       for (const level of levels) {
         expect((await upload(agent, level, [{ name: 'caption', value: 'x' }])).text, level).toContain('Choose a scroll to upload.');
-        expect((await upload(agent, level, [scroll('', '')])).text, level).toContain('Choose a scroll to upload.');
+        // the empty part a browser sends for an empty file input: raw, never prefixed (see DeskKit.accepted)
+        expect((await upload(agent, level, [{ name: 'scroll', filename: '', value: '', contentType: 'application/octet-stream' }])).text, level).toContain('Choose a scroll to upload.');
       }
     });
 

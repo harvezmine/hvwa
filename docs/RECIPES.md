@@ -1035,6 +1035,14 @@ browser lays out (and may try to decode) at that size, so give the `<img>` a fix
 `<img src="..." alt="" style="width: 8rem; height: 8rem; object-fit: contain">`, never its intrinsic size. SVG is not
 a raster: `looksLikeImage(svg)` is false.
 
+SC-09 (`scriptorium/sc-09-polyglot-image/`) is the worked example, on the scroll desk with `preview: true`: Acolyte
+accepts what the upload's Content-Type claims, Inquisitor what `looksLikeImage` accepts (both keep the uploader's name
+and bytes, and the server runs a stored `.php`), and Divine stores `placeholderImage(sniffImage(bytes))` under a
+server-made `.gif` name and runs nothing. It takes the `<?hvwa CANARY ?>`-tail path only: no level serves player
+markup, so it needs no XSS victim, and its spec uses the oracle to show that no level's page renders an upload. Its
+spec pins Divine's stored file to the exact placeholder bytes (a Divine that kept the player's bytes under a safe name
+would pass every exploit case), and unit-tests Divine's "never runs" on a planted `.php` that no upload can produce.
+
 ### "Execution": `simInterpret(bytes, canary)`, and why nothing runs
 
 Whether a stored file "runs" is **the level's decision**: its flawed name or type mapping (`.php` anywhere, the first
