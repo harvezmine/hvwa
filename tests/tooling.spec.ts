@@ -95,8 +95,10 @@ describe('tooling', () => {
     expect(t.compilerOptions.noEmit).toBe(true);
   });
 
-  it('requires Node >= 22.16 (node:sqlite isTransaction + open timeout)', () => {
-    expect(json('package.json').engines.node).toBe('>=22.16');
+  it('requires Node >= 22.18 (node:sqlite isTransaction + open timeout; built-in type stripping for the SSTI worker from src/)', () => {
+    expect(json('package.json').engines.node).toBe('>=22.18');
+    // The lockfile's own record of the root package agrees.
+    expect(json('package-lock.json').packages[''].engines.node).toBe('>=22.18');
   });
 
   it('npm run typecheck covers both tsconfigs', () => {

@@ -1817,3 +1817,210 @@ Every string kept is a copy.
   - a logout link does not wedge the victim (re-arm);
   - for a level that serves player XML: Divine never produces `limited: 'dtd'` (it refuses a DOCTYPE with an
     internal subset before the admin's browser sees it).
+
+## 14. SSTI labs (`core/ssti`)
+
+FP-06 (SSTI with Nunjucks) and FP-07 (SSTI -> RCE, levels A/I/D) render a template that the player controls in part.
+**Nunjucks runs only inside a QuickJS-WASM interpreter**, never in the host realm. Each render gets a fresh WASM
+instance, in one long-lived `worker_thread` (owner decisions Q2 and Q3; no extra service). **"RCE" is simulated**
+(Q7): the template reaches a FAKE `child_process`, whose shell answers from files the lab planted. Nothing ever runs
+on the host. Import everything from `core/ssti/sandbox.ts`:
+
+- `engine.ts`: the engine. It is also the worker entry.
+- `transport.ts`: the worker, and the in-thread test transport.
+- `sandbox.ts`: the API.
+
+### Rendering a player template at each level
+
+```ts
+// levels/acolyte.ts — the flaw: player input concatenated into the template SOURCE
+export const banner = (input: string): Banner => ({ template: `Hi ${input}!`, autoescape: false });
+// levels/divine.ts — never compile input: a constant template, the input as DATA (autoescape on)
+export const banner = (input: string): Banner => ({ template: 'Hi {{ name }}!', data: { name: input } });
+
+// challenge.ts (or model.ts)
+const b = impl.for(req.level).banner(field(req, 'greeting'));
+const r = await renderInSandbox({
+  template: b.template,
+  ctx: { ...b.data, secret: req.level === 'divine' ? NO_FLAG : flagFor(req, FP06) }, // FP-06: the planted context var
+  node: fakeNodeFor(req),        // FP-07 only, below
+  autoescape: b.autoescape ?? true,
+});
+if (r.limit === 'busy') res.status(503).set('Retry-After', '1');
+await sendPage(res, view, { banner: r.ok ? r.output : null, error: r.ok ? null : shown(req, r), commands: r.shellCalls });
+```
+
+- **The level decides what the template SOURCE is**, in its own file. That is the whole flaw, so View Source and the
+  Diff show it:
+  - Acolyte concatenates;
+  - Templar strips `{{`/`}}`;
+  - Inquisitor concatenates one field, or blocks `constructor`/`__proto__` substrings;
+  - Divine passes a constant template and the input as `ctx` data.
+  The sandbox bounds what any source can do. It never decides whether the source is safe.
+- **`renderInSandbox(input)` resolves to an `SstiResult` and never rejects for anything a template does.**
+  - `{ ok: true, output, shellCalls }`.
+  - `{ ok: false, error, shellCalls }`: a template error, with Nunjucks' own message ("Template render error: ..."),
+    clipped to 500 characters. That includes QuickJS's own `InternalError: out of memory` (one allocation over its
+    32 MiB limit) and `InternalError: stack overflow` (recursion past its 128 KiB stack): the template can catch
+    both, so they are its errors, not limits.
+  - `{ ok: false, error, limit }`: the HOST stopped the render. `limit` comes from host signals only, never from
+    text the template wrote (it can `throw 'stack overflow'`, which stays an ordinary error). It is one of:
+    - `input` (the template or context is over its cap);
+    - `timeout` (the interrupt handler's deadline, a render that ended late, or the render-phase watchdog);
+    - `memory` (the interrupt handler's check of the instance's memory: uncatchable);
+    - `stack` (a native stack overflow under QuickJS: the instance is dropped);
+    - `output` (the copy is over the cap; lone surrogates count three characters each, as they arrive);
+    - `busy` (the queue is full; answer 503 with `Retry-After`);
+    - `crashed` (the worker died, or its boot wedged; the next render starts a fresh one).
+  A malformed call (no string template, a function or a `Date` in `ctx`, a relative path in `node.files`) is a lab
+  bug and throws.
+- **Show errors like `tryDb` does**: the message below Divine (error-based learning), a generic one at Divine
+  (`shown(req, r)`). The message is text the player controls (`throw '...'` works), so show it escaped.
+- **Show `output` escaped too** (the escaped output tag), whatever `autoescape` is. The lesson is template injection,
+  not XSS: a level that turns autoescape off changes only what Nunjucks prints.
+- **`ctx` is JSON data only**: plain objects, arrays, strings, finite numbers, booleans and null, at most 16 KiB as
+  JSON. A template cannot reach a function the lab did not write, because none crosses. Nunjucks' own globals
+  (`range`, `cycler`, `joiner`) are in every render: they are the object-graph escape FP-07 teaches.
+  `include`/`import`/`extends` find nothing (the environment has no loaders).
+- **Bound the player's field** below `SSTI_LIMITS.templateChars` (4096). The engine refuses a longer template
+  (`limit: 'input'`), but the lab's own cap gives the clearer message. Keep stored player strings clipped
+  (section 8), like any lab state.
+
+### The flag, and the fake bridge (FP-07)
+
+- **FP-06: the flag is a context variable.** Plant `secret: flagFor(req, FP06)` below Divine and a constant
+  placeholder at Divine (`flagFor` throws there). It reaches the banner only when the input was evaluated as a
+  template (`{{ secret }}`). `{{ 7*7 }}` printing `49` is the "it evaluates" tell.
+- **FP-07: the flag is a file on the simulated machine.** Plant it, again only below Divine (an env var such as
+  `FLAG` is the other planted path, through `process.env`):
+
+  ```ts
+  const fakeNodeFor = (req: Request): FakeNode =>
+    ({ files: { '/srv/forum/flag': `${req.level === 'divine' ? NO_FLAG : flagFor(req, FP07)}\n` } });
+  ```
+
+  - With `node`, the sandbox has a fake `process`: `env` (the planted vars over `NODE_ENV`, `HOME`, `USER`, `PATH`,
+    `PWD`), `version`, `platform`, `pid`, `cwd()` and `mainModule.require`.
+  - `require('child_process')` gives `execSync(cmd)`. Any other module throws `Cannot find module`, and `require` is
+    not a global (it is not one in Node either).
+  - So the classic payload works, through Nunjucks' own object graph:
+    `{{ range.constructor("return global.process.mainModule.require('child_process').execSync('cat /srv/forum/flag')")() }}`.
+    So do `cycler`/`joiner`, `"".__proto__.constructor.constructor` and `range["constr" ~ "uctor"]` (FP-07
+    Inquisitor's gadget past a substring filter). Without `node`, `process` is undefined and nothing can be "run".
+- **The fake shell** (`fakeShell`, in the worker, over the planted data):
+  - Commands: `id`, `whoami`, `hostname`, `pwd`, `uname [-a]`, `ls`, `cat`, `echo`, `env`, `printenv` and `cd`.
+  - Syntax: sequences with `;`, `&&`, `||` and newlines; quotes, backslashes and `$VAR` as `sh` has them.
+  - Refused: anything else is `sh: 1: <name>: not found` (status 127). Pipes, redirections and substitutions are
+    refused.
+  - Errors: a non-zero status makes `execSync` throw `Command failed: <cmd>` with `status`, `stdout` and `stderr`,
+    as Node does.
+  - The machine is fictional on purpose, so its output never looks like the real host: user `scribe` (uid 1000),
+    host `forum-of-pilgrims`, cwd `/srv/forum`, plus `/etc/passwd` and `/etc/hostname`.
+  - **The planted path is the only way to the flag.** Every other command gets the machine's ordinary answer or
+    "No such file or directory".
+- **`shellCalls`** lists the commands the template ran, in order (the first 16, each clipped to 200 characters; a
+  render that tries more than 64 gets "Cannot fork"). Show it on the page ("commands your template ran"), and use
+  it in specs. The flag proof is the planted flag in `output`, which the player reads off the banner.
+
+### Bounds (`SSTI_LIMITS`), measured
+
+Measured on Node 22.22 (Windows, this machine), through the real worker.
+
+| Bound | Value | Measured |
+|---|---|---|
+| Render deadline (QuickJS interrupt handler) | 250 ms default, 1000 max (`timeoutMs`) | `while (true)` and a nested `{% for %}` over `range` stop at 263 ms (p50, about 13 ms of it the fresh instance and Nunjucks' boot); 50 ms stops at 62 ms; catastrophic regex backtracking is interrupted too. A render that ends past its deadline is a timeout even when no interrupt fired (a native call never polls). |
+| Memory | three layers, each tested alone: (1) the interrupt handler stops a render once the instance's WASM memory passes 28 MiB (`limit: 'memory'`, uncatchable); (2) QuickJS `setMemoryLimit` 32 MiB refuses one allocation (a 30 MiB buffer fits, 33 MiB is refused: a catchable `InternalError: out of memory`); (3) `WebAssembly.Memory` 16 MiB initial (the module's minimum), 48 MiB maximum, the backstop the other two always reach first | a small-object loop stops in about 62 ms, an `ArrayBuffer` loop in about 30 ms, `'x'.repeat(1e9)` at once. Over 200 consecutive bombs of seven kinds the process RSS went from 114.6 MiB (an idle worker) to a peak of 174.1 MiB (about 60 MiB above idle), and was 98.8 MiB after 20 normal renders. |
+| Stack | QuickJS `setMaxStackSize` 128 KiB (734 nested JS calls, a catchable `InternalError`), worker stack 8 MB | QuickJS measures its WASM shadow stack, and the native frames behind its C recursion are 16 to 32 times larger: 128 KiB keeps the parser and JSON inside the worker's 8 MB, where a native overflow (`limit: 'stack'`) would drop the instance. `JSON.stringify` over a 200 000-deep value spends about 0.22 s in an uninterruptible cycle check before QuickJS's stack overflow. |
+| Input | template 4096 chars, context 16 KiB as JSON, planted machine 16 files of 4 KiB, 16 env vars | refused before anything crosses |
+| Output | 16 KiB of text; errors 500 chars | the host reads a primitive string's own length (no prototype can change it) and never copies a longer one |
+| Worker | `resourceLimits` old space 48 MB, young 8 MB, code range 16 MB, stack 8 MB; no `env`, no `execArgv` | its V8 heap stays at 6.1 to 6.3 MiB over 3000 mixed renders (one bound in every ten), with no growth |
+| Queue | 1 in flight + 8 waiting, then `busy` at once | |
+| Watchdog | two phases, then `terminate()`: until the worker reports that the player's code started, `bootWatchdogMs` 1000 (the boot is about 15 ms; `bootMs`, its own interrupt deadline, is 500); from then on the deadline + `watchdogSlackMs` 250 | natives that never poll the interrupt handler (`indexOf` of a 5e5-character needle in 1e6 characters, a 1.04M-bit BigInt's `toString`) answer `timeout` at 516 to 550 ms instead of holding the worker for about 2.75 s; the next render starts a fresh worker in 165 to 330 ms |
+| Cost | | cold start (spawn, load, two warm-up renders, first render) 160 to 220 ms; warm render p50 13.6 ms, p95 18.7 ms (an SSTI -> RCE render the same); an idle worker adds about 29 MiB of process RSS |
+
+### Lifecycle: one long-lived worker
+
+- `renderInSandbox` uses one default `workerTransport()`, started by the first render.
+  - Renders run one at a time, in a fresh QuickJS-WASM instance each (about 1 ms to build from the compiled
+    module).
+  - A worker serves about 60 renders a second, so the container (`pids_limit: 256`, 512 MB) never needs a second
+    one.
+- The bounds behind the worker:
+  - **Queue**: `SSTI_LIMITS.queue` renders may wait behind the one in flight; the next gets `busy` at once.
+  - **Watchdog**, in two phases: the boot (`bootWatchdogMs`, until the worker reports `started`; a wedged boot
+    answers `crashed`), then the player's code (`timeoutMs + watchdogSlackMs`; a native call that never polls the
+    interrupt handler answers `timeout`). The worker is terminated either way.
+  - **Drops**: a worker that dies, never gets ready (10 s), reports `fatal` or answers in a shape this protocol does
+    not have is dropped. That render answers `crashed`, and the next one starts a fresh worker (never a restart
+    loop). A SIZE past a cap is not a reason to drop a worker: the transport bounds it again (an output over the cap
+    answers `output`, an error and the commands are clipped), so no template can get a healthy worker dropped.
+- An idle worker is unref'd, so it never keeps the process up. A pending render or stats reply does. `server.ts`'s
+  shutdown ends it with the process.
+- The worker starts with no environment (`FLAG_SECRET` never reaches it) and no flags. It loads its two files,
+  warms up, then **seals itself**. In its own realm, these throw from then on:
+  - every function of `node:fs`, `fs/promises`, `child_process`, `net`, `http`, `https`, `http2`, `tls`, `dgram`,
+    `dns`, `dns/promises`, `vm` and `inspector`, ENUMERATED (`SEALED_MODULES`), classes included;
+  - `net.Socket.prototype.connect`, `process.binding`/`_linkedBinding`/`dlopen`/`kill`/`_kill`,
+    `worker_threads.Worker`, and the global `fetch`, `WebSocket` and `EventSource`.
+
+  `stats()` lists every sealed name. The guard spec keeps its own written list and checks each name is there,
+  plus every function of `fs` and `fs/promises` that it enumerates itself.
+- Measured numbers come from `workerTransport().stats()`: workers started and dropped, the live thread id, the
+  queue, the worker's counters and its V8 heap. (It gives up after 5 s on a worker that never answers.)
+- **Running from `src/`** (specs, `npm run dev`) loads `engine.ts` as the worker through Node's built-in type
+  stripping, on by default from Node 22.18: hence `engines.node >= 22.18`. `dist/` runs plain JavaScript.
+
+### Accepted residuals
+
+- **One render can hold the worker about half a second, and one client can fill the queue.** A native call that
+  never polls the interrupt handler runs until the render-phase watchdog: the deadline plus 250 ms (about 0.52 s at
+  the default 250 ms; 1.25 s if a lab passes `timeoutMs: 1000`). The next render then waits 165 to 330 ms for a fresh
+  worker. Nine such renders (one in flight, eight queued) keep everyone else at `busy` for about 6 to 8 s, down from
+  about 26 s before the two-phase watchdog. On a loopback, single-player lab the only client who can do this is the
+  player, stalling their own sandbox. It is accepted, like the SQL CPU gap (section 4).
+
+### Why nothing executes for real
+
+- QuickJS-WASM is a memory-safe interpreter. A template's code can touch only the instance's own linear memory.
+  - The guest has no host bindings but one: the fake shell's bridge, and only when `node` is planted. It takes the
+    command as a string (refused past 1000 characters, never copied out) and answers `{ status, stdout, stderr }` as
+    JSON. It interprets data and spawns nothing.
+  - No `process` (unless planted, and then fake), `require`, `fetch`, `console`, timers, `WebAssembly` or module
+    loader exists in the sandbox. `import()` only makes a promise that never settles.
+  - Template, context and output cross as strings and JSON only.
+- Each render gets a fresh instance that is never reused. Nothing a template does survives into the next render,
+  which may be another player's: not a polluted prototype, not a global, not a corrupted heap.
+- On the host side, `tests/ssti-guard.spec.ts` parses `src/core/ssti/` with tsc against an allow-list, and pins
+  the one exception to its call sites:
+  - `node:fs`'s `readFileSync` is called twice, in `loadAssets()`, on the QuickJS `.wasm` and the Nunjucks browser
+    bundle (read as TEXT);
+  - `createRequire` resolves those two files and loads the builtins the seal replaces.
+
+  The spec then runs a whole SSTI -> RCE flow, on the in-thread transport and through a real worker, with every fs,
+  network, child-process and vm function spied. Nothing may be called, and the worker must report itself sealed.
+- **Never import `nunjucks` in the host realm**, and never `eval`, `vm` or a real `child_process` for a lab. The
+  guard fails on any of them in `core/ssti/`.
+
+### Testing
+
+- Lab specs use the in-thread transport (the same engine on the test's thread, no worker):
+  `beforeAll(() => { prev = setSandboxTransport(inThreadTransport()); })` and `afterAll(() => setSandboxTransport(prev))`.
+  Or use the default worker and `afterAll(closeSandbox)`. `tests/ssti-worker.spec.ts` keeps the two transports
+  answering the same.
+- `toJob(input)` builds the validated job, to call a transport directly.
+- The exploit matrix applies as usual:
+  - each exploit's banner shows the flag;
+  - Divine prints the payload as text, with no flag and no error;
+  - step-up holds (FP-07 Inquisitor refuses Acolyte's `constructor` payload);
+  - `malformed` covers a template syntax error below Divine;
+  - add a case that a timeout and a memory bomb each answer their limit, that a stack overflow is the template's
+    own error, and that the next render works.
+- **What `verify:docker` should check once Docker runs here:**
+  - a burst of renders keeps the app's thread count well under `pids_limit` (one worker, plus V8's threads);
+  - repeated memory bombs keep the app under `mem_limit` (about 60 MiB above an idle worker, measured in process);
+  - the worker starts on the read-only rootfs and renders;
+  - an SSTI -> RCE payload against the running container prints only the planted flag (no real `id`).
+- **`verify:dist`**: the production build resolves the `.wasm` and the Nunjucks bundle from `node_modules` next to
+  `dist/` (createRequire from `dist/core/ssti/engine.js`), and `dist/core/ssti/engine.js` is the worker entry. No
+  asset copy is needed. `verify:dist` only GETs lab pages, so give FP-06/07's `GET /` a default banner rendered
+  through the sandbox: `verify:dist` then exercises the worker from `dist/` on every run.
