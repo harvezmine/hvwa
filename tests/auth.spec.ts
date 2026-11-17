@@ -680,6 +680,21 @@ describe('hvwa_sid and lab progress survive signing in and out', () => {
 });
 
 describe('storage: only hashes', () => {
+  it('a tampered account row asking for N=2^30 is a plain failed sign-in: no crash, no terabyte, the app keeps answering', async () => {
+    const { app } = authApp();
+    const db = app.locals.db;
+    const stored = (db.prepare("SELECT password_hash h FROM auth_accounts WHERE username='admin'").get() as { h: string }).h;
+    const tampered = stored.replace(/^scrypt\$\d+\$/, `scrypt$${2 ** 30}$`);
+    expect(tampered).not.toBe(stored);
+    db.prepare("UPDATE auth_accounts SET password_hash = ? WHERE username='admin'").run(tampered);
+    const t0 = performance.now();
+    const res = await signIn(request.agent(app));
+    expect(res.status).toBe(401);
+    expect(res.text).toContain('data-testid="login-error"');
+    expect(performance.now() - t0).toBeLessThan(5_000);
+    expect((await request(app).get('/healthz')).body).toEqual({ status: 'ok' });
+  });
+
   it('the DB never holds a password or a token in plaintext (rows, file and WAL)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-auth-'));
     tempDirs.push(dir);

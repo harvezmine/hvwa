@@ -10,11 +10,11 @@ import { randomBytes, scrypt, scryptSync, timingSafeEqual, type ScryptOptions } 
  */
 export const SCRYPT_PARAMS = Object.freeze({ N: 2 ** 15, r: 8, p: 1, saltBytes: 16, keyBytes: 64 });
 const MAXMEM = 64 * 1024 * 1024; // 128 * N * r = 32 MiB, plus headroom (Node's default cap is exactly 32 MiB)
-// Accepted when verifying a stored hash: never more expensive than 4x the current cost (a tampered row
-// must not be able to make one check take minutes or gigabytes).
-const MAX_N = 2 ** 17;
-const MAX_R = 16;
-const MAX_P = 4;
+/**
+ * The most a STORED hash may ask for, checked before any work: never more than 4x the current cost, so a
+ * tampered row (anyone who can write the platform DB) cannot make one check take minutes or gigabytes.
+ */
+export const STORED_HASH_LIMITS = Object.freeze({ maxN: 2 ** 17, maxR: 16, maxP: 4 });
 
 /** What the login uses to hash and check passwords; tests wrap it to count checks (src/auth/service.ts). */
 export interface PasswordHasher {
@@ -59,8 +59,9 @@ function parse(stored: string): Parsed | undefined {
   const parts = stored.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return undefined;
   const [N, r, p] = parts.slice(1, 4).map((x) => (/^\d{1,10}$/.test(x) ? Number(x) : NaN));
-  if (!Number.isInteger(N) || N < 2 || N > MAX_N || (N & (N - 1)) !== 0) return undefined;
-  if (!Number.isInteger(r) || r < 1 || r > MAX_R || !Number.isInteger(p) || p < 1 || p > MAX_P) return undefined;
+  const { maxN, maxR, maxP } = STORED_HASH_LIMITS;
+  if (!Number.isInteger(N) || N < 2 || N > maxN || (N & (N - 1)) !== 0) return undefined;
+  if (!Number.isInteger(r) || r < 1 || r > maxR || !Number.isInteger(p) || p < 1 || p > maxP) return undefined;
   if (!B64URL.test(parts[4]) || !B64URL.test(parts[5])) return undefined;
   const salt = Buffer.from(parts[4], 'base64url');
   const key = Buffer.from(parts[5], 'base64url');
