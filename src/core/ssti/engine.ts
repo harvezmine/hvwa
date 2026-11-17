@@ -42,7 +42,7 @@ export const SSTI_LIMITS = Object.freeze({
   defaultTimeoutMs: 250,
   maxTimeoutMs: 1000,
   /** Deadline for loading Nunjucks into the fresh context (ours, not the player's; about 15 ms warm). */
-  bootMs: 2000,
+  bootMs: 500,
   /**
    * Three memory bounds, tightest first. (1) The interrupt handler stops a render once the instance's WASM memory
    * has grown past `memoryInterruptBytes`: it catches the many small allocations that would otherwise reach QuickJS's
@@ -75,8 +75,14 @@ export const SSTI_LIMITS = Object.freeze({
   nodePathChars: 255,
   /** The worker transport: renders waiting behind the one in flight (beyond: `limit: 'busy'`). */
   queue: 8,
-  /** The host's watchdog per render: bootMs + timeoutMs + this, then the worker is terminated. */
-  watchdogSlackMs: 500,
+  /**
+   * The host's watchdog per render, in two phases, then the worker is terminated. Until the worker reports that the
+   * player's code started: `bootWatchdogMs` (the boot is ours; a wedged one answers 'crashed'). From then on:
+   * timeoutMs + `watchdogSlackMs` (a native call that never polls the interrupt handler answers 'timeout'). So one
+   * render holds the worker at most about 0.5 s past its boot at the default deadline, plus a fresh worker's start.
+   */
+  bootWatchdogMs: 1000,
+  watchdogSlackMs: 250,
   /** A new worker that is not ready within this is terminated. */
   spawnTimeoutMs: 10_000,
   /** The worker's own V8 limits (its JS heap; the WASM memory above is outside them). */
@@ -241,9 +247,10 @@ function hostFault(err: unknown, shellCalls: readonly string[]): SstiResult {
  * more). Bounds: an interrupt handler that stops guest code at the deadline or once the instance's memory passes
  * memoryInterruptBytes, QuickJS's memory and stack limits, the WebAssembly.Memory maximum, a render that ends past
  * its deadline counted as a timeout anyway (a native operation such as JSON.stringify runs without interrupt checks),
- * and the input/output caps. Never throws: every failure is an SstiResult.
+ * and the input/output caps. Never throws: every failure is an SstiResult. `started` is called once the boot is done,
+ * right before the player's code runs (the worker reports it, so the host's watchdog can switch to the render phase).
  */
-export async function renderJob(job: SandboxJob, assets: EngineAssets): Promise<SstiResult> {
+export async function renderJob(job: SandboxJob, assets: EngineAssets, started?: () => void): Promise<SstiResult> {
   const shellCalls: string[] = [];
   try {
     const memory = new WebAssembly.Memory({ initial: SSTI_LIMITS.wasmInitialBytes / PAGE, maximum: SSTI_LIMITS.wasmMaxBytes / PAGE });
@@ -272,6 +279,7 @@ export async function renderJob(job: SandboxJob, assets: EngineAssets): Promise<
     const template = vm.newString(job.template);
     const ctxJson = vm.newString(job.ctxJson);
     // The player's code starts here: from now on the deadline is the render's.
+    started?.();
     interrupted = false;
     const due = Date.now() + job.timeoutMs;
     deadline = due;
@@ -620,6 +628,7 @@ export async function warmUp(assets: EngineAssets): Promise<void> {
 export type ToWorker = { readonly type: 'render'; readonly id: number; readonly job: SandboxJob } | { readonly type: 'stats'; readonly id: number };
 export type FromWorker =
   | { readonly type: 'ready' }
+  | { readonly type: 'started'; readonly id: number }
   | { readonly type: 'fatal'; readonly message: string }
   | { readonly type: 'result'; readonly id: number; readonly result: SstiResult }
   | { readonly type: 'stats'; readonly id: number; readonly stats: WorkerStats };
@@ -646,7 +655,7 @@ async function workerMain(): Promise<void> {
   port.on('message', (m: ToWorker) => {
     chain = chain.then(async () => {
       if (m.type === 'render') {
-        const result = await renderJob(m.job, assets);
+        const result = await renderJob(m.job, assets, () => port.postMessage({ type: 'started', id: m.id } satisfies FromWorker));
         renders += 1;
         port.postMessage({ type: 'result', id: m.id, result } satisfies FromWorker);
       } else if (m.type === 'stats') {

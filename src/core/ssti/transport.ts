@@ -4,10 +4,11 @@
 // - workerTransport(): production. ONE long-lived worker_thread (the container has pids_limit 256 and 512 MB; a
 //   render takes about 15 ms, so one worker serves about 60 renders a second), started by the first render. Renders
 //   run one at a time; at most SSTI_LIMITS.queue wait behind the one in flight, and the next is refused at once
-//   (`limit: 'busy'`; a lab answers 503). A watchdog terminates a worker whose render overruns bootMs + timeoutMs +
-//   watchdogSlackMs (a native operation the interrupt handler cannot stop); a worker that dies, never gets ready or
-//   answers nonsense is dropped too. The next render starts a fresh one. An idle worker is unref'd, so it never
-//   keeps the process up.
+//   (`limit: 'busy'`; a lab answers 503). A watchdog in two phases terminates a worker whose render overruns: the
+//   boot (bootWatchdogMs, until the worker reports that the player's code started), then timeoutMs + watchdogSlackMs
+//   (a native operation the interrupt handler cannot stop). A worker that dies, never gets ready or answers in a
+//   shape this protocol does not have is dropped too. The next render starts a fresh one. An idle worker is unref'd,
+//   so it never keeps the process up.
 // - inThreadTransport(): tests. The same engine on the calling thread: no worker and no watchdog (a native operation
 //   blocks the caller), so never in production.
 import { Worker } from 'node:worker_threads';
@@ -76,7 +77,9 @@ export interface WorkerTransport extends SandboxTransport {
 export interface WorkerTransportOptions {
   /** Renders that may wait behind the one in flight (default and most: SSTI_LIMITS.queue). */
   readonly queue?: number;
-  /** The watchdog for one render, in ms (default bootMs + timeoutMs + watchdogSlackMs). */
+  /** The boot-phase watchdog, in ms, until the worker reports 'started' (default SSTI_LIMITS.bootWatchdogMs). */
+  readonly bootWatchdogMs?: number;
+  /** The render-phase watchdog for one render, in ms, from 'started' (default timeoutMs + watchdogSlackMs). */
   readonly watchdogMs?: (job: SandboxJob) => number;
   /** How long a new worker may take to get ready, in ms (default SSTI_LIMITS.spawnTimeoutMs). */
   readonly spawnTimeoutMs?: number;
@@ -106,13 +109,15 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
   if (!Number.isInteger(maxQueue) || maxQueue < 0 || maxQueue > SSTI_LIMITS.queue) {
     throw new RangeError(`workerTransport: queue must be an integer from 0 to ${SSTI_LIMITS.queue} (got ${String(maxQueue)})`);
   }
-  const watchdogMs = opts.watchdogMs ?? ((job: SandboxJob) => SSTI_LIMITS.bootMs + job.timeoutMs + SSTI_LIMITS.watchdogSlackMs);
+  const bootWatchdogMs = opts.bootWatchdogMs ?? SSTI_LIMITS.bootWatchdogMs;
+  const watchdogMs = opts.watchdogMs ?? ((job: SandboxJob) => job.timeoutMs + SSTI_LIMITS.watchdogSlackMs);
   const spawnTimeoutMs = opts.spawnTimeoutMs ?? SSTI_LIMITS.spawnTimeoutMs;
   const url = opts.workerUrl ?? ENGINE_URL;
   const queue: Pending[] = [];
   const exiting = new Set<Promise<void>>();
   let live: Live | undefined;
-  let inFlight: { readonly p: Pending; readonly timer: NodeJS.Timeout } | undefined;
+  /** The render on the worker: its watchdog timer, and whether the worker reported that the player's code started. */
+  let inFlight: { readonly p: Pending; timer: NodeJS.Timeout; started: boolean } | undefined;
   let nextId = 1;
   let started = 0;
   let dropped = 0;
@@ -159,6 +164,16 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       l.ready = true;
       clearTimeout(l.spawnTimer);
       pump();
+    } else if (m?.type === 'started' && inFlight !== undefined && m.id === inFlight.p.id && !inFlight.started) {
+      // The boot is done: from now on the render-phase watchdog (the player's deadline plus slack) applies.
+      const f = inFlight;
+      clearTimeout(f.timer);
+      f.started = true;
+      f.timer = setTimeout(() => {
+        if (inFlight !== f) return;
+        drop(l); // the interrupt handler did not stop it: a native call that never polls, or a wedged instance
+        finish(refusal('timeout', SSTI_MESSAGES.timeout(f.p.job.timeoutMs)));
+      }, watchdogMs(f.p.job)).unref();
     } else if (m?.type === 'result' && inFlight !== undefined && m.id === inFlight.p.id) {
       const r = checked(m.result);
       if (r === undefined) lost(l);
@@ -213,12 +228,13 @@ export function workerTransport(opts: WorkerTransportOptions = {}): WorkerTransp
       l.worker.ref(); // work is waiting: keep the process up until it is answered
       if (!l.ready) return; // 'ready' pumps again
       const p = queue.shift() as Pending;
+      // The boot-phase watchdog: the engine's own work, before the player's code (a wedged boot is a crash).
       const timer = setTimeout(() => {
         if (inFlight?.p !== p) return;
-        drop(l); // the interrupt handler did not stop it: a native operation, or a wedged instance
-        finish(refusal('timeout', SSTI_MESSAGES.timeout(p.job.timeoutMs)));
-      }, watchdogMs(p.job)).unref();
-      inFlight = { p, timer };
+        drop(l);
+        finish(refusal('crashed', CRASHED));
+      }, bootWatchdogMs).unref();
+      inFlight = { p, timer, started: false };
       l.worker.postMessage({ type: 'render', id: p.id, job: p.job } satisfies ToWorker);
       return;
     }

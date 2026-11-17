@@ -155,6 +155,35 @@ describe('the watchdog: what the interrupt handler cannot stop', () => {
     expect(s.threadId).not.toBe(first);
   });
 
+  it('with the defaults, a native call that never polls the interrupt holds the worker about timeoutMs + watchdogSlackMs, not seconds', async () => {
+    // indexOf over 1e6 characters for a 5e5-character needle: about 2.7 s in one native call with no interrupt check.
+    // The render-phase watchdog starts when the worker reports that the player's code started (after the boot).
+    const t = open(workerTransport());
+    expect(await t.render(job({ template: '{{ 1 }}' }))).toMatchObject({ ok: true, output: '1' });
+    const t0 = performance.now();
+    const r = await t.render(job({ template: js("var s = 'a'.repeat(1e6); return s.indexOf('a'.repeat(5e5) + 'b')") }));
+    const held = performance.now() - t0;
+    expect(r).toEqual({ ok: false, limit: 'timeout', error: `The template took too long to render (over ${SSTI_LIMITS.defaultTimeoutMs} ms).`, shellCalls: [] });
+    expect(held).toBeLessThan(SSTI_LIMITS.defaultTimeoutMs + SSTI_LIMITS.watchdogSlackMs + 600);
+    expect((await t.stats()).dropped).toBe(1);
+    expect(await t.render(job({ template: '{{ 6 * 7 }}' }))).toEqual(ok42);
+  });
+
+  it('the boot has its own watchdog: a worker wedged before the player\'s code starts is dropped, and that render crashed', async () => {
+    const t = open(workerTransport({ workerUrl: fixture('hang-in-boot.mjs'), bootWatchdogMs: 100, watchdogMs: () => 60_000 }));
+    const t0 = performance.now();
+    expect(await t.render(job({ template: 'x' }))).toMatchObject(crashed);
+    expect(performance.now() - t0).toBeLessThan(5000);
+    expect((await t.stats()).dropped).toBe(1);
+  });
+
+  it('once the worker reports that the player\'s code started, the render-phase watchdog applies, not the boot one', async () => {
+    const t = open(workerTransport({ workerUrl: fixture('hang.mjs'), bootWatchdogMs: 60_000, watchdogMs: () => 100 }));
+    const t0 = performance.now();
+    expect(await t.render(job({ template: 'x' }))).toMatchObject({ ok: false, limit: 'timeout' });
+    expect(performance.now() - t0).toBeLessThan(5000);
+  });
+
   it('a wedged worker (a spinning render) is terminated and replaced', async () => {
     const t = open(workerTransport({ workerUrl: fixture('hang.mjs'), watchdogMs: () => 100 }));
     const t0 = performance.now();
