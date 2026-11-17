@@ -58,6 +58,12 @@ function result(site: SimSite, u: URL | undefined, host: string, reason?: SimUnr
   });
 }
 
+/** What classifySimUrl() takes besides the URL. */
+export interface SimUrlOptions {
+  /** The URL is a WebSocket's (`new WebSocket(url)`): ws: and wss: are sim URLs too. */
+  readonly websocket?: boolean;
+}
+
 /**
  * Where a URL takes the simulated victim's browser. Parsing is the WHATWG URL parser (the one browsers use), so
  * tricks resolve exactly as in a browser; no DNS is involved. In order:
@@ -68,7 +74,9 @@ function result(site: SimSite, u: URL | undefined, host: string, reason?: SimUnr
  *     URLs (`http://attacker.test\@citadel.test/` is attacker.test; `/\attacker.test` leaves the site), lower-cases
  *     the host, percent-decodes it and maps IDN per UTS #46 (full-width letters and `。` become ASCII; look-alike
  *     letters from other scripts become `xn--` labels, so never a sim host).
- *  3. A scheme other than http: / https: (`javascript:`, `data:`, `file:` ...): `other`/`scheme`.
+ *  3. A scheme other than http: / https: (`javascript:`, `data:`, `file:` ...): `other`/`scheme`. With
+ *     `{ websocket: true }` (a WebSocket's URL: AR-14, Phase 3) ws: and wss: are taken too, with the same host and
+ *     port rules (their default ports are 80 and 443); without it they are `other`/`scheme` like any other.
  *  4. Serialized longer than SIM_LIMITS.urlLength: `other`/`too-long`.
  *  5. One trailing dot is dropped (`ATTACKER.TEST.` is attacker.test). An IPv4 or IPv6 literal (in any WHATWG
  *     spelling: `0x7f.1`, `2130706433`, `[::1]`): `other`/`ip`. Any empty label (`a..b`, `.x`, two trailing
@@ -81,7 +89,7 @@ function result(site: SimSite, u: URL | undefined, host: string, reason?: SimUnr
  * Userinfo never decides the site: `http://citadel.test@attacker.test/` goes to attacker.test, as in every
  * browser; it is dropped from `url` (servers never receive it) and reported as `userinfo: true`.
  */
-export function classifySimUrl(input: string, base?: string): SimUrl {
+export function classifySimUrl(input: string, base?: string, opts: SimUrlOptions = {}): SimUrl {
   if (typeof input !== 'string') return result('other', undefined, '', 'invalid');
   if (input.length > SIM_LIMITS.urlLength) return result('other', undefined, '', 'too-long');
   let u: URL;
@@ -90,7 +98,9 @@ export function classifySimUrl(input: string, base?: string): SimUrl {
   } catch {
     return result('other', undefined, '', 'invalid');
   }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return result('other', undefined, '', 'scheme');
+  const web = u.protocol === 'http:' || u.protocol === 'https:';
+  const socket = opts.websocket === true && (u.protocol === 'ws:' || u.protocol === 'wss:');
+  if (!web && !socket) return result('other', undefined, '', 'scheme');
   if (`${u.protocol}//${u.host}${u.pathname}${u.search}`.length > SIM_LIMITS.urlLength) {
     return result('other', undefined, '', 'too-long');
   }

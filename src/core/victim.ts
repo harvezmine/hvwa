@@ -225,13 +225,18 @@ export interface FrameAndClickOptions extends VictimPresetOptions {
   readonly page?: (req: Request) => Omit<SimAttackerPage, 'sandboxed'> | undefined;
 }
 
-const STEP_KINDS: ReadonlySet<string> = new Set(['form', 'link', 'fetch']);
+/**
+ * The step kinds the presets run, keyed by kind so a new AttackerStep member (AR-14's `{ kind: 'websocket', url }`,
+ * Phase 3) cannot compile without its entry here and its case in runAttackerPage. Until then a websocket step is a lab
+ * bug, refused like any unknown kind.
+ */
+const STEP_KINDS: Readonly<Record<AttackerStep['kind'], true>> = Object.freeze({ form: true, link: true, fetch: true });
 
 /** A lab's AttackerScript, checked: a programming error throws (the player's strings are data, never checked here). */
 function checkScript(s: unknown): AttackerScript {
   const does = (s as AttackerScript | null)?.does as Partial<Record<string, unknown>> | undefined;
-  if (s === null || typeof s !== 'object' || does === null || typeof does !== 'object' || !STEP_KINDS.has(String(does.kind))) {
-    throw new Error("attacker page: page(req) must return { page?, does: { kind: 'form' | 'link' | 'fetch', ... } } or undefined");
+  if (s === null || typeof s !== 'object' || does === null || typeof does !== 'object' || !Object.hasOwn(STEP_KINDS, String(does.kind))) {
+    throw new Error(`attacker page: page(req) must return { page?, does: { kind: ${Object.keys(STEP_KINDS).map((k) => `'${k}'`).join(' | ')}, ... } } or undefined`);
   }
   const url = does.kind === 'form' ? does.action : does.url;
   if (typeof url !== 'string') throw new Error(`attacker page: a ${String(does.kind)} step needs a string ${does.kind === 'form' ? 'action' : 'url'}`);
@@ -267,16 +272,25 @@ function runAttackerPage(b: SimBrowser, script: AttackerScript, page: SimAttacke
   b.follow(at.url);
   const { does } = script;
   const opts = { page };
-  if (does.kind === 'link') { b.crossSiteLink(does.url, opts); return; }
-  if (does.kind === 'form') {
-    if (does.method === 'GET') b.crossSiteLink(getFormUrl(does.action, does.fields, at.url), opts);
-    else b.crossSitePost(does.action, does.fields, { ...opts, ...(does.enctype === undefined ? {} : { contentType: does.enctype }) });
-    return;
+  switch (does.kind) {
+    case 'link':
+      b.crossSiteLink(does.url, opts);
+      return;
+    case 'form':
+      if (does.method === 'GET') b.crossSiteLink(getFormUrl(does.action, does.fields, at.url), opts);
+      else b.crossSitePost(does.action, does.fields, { ...opts, ...(does.enctype === undefined ? {} : { contentType: does.enctype }) });
+      return;
+    case 'fetch': {
+      const { kind: _kind, url, ...init } = does;
+      const f = b.corsFetch(url, { ...init, page });
+      if (f.verdict === 'readable') b.world.attackerLog.record({ method: 'POST', url: ATTACKER_EXFIL_URL, body: f.body ?? '' });
+      return textOf(FETCH_NOTES[f.verdict]);
+    }
+    default: { // every kind is handled above: a new AttackerStep member (AR-14's websocket) fails to compile here
+      const unhandled: never = does;
+      throw new Error(`attacker page: no step ${JSON.stringify((unhandled as { kind?: unknown }).kind)}`);
+    }
   }
-  const { kind: _kind, url, ...init } = does;
-  const f = b.corsFetch(url, { ...init, page });
-  if (f.verdict === 'readable') b.world.attackerLog.record({ method: 'POST', url: ATTACKER_EXFIL_URL, body: f.body ?? '' });
-  return textOf(FETCH_NOTES[f.verdict]);
 }
 
 function checkFunction(what: string, name: string, fn: unknown): void {

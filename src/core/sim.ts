@@ -28,7 +28,7 @@ export {
   type SimClick, type SimClickOptions, type SimFetchVerdict, type SimFrame, type SimFrameOptions, type SimHandler, type SimHop,
   type SimNavigateOptions, type SimOutcome, type SimRequest, type SimResponse, type SimVisit,
 } from './sim/browser.js';
-export { SIM_FORM_BOUNDARY, type SimCorsRead, type SimFormEnctype, type SimFormFields, type SimFraming } from './sim/cross.js';
+export { SIM_FORM_BOUNDARY, type SimCorsRead, type SimFormEnctype, type SimFormFields, type SimFraming, type SimRequestMode } from './sim/cross.js';
 export {
   ADMIN_MAILBOX, PLAYER_MAILBOX, attackerLog, simInbox, simWorld,
   type AttackerHit, type AttackerLog, type AttackerRequest, type NewMail, type SimInbox, type SimInboxOptions, type SimMail,

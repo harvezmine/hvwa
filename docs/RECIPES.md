@@ -1030,6 +1030,15 @@ hit nothing.
 caps) and a frame handle the browser holds weakly, and the presets keep nothing, so the byte budget weights are unchanged
 (`tests/sim-cross.spec.ts`, "budget, caps and copies").
 
+**Shaped for AR-14 (WebSocket hijacking, Phase 3), not implemented.** No primitive opens a WebSocket yet; the rules a
+handshake needs are in place so AR-14 adds one primitive and one `AttackerStep` kind, nothing more. As Chrome sends it, a
+handshake from the attacker's page is a GET that always carries `Origin` (`originHeader` with `mode: 'websocket'`), no
+Referer and no `Sec-Fetch-*` (`fetchMetadata` gives none for that mode), gets no CORS check, and is cross-site and not
+top-level for cookies, so only `SameSite=None` ones go. `classifySimUrl(url, base, { websocket: true })` takes `ws:` and
+`wss:` with the usual host and port rules; without the option they stay `other`. `AttackerStep` is dispatched
+exhaustively, so a `{ kind: 'websocket', ... }` member does not compile until the presets run it; today such a step is a
+lab bug.
+
 ### Testing
 
 An exploit is a script, as the player would do it: craft the link → trigger the victim (`POST <lab>/victim/<name>`) →

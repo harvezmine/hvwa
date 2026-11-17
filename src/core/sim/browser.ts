@@ -6,8 +6,8 @@
 import { SIM_LIMITS, clip, str } from './limits.js';
 import { Jar, parseCookieHeader, type SimCookieContext, type SimCookieJar } from './cookies.js';
 import {
-  bodyFields, corsCheck, encodeForm, fetchHeaders, fetchSiteOf, formEnctype, formEntries, framingOf, initiatorOf, needsPreflight,
-  originHeader, parsePolicy, redirectTainted, refererFor, type ReferrerPolicy, type SimCorsRead, type SimFormFields, type SimFraming,
+  bodyFields, corsCheck, encodeForm, fetchHeaders, fetchMetadata, formEnctype, formEntries, framingOf, initiatorOf, needsPreflight,
+  originHeader, parsePolicy, redirectTainted, refererFor, type ReferrerPolicy, type SimCorsRead, type SimFormFields, type SimFraming, type SimRequestMode,
   type SimInitiator,
 } from './cross.js';
 import { ATTACKER_ORIGIN, classifySimUrl, type SimSite, type SimUnreachable, type SimUrl } from './url.js';
@@ -341,13 +341,16 @@ interface Context {
   /** The cookie context (cookies.ts): same-site for cookies, and whether the top-level page navigates. */
   site: 'same' | 'cross';
   readonly topLevel: boolean;
-  /** A navigation (Location and Refresh followed) or a CORS fetch (Location only; Origin always sent). */
-  readonly mode: 'navigate' | 'cors';
+  /**
+   * A navigation (Location and Refresh followed), a CORS fetch (Location only; Origin always sent) or, shaped for
+   * AR-14 and not run by any primitive yet, a WebSocket handshake: Origin always sent, no Sec-Fetch-*, no CORS check
+   * (no watch), its URL classified with ws: and wss: allowed. A handshake from the attacker's page is cross-site and
+   * not top-level, so only SameSite=None cookies go, and its start carries no referrer (Chrome sends no Referer).
+   */
+  readonly mode: SimRequestMode;
   readonly dest: 'document' | 'iframe' | 'empty';
   /** Send and store cookies: always for a navigation, only with credentials: 'include' for a fetch. */
   readonly credentials: boolean;
-  /** Add sec-fetch-* (every request but a WebSocket handshake, which carries none). */
-  readonly shaped: boolean;
   /**
    * The victim's own action started it (a click, a typed or mailed link, a form it submitted): Sec-Fetch-User ?1,
    * kept across redirects; a page that moves on by itself starts a request no one clicked.
@@ -437,7 +440,7 @@ export class Browser implements SimBrowser {
     let read: SimCorsRead | undefined;
     const visit = this.navigate(
       { method, url, ...(payload ? { payload } : {}), base: page.url.url, ...referrerOf(page), policy: page.policy },
-      { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, shaped: true, user: false, extra: headers },
+      { init: page.init, site: 'cross', topLevel: false, mode: 'cors', dest: 'empty', credentials: withCredentials, user: false, extra: headers },
       (req, _res, h) => {
         read = corsCheck(h, req.headers.origin ?? 'null', withCredentials);
         return read !== 'readable'; // a failed check is a network error: the answer goes no further, not even a redirect
@@ -491,7 +494,7 @@ export class Browser implements SimBrowser {
     let { method, referrer, policy } = start;
     let payload = start.payload;
     let raw = str(start.url);
-    let target = classifySimUrl(start.url, start.base);
+    let target = classifySimUrl(start.url, start.base, { websocket: ctx.mode === 'websocket' });
     let via: SimHop['via'] = 'start';
     let redirects = 0;
     /** The URLs requested since the current initiator made the request (Fetch's URL list). */
@@ -531,16 +534,11 @@ export class Browser implements SimBrowser {
       if (method === 'POST' && payload !== undefined && payload.type !== '') headers['content-type'] = payload.type;
       const { init } = ctx;
       if (init !== undefined) {
-        const origin = originHeader({ init, method, cors: ctx.mode === 'cors', target, policy, tainted: redirectTainted(init, urls) });
+        const origin = originHeader({ init, method, mode: ctx.mode, target, policy, tainted: redirectTainted(init, urls) });
         if (origin !== undefined) headers.origin = clip(origin, SIM_LIMITS.urlLength);
       }
-      if (ctx.shaped) {
-        // A navigation the browser itself started stays `none` across redirects (Fetch Metadata).
-        headers['sec-fetch-site'] = init === undefined ? 'none' : fetchSiteOf(init, urls);
-        headers['sec-fetch-mode'] = ctx.mode;
-        headers['sec-fetch-dest'] = ctx.dest;
-        if (ctx.user) headers['sec-fetch-user'] = '?1';
-      }
+      // A navigation the browser itself started stays `none` across redirects; a WebSocket handshake carries none.
+      Object.assign(headers, fetchMetadata({ ...(init ? { init } : {}), urls, mode: ctx.mode, dest: ctx.dest, user: ctx.user }));
       for (const [name, value] of Object.entries(ctx.extra ?? {})) if (!Object.hasOwn(headers, name)) headers[name] = value;
       const req: SimRequest = Object.freeze({
         method, url: target.url, path: target.path, query: new URLSearchParams(target.search),
@@ -618,7 +616,7 @@ function citadelReferrer(opts: SimNavigateOptions): SimUrl | undefined {
  * the victim's action (Sec-Fetch-User ?1). `init` is the citadel page it was on; none for a link opened from mail.
  */
 function ownNavigation(init: SimInitiator | undefined): Context {
-  return { ...(init ? { init } : {}), site: 'same', topLevel: true, mode: 'navigate', dest: 'document', credentials: true, shaped: true, user: true };
+  return { ...(init ? { init } : {}), site: 'same', topLevel: true, mode: 'navigate', dest: 'document', credentials: true, user: true };
 }
 
 /** Fetch's request-body headers, which a redirect to GET removes along with the body. */
@@ -652,7 +650,7 @@ function fromPage(page: Page): Context {
   // The page's script navigates (an auto-submitted form, `location =`): no user activation, so no Sec-Fetch-User.
   return {
     init: page.init, site: 'cross', topLevel: !page.sandboxed, mode: 'navigate', dest: page.sandboxed ? 'iframe' : 'document',
-    credentials: true, shaped: true, user: false, ...(page.sandboxed ? { ancestors: [page.url] } : {}),
+    credentials: true, user: false, ...(page.sandboxed ? { ancestors: [page.url] } : {}),
   };
 }
 
@@ -661,5 +659,5 @@ function fromPage(page: Page): Context {
  * `user`: the admin's own click (clickThrough) rather than the frame loading.
  */
 function inFrame(init: SimInitiator, top: SimUrl, user = false): Context {
-  return { init, site: 'cross', topLevel: false, mode: 'navigate', dest: 'iframe', credentials: true, shaped: true, user, ancestors: [top] };
+  return { init, site: 'cross', topLevel: false, mode: 'navigate', dest: 'iframe', credentials: true, user, ancestors: [top] };
 }

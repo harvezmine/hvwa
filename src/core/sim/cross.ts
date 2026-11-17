@@ -93,20 +93,26 @@ export function redirectTainted(init: SimInitiator, urls: readonly SimUrl[]): bo
 }
 
 /**
+ * A request's mode (Fetch): a navigation, a CORS fetch, or a WebSocket handshake. The handshake is shaped here for
+ * AR-14 (Phase 3) but no primitive opens a WebSocket yet.
+ */
+export type SimRequestMode = 'navigate' | 'cors' | 'websocket';
+
+/**
  * The Origin header a request carries (Fetch "append a request Origin header"), or undefined for none:
- * - a CORS request (fetch() to another origin, any method): always, 'null' once redirect-tainted or from an opaque
- *   origin; the referrer policy does not apply;
+ * - a CORS request (fetch() to another origin, any method) and a WebSocket handshake: always, 'null' once
+ *   redirect-tainted or from an opaque origin; the referrer policy does not apply;
  * - any other request with a method other than GET (a form POST): the initiator's origin, or 'null' when the
  *   referrer policy hides it (no-referrer; same-origin to another origin; a strict or legacy policy on an https page
  *   posting to http), when tainted, or from an opaque origin;
  * - a GET navigation (a link, a frame, a GET form): none.
  */
 export function originHeader(opts: {
-  readonly init: SimInitiator; readonly method: 'GET' | 'POST'; readonly cors: boolean; readonly target: SimUrl;
+  readonly init: SimInitiator; readonly method: 'GET' | 'POST'; readonly mode: SimRequestMode; readonly target: SimUrl;
   readonly policy: ReferrerPolicy; readonly tainted: boolean;
 }): string | undefined {
-  const { init, method, cors, target, policy, tainted } = opts;
-  if (cors) return tainted ? 'null' : init.origin;
+  const { init, method, mode, target, policy, tainted } = opts;
+  if (mode === 'cors' || mode === 'websocket') return tainted ? 'null' : init.origin;
   if (method === 'GET') return undefined;
   if (tainted || init.origin === 'null') return 'null';
   switch (policy) {
@@ -116,6 +122,23 @@ export function originHeader(opts: {
     case 'same-origin': return init.origin === target.origin ? init.origin : 'null';
     default: return init.origin;
   }
+}
+
+/**
+ * The Fetch Metadata headers a request carries, as Chrome sends them: sec-fetch-site (`none` for a navigation the
+ * browser itself started, i.e. no `init`; else fetchSiteOf over the URL list), -mode, -dest, and sec-fetch-user `?1`
+ * when the user's own action started it. None at all on a WebSocket handshake.
+ */
+export function fetchMetadata(opts: {
+  readonly init?: SimInitiator; readonly urls: readonly SimUrl[]; readonly mode: SimRequestMode;
+  readonly dest: 'document' | 'iframe' | 'empty'; readonly user: boolean;
+}): Record<string, string> {
+  const { init, urls, mode, dest, user } = opts;
+  if (mode === 'websocket') return {};
+  return {
+    'sec-fetch-site': init === undefined ? 'none' : fetchSiteOf(init, urls), 'sec-fetch-mode': mode, 'sec-fetch-dest': dest,
+    ...(user ? { 'sec-fetch-user': '?1' } : {}),
+  };
 }
 
 /** Form fields in document order: a record, or [name, value] pairs (a name may repeat). Non-string values are dropped. */

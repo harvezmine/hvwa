@@ -6,7 +6,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { cappedBudgetUsage, perSession, setCappedBudget } from '../src/core/lab.js';
 import type { Level } from '../src/core/levels.js';
 import { Jar, sameSiteSends, sameSiteStores, type SimCookieContext, type SimSameSite } from '../src/core/sim/cookies.js';
-import { bodyFields, framingOf } from '../src/core/sim/cross.js';
+import { bodyFields, fetchMetadata, framingOf, originHeader } from '../src/core/sim/cross.js';
 import {
   ADMIN_MAILBOX, ATTACKER_EXFIL_URL, PLAYER_MAILBOX, SIM_FORM_BOUNDARY, SIM_LIMITS, VICTIM_LABELS, classifySimUrl, frameAndClickAction,
   sendAttackerPageAction, simWorld, visitAttackerPageAction,
@@ -841,6 +841,55 @@ describe('clickThrough: the admin clicks your decoy over the framed page\'s butt
     expect(() => v.b.clickThrough(f, '/x', {})).toThrow(/a frame this browser loaded/);
     expect(() => v.b.clickThrough({ ...f }, '/x', {})).toThrow(/a frame this browser loaded/);
     expect(() => v.b.clickThrough(null as never, '/x', {})).toThrow(/a frame this browser loaded/);
+  });
+});
+
+describe('the WebSocket shape, for AR-14 (Phase 3): the rules, not a WebSocket', () => {
+  const page = classifySimUrl('http://attacker.test/chat.html');
+  const ws = classifySimUrl('ws://citadel.test/live', undefined, { websocket: true });
+  const init = { origin: 'http://attacker.test', site: 'http://attacker.test' };
+
+  it('classifySimUrl takes ws: and wss: only when asked (a WebSocket\'s URL), with the usual host and port rules', () => {
+    for (const u of ['ws://citadel.test/live', 'wss://citadel.test/live']) expect(classifySimUrl(u), u).toMatchObject({ site: 'other', reason: 'scheme' });
+    expect(ws).toMatchObject({ site: 'citadel', url: 'ws://citadel.test/live', origin: 'ws://citadel.test', path: '/live' });
+    expect(classifySimUrl('wss://x.attacker.test:9443/a?b=1', undefined, { websocket: true })).toMatchObject({ site: 'attacker', url: 'wss://x.attacker.test:9443/a?b=1' });
+    expect(classifySimUrl('ws://citadel.test:8080/', undefined, { websocket: true })).toMatchObject({ site: 'other', reason: 'port' });
+    expect(classifySimUrl('ws://127.0.0.1/', undefined, { websocket: true })).toMatchObject({ site: 'other', reason: 'ip' });
+    expect(classifySimUrl('http://citadel.test/', undefined, { websocket: true }).site).toBe('citadel'); // http(s) still is
+    expect(classifySimUrl('ftp://citadel.test/', undefined, { websocket: true })).toMatchObject({ site: 'other', reason: 'scheme' });
+  });
+
+  it('originHeader takes a mode: a WebSocket handshake always carries the page\'s Origin, whatever its method or policy', () => {
+    for (const policy of ['no-referrer', 'same-origin', 'strict-origin'] as const) {
+      expect(originHeader({ init, method: 'GET', mode: 'websocket', target: ws, policy, tainted: false }), policy).toBe('http://attacker.test');
+      expect(originHeader({ init, method: 'GET', mode: 'cors', target: ws, policy, tainted: false }), policy).toBe('http://attacker.test');
+      expect(originHeader({ init, method: 'GET', mode: 'navigate', target: ws, policy, tainted: false }), policy).toBeUndefined();
+    }
+    expect(originHeader({ init: { origin: 'null', site: '' }, method: 'GET', mode: 'websocket', target: ws, policy: 'unsafe-url', tainted: false })).toBe('null');
+    expect(originHeader({ init, method: 'POST', mode: 'navigate', target: ws, policy: 'no-referrer', tainted: false })).toBe('null');
+  });
+
+  it('fetchMetadata: Sec-Fetch-* for every mode but websocket (Chrome sends none on a handshake)', () => {
+    const urls = [classifySimUrl('http://citadel.test/x')];
+    expect(fetchMetadata({ init, urls, mode: 'websocket', dest: 'empty', user: false })).toEqual({});
+    expect(fetchMetadata({ init, urls, mode: 'cors', dest: 'empty', user: false }))
+      .toEqual({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' });
+    expect(fetchMetadata({ urls, mode: 'navigate', dest: 'document', user: true }))
+      .toEqual({ 'sec-fetch-site': 'none', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document', 'sec-fetch-user': '?1' });
+  });
+
+  it('a handshake from the attacker\'s page is cross-site and not a top-level navigation: only SameSite=None cookies go', () => {
+    const handshake: SimCookieContext = { site: 'cross', method: 'GET', topLevel: false };
+    expect((['Strict', 'Lax', 'None'] as const).filter((s) => sameSiteSends(s, handshake))).toEqual(['None']);
+    expect(page.site).toBe('attacker');
+  });
+
+  it('AttackerStep stays open to a websocket kind: today the presets refuse one as a lab bug, naming the kinds they run', () => {
+    const f = forum();
+    f.state.page = { does: { kind: 'websocket', url: 'ws://citadel.test/live' } } as never;
+    expect(() => visitAttackerPageAction({ browser: () => f.admin, page: () => f.state.page, rearm: f.rearm }).run(REQ, { url: '' }))
+      .toThrow(/kind: 'form' \| 'link' \| 'fetch'/);
+    expect(f.seen).toEqual([]);
   });
 });
 
