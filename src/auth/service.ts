@@ -75,10 +75,14 @@ export interface AuthService {
   changePassword(username: string, current: string, next: string, confirm: string): Promise<PasswordChange>;
   /** Whether the admin account still uses the default password (the banner, the startup warning). */
   usesDefaultPassword(): boolean;
-  /** The synchroniser token of a session (hvwa_sid) for the login/logout/password forms. */
-  csrfToken(sessionId: string): string;
-  /** Constant-time check of a submitted form token against the session's. */
-  checkCsrf(sessionId: string, submitted: unknown): boolean;
+  /**
+   * A form's synchroniser token. The login form's is bound to hvwa_sid (the browser has no sign-in yet); the
+   * account forms' (logout, password) also to the sign-in, `authToken` (the hvwa_auth cookie): any same-host page
+   * on another port can plant an hvwa_sid and read the login page served to it, but it cannot know the sign-in.
+   */
+  csrfToken(sessionId: string, authToken?: string): string;
+  /** Constant-time check of a submitted form token against the expected one (same arguments as csrfToken). */
+  checkCsrf(sessionId: string, submitted: unknown, authToken?: string): boolean;
 }
 
 interface AccountRow { username: string; password_hash: string; is_default: number; failures: number; locked_until: number }
@@ -151,7 +155,10 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
     return true;
   }
 
-  const csrfFor = (sessionId: string) => createHmac('sha256', csrfKey).update(`hvwa-csrf:${sessionId}`).digest('base64url');
+  // Domain-separated: a login-form token is never an account-form token, nor one sign-in's another's.
+  const csrfFor = (sessionId: string, authToken?: string) => createHmac('sha256', csrfKey)
+    .update(authToken === undefined ? `hvwa-csrf:login:${sessionId}` : `hvwa-csrf:account:${sessionId}:${sha256(authToken)}`)
+    .digest('base64url');
 
   function mint(username: string): string {
     const token = randomBytes(32).toString('base64url');
@@ -206,9 +213,9 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
 
     csrfToken: csrfFor,
 
-    checkCsrf(sessionId: string, submitted: unknown): boolean {
+    checkCsrf(sessionId: string, submitted: unknown, authToken?: string): boolean {
       if (typeof submitted !== 'string') return false;
-      const expected = Buffer.from(csrfFor(sessionId));
+      const expected = Buffer.from(csrfFor(sessionId, authToken));
       const got = Buffer.from(submitted);
       return got.length === expected.length && timingSafeEqual(got, expected);
     },

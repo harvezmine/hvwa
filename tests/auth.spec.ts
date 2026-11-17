@@ -58,10 +58,19 @@ const csrfOf = (html: string): string => {
 };
 type Agent = ReturnType<typeof request.agent>;
 
-/** This browser's CSRF token (per hvwa_sid): from the login form, or the layout's logout form once signed in. */
+/**
+ * This browser's LOGIN-form token (bound to hvwa_sid alone). A signed-in browser is sent on from /login, so its
+ * login token is read from the login page served to its hvwa_sid without the auth cookie (an old open tab).
+ */
 async function csrfFor(agent: Agent): Promise<string> {
   const page = await agent.get('/login');
-  return csrfOf(page.status === 200 ? page.text : (await agent.get('/')).text);
+  if (page.status === 200) return csrfOf(page.text);
+  const server = (agent as unknown as { app: Parameters<typeof request>[0] }).app;
+  return csrfOf((await request(server).get('/login').set('Cookie', `hvwa_sid=${sidOf(agent)}`)).text);
+}
+/** This signed-in browser's ACCOUNT-form token (logout, password; bound to hvwa_sid AND its hvwa_auth). */
+async function accountCsrf(agent: Agent): Promise<string> {
+  return csrfOf((await agent.get('/account/password')).text);
 }
 
 /** GET /login (establishes hvwa_sid), then POST the form with this browser's token. */
@@ -378,6 +387,82 @@ describe('brute-force backoff (fake clock)', () => {
 });
 
 describe('CSRF on the login, logout and password forms', () => {
+  // A same-host page on another port shares the cookie jar (cookies ignore ports): it can PLANT hvwa_sid and read the
+  // login page served to it, so it knows the login-form token of any sid it plants. The account forms (logout,
+  // password) are therefore bound to the sign-in too: HMAC(key, sid + sha256(hvwa_auth)), which it cannot know.
+  it('the account forms take a token bound to hvwa_sid AND the sign-in; the login form\'s or another sign-in\'s is refused', async () => {
+    const { app } = authApp();
+    const a = await signedIn(app);
+    const sid = sidOf(a.agent);
+    const mine = await accountCsrf(a.agent);
+    const loginToken = csrfOf((await withCookies(app, `hvwa_sid=${sid}`).get('/login')).text); // what a planter can read
+    expect(loginToken).not.toBe(mine);
+    // B signs in on the SAME (planted) hvwa_sid: same login token, its own sign-in.
+    const b = await withCookies(app, `hvwa_sid=${sid}`).post('/login').type('form')
+      .send({ _csrf: loginToken, username: 'admin', password: 'password' });
+    expect(b.status).toBe(303);
+    const bToken = authCookie(b) as string;
+    const asA = withCookies(app, `hvwa_sid=${sid}; hvwa_auth=${a.token}`);
+    const asB = withCookies(app, `hvwa_sid=${sid}; hvwa_auth=${bToken}`);
+    const change = { current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' };
+    for (const _csrf of [loginToken, csrfOf((await asB.get('/account/password')).text)]) {
+      expect((await asA.post('/logout').type('form').send({ _csrf })).status).toBe(403);
+      expect((await asA.post('/account/password').type('form').send({ _csrf, ...change })).status).toBe(403);
+    }
+    expect((await asA.get('/')).status).toBe(200); // still signed in, password unchanged
+    expect((await signIn(request.agent(app))).status).toBe(303);
+    // The account token is not a login token either.
+    expect((await withCookies(app, `hvwa_sid=${sid}`).post('/login').type('form')
+      .send({ _csrf: mine, username: 'admin', password: 'password' })).status).toBe(403);
+    // A new sign-in in the same browser retires the old page's token.
+    await signIn(a.agent);
+    expect((await a.agent.post('/logout').type('form').send({ _csrf: mine })).status).toBe(403);
+    expect((await a.agent.post('/logout').type('form').send({ _csrf: await accountCsrf(a.agent) })).status).toBe(303);
+  });
+
+  it('refuses a request whose Sec-Fetch-Site is not same-origin (cross-site, same-site, none); absent passes', async () => {
+    const { app } = authApp();
+    for (const site of ['cross-site', 'same-site', 'none', 'SAME-SITE']) {
+      const agent = request.agent(app);
+      const csrf = await csrfFor(agent); // first: an agent attaches its cookies when the request is created
+      const login = await agent.post('/login').set('Sec-Fetch-Site', site).type('form')
+        .send({ _csrf: csrf, username: 'admin', password: 'password' });
+      expect(login.status, `login, Sec-Fetch-Site: ${site}`).toBe(403);
+    }
+    const { agent } = await signedIn(app);
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      const _csrf = await accountCsrf(agent);
+      expect((await agent.post('/logout').set('Sec-Fetch-Site', site).type('form').send({ _csrf })).status, site).toBe(403);
+      expect((await agent.post('/account/password').set('Sec-Fetch-Site', site).type('form')
+        .send({ _csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' })).status, site).toBe(403);
+    }
+    expect((await agent.get('/')).status).toBe(200);
+    const _csrf = await accountCsrf(agent);
+    const ok = await agent.post('/account/password').set('Sec-Fetch-Site', 'same-origin').type('form')
+      .send({ _csrf, current: 'password', password: 'New-Pass-123', confirm: 'New-Pass-123' });
+    expect(ok.status).toBe(303);
+    const fresh = request.agent(app);
+    const freshCsrf = await csrfFor(fresh);
+    expect((await fresh.post('/login').set('Sec-Fetch-Site', 'same-origin').type('form')
+      .send({ _csrf: freshCsrf, username: 'admin', password: 'New-Pass-123' })).status).toBe(303);
+  });
+
+  it('the Origin must match the scheme too: https://<this host> is another origin (X-Forwarded-Proto changes nothing)', async () => {
+    const { app } = authApp();
+    for (const extra of [{}, { 'X-Forwarded-Proto': 'https' }]) {
+      const agent = request.agent(app);
+      const csrf = await csrfFor(agent);
+      const res = await agent.post('/login').set('Host', '127.0.0.1:1337').set('Origin', 'https://127.0.0.1:1337').set(extra)
+        .type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
+      expect(res.status, JSON.stringify(extra)).toBe(403);
+    }
+    const agent = request.agent(app);
+    const csrf = await csrfFor(agent);
+    const ok = await agent.post('/login').set('Host', '127.0.0.1:1337').set('Origin', 'http://127.0.0.1:1337')
+      .type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
+    expect(ok.status).toBe(303);
+  });
+
   it('refuses a missing, wrong or another session\'s token with 403, before any password check', async () => {
     const { app, verifies } = authApp();
     const mine = request.agent(app);
@@ -667,7 +752,7 @@ describe('hvwa_sid and lab progress survive signing in and out', () => {
       .toMatchObject({ solved: true });
     expect((await agent.post('/api/hint').send({ challengeId: 'ZA-01', tier: 1 })).body).toMatchObject({ unlocked: true });
     expect((await agent.post('/d/auth-test/counter/hit?level=acolyte')).body).toEqual({ n: 1 });
-    const logout = await agent.post('/logout').type('form').send({ _csrf: await csrfFor(agent) });
+    const logout = await agent.post('/logout').type('form').send({ _csrf: await accountCsrf(agent) });
     expect(setCookieHeader(logout, 'hvwa_sid')).toBeUndefined();
     const again = await signIn(agent);
     expect(setCookieHeader(again, 'hvwa_sid')).toBeUndefined();
