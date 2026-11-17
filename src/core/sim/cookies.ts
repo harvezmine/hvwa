@@ -1,7 +1,10 @@
-// src/core/sim/cookies.ts — a victim's cookie jar for citadel.test (RFC 6265 as browsers apply it; never real
+// src/core/sim/cookies.ts — a victim's cookie jar for citadel.test (RFC 6265bis as Chrome applies it; never real
 // cookies, never sent to attacker.test).
 import { SIM_LIMITS, clip } from './limits.js';
 import { CITADEL_HOST, type SimUrl } from './url.js';
+
+/** A cookie's SameSite, as the Set-Cookie line spells it. */
+export type SimSameSite = 'Strict' | 'Lax' | 'None';
 
 /** One cookie in a victim's jar. */
 export interface SimCookie {
@@ -10,6 +13,8 @@ export interface SimCookie {
   readonly value: string;
   readonly path: string;
   readonly secure: boolean;
+  /** As set; 'Lax' when the line had no SameSite or an unknown one (Chrome's Lax by default). */
+  readonly sameSite: SimSameSite;
   /** Expiry (ms, world clock); undefined for a session cookie. */
   readonly expiresAt?: number;
 }
@@ -18,14 +23,66 @@ export interface SimCookieOptions {
   /** Default '/'. */
   readonly path?: string;
   readonly secure?: boolean;
+  /** Default 'Lax'. 'None' needs `secure: true` (it throws otherwise, as TwinCookie does). */
+  readonly sameSite?: SimSameSite;
   readonly expiresAt?: number;
 }
 
 /**
+ * The cookie context of a request (RFC 6265bis "same-site" and "top-level navigation"), which SameSite decides on.
+ * `site` is 'same' when the request is same-site for cookies: its initiator AND the top-level page are citadel.test
+ * (or the browser itself started it: a link opened from mail). It is 'cross' for anything the attacker's page starts,
+ * and for every request made inside a frame whose top-level page is the attacker's, even from the framed citadel page.
+ */
+export interface SimCookieContext {
+  readonly site: 'same' | 'cross';
+  readonly method: 'GET' | 'POST';
+  /** A navigation of the top-level page (a link, a form): not a fetch, not a frame. */
+  readonly topLevel: boolean;
+}
+
+/** The context of today's navigations (follow, submit): same-site, top-level. */
+export const SAME_SITE_NAVIGATION: SimCookieContext = Object.freeze({ site: 'same', method: 'GET', topLevel: true });
+
+/**
+ * Whether a cookie with `sameSite` is sent on a request in `ctx` (RFC 6265bis 5.6.7, current Chrome):
+ * Strict only same-site; Lax same-site, or cross-site on a top-level navigation with a safe method (GET); None always.
+ * Not modelled: Chrome's "Lax-allowing-unsafe" exception (a cookie with NO SameSite attribute, under 2 minutes old,
+ * is also sent on a cross-site top-level POST; Chrome 157 still does it). So a lab must NEVER set a session cookie without
+ * an explicit SameSite: TwinCookie always writes one, and a raw Set-Cookie line must too.
+ */
+export function sameSiteSends(sameSite: SimSameSite, ctx: SimCookieContext): boolean {
+  if (sameSite === 'None') return true;
+  if (ctx.site === 'same') return true;
+  return sameSite === 'Lax' && ctx.topLevel && ctx.method === 'GET';
+}
+
+/**
+ * Whether a Set-Cookie line with `sameSite`, on a response to a request in `ctx`, is stored (RFC 6265bis 5.7): a
+ * cookie that is not SameSite=None is refused from a cross-site response unless that response is a top-level
+ * navigation's (a framed page or a fetch answer cannot set, or overwrite, the admin's Lax session).
+ */
+export function sameSiteStores(sameSite: SimSameSite, ctx: SimCookieContext): boolean {
+  return sameSite === 'None' || ctx.site === 'same' || ctx.topLevel;
+}
+
+/**
+ * Whether a URL is a secure context for cookies: https, or the citadel itself. The simulated citadel is treated as
+ * browsers treat loopback (http://localhost and http://127.0.0.1 are "potentially trustworthy" in Chromium and
+ * Firefox), so a Secure cookie from http://citadel.test is kept and sent back over http. That lets one TwinCookie,
+ * `SameSite=None; Secure`, work in both browsers: the player's own browser keeps it from http://127.0.0.1 in Chromium
+ * and Firefox (Safari may not).
+ */
+export function isSecureContext(u: SimUrl): boolean {
+  return u.url.startsWith('https:') || u.host === CITADEL_HOST;
+}
+
+/**
  * A victim's cookies for citadel.test: the only site that answers, so the only one that can set them. Never real
- * cookies, never sent to attacker.test. Path, Max-Age / Expires (world clock), Secure (https only) and Domain
- * (must be citadel.test) follow RFC 6265 as browsers apply it; HttpOnly and SameSite are accepted and ignored
- * (the victim runs no scripts, and its navigations are top-level).
+ * cookies, never sent to attacker.test. Path, Max-Age / Expires (world clock), Secure (from a secure context only:
+ * https, or citadel.test itself, see isSecureContext), SameSite (Strict / Lax / None; Lax when missing or unknown;
+ * None without Secure is refused, as Chrome does) and Domain (must be citadel.test) follow RFC 6265bis as Chrome
+ * applies it. HttpOnly is accepted and ignored (the victim runs no scripts).
  */
 export interface SimCookieJar {
   /** Set a cookie directly, e.g. the admin is already signed in. Throws on a bad name or an over-size cookie. */
@@ -80,7 +137,7 @@ export class Jar implements SimCookieJar {
     const frozen = Object.freeze({ ...c });
     if (i !== -1) {
       const old = this.cookies[i];
-      if (old.value === c.value && old.secure === c.secure && old.expiresAt === c.expiresAt) return;
+      if (old.value === c.value && old.secure === c.secure && old.sameSite === c.sameSite && old.expiresAt === c.expiresAt) return;
       this.cookies[i] = frozen; // keeps its place (creation time)
     } else {
       this.cookies.push(frozen);
@@ -102,14 +159,24 @@ export class Jar implements SimCookieJar {
     if (typeof path !== 'string' || !path.startsWith('/') || path.length > ATTRIBUTE_LENGTH) {
       throw new Error(`SimCookieJar.set: cookie path must start with "/" and be at most ${ATTRIBUTE_LENGTH} chars (got "${clip(String(path), 40)}")`);
     }
+    const sameSite: unknown = opts.sameSite ?? 'Lax';
+    if (sameSite !== 'Strict' && sameSite !== 'Lax' && sameSite !== 'None') {
+      throw new Error(`SimCookieJar.set: sameSite must be 'Strict', 'Lax' or 'None' (got ${JSON.stringify(sameSite)})`);
+    }
+    if (sameSite === 'None' && opts.secure !== true) {
+      throw new Error(`SimCookieJar.set: sameSite 'None' needs secure: true (browsers drop a SameSite=None cookie that is not Secure)`);
+    }
     this.put({
       name: clip(name, SIM_LIMITS.cookieBytes), value: clip(value, SIM_LIMITS.cookieBytes), path: clip(path, ATTRIBUTE_LENGTH),
-      secure: opts.secure === true, ...(opts.expiresAt === undefined ? {} : { expiresAt: opts.expiresAt }),
+      secure: opts.secure === true, sameSite, ...(opts.expiresAt === undefined ? {} : { expiresAt: opts.expiresAt }),
     });
   }
 
-  /** Apply one Set-Cookie line from a citadel response to `at`. Malformed or foreign cookies are ignored. */
-  store(line: string, at: SimUrl): void {
+  /**
+   * Apply one Set-Cookie line from a citadel response to `at`, a request made in `ctx` (default: a same-site
+   * navigation). Malformed or foreign cookies are ignored, and so are those the context refuses (sameSiteStores).
+   */
+  store(line: string, at: SimUrl, ctx: SimCookieContext = SAME_SITE_NAVIGATION): void {
     const parts = line.split(';');
     const eq = parts[0].indexOf('=');
     if (eq <= 0) return;
@@ -121,6 +188,7 @@ export class Jar implements SimCookieJar {
     let maxAge: number | undefined;
     let expires: number | undefined;
     let secure = false;
+    let sameSite: SimSameSite = 'Lax'; // Chrome's default; an unknown value is ignored, leaving it (RFC 6265bis 5.6.7)
     for (const attr of parts.slice(1)) {
       const i = attr.indexOf('=');
       const key = (i === -1 ? attr : attr.slice(0, i)).trim().toLowerCase();
@@ -133,19 +201,31 @@ export class Jar implements SimCookieJar {
         const d = v.replace(/^\./, '').toLowerCase();
         if (d !== '' && d !== CITADEL_HOST) return; // a cookie for another domain is rejected, as browsers do
       } else if (key === 'secure') secure = true;
+      else if (key === 'samesite') {
+        const s = v.toLowerCase();
+        if (s === 'strict') sameSite = 'Strict';
+        else if (s === 'lax') sameSite = 'Lax';
+        else if (s === 'none') sameSite = 'None';
+      }
     }
-    if (secure && !at.url.startsWith('https:')) return; // only a secure origin may set a Secure cookie
+    if (secure && !isSecureContext(at)) return; // only a secure context may set a Secure cookie
+    if (sameSite === 'None' && !secure) return; // Chrome refuses SameSite=None without Secure
+    if (!sameSiteStores(sameSite, ctx)) return;
     const expiresAt = maxAge !== undefined ? this.now() + maxAge * 1000 : expires;
     const ownPath = path ?? clip(defaultPath(at.path), SIM_LIMITS.urlLength); // a copy, as every stored field
-    this.put({ name, value, path: ownPath, secure, ...(expiresAt === undefined ? {} : { expiresAt }) });
+    this.put({ name, value, path: ownPath, secure, sameSite, ...(expiresAt === undefined ? {} : { expiresAt }) });
   }
 
-  /** The Cookie header for a citadel request ('' when none): longest paths first, then oldest first. */
-  headerFor(target: SimUrl): string {
+  /**
+   * The Cookie header for a citadel request in `ctx` (default: a same-site navigation) ('' when none): the cookies
+   * whose path matches, Secure ones only to a secure context, and those SameSite lets through (sameSiteSends);
+   * longest paths first, then oldest first.
+   */
+  headerFor(target: SimUrl, ctx: SimCookieContext = SAME_SITE_NAVIGATION): string {
     this.purge();
-    const https = target.url.startsWith('https:');
+    const secureTarget = isSecureContext(target);
     return this.cookies
-      .filter((c) => pathMatches(c.path, target.path) && (!c.secure || https))
+      .filter((c) => pathMatches(c.path, target.path) && (!c.secure || secureTarget) && sameSiteSends(c.sameSite, ctx))
       .map((c, i) => ({ c, i }))
       .sort((a, b) => b.c.path.length - a.c.path.length || a.i - b.i)
       .map(({ c }) => `${c.name}=${c.value}`)

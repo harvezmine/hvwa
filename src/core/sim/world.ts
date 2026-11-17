@@ -132,9 +132,15 @@ export interface AttackerHit {
   readonly method: string;
   /** The URL as the server saw it (no userinfo, no fragment). */
   readonly url: string;
-  /** The Referer header, when the browser sent one (only ever a citadel URL). */
+  /**
+   * The Referer header, when the browser sent one: a citadel page (a redirect or a page that moved on), or the player's
+   * own page on attacker.test (a form, link, fetch or frame of the attacker page aimed at attacker.test).
+   */
   readonly referer?: string;
-  /** The urlencoded form body of a POST. */
+  /**
+   * The body of a POST as sent, clipped: a form in any enctype (urlencoded, text/plain, multipart), a fetch's body, or
+   * what the player's page sent home (an answer it read, POSTed to ATTACKER_EXFIL_URL).
+   */
   readonly body?: string;
 }
 
