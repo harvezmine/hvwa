@@ -151,6 +151,16 @@ describe('twinBody(): a route that reads a text/plain body (E1b)', () => {
     expect(JSON.parse(real.text)).toEqual({ notify: 'all', x: '=' }); // what a level that JSON-parses text/plain reads
   });
 
+  it('reads `text/plain; application/json` too (FP-02 Templar\'s "contains application/json" check), as the sim sends it', async () => {
+    const { agent } = await freshSession();
+    const type = 'text/plain; application/json';
+    const real = (await agent.post(`${LAB}/text?level=acolyte`).set('Content-Type', type).send(JSON_TEXT)).body as Echo;
+    const s = sim();
+    s.b.corsFetch('http://citadel.test/text?level=acolyte', { method: 'POST', body: JSON_TEXT, headers: { 'Content-Type': type } });
+    expect(shared(real, ['content-type'])).toEqual(shared(s.seen[0], ['content-type']));
+    expect([real.text, real.headers['content-type']]).toEqual([JSON_TEXT, type]);
+  });
+
   it('without it, the app parses no text/plain body: text is empty (why a state-changing FP route mounts it)', async () => {
     const { agent } = await freshSession();
     const real = (await agent.post(`${LAB}/echo?level=acolyte`).set('Content-Type', 'text/plain').send(JSON_TEXT)).body as Echo;

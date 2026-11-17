@@ -558,6 +558,7 @@ describe('corsFetch: what a page can send without a preflight', () => {
     ['Content-Type: application/x-www-form-urlencoded', { 'Content-Type': 'application/x-www-form-urlencoded' }, 'a=1', true],
     ['Content-Type: multipart/form-data; boundary=x', { 'Content-Type': 'multipart/form-data; boundary=x' }, '--x--', true],
     ['Content-Type: application/json', { 'Content-Type': 'application/json' }, '{"notify":"all"}', false],
+    ['Content-Type: text/plain; application/json (FP-02 Templar: CONTAINS application/json, still simple in Chrome 157)', { 'Content-Type': 'text/plain; application/json' }, '{"notify":"all"}', true],
     ['Content-Type: text/plain; charset="utf-8" (a quote is a CORS-unsafe byte)', { 'Content-Type': 'text/plain; charset="utf-8"' }, 'x', false],
     ['Content-Type: text/plain garbage (not a MIME type)', { 'Content-Type': 'text/plain garbage' }, 'x', false],
     ['X-Requested-With: XMLHttpRequest (a custom header)', { 'X-Requested-With': 'XMLHttpRequest' }, undefined, false],
