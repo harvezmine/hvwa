@@ -7,9 +7,12 @@
 # internet, your LAN or the Docker host. Docker cannot publish ports from an
 # internal-only network, hence the thin proxy, published on loopback only.
 #
-#   docker compose up -d          -> http://127.0.0.1:1337
+#   docker compose up -d          -> http://127.0.0.1:1337 (sign in as admin / password, then change it)
 #   docker compose down           (keeps the data volume; add -v to reset it)
 #   npm run verify:docker         (checks every property above)
+#
+# Pull-only users (no checkout) use docker-compose.hub.yml instead: the same
+# stack on the published image, with the proxy config inline.
 
 # Fixed project name: containers, networks and the volume are always hvwa_*,
 # whichever checkout this is run from, and never collide with other projects.
@@ -17,7 +20,11 @@ name: hvwa
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # full (default) or lite (src/editions.ts), e.g. HVWA_EDITION=lite docker compose up -d --build
+        HVWA_EDITION: ${HVWA_EDITION:-full}
     image: hvwa-app:local
     init: true
     networks: [lab]
@@ -28,6 +35,10 @@ services:
       # Optional extra Host names (DNS-rebinding guard). The proxy enforces its
       # own list in docker/proxy/nginx.conf, so a name must be added there too.
       HVWA_ALLOWED_HOSTS: ${HVWA_ALLOWED_HOSTS:-}
+      # The platform login is ON in the image (NODE_ENV=production). Blank = on.
+      HVWA_AUTH: ${HVWA_AUTH:-}
+      # Optional first password of the admin account (blank = "password").
+      HVWA_ADMIN_PASSWORD: ${HVWA_ADMIN_PASSWORD:-}
     volumes:
       - data:/data
     read_only: true

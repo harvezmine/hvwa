@@ -4,7 +4,13 @@
 // the loopback-only proxy, a non-root app on a read-only rootfs, NO egress from
 // the app, data surviving a restart. Ends with `docker compose down` (the data
 // volume is kept). Exit code 0 = every check passed.
+//
+// HVWA_COMPOSE_FILE=docker-compose.hub.yml checks the pull-only stack instead
+// (the published image, e.g. a freshly built sigmajo/hvwa:lite, and the inline
+// proxy config). The platform login is ON in the image: the HTTP checks sign in
+// as admin with HVWA_ADMIN_PASSWORD (default: the default password).
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { connect, createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
@@ -13,7 +19,14 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 1337;
 const BASE = `http://127.0.0.1:${PORT}`;
-const COMPOSE_FILE = join(root, 'docker-compose.yml');
+const COMPOSE_FILES = ['docker-compose.yml', 'docker-compose.hub.yml'];
+const COMPOSE_NAME = (process.env.HVWA_COMPOSE_FILE ?? '').trim() || 'docker-compose.yml';
+if (!COMPOSE_FILES.includes(COMPOSE_NAME)) {
+  throw new Error(`verify:docker: HVWA_COMPOSE_FILE must be one of ${COMPOSE_FILES.join(', ')} (got "${COMPOSE_NAME}")`);
+}
+/** The pull-only stack: no build, the proxy's nginx.conf inline (written to its /tmp at start). */
+const HUB = COMPOSE_NAME === 'docker-compose.hub.yml';
+const COMPOSE_FILE = join(root, COMPOSE_NAME);
 // Every compose call names the file AND the project explicitly, so `down`,
 // `restart` etc. can only ever touch HVWA's own containers/networks — never
 // another compose project on this machine.
@@ -24,7 +37,10 @@ const say = (msg) => console.log(`verify:docker ${msg}`);
 // allowlist are part of what is checked, so FLAG_SECRET / HVWA_ALLOWED_HOSTS
 // from the developer's .env or shell must not apply to this run (shell env
 // beats .env in compose interpolation; blank means "unset").
-const env = { ...process.env, FLAG_SECRET: '', HVWA_ALLOWED_HOSTS: '' };
+// The login is checked as the image ships it (on): HVWA_AUTH is blanked too.
+const env = { ...process.env, FLAG_SECRET: '', HVWA_ALLOWED_HOSTS: '', HVWA_AUTH: '' };
+/** The admin password the HTTP checks sign in with (a kept data volume may hold a changed one). */
+const ADMIN_PASSWORD = process.env.HVWA_ADMIN_PASSWORD || 'password';
 // The proxy's own 421 body carries this marker; the app's never does.
 const PROXY_421 = 'HVWA proxy';
 
@@ -65,18 +81,28 @@ function remember(setCookies) {
     if (eq < 1) continue;
     const name = pair.slice(0, eq).trim();
     const value = pair.slice(eq + 1).trim();
-    jar.set(name, value);
+    if (value === '') jar.delete(name); // a cleared cookie (logout)
+    else jar.set(name, value);
     if (name === 'hvwa_sid') sidsSeen.add(value);
   }
 }
-async function get(path) {
+async function get(path, init = {}) {
   const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
   const res = await fetch(BASE + path, {
-    signal: AbortSignal.timeout(10_000), redirect: 'manual', headers: cookie ? { cookie } : {},
+    ...init, signal: AbortSignal.timeout(10_000), redirect: 'manual', headers: { ...init.headers, ...(cookie ? { cookie } : {}) },
   });
   remember(res.headers.getSetCookie());
-  return { status: res.status, body: await res.text() };
+  return { status: res.status, location: res.headers.get('location'), body: await res.text() };
 }
+/** POST an urlencoded form through the jar. */
+const postForm = (path, fields) => get(path, {
+  method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString(),
+});
+const csrfOf = (html) => {
+  const v = /name="_csrf" value="([^"]+)"/.exec(html)?.[1];
+  if (!v) throw new Error('no _csrf field on the page');
+  return v;
+};
 async function expect200(path) {
   const r = await get(path);
   if (r.status !== 200) throw new Error(`GET ${path} -> ${r.status}`);
@@ -316,7 +342,23 @@ const checks = [
     if (JSON.parse(body).status !== 'ok') throw new Error(`/healthz body ${body}`);
     return body;
   }],
-  ['GET / -> 200 and every linked /c/<id> challenge page -> 200', async () => {
+  ['the platform login gates the lab (signed out: 303 /login, /api 401) and admin signs in', async () => {
+    const gated = await get('/');
+    if (gated.status !== 303 || gated.location !== '/login?next=%2F') {
+      throw new Error(`signed out, GET / -> ${gated.status} ${gated.location ?? ''} (expected 303 to /login?next=%2F: is the login on?)`);
+    }
+    const api = await get('/api/submit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    if (api.status !== 401) throw new Error(`signed out, POST /api/submit -> ${api.status} (expected 401)`);
+    const page = await get('/login');
+    if (page.status !== 200) throw new Error(`GET /login -> ${page.status}`);
+    const res = await postForm('/login', { _csrf: csrfOf(page.body), username: 'admin', password: ADMIN_PASSWORD, next: '/' });
+    if (res.status !== 303 || !jar.get('hvwa_auth')) {
+      throw new Error(`could not sign in as admin (POST /login -> ${res.status}). The kept data volume may hold a changed ` +
+        'password: run with HVWA_ADMIN_PASSWORD=<it>, or reset with docker compose -p hvwa down -v');
+    }
+    return `303 /login and 401 while signed out; admin signed in${process.env.HVWA_ADMIN_PASSWORD ? '' : ' with the default password'}`;
+  }],
+  ['GET / -> 200 and every linked /c/<id> challenge page -> 200 (exactly 5 in the lite edition)', async () => {
     const index = await expect200('/');
     const ids = [...new Set([...index.matchAll(/href="\/c\/([A-Z]{2}-\d{2})"/g)].map((m) => m[1]))];
     if (ids.length === 0) throw new Error('the portal index links no /c/<id> challenge');
@@ -324,13 +366,17 @@ const checks = [
       const page = await expect200(`/c/${id}`);
       if (!page.includes(id)) throw new Error(`/c/${id} does not mention ${id}`);
     }
+    // The edition is baked into the image (Dockerfile ARG/ENV HVWA_EDITION).
+    const appEnv = inspect('container', containerId('app')).Config?.Env ?? [];
+    const edition = appEnv.find((e) => e.startsWith('HVWA_EDITION='))?.slice('HVWA_EDITION='.length) || 'full';
+    if (edition === 'lite' && ids.length !== 5) throw new Error(`the lite image serves ${ids.length} challenge(s), expected 5`);
     // Guard: a client that keeps its cookie jar is handed ONE session.
     if (sidsSeen.size > MAX_SIDS) {
       throw new Error(`the app handed out ${sidsSeen.size} distinct hvwa_sid values (max ${MAX_SIDS}): the cookie jar is not being sent`);
     }
     // Runtime assets: the --omit=dev image must still carry htmx.org (a prod dependency).
     for (const asset of ['/static/app.css', '/static/vendor/htmx.min.js']) await expect200(asset);
-    return `${ids.length} challenge page(s): ${ids.join(', ')}; static assets served; ${sidsSeen.size} hvwa_sid issued`;
+    return `edition ${edition}: ${ids.length} challenge page(s): ${ids.join(', ')}; static assets served; ${sidsSeen.size} hvwa_sid issued`;
   }],
   ['Host allowlist (DNS rebinding): loopback names pass, others get 421 at the proxy AND the app', async () => {
     for (const host of ['localhost:1337', '127.0.0.1:1337', 'LOCALHOST:1337', '[::1]:1337']) {
@@ -423,9 +469,16 @@ const checks = [
     if (lines.length) throw new Error(`still present: ${lines.join(', ')}`);
     return `node ${node} only`;
   }],
+  ['the image ships docker-compose.hub.yml (for pull-only users), identical to the repo file', () => {
+    const r = exec('app', ['cat', '/app/docker-compose.hub.yml']);
+    const want = readFileSync(join(root, 'docker-compose.hub.yml'), 'utf8').replace(/\r\n/g, '\n').trim();
+    if (r.code !== 0) throw new Error(`cat /app/docker-compose.hub.yml: ${show(r)}`);
+    if (r.out.replace(/\r\n/g, '\n') !== want) throw new Error('/app/docker-compose.hub.yml differs from the repo file (rebuild the image)');
+    return `/app/docker-compose.hub.yml, ${want.length} characters`;
+  }],
   ['hardening flags on every container', () =>
     ['app', 'proxy'].map((s) => `${s}: ${checkHostConfig(s)}`).join(' | ')],
-  ['mounts: app = data volume + noexec /tmp (+ init), proxy = read-only nginx.conf + noexec tmpfs; no Docker socket', () => {
+  [`mounts: app = data volume + noexec /tmp (+ init), proxy = ${HUB ? 'no mounts, nginx.conf inline' : 'read-only nginx.conf'} + noexec tmpfs; no Docker socket`, () => {
     const app = inspect('container', containerId('app'));
     const proxy = inspect('container', containerId('proxy'));
     const problems = [];
@@ -441,9 +494,22 @@ const checks = [
       problems.push(`app mounts ${appMounts.map(describe).join(', ') || 'nothing'}, expected only the data volume at /data`);
     }
     const proxyMounts = proxy.Mounts ?? [];
-    if (proxyMounts.length !== 1 || proxyMounts[0].Type !== 'bind' || proxyMounts[0].Destination !== '/etc/nginx/nginx.conf' ||
-      proxyMounts[0].RW !== false) {
-      problems.push(`proxy mounts ${proxyMounts.map(describe).join(', ') || 'nothing'}, expected only nginx.conf read-only`);
+    let proxyConf;
+    if (HUB) {
+      // docker-compose.hub.yml: no mounts; the shell wrote HVWA_NGINX_CONF to the proxy's /tmp. It must be the
+      // repo's nginx.conf byte for byte (this also proves compose's $$ unescaping produced the right config).
+      if (proxyMounts.length !== 0) problems.push(`proxy mounts ${proxyMounts.map(describe).join(', ')}, expected none (nginx.conf is inline)`);
+      const conf = exec('proxy', ['cat', '/tmp/nginx.conf']);
+      const want = readFileSync(join(root, 'docker', 'proxy', 'nginx.conf'), 'utf8').replace(/\r\n/g, '\n').trim();
+      if (conf.code !== 0) problems.push(`proxy: cat /tmp/nginx.conf: ${show(conf)}`);
+      else if (conf.out.replace(/\r\n/g, '\n') !== want) problems.push('proxy: /tmp/nginx.conf differs from docker/proxy/nginx.conf');
+      proxyConf = 'inline nginx.conf in /tmp (identical to docker/proxy/nginx.conf)';
+    } else {
+      if (proxyMounts.length !== 1 || proxyMounts[0].Type !== 'bind' || proxyMounts[0].Destination !== '/etc/nginx/nginx.conf' ||
+        proxyMounts[0].RW !== false) {
+        problems.push(`proxy mounts ${proxyMounts.map(describe).join(', ') || 'nothing'}, expected only nginx.conf read-only`);
+      }
+      proxyConf = proxyMounts[0] ? describe({ ...proxyMounts[0], Source: 'nginx.conf' }) : 'nothing';
     }
     // tmpfs: the only other writable paths; never executable.
     const tmpfs = (c, expected) => {
@@ -458,7 +524,7 @@ const checks = [
     tmpfs(app, ['/tmp']);
     tmpfs(proxy, ['/tmp', '/var/cache/nginx']);
     if (problems.length) throw new Error(problems.join('; '));
-    return `app: ${describe(appMounts[0])} + tmpfs /tmp, init; proxy: ${describe({ ...proxyMounts[0], Source: 'nginx.conf' })} + tmpfs; tmpfs all noexec,nosuid,nodev`;
+    return `app: ${describe(appMounts[0])} + tmpfs /tmp, init; proxy: ${proxyConf} + tmpfs; tmpfs all noexec,nosuid,nodev`;
   }],
   ['app is only on the internal lab network, whose gateway is isolated', () => {
     const lab = labNetwork();
@@ -654,8 +720,11 @@ async function main() {
   // existing container whose config did not change is only re-attached to a
   // re-created network (e.g. after a driver option changed) and loses its
   // `app` alias, which makes the proxy answer 502.
-  say('building and starting: docker compose -p hvwa up -d --build --force-recreate --wait');
-  const up = compose(['up', '-d', '--build', '--force-recreate', '--wait', '--wait-timeout', '180'],
+  // The hub stack builds nothing: it runs the published image (a local one of that name wins, so a freshly
+  // built sigmajo/hvwa:<tag> is checked before it is pushed).
+  const build = HUB ? [] : ['--build'];
+  say(`${HUB ? 'starting' : 'building and starting'}: docker compose -f ${COMPOSE_NAME} -p hvwa up -d ${build.join(' ')} --force-recreate --wait`);
+  const up = compose(['up', '-d', ...build, '--force-recreate', '--wait', '--wait-timeout', '180'],
     { inherit: true, timeoutMs: 900_000 });
   if (up.code !== 0) {
     const ps = compose(['ps', '-a']);

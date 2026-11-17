@@ -1,4 +1,4 @@
-# Build context = package*.json, tsconfig.json, scripts/, src/ only.
+# Build context = package*.json, tsconfig.json, scripts/, src/ and docker-compose.hub.yml only.
 node_modules
 dist
 data
@@ -17,7 +17,9 @@ docs
 .env
 .env.*
 docker
-docker-compose.yml
+docker-compose*.yml
+# ...except the pull-only one, which the image ships (Dockerfile COPY).
+!docker-compose.hub.yml
 Dockerfile
 .dockerignore
 *.md
