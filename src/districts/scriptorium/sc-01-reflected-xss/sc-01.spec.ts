@@ -124,7 +124,7 @@ describe('SC-01 search lab', () => {
     const { agent } = await freshSession();
     const simGet = (url: string): SimRequest => {
       const u = new URL(url);
-      return { method: 'GET', url, path: u.pathname, query: u.searchParams, headers: { host: 'citadel.test' }, cookies: {}, body: {} };
+      return { method: 'GET', url, path: u.pathname, query: u.searchParams, headers: { host: 'citadel.test' }, cookies: {}, body: {}, rawBody: '' };
     };
     for (const level of SC01.levels) {
       const real = (await labPage(agent, LAB, level, '&q=x')).headers['content-security-policy'];
