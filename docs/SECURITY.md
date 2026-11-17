@@ -34,6 +34,15 @@ host 127.0.0.1:1337 --> proxy (nginx, unprivileged) --> app:1337 (node, non-root
   is the Host allowlist (see below). Its upstream is fixed, so it is not an
   open proxy.
 - The only published port is `127.0.0.1:1337`, on loopback only.
+- **docker-compose.hub.yml**, the stack for people who only pull
+  `sigmajo/hvwa`, is the same two services with the same hardening. The app is
+  the published image instead of a local build. The proxy has no bind mount:
+  its `nginx.conf` is inline (`HVWA_NGINX_CONF`), and nginx's own shell writes
+  it to the proxy's `noexec` `/tmp` tmpfs at start, so the rootfs stays
+  read-only. `tests/docker-files.spec.ts` keeps it identical to
+  `docker/proxy/nginx.conf` and the rest of the file in step with
+  `docker-compose.yml`. Run `HVWA_COMPOSE_FILE=docker-compose.hub.yml npm run verify:docker`
+  to check every row below on it.
 
 ## What the container boundary protects
 
@@ -56,12 +65,16 @@ after changing anything Docker-related.
 ## What it does NOT protect
 
 - **Other local software.** Every process on your machine can talk to
-  `127.0.0.1:1337` and send `Host: localhost`, so local malware or a rogue
-  browser extension can drive the labs. Websites cannot, thanks to the Host
-  allowlist. They can still fire blind cross-site requests at
-  `http://localhost:1337` (CSRF-style, without reading the responses), which
-  some labs are vulnerable to by design. The blast radius is still the
-  container, but **stop HVWA when you are not using it** (`docker compose down`).
+  `127.0.0.1:1337` and send `Host: localhost`. With the login on (the Docker
+  image), it must know the admin password first. Local malware or a rogue browser
+  extension that has it, or that rides your signed-in browser, can drive the
+  labs. Websites cannot, thanks to the Host allowlist. With the login on, a
+  website's blind cross-site requests (CSRF-style, without reading the responses)
+  get no further than the login page: the `hvwa_auth` cookie is `SameSite=Lax`,
+  so a cross-site POST, frame or fetch does not carry it. A top-level GET link
+  still does. With the login off, such requests reach the labs, some of which are
+  vulnerable to them by design. The blast radius is still the container, but
+  **stop HVWA when you are not using it** (`docker compose down`).
 - **Kernel or container-runtime escapes.** Containers share a kernel. On Docker
   Desktop that is the WSL2 or VM kernel, not your host OS directly, but a
   kernel or Docker vulnerability can still break the boundary. Keep Docker
@@ -77,8 +90,9 @@ after changing anything Docker-related.
   `internal: true`, adding `privileged`, capabilities, host bind mounts or the
   Docker socket voids all of the above. **`docker compose up` also loads a
   `docker-compose.override.yml` automatically.** `verify:docker` deliberately
-  checks only `docker-compose.yml`, so an override that weakens isolation would
-  not be caught. Don't create one that does.
+  checks only `docker-compose.yml` (or `docker-compose.hub.yml` with
+  `HVWA_COMPOSE_FILE`), so an override that weakens isolation would not be
+  caught. Don't create one that does.
 - **Port-forwarding tools.** Tunnels and forwarders (ngrok, cloudflared,
   Tailscale Serve/Funnel, VS Code port forwarding, `netsh interface portproxy`,
   WSL mirrored-networking tricks) can republish a loopback port to the world.
@@ -86,6 +100,51 @@ after changing anything Docker-related.
 - **Test servers (`npm test`).** The test wrapper (`tests/support/supertest.ts`) starts each app's server with
   `listen(0)`, so during a test run it briefly listens on all interfaces on a random port (supertest does the same).
   The Host allowlist still applies. Run tests on a trusted network or behind a host firewall.
+
+## The platform login
+
+HVWA has one account, `admin`. Every page and every lab sits behind it: everything
+except `/login`, `/healthz` and the static assets. It is **on** in the Docker image
+(`NODE_ENV=production`) and **off** for `npm run dev` / `npm start` unless
+`HVWA_AUTH=on`. It protects the loopback lab from other people and programs
+on your machine, and from websites you visit. It is platform code, held to the
+same standard as the Divine levels. It is never a lab:
+
+- **Change the default password.** The account starts as `admin` / `password`
+  (or `HVWA_ADMIN_PASSWORD` on first start), and every page shows a banner
+  until you change it at `/account/password`. **Never reuse a real password for
+  HVWA**: an exploited lab can read `/data`, including the password's hash.
+- **Storage.** Only a scrypt hash is stored (N = 2^15, r = 8, p = 1, a fresh
+  16-byte salt per hash) in the platform database. The password is never
+  stored, logged or echoed.
+- **Sessions.** Each sign-in mints a fresh random 256-bit token in a separate
+  `hvwa_auth` cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` 12 h, no
+  `Domain`. It is not `Secure`, because HVWA is served over plain HTTP on
+  loopback. The server keeps only the token's SHA-256. A token expires after
+  12 hours, or after 2 hours unused. Signing out revokes it, and changing the
+  password revokes every token. A token is accepted only from that cookie,
+  never from a URL, a header or a form. The anonymous lab session
+  `hvwa_sid` is never rotated: lab progress belongs to it, not to the login.
+- **Forms.** Sign-in, sign-out and the password change carry a synchroniser
+  token, an HMAC of `hvwa_sid`, and refuse a foreign `Origin` (an absent one
+  passes). The login and password pages refuse framing (`X-Frame-Options:
+  DENY`, `frame-ancestors 'none'`) and are never cached.
+- **Redirects.** `/login?next=` accepts only a local path: one leading slash, no
+  double slash or backslash, no scheme, no CR/LF or other control characters, and
+  none of those hidden behind percent-encoding. Anything else goes to `/`, so the
+  login is never an open redirect.
+- **Brute force.** After 5 failures in a row, the account locks for 30 s. Each
+  further failure doubles that, up to 15 min. Attempts while locked are refused
+  unchecked and do not extend the lock. Every attempt costs exactly one scrypt
+  check: an unknown username is checked against a dummy hash. Every failure gets
+  the same message, so neither the response nor its timing tells whether the
+  username exists or the account is locked. The lock state is in the database,
+  so a restart does not reset it.
+- **What it is not.** The login does **not** make it safe to expose HVWA. It
+  keeps strangers out of a lab that is built to be broken, but a signed-in
+  player can still exploit every lab, by design. Anyone who can reach the login
+  page can also lock the account for up to 15 minutes. **It is no substitute
+  for the rules below: never expose HVWA beyond your own machine.**
 
 ## Rules
 
@@ -97,7 +156,9 @@ after changing anything Docker-related.
    `FLAG_SECRET` is only the HMAC key for lab flags, so use a throwaway value or
    leave it blank (a random one is generated and kept in the data volume). Never
    reuse a password, token or API key there.
-3. **Prefer the container.** Running locally with `npm start` / `npm run dev`
+3. **Change the default password** (`admin` / `password`) the first time you
+   log in, and never use a real password for HVWA.
+4. **Prefer the container.** Running locally with `npm start` / `npm run dev`
    is **less isolated**. The server then runs as *you*, with your files,
    credentials (SSH keys, cloud CLIs, browser profiles) and full network
    access. It binds `127.0.0.1` by default and refuses any non-loopback `HOST`
@@ -147,10 +208,13 @@ startup.
 
 | Task | Command |
 |---|---|
-| Start | `docker compose up -d`, then open http://127.0.0.1:1337 |
+| Start | `docker compose up -d`, then open http://127.0.0.1:1337 and log in as `admin` / `password` |
+| Change the password | `/account/password` (the banner links it until you do) |
 | Stop (progress kept) | `docker compose down` |
-| Reset everything (progress + flag secret) | `docker compose down -v` |
+| Reset everything (progress, password, flag secret) | `docker compose down -v` |
+| Forgot the password (progress kept) | See README, "Login" |
 | Verify the isolation | `npm run verify:docker` (builds, checks, then `down`; keeps the volume) |
+| Pull-only stack (Docker Hub) | `docker compose -f docker-compose.hub.yml up -d` / `down`; verify with `HVWA_COMPOSE_FILE=docker-compose.hub.yml npm run verify:docker` |
 
 The compose project is always named `hvwa`. Its containers, networks and
 volume are `hvwa-*` / `hvwa_*`, and these commands never touch other compose

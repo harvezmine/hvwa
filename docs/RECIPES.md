@@ -359,6 +359,11 @@ says so, and the spec uses `malformed: []` plus an explicit "no database text at
   deliberately client-writable counter: no); never a name starting with `hvwa_` (the platform's). A victim-driven lab
   sets them through its `Reply` (`TwinCookie`: `httpOnly` and `sameSite` default to HttpOnly and Lax, section 8).
   Tests: `describeLabCookies` (`victim-lab.testkit.ts`) checks the name per level, the canonical path and HttpOnly.
+- **The platform's cookies are off limits:** `hvwa_sid` (the anonymous session every lab is keyed by), `hvwa_level`,
+  `hvwa_lang` and `hvwa_auth` (the platform login's token, src/auth; HttpOnly, SameSite=Lax, Path=/). A lab never
+  reads, echoes, sets or clears any of them; lab state belongs to `hvwa_sid` (via `perSession`), never to the login.
+  With the login on (the Docker image), every lab route sits behind it: a lab test that needs that runs with
+  `createApp({ auth: true })`; every other spec runs with the login off (`tests/support/setup.ts`).
 - **A request without the lab's cookie must not change lab state.** Probing a page (an admin page, a wrong guess)
   must not mint sessions, advance generators or push activity entries; only the pages the player uses to get a
   session do. Pin entries the lab depends on (the admin's session, the admin's activity line) so trimming a list
