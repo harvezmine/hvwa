@@ -38,9 +38,13 @@ const say = (msg) => console.log(`verify:docker ${msg}`);
 // from the developer's .env or shell must not apply to this run (shell env
 // beats .env in compose interpolation; blank means "unset").
 // The login is checked as the image ships it (on): HVWA_AUTH is blanked too.
-const env = { ...process.env, FLAG_SECRET: '', HVWA_ALLOWED_HOSTS: '', HVWA_AUTH: '' };
+// HVWA_ADMIN_PASSWORD comes from this shell only (blank beats a .env value), so the
+// first password compose hands a fresh volume is the one the checks sign in with.
 /** The admin password the HTTP checks sign in with (a kept data volume may hold a changed one). */
 const ADMIN_PASSWORD = process.env.HVWA_ADMIN_PASSWORD || 'password';
+const env = {
+  ...process.env, FLAG_SECRET: '', HVWA_ALLOWED_HOSTS: '', HVWA_AUTH: '', HVWA_ADMIN_PASSWORD: process.env.HVWA_ADMIN_PASSWORD ?? '',
+};
 // The proxy's own 421 body carries this marker; the app's never does.
 const PROXY_421 = 'HVWA proxy';
 
