@@ -397,11 +397,21 @@ describe('CSRF on the login, logout and password forms', () => {
 
   it('refuses a cross-origin Origin even with a valid token; allows a same-origin or absent Origin', async () => {
     const { app } = authApp();
-    for (const origin of ['http://evil.example', 'null', 'http://127.0.0.1.evil.example', 'https://evil.example:1337', 'file://']) {
+    // [Host the browser talks to, Origin it sends]. A same-host page on ANOTHER PORT is another origin (and the
+    // same site: cookies ignore ports, so it is exactly the attacker that can plant hvwa_sid).
+    for (const [host, origin] of [
+      [undefined, 'http://evil.example'], [undefined, 'null'], [undefined, 'http://127.0.0.1.evil.example'],
+      [undefined, 'https://evil.example:1337'], [undefined, 'file://'],
+      ['127.0.0.1:1337', 'http://127.0.0.1:1338'], ['127.0.0.1:1337', 'http://127.0.0.1:13370'], ['127.0.0.1:1337', 'http://127.0.0.1'],
+      ['localhost:1337', 'http://localhost:1338'], ['localhost:1337', 'http://localhost'], ['localhost', 'http://localhost:8080'],
+      ['127.0.0.1:1337', 'http://localhost:1337'],
+    ] as const) {
       const agent = request.agent(app);
       const csrf = csrfOf((await agent.get('/login')).text);
-      const res = await agent.post('/login').set('Origin', origin).type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
-      expect(res.status, origin).toBe(403);
+      const post = agent.post('/login');
+      if (host) post.set('Host', host);
+      const res = await post.set('Origin', origin).type('form').send({ _csrf: csrf, username: 'admin', password: 'password' });
+      expect(res.status, `Host ${host ?? '(default)'} Origin ${origin}`).toBe(403);
     }
     const agent = request.agent(app);
     const csrf = csrfOf((await agent.get('/login')).text);
@@ -429,7 +439,9 @@ describe('CSRF on the login, logout and password forms', () => {
 describe('the next parameter (no open redirect)', () => {
   const evil = ['//evil.example', '/\\evil.example', '\\\\evil.example', 'https://evil.example', 'http:evil.example',
     '/%2F%2Fevil.example', '%2F%2Fevil.example', '/%5Cevil.example', '/%252F%252Fevil.example', 'javascript:alert(1)',
-    '/\r\nSet-Cookie: x=1', '/%0d%0aSet-Cookie:x=1', '/\tevil', ' //evil.example', '/login'];
+    '/\r\nSet-Cookie: x=1', '/%0d%0aSet-Cookie:x=1', '/\tevil', ' //evil.example', '/login',
+    // dot segments that normalise to //evil.example (only the check on the NORMALISED path stops these)
+    '/a/..//evil.example', '/a/%2e%2e//evil.example', '/.//evil.example', '/%2e//evil.example'];
 
   it.each(evil)('POST /login with next=%j redirects to /', async (next) => {
     const { app } = authApp();

@@ -26,6 +26,9 @@ describe('safeNext: everything else falls back to /', () => {
     undefined, null, 42, ['/c/GK-01'], { path: '/c/GK-01' }, '',
     // protocol-relative and its spellings
     '//evil.example', '//evil.example/c/GK-01', '///evil.example', '////evil.example',
+    // dot segments the URL parser resolves into //evil.example (caught only on the normalised path)
+    '/a/..//evil.example', '/a/%2e%2e//evil.example', '/.//evil.example', '/%2e//evil.example',
+    '/A/%2E%2E//evil.example', '/a/b/../..//evil.example', '/././/evil.example',
     // backslashes (browsers read them as slashes)
     '/\\evil.example', '\\\\evil.example', '\\/evil.example', '/\\/evil.example', '/c\\GK-01',
     // schemes and relative references
