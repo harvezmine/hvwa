@@ -10,6 +10,24 @@
 
 ---
 
+## COMPACT POC AMENDMENT (owner, 2026-11-21) — binding, overrides the tasks below
+
+The owner cut the POC down so it finishes sooner: 4 labs with 3 levels each, no victim bot. Apply these changes to the
+tasks as written. Everything not listed is built exactly as written.
+
+| Task | Change |
+|---|---|
+| 3 | Keep roles and the `disabled` column as written in the schema and service. **Do not build** the admin operations (disable, reset password, make admin) or their tests. |
+| 5 | **Drop** the event code and the admin open/closed switch. Registration is open unless `HVWA_REGISTRATION_OPEN=0`, an env switch read once at start. The per-IP limits on the client IP stay as written. |
+| 10 | **Drop** the whole task: no admin pages. |
+| 18 | **Drop** the FIFO queue and Extend. When capacity is full, launch returns `full` and the Lab panel says "The range is full. Try again in a minute." Limits: idle 20 min, maximum lifetime 60 min (`HVWA_RANGE_IDLE_MIN=20`, `HVWA_RANGE_MAX_MIN=60`). There is no separate ceiling; the gate cookie expires at start + max lifetime. Reset and Stop stay. |
+| 23 | Keep the Lab panel and "My Lab". **Drop** the admin instances page. |
+| 26 | Instances default to gVisor in the range compose: `HVWA_RANGE_RUNTIME=runsc`. The POC host has it; Docker Desktop does not, so local runs set `runc`. |
+| 27 | Keep the security checks; drop any check that exercises a dropped feature (queue, extend, admin). |
+| all | Range-only UI strings may use the English text for both `id` and `en`. |
+
+Labs, levels and the victim bot are out of this plan: there are 4 labs (Plan B), and Plan C is removed.
+
 ## Ground rules for every task
 
 - **Run tests from the UPPERCASE drive path.** `cd C:\Users\Sahuagin\Documents\hvwa` (capital `C:`). A lowercase `c:` cwd makes the same module load twice and breaks `vi.mock` and identity checks (see `tests/tooling.spec.ts`).

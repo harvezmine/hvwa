@@ -390,3 +390,24 @@ digest. The existing `lite` tag is unchanged.
 - Done: Cloudflare zone, tunnel, DNS and zone settings. Secrets live only in `~/hvwa-range/secrets/` on the server
   (mode 600), never in images or the repo.
 - The target server's size (RAM/CPU) for the final capacity setting.
+
+## 16. Compact POC amendment (owner, 2026-11-21) — binding
+
+The owner asked for a smaller, faster POC. This section overrides the sections above where they differ.
+
+**4 labs, 3 levels each** (Acolyte, Templar, Divine), all unique apps and none needing a victim bot:
+
+| # | Category | App | Rating | Stack | Flag location type |
+|---|---|---|---|---|---|
+| 1 | SQL injection | Mercy Clinic (patient portal) | Easy | Node + SQLite | database row |
+| 2 | Broken access control (API) | Courier (parcel tracking) | Easy | Node | record in the API |
+| 3 | Command injection | Beacon (router admin panel) | Medium | Node + shell | file |
+| 4 | Template injection | Postcard (greeting card maker) | Hard | Python (Flask/Jinja2) | file |
+
+**Removed from the POC:**
+- the victim bot and the request catcher;
+- the FIFO queue (a full range says "try again in a minute");
+- Extend (fixed limits: idle 20 min, lifetime 60 min);
+- the admin pages and the event code (registration is open unless `HVWA_REGISTRATION_OPEN=0`).
+
+**Load test:** sized to the POC host (about 40 concurrent users), not 120.
