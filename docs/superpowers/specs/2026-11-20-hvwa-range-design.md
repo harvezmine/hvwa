@@ -29,7 +29,7 @@ The POC proves the model on one Linux server with **120 concurrent users** and *
 |---|---|
 | Priority | Focus on the POC. The Phase 2 batches (fp-b1, fp-b3, sc-b2) are parked on their branches. The Phase 3 simulation engines E5 (simNet) and E7 (graphql) are stopped, because the range runs these classes for real. |
 | Accounts | Open self-registration page, then login. An optional event code (env, off by default). Admin can close registration. |
-| Deployment | One Linux server with a domain: wildcard DNS `*.lab.<domain>` and HTTPS. Local development uses `*.localhost`. |
+| Deployment | POC host: the owner's home server "harvez" behind a Cloudflare Tunnel (owner decision 2026-11-21), domain `hvwa.my.id`. TLS ends at Cloudflare's edge; hostnames are one level deep so Universal SSL covers them. Local development uses `*.localhost`. |
 | Labs per user | One active instance per user. Launching another challenge or level stops the previous one. |
 | Lab realism | Each challenge is a unique, realistic app. Exploitation needs recon and, at higher levels, chaining. Flags are hidden CTF-style. |
 | Execution | Real execution inside the isolated container is allowed. This replaces "simulated execution only" for range labs. |
@@ -41,9 +41,9 @@ The POC proves the model on one Linux server with **120 concurrent users** and *
 
 ```
 browser ──HTTPS──► Traefik ──┬─► <portal host> (hvwa.my.id)    portal (Node, existing app in portal mode)
-                             ├─► <instance>.lab.<domain>        instance container (forward-auth → portal)
-                             ├─► <instance>.lab.<domain>/__hvwa/*   portal (gate ticket exchange)
-                             └─► catch-<user>.lab.<domain>      portal (request catcher)
+                             ├─► i-<instance>.<domain>          instance container (forward-auth → portal)
+                             ├─► i-<instance>.<domain>/__hvwa/* portal (gate ticket exchange)
+                             └─► c-<user>.<domain>              portal (request catcher)
 
 portal ──internal API──► warden ──► docker-socket-proxy (write: containers, networks; nothing else)
 Traefik ──► docker-socket-proxy-ro (read-only: containers, networks)
@@ -54,7 +54,8 @@ victim-bot ──► Traefik (range hosts only)
 
 | Component | Responsibility | Reachable from |
 |---|---|---|
-| **Traefik v3** | TLS (wildcard), routing by host, websocket pass-through, forward-auth on instance hosts. It discovers instance routes from container labels. | internet (443/80 only) |
+| **Traefik v3** | Routing by host (plain HTTP inside the host), websocket pass-through, forward-auth on instance hosts. It discovers instance routes from container labels. No published ports. | `cloudflared` only (network `hvwa-edge`, alias `traefik`) |
+| **cloudflared** | Cloudflare Tunnel connector (tunnel `hvwa-range`); public hostnames `hvwa.my.id` and `*.hvwa.my.id` → `http://traefik:80`. | outbound to Cloudflare only |
 | **Portal** (`HVWA_MODE=portal`) | Accounts, catalog, challenge pages, hints, flag verification, leaderboard, "My Lab" lifecycle UI, admin dashboard, gate and forward-auth endpoints, request catcher. Mounts no labs. | Traefik |
 | **Warden** | Small Node service. It is the only component that may create or remove lab containers. API: `launch`, `stop`, `list`, `health`. The container configuration is fixed inside the warden; callers pass only `{ labId, level, instanceId, flag }`. | portal only (internal network, shared secret) |
 | **docker-socket-proxy** (×2) | One write-capable proxy for the warden (containers, networks; no exec, images, volumes, swarm, system). One read-only proxy for Traefik. | warden / Traefik only |
@@ -101,7 +102,7 @@ one process, used by the lite and full images. Nothing in standalone mode change
    the fixed hardening (§7), then connects Traefik and starts the container. The instance's state is `starting`.
 3. **Ready.** The portal polls the warden (htmx, every second) until the lab's health check passes. The state
    becomes `running`.
-4. **Open.** **Open lab** opens `https://<instanceId>.lab.<domain>/__hvwa/gate?t=<ticket>` in a new tab:
+4. **Open.** **Open lab** opens `https://i-<instanceId>.<domain>/__hvwa/gate?t=<ticket>` in a new tab:
    - the ticket is single-use, valid for 60 s, and bound to (user, instance);
    - the portal answers that path, sets a **host-only** cookie `hvwa_gate` for that instance host (HMAC over
      instance, user and expiry; HttpOnly, Secure, SameSite=Lax), and redirects to the lab's start page.
@@ -124,7 +125,7 @@ the admin.
 
 | Variable | Default |
 |---|---|
-| `HVWA_RANGE_DOMAIN` | required; the owner's domain is `hvwa.my.id`. Labs live under `lab.<domain>` (`*.lab.hvwa.my.id`) |
+| `HVWA_RANGE_DOMAIN` | required: `hvwa.my.id`. Instances are `i-<instanceId>.<domain>`; request catchers are `c-<userId>.<domain>`. No other first-level label may start with `i-` or `c-` |
 | `HVWA_PORTAL_HOST` | the domain itself (`hvwa.my.id`) |
 | `HVWA_RANGE_CAPACITY` | `140` instances |
 | `HVWA_RANGE_IDLE_MIN` / `HVWA_RANGE_MAX_MIN` / `HVWA_RANGE_EXTEND_MIN` / `HVWA_RANGE_CEILING_MIN` | `30` / `120` / `30` / `240` |
@@ -217,7 +218,7 @@ for one level must fail at every level above it.
   the lab calls a portal-provided job endpoint with the URL to visit and the role cookie to set. Jobs run in a
   fresh browser context with a time limit.
 - **Request catcher.** Data a player exfiltrates goes to their own request catcher at
-  `catch-<userId>.lab.<domain>`, which is reachable by the bot and listed in the player's portal page.
+  `c-<userId>.<domain>`, which is reachable by the bot and listed in the player's portal page.
 
 ### 8.4 Lab package layout and manifest
 
@@ -340,11 +341,18 @@ digest. The existing `lite` tag is unchanged.
   1. checks Docker;
   2. writes `default-address-pools`;
   3. optionally installs gVisor;
-  4. prints the DNS records to create: `hvwa.my.id` and `*.lab.hvwa.my.id`.
-- **TLS** is either a Let's Encrypt wildcard via the DNS-01 challenge (needs a DNS-provider API token, e.g.
-  Cloudflare) or a wildcard certificate file provided by the owner.
+  4. prints the Cloudflare setup to check: the proxied CNAMEs `hvwa.my.id` and `*.hvwa.my.id` to the tunnel,
+     and the tunnel's public hostnames → `http://traefik:80`.
+- **TLS and exposure (POC, done 2026-11-21):**
+  - **Tunnel:** Cloudflare Tunnel `hvwa-range` (id `08e783bc-…`). Its connector runs as a hardened container in
+    `~/hvwa-range/bootstrap` on the home server, reading the token from a 600 file, on network `hvwa-edge`.
+  - **TLS:** Universal SSL at the edge.
+  - **Zone settings:** Browser Integrity Check off, security level `essentially_off`, Always HTTPS on.
+  - **Verified:** SQLi, XSS, traversal, command-injection, SSTI and sqlmap-UA requests all pass the edge (200).
+  - **Client IP:** the real client IP is `CF-Connecting-IP`. The portal trusts it because Traefik has no
+    published port, so only `cloudflared` can reach it. Rate limits key on it.
 - **Local development:** the same compose with `HVWA_RANGE_DOMAIN=localhost` (`hvwa.localhost`,
-  `*.lab.localhost`) and Traefik's self-signed certificate or plain HTTP.
+  `i-<id>.localhost`) over plain HTTP; `CF-Connecting-IP` is absent locally, so the socket address is used.
 
 ## 13. Build order
 
@@ -379,6 +387,6 @@ digest. The existing `lite` tag is unchanged.
 ## 15. Needed from the owner before deployment (not before building)
 
 - Domain: `hvwa.my.id` (given).
-- The DNS provider and an API token for the wildcard certificate, or a wildcard certificate file. Both are set on
-  the owner's server, never in the images.
+- Done: Cloudflare zone, tunnel, DNS and zone settings. Secrets live only in `~/hvwa-range/secrets/` on the server
+  (mode 600), never in images or the repo.
 - The target server's size (RAM/CPU) for the final capacity setting.
