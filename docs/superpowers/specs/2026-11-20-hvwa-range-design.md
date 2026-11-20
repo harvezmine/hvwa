@@ -40,7 +40,7 @@ The POC proves the model on one Linux server with **120 concurrent users** and *
 ## 3. Architecture
 
 ```
-browser ──HTTPS──► Traefik ──┬─► hvwa.<domain>                 portal (Node, existing app in portal mode)
+browser ──HTTPS──► Traefik ──┬─► <portal host> (hvwa.my.id)    portal (Node, existing app in portal mode)
                              ├─► <instance>.lab.<domain>        instance container (forward-auth → portal)
                              ├─► <instance>.lab.<domain>/__hvwa/*   portal (gate ticket exchange)
                              └─► catch-<user>.lab.<domain>      portal (request catcher)
@@ -124,7 +124,8 @@ the admin.
 
 | Variable | Default |
 |---|---|
-| `HVWA_RANGE_DOMAIN` | required, e.g. `example.com`; labs under `lab.<domain>` |
+| `HVWA_RANGE_DOMAIN` | required; the owner's domain is `hvwa.my.id`. Labs live under `lab.<domain>` (`*.lab.hvwa.my.id`) |
+| `HVWA_PORTAL_HOST` | the domain itself (`hvwa.my.id`) |
 | `HVWA_RANGE_CAPACITY` | `140` instances |
 | `HVWA_RANGE_IDLE_MIN` / `HVWA_RANGE_MAX_MIN` / `HVWA_RANGE_EXTEND_MIN` / `HVWA_RANGE_CEILING_MIN` | `30` / `120` / `30` / `240` |
 | `HVWA_RANGE_RUNTIME` | `runc`; `runsc` (gVisor) when installed |
@@ -318,6 +319,19 @@ The UI keeps the Sanctum design system (`docs/UI.md`).
 
 ## 12. Deployment
 
+**Owner decision (2026-11-20):** the domain is `hvwa.my.id`. The deliverable is the set of images pushed to Docker
+Hub, plus the compose file and a deployment README. The owner deploys the server; no deployment work on the
+server is in scope.
+
+**Images**, all as tags of the existing repository `sigmajo/hvwa`:
+- `range-portal`
+- `range-warden`
+- `range-bot`
+- `lab-<slug>`, one per lab, e.g. `lab-mercy-clinic`
+
+Every tag is pushed with a version (e.g. `lab-mercy-clinic-1.0.0`), and `labs/registry.json` pins each one by
+digest. The existing `lite` tag is unchanged.
+
 - **`docker-compose.range.yml`:** Traefik, the portal, the warden, both socket proxies and the victim bot, with
   networks as in §3.
 - **Lab images** are built by `npm run range:build-labs`, tagged `hvwa-lab/<id>:<version>`, and pinned by digest in
@@ -326,7 +340,7 @@ The UI keeps the Sanctum design system (`docs/UI.md`).
   1. checks Docker;
   2. writes `default-address-pools`;
   3. optionally installs gVisor;
-  4. prints the DNS records to create: `hvwa.<domain>`, `*.lab.<domain>`.
+  4. prints the DNS records to create: `hvwa.my.id` and `*.lab.hvwa.my.id`.
 - **TLS** is either a Let's Encrypt wildcard via the DNS-01 challenge (needs a DNS-provider API token, e.g.
   Cloudflare) or a wildcard certificate file provided by the owner.
 - **Local development:** the same compose with `HVWA_RANGE_DOMAIN=localhost` (`hvwa.localhost`,
@@ -364,6 +378,7 @@ The UI keeps the Sanctum design system (`docs/UI.md`).
 
 ## 15. Needed from the owner before deployment (not before building)
 
-- The domain name.
-- The DNS provider and an API token for the wildcard certificate, or a wildcard certificate file.
+- Domain: `hvwa.my.id` (given).
+- The DNS provider and an API token for the wildcard certificate, or a wildcard certificate file. Both are set on
+  the owner's server, never in the images.
 - The target server's size (RAM/CPU) for the final capacity setting.
