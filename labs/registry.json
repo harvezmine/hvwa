@@ -68,7 +68,7 @@
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:358337612235cde828012aa7819ed99562338fd66810c0da7b7bd1e515cdc42a"
+      "image": "sha256:8710c6952cca80bbeb9226b12f4db499d0d99f17bc2706073523fff235d0883e"
     },
     {
       "id": "r02",
@@ -137,7 +137,7 @@
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:86260ae72c553c12686632c2cbda76b0bf59eb5a6e4f311e7f6bf03d8e8b4160"
+      "image": "sha256:5a66e324701716d19ad32dd51ded509e5238830da1ed946af089eb35f41f8b96"
     },
     {
       "id": "r03",
@@ -206,7 +206,7 @@
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:35e251a3eca0270372d4b4efbcdb02ca4a07f3b9f67cff1965c5270be76cb00d"
+      "image": "sha256:70e8d864128959d6ff879fcfd4893fcd07390d7dd269cb22599055940b359e3f"
     },
     {
       "id": "r04",
@@ -275,7 +275,7 @@
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:0918e03ebb3d7f50f7246c366ac02bddbf28fbc3dfbbd9a903f0d87732f70ac5"
+      "image": "sha256:47a4899cda6d7fa5bc0940b96e551ad5bca4778de4a49c08a656ff04a3fff9d4"
     }
   ]
 }
