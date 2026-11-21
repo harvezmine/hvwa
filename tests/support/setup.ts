@@ -12,3 +12,5 @@ setPerSessionDefaults({ maxNewPerMinute: Infinity });
 // specs (tests/edition.spec.ts, tests/auth*.spec.ts) pass `edition` / `auth` explicitly instead.
 process.env.HVWA_EDITION = 'full';
 process.env.HVWA_AUTH = 'off';
+// Standalone unless a spec asks for the portal (createApp({ mode: 'portal' }) in tests/support/range.ts).
+process.env.HVWA_MODE = 'standalone';
