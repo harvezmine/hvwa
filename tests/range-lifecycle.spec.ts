@@ -92,7 +92,7 @@ describe('capacity (no queue)', () => {
     expect(warden.launched).toHaveLength(2);
   });
 
-  it('concurrent launches across users cannot exceed capacity (re-checked after the awaited stop)', async () => {
+  it('a relaunch reserves its own slot before stopping the old container, so a concurrent user cannot take it', async () => {
     const base = fakeWarden({ autoReady: true });
     const realStop = base.stop.bind(base);
     let gate: Promise<void> | undefined;
@@ -105,15 +105,37 @@ describe('capacity (no queue)', () => {
     await lc.launch(2, 'r01', 'acolyte'); // user 2's instance: the range is now full
 
     gate = new Promise<void>((r) => { release = r; });
-    const relaunch = lc.launch(1, 'r02', 'acolyte'); // frees its own slot, then parks on the stop
-    await stopped; // user 1 is now between the stop and the insert
-    const third = await lc.launch(3, 'r01', 'acolyte'); // takes the slot user 1 just freed
-    expect(third.ok).toBe(true);
+    const relaunch = lc.launch(1, 'r02', 'acolyte'); // reserves its new slot, then parks stopping the old container
+    await stopped; // user 1's replacement is already reserved
+    const third = await lc.launch(3, 'r01', 'acolyte'); // the reserved slot is not free to take
+    expect(third).toEqual({ ok: false, error: 'full' });
     release();
-    expect(await relaunch).toEqual({ ok: false, error: 'full' });
+    const r = await relaunch;
+    expect(r.ok).toBe(true);
     expect(lc.store.countLive()).toBe(2);
-    expect(lc.store.activeFor(1)).toBeUndefined();
+    expect(lc.store.activeFor(1)?.labId).toBe('r02');
     expect(lc.store.listActive()).toHaveLength(2);
+  });
+
+  it('when the range is already over capacity besides the player\'s own slot, a relaunch is "full" and destroys nothing', async () => {
+    const db = openDb(':memory:');
+    migrate(db);
+    dbs.push(db);
+    const warden = fakeWarden({ autoReady: true });
+    let t = 1_000_000;
+    const makeWith = (capacity: number) => createLifecycle({
+      db, warden, registry: testRegistry(), rangeKey: RANGE_KEY, limits: { ...DEFAULT_LIMITS, capacity }, now: () => t, log: () => {},
+    });
+    const wide = makeWith(3);
+    await wide.launch(1, 'r01', 'acolyte');
+    await wide.launch(2, 'r01', 'acolyte');
+    await wide.launch(3, 'r01', 'acolyte');
+    const before = wide.current(1)!.id;
+    const narrow = makeWith(2); // e.g. the operator lowered the capacity while the instance ran
+    expect(await narrow.launch(1, 'r01', 'templar')).toEqual({ ok: false, error: 'full' });
+    expect(wide.current(1)?.id).toBe(before);
+    expect(wide.store.get(before)?.state).toBe('starting');
+    expect(warden.stopped).not.toContain(before);
   });
 });
 

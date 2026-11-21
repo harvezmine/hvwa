@@ -46,8 +46,12 @@ declare global {
         readonly defaultPassword?: boolean;
         readonly csrf?: string;
       };
+      /** standalone or portal (createApp): the layout switches the safety/footer copy on it. */
+      mode?: 'standalone' | 'portal';
+      /** The active portal nav item, for aria-current="page" (src/range/index.ts). */
+      navActive?: 'labs' | 'leaderboard';
       /** Portal mode (src/range/index.ts): the range's navigation instead of Districts / Scoreboard. */
-      portalNav?: { readonly admin: boolean };
+      portalNav?: { readonly admin: boolean; readonly active?: 'labs' | 'leaderboard' };
       /** Portal mode: the My Lab chip in the header (src/range/panel.ts myLabChip). */
       myLab?: { readonly href: string; readonly state: string; readonly text: string };
     }
