@@ -5,7 +5,8 @@
 //
 // Mounted at the top of portalRouter, which runs only for requests no lab and no API route answered. Lab paths
 // (/d/<district>/...) and the API are skipped even then: a lab's framing is its lesson, set per level by setLabHeaders
-// (core/http.ts), and nothing else may add to it. The login pages set their own, stricter 'none' (src/auth).
+// (core/http.ts), and nothing else may add to it. The login and account pages carry the scoped page policy
+// (core/page-csp.ts), mounted with the auth routers.
 import type { RequestHandler } from 'express';
 
 export const PORTAL_FRAME_POLICY = "frame-ancestors 'self'";

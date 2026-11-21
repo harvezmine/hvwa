@@ -29,7 +29,10 @@ describe('GET /register', () => {
     const res = await request(app).get('/register');
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.headers['content-security-policy']).toBe("frame-ancestors 'none'");
+    expect(res.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(res.headers['content-security-policy']).toContain("frame-ancestors 'self'");
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(res.headers.vary)).toMatch(/Cookie/i);
     for (const name of ['username', 'password', 'confirm', '_csrf']) expect(res.text).toContain(`name="${name}"`);
     expect(res.text).not.toContain('name="code"'); // no event code in the POC
     expect(res.text).toContain('minlength="10"');

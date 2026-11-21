@@ -82,16 +82,18 @@ export function deniedPage(portalUrl: string, rec?: InstanceRecord): string {
     + '@media (prefers-color-scheme: light){:root{--bg:#f6f7f9;--surface:#ffffff;--text:#1a1d22;--muted:#4e5663;--primary:#0b57d0;--border:#c9cfd8}}'
     + 'html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}'
     + 'main{max-width:34rem;margin:12vh auto;padding:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:14px}'
-    + 'h1{font-size:1.35rem;margin:0 0 .75rem}p{margin:.5rem 0;color:var(--muted)}.lang{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:1.1rem}'
+    + 'h1,h2{font-size:1.35rem;margin:0 0 .75rem}p{margin:.5rem 0;color:var(--muted)}.lang{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:1.1rem}'
     + 'a{color:var(--primary)}.reason{color:var(--text)}'
     + '</style></head><body><main>'
     + '<h1>This lab is not open in this browser</h1>'
     + '<p>Labs open only from your account on the HVWA portal, and only while they run. Open it again from the portal.</p>'
     + (enReason === '' ? '' : `<p class="reason">${escapeHtml(enReason)}</p>`)
+    + '<div lang="id">'
     + '<p class="lang">Bahasa Indonesia</p>'
-    + '<h1>Lab ini tidak terbuka di peramban ini</h1>'
+    + '<h2>Lab ini tidak terbuka di peramban ini</h2>'
     + '<p>Lab hanya terbuka dari akun Anda di portal HVWA, dan hanya selama lab berjalan. Buka lagi dari portal.</p>'
     + (idReason === '' ? '' : `<p class="reason">${escapeHtml(idReason)}</p>`)
+    + '</div>'
     + `<p><a href="${escapeHtml(portalUrl)}">Back to the HVWA portal / Kembali ke portal HVWA</a></p>`
     + '</main></body></html>';
 }

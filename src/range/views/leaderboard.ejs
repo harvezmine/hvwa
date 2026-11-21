@@ -29,6 +29,13 @@
 <div class="table-wrap leaderboard-pinned" data-testid="leaderboard-you">
   <p class="leaderboard-pinned-label"><%= t('leaderboard.pinned') %></p>
   <table class="table">
+    <caption class="sr-only"><%= t('leaderboard.pinned') %></caption>
+    <thead><tr>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_rank') %></th>
+      <th scope="col" class="sr-only"><%= t('leaderboard.col_player') %></th>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_score') %></th>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_solved') %></th>
+    </tr></thead>
     <tbody>
       <tr data-rank="<%= pinned.rank %>" data-user="<%= pinned.username %>" class="leaderboard-me" aria-current="true">
         <td class="num"><%= pinned.rank %></td>

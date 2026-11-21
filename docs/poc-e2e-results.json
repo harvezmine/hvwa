@@ -2,7 +2,7 @@
   "schema": 1,
   "project": "hvwa-poc-e2e",
   "runtime": "runc",
-  "generatedAt": "2026-11-21T19:08:24.543Z",
+  "generatedAt": "2026-11-21T19:17:45.329Z",
   "labs": [
     {
       "id": "r01",
@@ -11,7 +11,7 @@
         {
           "level": "acolyte",
           "ok": true,
-          "launchMs": 1430,
+          "launchMs": 981,
           "checks": [
             {
               "name": "register+login",
@@ -26,7 +26,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1430 ms (instance c2ob7fik4ft37sgbyf6mw7ugxi)"
+              "detail": "ready in 981 ms (instance n23n4y7u22hwt5ohjdmu2bbig4)"
             },
             {
               "name": "open+gate",
@@ -46,7 +46,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{a46nnw6qmass65ocdb2vqsjjva}"
+              "detail": "HVWA{73b3q3whkkhun2zcjtwdtsbz4g}"
             },
             {
               "name": "submit",
@@ -68,7 +68,7 @@
         {
           "level": "templar",
           "ok": true,
-          "launchMs": 1441,
+          "launchMs": 1532,
           "checks": [
             {
               "name": "register+login",
@@ -83,7 +83,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1441 ms (instance b564g3n5ft5y2w5k576kgeh4p4)"
+              "detail": "ready in 1532 ms (instance 2amq5suhn37ni3kad53vgpccrm)"
             },
             {
               "name": "open+gate",
@@ -103,7 +103,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{cwtwsuuy3f6hwdwfenhev4rio3}"
+              "detail": "HVWA{m6srdmp4e5chjpilwtbxsohwq7}"
             },
             {
               "name": "submit",
@@ -125,7 +125,7 @@
         {
           "level": "divine",
           "ok": true,
-          "launchMs": 1343,
+          "launchMs": 1321,
           "checks": [
             {
               "name": "register+login",
@@ -140,7 +140,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1343 ms (instance rpkhhevoobuujxqbtvvfohz4fe)"
+              "detail": "ready in 1321 ms (instance x6y4d24i6xjzmbyqt2fjsuxp7m)"
             },
             {
               "name": "open+gate",
@@ -183,7 +183,7 @@
         {
           "level": "acolyte",
           "ok": true,
-          "launchMs": 1407,
+          "launchMs": 1483,
           "checks": [
             {
               "name": "register+login",
@@ -198,7 +198,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1407 ms (instance ixbfq5gdz3cam5zxtaml5nb5ni)"
+              "detail": "ready in 1483 ms (instance qy4bqvhsjjruqmaaiefnscfk3m)"
             },
             {
               "name": "open+gate",
@@ -211,6 +211,11 @@
               "detail": ""
             },
             {
+              "name": "label-html",
+              "ok": true,
+              "detail": "Accept: text/html is the printable label"
+            },
+            {
               "name": "gate-refused",
               "ok": true,
               "detail": ""
@@ -218,7 +223,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{u3gxrwd6rw7y7uvypyywibhknu}"
+              "detail": "HVWA{7ko7jdcokyyhkpz62asdvidzrt}"
             },
             {
               "name": "submit",
@@ -240,7 +245,7 @@
         {
           "level": "templar",
           "ok": true,
-          "launchMs": 1498,
+          "launchMs": 1509,
           "checks": [
             {
               "name": "register+login",
@@ -255,7 +260,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1498 ms (instance y2wjfslbr7emgwlmjwkc7g35py)"
+              "detail": "ready in 1509 ms (instance 3c53se7mhmmdlk7lwtlcqjlk3m)"
             },
             {
               "name": "open+gate",
@@ -268,6 +273,11 @@
               "detail": ""
             },
             {
+              "name": "label-html",
+              "ok": true,
+              "detail": "Accept: text/html is the printable label"
+            },
+            {
               "name": "gate-refused",
               "ok": true,
               "detail": ""
@@ -275,7 +285,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{4oetqf3xpxaj5s3bvczmjdhub5}"
+              "detail": "HVWA{735ag3fkwhdgmdiqmswo5ksyth}"
             },
             {
               "name": "submit",
@@ -297,7 +307,7 @@
         {
           "level": "divine",
           "ok": true,
-          "launchMs": 1343,
+          "launchMs": 1440,
           "checks": [
             {
               "name": "register+login",
@@ -312,7 +322,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1343 ms (instance 5r7pca757vu46zp4cfiga2dfsi)"
+              "detail": "ready in 1440 ms (instance usv74j5nnwykm2xifejzqeugii)"
             },
             {
               "name": "open+gate",
@@ -323,6 +333,11 @@
               "name": "landing",
               "ok": true,
               "detail": ""
+            },
+            {
+              "name": "label-html",
+              "ok": true,
+              "detail": "Accept: text/html is the printable label"
             },
             {
               "name": "gate-refused",
@@ -355,7 +370,7 @@
         {
           "level": "acolyte",
           "ok": true,
-          "launchMs": 1454,
+          "launchMs": 1005,
           "checks": [
             {
               "name": "register+login",
@@ -370,7 +385,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1454 ms (instance hxdafqfd6c2tymuxzdk4x3vffe)"
+              "detail": "ready in 1005 ms (instance r5lsfjv55evpzfgctr5mhtuuii)"
             },
             {
               "name": "open+gate",
@@ -390,7 +405,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{gal2enn7pl46mvt7gythezyr72}"
+              "detail": "HVWA{fpljdnciykede22jaz7gko7ju7}"
             },
             {
               "name": "submit",
@@ -412,7 +427,7 @@
         {
           "level": "templar",
           "ok": true,
-          "launchMs": 1019,
+          "launchMs": 1062,
           "checks": [
             {
               "name": "register+login",
@@ -427,7 +442,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1019 ms (instance 6jkrk5nctifqydbtpvwtwfxb24)"
+              "detail": "ready in 1062 ms (instance wvqdtx6rtl67ut6lb3w3g5hqku)"
             },
             {
               "name": "open+gate",
@@ -447,7 +462,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{2w4bkwejrjyf7bob36wqtqvqwg}"
+              "detail": "HVWA{cqb35db6q3tis4atv5z3zdoh2d}"
             },
             {
               "name": "submit",
@@ -469,7 +484,7 @@
         {
           "level": "divine",
           "ok": true,
-          "launchMs": 1365,
+          "launchMs": 1349,
           "checks": [
             {
               "name": "register+login",
@@ -484,7 +499,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 1365 ms (instance fwpaqvsv7oii7aeer4b4pjvanu)"
+              "detail": "ready in 1349 ms (instance qqp4iynppiliea4jybmn4mlri4)"
             },
             {
               "name": "open+gate",
@@ -527,7 +542,7 @@
         {
           "level": "acolyte",
           "ok": true,
-          "launchMs": 3517,
+          "launchMs": 3499,
           "checks": [
             {
               "name": "register+login",
@@ -542,7 +557,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 3517 ms (instance ouhkuexce7xbimil5ctrmhfv3a)"
+              "detail": "ready in 3499 ms (instance k4nnsyy3rt4gjk4osbz2fx6kce)"
             },
             {
               "name": "open+gate",
@@ -562,7 +577,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{4feuhvr3pteri2ky5whqnjz5vi}"
+              "detail": "HVWA{yfy5fuau5wtks6glmlqpvwbtit}"
             },
             {
               "name": "submit",
@@ -584,7 +599,7 @@
         {
           "level": "templar",
           "ok": true,
-          "launchMs": 3526,
+          "launchMs": 3578,
           "checks": [
             {
               "name": "register+login",
@@ -599,7 +614,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 3526 ms (instance ejhlgrvxdam64t5cmrftzjm4gm)"
+              "detail": "ready in 3578 ms (instance wxyoodjwgkmmroviiepcnyabru)"
             },
             {
               "name": "open+gate",
@@ -619,7 +634,7 @@
             {
               "name": "solve",
               "ok": true,
-              "detail": "HVWA{v7uvaqb6e6eyhoifitww7wpsth}"
+              "detail": "HVWA{wbttkzmfoepjjvqyiutzmpcbf7}"
             },
             {
               "name": "submit",
@@ -641,7 +656,7 @@
         {
           "level": "divine",
           "ok": true,
-          "launchMs": 3383,
+          "launchMs": 3432,
           "checks": [
             {
               "name": "register+login",
@@ -656,7 +671,7 @@
             {
               "name": "launch",
               "ok": true,
-              "detail": "ready in 3383 ms (instance s36fvnbkgf5p5zxbbb6bck4rc4)"
+              "detail": "ready in 3432 ms (instance obez43bgu2lgqg34zqtakjsy6y)"
             },
             {
               "name": "open+gate",

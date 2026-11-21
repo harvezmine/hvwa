@@ -202,7 +202,11 @@ describe('signing in', () => {
     expect(id.status).toBe(200);
     expect(id.headers['cache-control']).toBe('no-store');
     expect(id.headers['x-frame-options']).toBe('DENY');
-    expect(id.headers['content-security-policy']).toBe("frame-ancestors 'none'");
+    // The login is a platform page like the range's: the scoped policy, not the narrower frame-ancestors-only one.
+    expect(id.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(id.headers['content-security-policy']).toContain("frame-ancestors 'self'");
+    expect(id.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(id.headers.vary)).toMatch(/Cookie/i);
     expect(id.text).toContain('<html lang="id">');
     expect(id.text).toContain('Kata sandi');
     expect(id.text).toContain('name="next" value="/c/ZA-01"');

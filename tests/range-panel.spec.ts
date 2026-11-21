@@ -4,8 +4,9 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { csrfOf } from './helpers.js';
+import { parseRegistry } from '../src/lab-registry.js';
 import { fakeWarden } from './support/fake-warden.js';
-import { DOMAIN, player, portalApp, type Agent } from './support/range.js';
+import { DOMAIN, labEntry, player, portalApp, type Agent } from './support/range.js';
 
 const panelOf = (html: string) => /<section id="lab-panel"[\s\S]*?<\/section>/.exec(html)?.[0] ?? '';
 const stateOf = (html: string) => /data-testid="lab-panel" data-state="([a-z]+)"/.exec(html)?.[1];
@@ -27,9 +28,11 @@ describe('the Lab panel', () => {
     expect(started.status).toBe(200);
     expect(stateOf(started.text)).toBe('starting');
     expect(started.text).toContain('hx-trigger="every 1s"');
+    expect(started.text).toContain('data-focus-after-swap'); // an action swap moves focus to the panel
     const polled = (await agent.get('/labs/r01/panel?level=acolyte').set('HX-Request', 'true')).text; // refresh: fake warden is ready
     expect(stateOf(polled)).toBe('running');
     expect(polled).toContain('hx-trigger="every 30s"');
+    expect(polled).not.toContain('data-focus-after-swap'); // a poll never steals focus
     expect(polled).toMatch(/data-testid="time-left"[^>]*>60 min left</);
     expect(polled).toContain('aria-live="polite"'); // the countdown is a live region
     for (const hook of ['lab-open', 'lab-reset', 'lab-stop']) expect(polled).toContain(`data-testid="${hook}"`);
@@ -113,6 +116,26 @@ describe('the Lab panel', () => {
     expect(stateOf(other)).toBe('none');
     expect(other).toContain('data-testid="lab-replaces"');
     expect(other).toContain('App clinic');
+  });
+
+  it('names a replacing app literally: $& in its name is not a String.replace pattern', async () => {
+    const registry = parseRegistry({
+      schema: 1,
+      labs: [
+        labEntry('r01', 'clinic', { app: 'Price $& Clinic' }),
+        labEntry('r02', 'courier', {
+          category: 'Broken access control', difficulty: 'medium', levels: ['acolyte', 'divine'],
+          image: `sha256:${'b'.repeat(64)}`, hints: [],
+        }),
+      ],
+    });
+    const kit = portalApp({ range: { registry } });
+    const { agent } = await player(kit.app, 'alice');
+    await act(agent, 'r01', 'launch');
+    const other = panelOf((await agent.get('/labs/r02')).text);
+    expect(other).toContain('data-testid="lab-replaces"');
+    // `<%= %>` escapes the ampersand; what matters is the name was copied, not expanded to the matched "{app}".
+    expect(other).toContain('Price $&amp; Clinic');
   });
 });
 

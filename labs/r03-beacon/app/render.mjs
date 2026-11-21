@@ -31,6 +31,8 @@ a{color:var(--lime);text-decoration:none}
 a:hover{color:var(--lime2)}
 h1,h2,h3{margin:0}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:absolute;left:16px;top:-4rem;z-index:50;background:var(--lime);color:#0a1206;padding:10px 16px;border-radius:0 0 8px 8px;font:700 13px/1 var(--sans)}
+.skip:focus{top:0}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 
 /* header + nav */
@@ -366,11 +368,12 @@ export function page(title, bodyHtml, ctx = {}) {
     + `<title>${esc(title)} — Beacon</title>`
     + `<link rel="icon" href="${FAVICON}">`
     + `<style>${CSS}</style></head><body>`
+    + `<a class="skip" href="#main">Skip to content</a>`
     + `<header class="top"><div class="wrap"><div class="brand">${logo()}`
     + `<div><h1>BEACON</h1><span class="sub">${esc(model)} · firmware ${esc(firmware)} · ${esc(hostname)}</span></div>`
     + `</div><div class="topright"><span class="pill online">${led('lime')}Online</span></div></div></header>`
     + `<nav class="tabs" aria-label="Primary"><div class="wrap">${tabs}</div></nav>`
-    + `<main><div class="wrap">${bodyHtml}</div></main>`
+    + `<main id="main"><div class="wrap">${bodyHtml}</div></main>`
     + `<footer><div class="wrap"><span>${esc(model)} <span class="dot-sep">·</span> SN ${esc(serial)}</span>`
     + `<span>Firmware ${esc(firmware)} <span class="dot-sep">·</span> booted ${esc(boot)}</span>`
     + `<span>© 2026 Beacon Systems</span></div></footer>`

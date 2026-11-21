@@ -4,6 +4,7 @@
 import { Router, type RequestHandler } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import type { PlatformAuth } from '../auth/index.js';
+import { SCOPED_PAGE_CSP } from '../core/page-csp.js';
 import { portalFramePolicy } from '../portal/frame-policy.js';
 import { catalogRoutes } from './catalog.js';
 import { edgeHandler } from './gate.js';
@@ -61,12 +62,11 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const router = Router();
   // Per-user pages and fragments: never cached by a shared cache, and keyed on the session cookie. The CSP is the
   // portal's own (no inline script or style); labs run in their own containers and keep their own headers.
-  const PORTAL_CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'self'";
   router.use((_req, res, next) => {
     res.set('Cache-Control', 'private, no-store');
     res.vary('Cookie');
     res.set('X-Content-Type-Options', 'nosniff');
-    res.set('Content-Security-Policy', PORTAL_CSP);
+    res.set('Content-Security-Policy', SCOPED_PAGE_CSP);
     next();
   });
   router.use(portalFramePolicy());

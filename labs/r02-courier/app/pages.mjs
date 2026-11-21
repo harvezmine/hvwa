@@ -81,13 +81,17 @@ export function dashboardPage(parcels) {
 <script>
 (function () {
   var label = document.getElementById('sync-text');
+  var token = null; // one session for this page's lifetime: no token churn in the bounded server store
   function say(t) { if (label) label.textContent = t; }
   async function refresh() {
     try {
-      var s = await fetch('/api/session', { method: 'POST' });
-      if (!s.ok) throw new Error('session');
-      var session = await s.json();
-      var r = await fetch('/api/parcels', { headers: { authorization: 'Bearer ' + session.token } });
+      if (!token) {
+        var s = await fetch('/api/session', { method: 'POST' });
+        if (!s.ok) throw new Error('session');
+        token = (await s.json()).token;
+      }
+      var r = await fetch('/api/parcels', { headers: { authorization: 'Bearer ' + token } });
+      if (r.status === 401) { token = null; throw new Error('session'); }
       if (!r.ok) throw new Error('parcels');
       var data = await r.json();
       (data.parcels || []).forEach(function (p) {

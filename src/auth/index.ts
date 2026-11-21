@@ -15,7 +15,7 @@ import { sendPage } from '../core/render.js';
 import { field } from '../core/lab.js';
 import { safeNext } from './next.js';
 import { clientIp } from './client-ip.js';
-import { authTokenOf, fetchSiteOk, isApi, isHtmx, noStore, originOk, ownHost } from './forms.js';
+import { authTokenOf, fetchSiteOk, isApi, isHtmx, noStore, originOk, ownHost, scopedPageHeaders } from './forms.js';
 import { windowLimiter } from './rate-limit.js';
 import { registrationRouter, type RegistrationOptions } from './register.js';
 import { AUTH_COOKIE, AUTH_LIMITS, createAuthService, type AuthService, type AuthServiceOptions } from './service.js';
@@ -145,6 +145,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
   };
 
   const publicRouter = Router();
+  publicRouter.use(['/login', '/register'], scopedPageHeaders()); // outside portal.router, same page headers
   publicRouter.get('/login', async (req, res) => {
     const next = safeNext(req.query.next);
     if (service.session(req.cookies?.[AUTH_COOKIE])) { noStore(res); res.redirect(303, next); return; }
@@ -206,6 +207,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
   };
 
   const accountRouter = Router();
+  accountRouter.use(['/logout', '/account/password'], scopedPageHeaders()); // outside portal.router, same page headers
   accountRouter.post('/logout', async (req, res) => {
     if (!formOk(req, true)) { await refuse(req, res, '/'); return; }
     service.revoke(req.cookies?.[AUTH_COOKIE]);
