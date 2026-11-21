@@ -8,6 +8,7 @@ import { hostnameOf, targetHostname } from '../core/host-guard.js';
 import { portalFramePolicy } from '../portal/frame-policy.js';
 import { catalogRoutes } from './catalog.js';
 import { instanceIdOfHost } from './hosts.js';
+import { createLifecycle, type Lifecycle } from './lifecycle.js';
 import type { RangeContext, RangePortalOptions } from './types.js';
 
 export type { RangeLimits, RangePortalOptions } from './types.js';
@@ -22,10 +23,16 @@ export interface RangePortal {
   readonly locals: RequestHandler;
   /** After the account pages: the range's own pages. */
   readonly router: Router;
+  /** The instance lifecycle (server.ts starts its reaper; the panels use it). */
+  readonly lifecycle: Lifecycle;
 }
 
 export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: RangePortalOptions): RangePortal {
-  const ctx: RangeContext = { db, auth, opts, registry: opts.registry, now: opts.now ?? Date.now };
+  const now = opts.now ?? Date.now;
+  const lifecycle = createLifecycle({
+    db, warden: opts.warden, registry: opts.registry, rangeKey: opts.rangeKey, limits: opts.limits, now, log: opts.log,
+  });
+  const ctx: RangeContext = { db, auth, opts, registry: opts.registry, now, lifecycle };
   const isInstanceHost = (hostname: string) => instanceIdOfHost(hostname, opts.domain) !== undefined;
   const edgeHost = (h: string | null | undefined) => typeof h === 'string' && (h === opts.internalHost || isInstanceHost(h));
 
@@ -47,5 +54,5 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const router = Router();
   router.use(portalFramePolicy());
   catalogRoutes(router, ctx);
-  return Object.freeze({ isInstanceHost, edge, locals, router });
+  return Object.freeze({ isInstanceHost, edge, locals, router, lifecycle });
 }

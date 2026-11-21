@@ -14,9 +14,13 @@ import { base32, INSTANCE_ID_RE, newInstanceId } from '../src/range/ids.js';
 import { instanceHost, instanceIdOfHost, instanceOrigin, portalOrigin } from '../src/range/hosts.js';
 import { csrfOf, FAST_HASHER, serve, setCookieHeader, TEST_SECRET } from './helpers.js';
 import { parseRegistry } from '../src/lab-registry.js';
-import { ADMIN_PASSWORD, DOMAIN, labEntry, player, portalApp, signInAdmin, testRegistry, T0 } from './support/range.js';
+import { ADMIN_PASSWORD, DOMAIN, labEntry, player, portalApp, RANGE_KEY, signInAdmin, testRegistry, T0 } from './support/range.js';
+import { fakeWarden } from './support/fake-warden.js';
 
-const rangeOptions = () => ({ domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry: testRegistry(), limits: DEFAULT_LIMITS });
+const rangeOptions = () => ({
+  domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry: testRegistry(), limits: DEFAULT_LIMITS,
+  warden: fakeWarden({ autoReady: true }), rangeKey: RANGE_KEY,
+});
 
 /** GET with an absolute-form request target (`GET http://name/ HTTP/1.1`), which supertest cannot send. */
 async function absoluteGet(app: HvwaApp, target: string, host: string): Promise<{ status: number; setCookie: unknown }> {
