@@ -1,0 +1,23 @@
+{
+  "id": "r04",
+  "slug": "postcard",
+  "title": { "en": "Postcard greeting-card maker", "id": "Pembuat kartu ucapan Postcard" },
+  "app": "Postcard",
+  "category": "Template injection",
+  "difficulty": "hard",
+  "levels": ["acolyte", "templar", "divine"],
+  "port": 5000,
+  "health": "/healthz",
+  "flag": { "placement": "file:/tmp/postcard/flag.txt" },
+  "resources": { "memoryMiB": 192, "pids": 96 },
+  "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
+  "needsBot": false,
+  "themeId": "postcard",
+  "scenario": { "en": "A greeting-card maker that renders your message as a template.", "id": "Pembuat kartu ucapan yang merender pesan Anda sebagai templat." },
+  "briefing": { "en": "Postcard turns your message into a printed card. The press keeps a studio secret in a file. Make the card print it.", "id": "Postcard mengubah pesan Anda menjadi kartu cetak. Percetakan menyimpan rahasia studio dalam sebuah berkas. Buat kartu mencetaknya." },
+  "hints": [
+    { "id": 1, "cost": 15, "text": { "en": "Preview a card and look closely at how your exact message comes back.", "id": "Pratinjau sebuah kartu dan perhatikan baik-baik bagaimana pesan Anda kembali." } },
+    { "id": 2, "cost": 30, "text": { "en": "The press renders your message with a template engine. What does the engine do with its own syntax?", "id": "Percetakan merender pesan Anda dengan mesin templat. Apa yang dilakukan mesin dengan sintaksnya sendiri?" } },
+    { "id": 3, "cost": 45, "text": { "en": "At Templar certain words and double underscores are refused outright. The engine can still be handed those names if they are never spelled out.", "id": "Di Templar kata-kata tertentu dan garis bawah ganda ditolak langsung. Mesin tetap bisa menerima nama itu jika tidak pernah dieja." } }
+  ]
+}
