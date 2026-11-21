@@ -1,0 +1,153 @@
+// scripts/lab-test.mjs — `npm run labs:test [-- --lab r0N]`. Black-box range-lab tests (spec §8.5, 3 levels). NOT part of
+// `npm test`: it drives the Docker CLI. For each lab it builds hvwa-lab/<id>:test, then per level runs one hardened
+// container (scripts/lab-harness.mjs dockerRunArgs) on a per-lab INTERNAL network (no egress), and drives it with runner
+// containers on that same network (the lab has no published port and no route out — Traefik's role in production).
+// Runtime: HVWA_LAB_TEST_RUNTIME (default runc; runsc on a gVisor host). Exit 0 iff every check of every lab passed.
+import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
+import { isMainModule } from './main-module.mjs';
+import { labDirs, readManifest, dockerRunArgs, newFlag, RUNNER_IMAGE } from './lab-harness.mjs';
+
+const RUNTIME = (process.env.HVWA_LAB_TEST_RUNTIME ?? 'runc').trim() || 'runc';
+const LEVEL_RANK = { acolyte: 0, templar: 1, inquisitor: 2, divine: 3 };
+
+function docker(args, { capture = true, input } = {}) {
+  const r = spawnSync('docker', args, { encoding: 'utf8', input, stdio: capture ? ['pipe', 'pipe', 'pipe'] : 'inherit' });
+  if (r.error) throw r.error;
+  return { status: r.status ?? 1, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim() };
+}
+function dockerOk(args, msg) {
+  const r = docker(args);
+  if (r.status !== 0) throw new Error(`${msg}: docker ${args.slice(0, 3).join(' ')} exited ${r.status}\n${r.stderr}`);
+  return r.stdout;
+}
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+/** Poll Docker's health until `healthy`, or fail (collecting the container's logs for the report). */
+async function waitHealthy(name, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const status = docker(['inspect', '--format', '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', name]).stdout;
+    if (status === 'healthy') return;
+    if (status === 'none') throw new Error(`${name}: image has no HEALTHCHECK`);
+    if (Date.now() > deadline) {
+      const logs = docker(['logs', '--tail', '40', name]).stdout;
+      throw new Error(`${name}: not healthy within ${timeoutMs} ms (last status ${status})\n${logs}`);
+    }
+    await sleep(500);
+  }
+}
+
+/** Run a one-shot Node runner on the lab's internal network; returns { status, stdout }. `mount` adds -v <host>:<dst>:ro. */
+function runner(network, nodeArgs, { mount } = {}) {
+  const args = ['run', '--rm', '--network', network, '--user', '10001:10001',
+    ...(mount ? ['-v', `${mount.host}:${mount.dst}:ro`] : []), RUNNER_IMAGE, ...nodeArgs];
+  return docker(args);
+}
+
+/** The reference solve for `solveLevel`, run against `targetName`'s HTTP endpoint; returns trimmed stdout. */
+function runSolve(network, solveDir, solveLevel, targetName, port) {
+  const r = runner(network, ['node', `/solve/${solveLevel}.mjs`, `http://${targetName}:${port}`], { mount: { host: solveDir, dst: '/solve' } });
+  return r.stdout;
+}
+
+/** A depth-1 same-origin crawl from `/`, asserting no page body leaks a flag (check 5). */
+function browseHasNoFlag(network, baseName, port) {
+  const script = [
+    `const base = 'http://${baseName}:${port}';`,
+    "const seen = new Set(['/']); const bodies = [];",
+    'async function get(p){ try { const r = await fetch(base+p,{redirect:"follow"}); const t = await r.text(); bodies.push(t);',
+    '  for (const m of t.matchAll(/(?:href|src|action)=["\\x27]([^"\\x27#?]+)/g)) { let u=m[1];',
+    '    if (u.startsWith("http")){ if(!u.startsWith(base)) continue; u=u.slice(base.length)||"/"; }',
+    '    if (!u.startsWith("/")) continue; if (seen.size<25) seen.add(u); } } catch {} }',
+    '(async()=>{ await get("/"); for (const p of [...seen].slice(1)) await get(p);',
+    '  process.stdout.write(bodies.some((b)=>/HVWA\\{/.test(b))?"LEAK":"CLEAN"); })();',
+  ].join('\n');
+  return runner(network, ['node', '-e', script]).stdout === 'CLEAN';
+}
+
+/** check 6: an internal network has no route to the public internet. */
+function egressBlocked(network) {
+  const script = "fetch('http://1.1.1.1',{signal:AbortSignal.timeout(2500)}).then(()=>process.exit(1),()=>process.exit(0));";
+  return runner(network, ['node', '-e', script]).status === 0;
+}
+
+async function testLab(dir, report) {
+  const manifest = readManifest(dir.path);
+  const id = manifest.id;
+  const image = `hvwa-lab/${id}:test`;
+  const net = `hvwa-labtest-${id}-${randomBytes(4).toString('hex')}`;
+  const solveDir = join(dir.path, 'solve');
+  const containers = {};
+  const flags = {};
+  const pass = (msg) => report.push({ id, ok: true, msg });
+  const fail = (msg) => { report.push({ id, ok: false, msg }); throw new Error(`[${id}] ${msg}`); };
+
+  dockerOk(['build', '-t', image, dir.path], `${id}: build`);
+  dockerOk(['network', 'create', '--internal', net], `${id}: network`);
+  try {
+    for (const level of manifest.levels) {
+      const flag = level === 'divine' ? undefined : newFlag();
+      flags[level] = flag;
+      const name = `${net}-${level}`;
+      dockerOk(dockerRunArgs({ manifest, level, flag, network: net, name, image, runtime: RUNTIME }), `${id}/${level}: run`);
+      containers[level] = name;
+      await waitHealthy(name);                                                             // check 1
+      pass(`${level}: health passes`);
+    }
+
+    const exploitable = manifest.levels.filter((l) => l !== 'divine');
+    for (const level of exploitable) {
+      const got = runSolve(net, solveDir, level, containers[level], manifest.port);        // check 2
+      if (got !== flags[level]) fail(`${level}: solve did not return the ${level} flag (got ${JSON.stringify(got).slice(0, 80)})`);
+      pass(`${level}: reference solve obtains the flag`);
+      for (const higher of manifest.levels.filter((l) => LEVEL_RANK[l] > LEVEL_RANK[level])) {  // check 3
+        const h = runSolve(net, solveDir, level, containers[higher], manifest.port);
+        if (flags[higher] !== undefined && h === flags[higher]) fail(`${level} solve unexpectedly beat ${higher}`);
+        pass(`${level}: solve fails against ${higher}`);
+      }
+    }
+
+    if (containers.divine) {                                                               // check 4
+      for (const level of exploitable) {
+        const d = runSolve(net, solveDir, level, containers.divine, manifest.port);
+        if (/HVWA\{/.test(d)) fail(`Divine leaked a flag to the ${level} solve`);
+      }
+      pass('divine: resists every solve');
+    }
+
+    for (const level of manifest.levels) {                                                 // check 5
+      if (!browseHasNoFlag(net, containers[level], manifest.port)) fail(`${level}: a main page leaks the flag`);
+    }
+    pass('browse: no flag on the main pages');
+
+    if (!egressBlocked(net)) fail('the lab network has egress');                           // check 6
+    pass('network: no egress');
+  } finally {
+    for (const name of Object.values(containers)) docker(['rm', '-f', name]);
+    docker(['network', 'rm', net]);
+  }
+}
+
+export async function main(argv) {
+  const only = (() => { const i = argv.indexOf('--lab'); return i >= 0 ? argv[i + 1] : undefined; })();
+  const dirs = labDirs().filter((d) => !only || d.name.startsWith(`${only}-`));
+  if (dirs.length === 0) throw new Error(only ? `no lab ${only}` : 'no labs under labs/');
+  const report = [];
+  let failed = 0;
+  for (const dir of dirs) {
+    try { await testLab(dir, report); }
+    catch (err) { failed++; console.error(String(err instanceof Error ? err.message : err)); }
+  }
+  for (const r of report) console.log(`${r.ok ? 'PASS' : 'FAIL'} ${r.id} — ${r.msg}`);
+  console.log(failed === 0
+    ? `labs:test OK — ${dirs.length} lab(s) hold (spec §8.5), runtime ${RUNTIME}`
+    : `labs:test FAILED — ${failed} lab(s) failed`);
+  return failed === 0 ? 0 : 1;
+}
+
+if (isMainModule(process.argv[1], import.meta.url)) {
+  main(process.argv.slice(2)).then((code) => { process.exitCode = code; },
+    (err) => { console.error(`labs:test: ${err instanceof Error ? err.message : err}`); process.exitCode = 1; });
+}
