@@ -1,0 +1,23 @@
+{
+  "id": "r03",
+  "slug": "beacon",
+  "title": { "en": "Beacon router admin", "id": "Admin router Beacon" },
+  "app": "Beacon",
+  "category": "Command injection",
+  "difficulty": "medium",
+  "levels": ["acolyte", "templar", "divine"],
+  "port": 8080,
+  "health": "/healthz",
+  "flag": { "placement": "file:/tmp/beacon/flag.txt" },
+  "resources": { "memoryMiB": 128, "pids": 96 },
+  "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
+  "needsBot": false,
+  "themeId": "beacon",
+  "scenario": { "en": "A router admin panel whose diagnostics tool runs a real shell on what you type.", "id": "Panel admin router yang alat diagnostiknya menjalankan shell sungguhan atas masukan Anda." },
+  "briefing": { "en": "Beacon's diagnostics let an operator probe a host. The router stores an operator secret in a file. Read it.", "id": "Diagnostik Beacon membiarkan operator memeriksa sebuah host. Router menyimpan rahasia operator dalam sebuah berkas. Baca berkas itu." },
+  "hints": [
+    { "id": 1, "cost": 10, "text": { "en": "The diagnostics page does something with the host you enter. What does it do with it?", "id": "Halaman diagnostik melakukan sesuatu dengan host yang Anda masukkan. Apa yang dilakukannya?" } },
+    { "id": 2, "cost": 20, "text": { "en": "The probe runs in a real shell. A shell runs more than one command if you let it.", "id": "Probe berjalan di shell sungguhan. Shell menjalankan lebih dari satu perintah jika Anda membiarkannya." } },
+    { "id": 3, "cost": 30, "text": { "en": "At Templar the obvious separators are blocked. A shell can run a command without any of them.", "id": "Di Templar pemisah yang jelas diblokir. Shell bisa menjalankan perintah tanpa satu pun dari mereka." } }
+  ]
+}
