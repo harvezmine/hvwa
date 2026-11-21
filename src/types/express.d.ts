@@ -39,7 +39,10 @@ declare global {
        */
       platformAuth?: {
         readonly signedIn: boolean;
+        /** users.id of the signed-in account (portal mode keys range progress by it). */
+        readonly userId?: number;
         readonly user?: string;
+        readonly role?: 'player' | 'admin';
         readonly defaultPassword?: boolean;
         readonly csrf?: string;
       };
