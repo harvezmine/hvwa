@@ -204,6 +204,24 @@ function runSolve(lab, solveLevel, instanceId, port) {
   return run('docker', ['run', '--rm', '--network', `hvwa-i-${instanceId}`, '--user', '10001:10001',
     '-v', `${lab.solveDir}:/solve:ro`, RUNNER_IMAGE, 'node', `/solve/${solveLevel}.mjs`, `http://hvwa-i-${instanceId}:${port}`]);
 }
+/**
+ * r02's label route content-negotiates: with Accept: text/html it answers the printable label (status 200 and the label
+ * markup), while a client without that Accept header gets the JSON the solves use. The parcel is demo-owned (2001), so
+ * every level may read it; the private note is never printed or asserted here.
+ */
+function runCourierLabelCheck(instanceId, port) {
+  const script = [
+    "const base = process.argv[1];",
+    "const { token } = await (await fetch(base + '/api/session', { method: 'POST' })).json();",
+    "const r = await fetch(base + '/api/parcels/2001/label', { headers: { authorization: 'Bearer ' + token, accept: 'text/html' } });",
+    "const body = await r.text();",
+    "if (r.status !== 200) throw new Error('label -> ' + r.status);",
+    "if (!/^<!doctype html>/i.test(body) || !body.includes('Priority parcel label')) throw new Error('not the printable label');",
+    "process.stdout.write('Accept: text/html is the printable label');",
+  ].join('\n');
+  return run('docker', ['run', '--rm', '--network', `hvwa-i-${instanceId}`, '--user', '10001:10001', RUNNER_IMAGE,
+    'node', '--input-type=module', '-e', script, `http://hvwa-i-${instanceId}:${port}`]);
+}
 async function submit(b, labId, flag) {
   const page = await b.get(PORTAL, `/labs/${labId}`);
   return (await b.form(PORTAL, `/labs/${labId}/submit`, { _csrf: csrfOf(page.body), submission: flag }, { 'hx-request': 'true' })).body;
@@ -246,6 +264,11 @@ async function runLevel(lab, level, record) {
       if (!home.body.includes(MARKER[labId])) throw new Error(`the landing page lacks ${JSON.stringify(MARKER[labId])}`);
       if (FLAG_RE.test(home.body)) throw new Error('the landing page contains a flag');
     }],
+    ...(labId === 'r02' ? [['label-html', async () => {
+      const r = runCourierLabelCheck(st.instanceId, lab.port);
+      if (r.code !== 0) throw new Error(`the printable label check failed: ${show(r)}`);
+      return r.out;
+    }]] : []),
     ['gate-refused', async () => {
       const refused = await browser().get(st.a.host, '/');
       if (refused.status !== 401) throw new Error(`a request without the gate cookie -> ${refused.status}`);

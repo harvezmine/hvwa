@@ -86,6 +86,9 @@ def shell(title, inner, active=""):
 
 
 app = Flask(__name__)
+# Every route that reads a form (/preview, /contact) is bounded: a bigger body gets the friendly 413 below, never a
+# debug trace (Flask's debug mode is off; the handler is what makes Werkzeug's 413 look like the rest of the studio).
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 
 CSS = """
 :root{
@@ -849,6 +852,19 @@ def method_not_allowed(_error):
         '<div class="notice-actions"><a class="btn" href="/">Back to the studio</a></div></section>'
     )
     return shell("Wrong request", inner), 405
+
+
+@app.errorhandler(413)
+def payload_too_large(_error):
+    inner = (
+        '<section class="notice"><p class="eyebrow">413</p>'
+        "<h1>That card is too heavy for the press.</h1>"
+        "<p>The message or note you sent is over the studio's 64 KiB limit. "
+        "Shorten it and try again.</p>"
+        '<div class="notice-actions"><a class="btn" href="/">Make a card</a>'
+        '<a class="btn ghost" href="/contact">Back to contact</a></div></section>'
+    )
+    return shell("Too large", inner), 413
 
 
 @app.errorhandler(500)

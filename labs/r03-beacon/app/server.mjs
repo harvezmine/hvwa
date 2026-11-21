@@ -306,7 +306,7 @@ function logsPage() {
   ))}
 
   <div class="grid two" style="margin-top:16px">
-    ${card('Recent probe entries', `<p class="note" style="margin:0 0 10px">Held in memory for this browser session only; never written to disk.</p>${probeHistory()}`)}
+    ${card('Recent probe entries', `<p class="note" style="margin:0 0 10px">In memory for this process only; never written to disk.</p>${probeHistory()}`)}
     ${card('Log retention', `
       <p class="note">Syslog is kept in a 512 KiB ring buffer on the appliance; the oldest entries are overwritten first.</p>
       <div class="meter-row" style="margin-top:14px"><span>Buffer used</span><span class="v">38%</span></div>
@@ -488,7 +488,7 @@ function diagPage({ host = '', result = null, at = '', ms = 0 } = {}) {
       <div class="presets"><span class="lbl">Presets</span>${presets}</div>
       <p class="note" style="margin-top:14px">The probe runs on the appliance itself and returns the combined output of the diagnostic command.</p>`)}
 
-    ${card('Recent probes', `<p class="note" style="margin:0 0 10px">In memory for this process only; outputs are never retained.</p>${probeHistory()}`)}
+    ${card('Recent probes', `<p class="note" style="margin:0 0 10px">In memory for this process only; never written to disk.</p>${probeHistory()}`)}
   </div>
 
   <div class="term" id="probe-term">
