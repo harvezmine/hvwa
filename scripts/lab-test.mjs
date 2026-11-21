@@ -10,11 +10,21 @@ import { isMainModule } from './main-module.mjs';
 import { labDirs, readManifest, dockerRunArgs, newFlag, RUNNER_IMAGE } from './lab-harness.mjs';
 
 const RUNTIME = (process.env.HVWA_LAB_TEST_RUNTIME ?? 'runc').trim() || 'runc';
+/** Bound every Docker call so a wedged daemon (or a hung container) fails the run instead of hanging it. */
+const TIMEOUT_MS = (() => {
+  const n = Number(process.env.HVWA_LAB_TEST_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 120_000;
+})();
 const LEVEL_RANK = { acolyte: 0, templar: 1, inquisitor: 2, divine: 3 };
 
-function docker(args, { capture = true, input } = {}) {
-  const r = spawnSync('docker', args, { encoding: 'utf8', input, stdio: capture ? ['pipe', 'pipe', 'pipe'] : 'inherit' });
-  if (r.error) throw r.error;
+function docker(args, { capture = true, input, timeout = TIMEOUT_MS } = {}) {
+  const r = spawnSync('docker', args, { encoding: 'utf8', input, timeout, stdio: capture ? ['pipe', 'pipe', 'pipe'] : 'inherit' });
+  if (r.error) {
+    if (r.error.code === 'ETIMEDOUT') {
+      throw new Error(`docker ${args.slice(0, 3).join(' ')} timed out after ${timeout} ms (HVWA_LAB_TEST_TIMEOUT_MS)`);
+    }
+    throw r.error;
+  }
   return { status: r.status ?? 1, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim() };
 }
 function dockerOk(args, msg) {
@@ -57,7 +67,7 @@ function browseHasNoFlag(network, baseName, port) {
   const script = [
     `const base = 'http://${baseName}:${port}';`,
     "const seen = new Set(['/']); const bodies = [];",
-    'async function get(p){ try { const r = await fetch(base+p,{redirect:"follow"}); const t = await r.text(); bodies.push(t);',
+    'async function get(p){ try { const r = await fetch(base+p,{redirect:"follow",signal:AbortSignal.timeout(5000)}); const t = await r.text(); bodies.push(t);',
     '  for (const m of t.matchAll(/(?:href|src|action)=["\\x27]([^"\\x27#?]+)/g)) { let u=m[1];',
     '    if (u.startsWith("http")){ if(!u.startsWith(base)) continue; u=u.slice(base.length)||"/"; }',
     '    if (!u.startsWith("/")) continue; if (seen.size<25) seen.add(u); } } catch {} }',
@@ -91,8 +101,8 @@ async function testLab(dir, report) {
       const flag = level === 'divine' ? undefined : newFlag();
       flags[level] = flag;
       const name = `${net}-${level}`;
+      containers[level] = name; // tracked before `run`: a failed start can still leave a Created container behind
       dockerOk(dockerRunArgs({ manifest, level, flag, network: net, name, image, runtime: RUNTIME }), `${id}/${level}: run`);
-      containers[level] = name;
       await waitHealthy(name);                                                             // check 1
       pass(`${level}: health passes`);
     }
@@ -125,8 +135,13 @@ async function testLab(dir, report) {
     if (!egressBlocked(net)) fail('the lab network has egress');                           // check 6
     pass('network: no egress');
   } finally {
-    for (const name of Object.values(containers)) docker(['rm', '-f', name]);
-    docker(['network', 'rm', net]);
+    const cleanup = (args) => { try { docker(args); } catch { /* best effort: never mask the failure */ } };
+    for (const name of Object.values(containers)) cleanup(['rm', '-f', name]);
+    // Also remove anything else under this run's name prefix (a `docker run -d` that failed after creating it).
+    let leftover = [];
+    try { leftover = docker(['ps', '-aq', '--filter', `name=${net}`]).stdout.split(/\s+/).filter(Boolean); } catch { /* best effort */ }
+    for (const ref of leftover) cleanup(['rm', '-f', ref]);
+    cleanup(['network', 'rm', net]);
   }
 }
 
