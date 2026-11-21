@@ -1183,17 +1183,40 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 4px; color: var(--danger)
 .range-filters { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: flex-end; margin: 0 0 var(--sp-5); }
 .range-filters .field { margin: 0; min-width: 10rem; flex: 1 1 10rem; }
 .catalog-grid { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
-.lab-card { display: grid; gap: var(--sp-2); align-content: start; padding: var(--sp-5); color: inherit; text-decoration: none; }
+.lab-card { display: grid; gap: var(--sp-2); align-content: start; padding: var(--sp-5); color: inherit; text-decoration: none; border-top: 3px solid var(--lab-accent, var(--primary)); }
 .lab-card:hover { border-color: var(--border-strong); }
 .lab-card-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin: 0; }
 .lab-card-app { font-size: var(--fs-lg); margin: 0; }
 .lab-card-title { margin: 0; color: var(--text); font-weight: 600; }
 .lab-card-scenario { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+/* Per-lab identity (themeId): an accent from the existing palette, no manifest change. Unknown ids fall back to primary. */
+.lab-theme-mercy-clinic { --lab-accent: var(--lv-acolyte); }
+.lab-theme-courier { --lab-accent: var(--lv-templar); }
+.lab-theme-beacon { --lab-accent: var(--warning); }
+.lab-theme-postcard { --lab-accent: var(--info); }
+.lab-card-icon { color: var(--lab-accent, var(--primary)); }
+.lab-hero { border-left: 4px solid var(--lab-accent, var(--primary)); padding-left: var(--sp-4); }
+.lab-hero .hero-icon { color: var(--lab-accent, var(--primary)); }
+.hero-card { display: flex; align-items: center; gap: var(--sp-4); margin: 0 0 var(--sp-5); padding: var(--sp-5); color: inherit; text-decoration: none; border-left: 4px solid var(--lab-accent, var(--primary)); }
+.hero-card:hover { border-color: var(--border-strong); }
+.hero-icon { display: inline-flex; color: var(--lab-accent, var(--primary)); }
+.hero-icon .icon { width: 1.75rem; height: 1.75rem; }
+.hero-body { display: grid; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.hero-eyebrow { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.hero-app { font-size: var(--fs-lg); font-weight: 700; }
+.hero-meta { color: var(--text-muted); font-size: var(--fs-sm); }
+.stat-progress { display: grid; align-content: center; gap: var(--sp-2); }
 .difficulty-badge[data-difficulty="easy"] { color: var(--success); background: var(--success-bg); border-color: var(--success-border); }
 .difficulty-badge[data-difficulty="medium"] { color: var(--info); background: var(--info-bg); border-color: var(--info-border); }
 .difficulty-badge[data-difficulty="hard"] { color: var(--warning); background: var(--warning-bg); border-color: var(--warning-border); }
 .difficulty-badge[data-difficulty="expert"] { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-border); }
 .leaderboard-me { background: var(--surface-3); }
+.leaderboard-top .leaderboard-rank { font-weight: 700; }
+.leaderboard-top-1 .leaderboard-rank { color: var(--warning); }
+.leaderboard-top-2 .leaderboard-rank, .leaderboard-top-3 .leaderboard-rank { color: var(--success); }
+.leaderboard-pinned { margin-top: var(--sp-4); }
+.leaderboard-pinned-label { margin: 0 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; }
+.empty .btn { margin-top: var(--sp-2); }
 .lab-panel .panel-state { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin: 0 0 var(--sp-3); }
 .lab-panel .panel-actions { display: grid; gap: var(--sp-2); }
 .lab-panel .panel-actions form { margin: 0; }

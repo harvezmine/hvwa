@@ -12,7 +12,7 @@ import { recordRangeSolve } from '../src/range/progress.js';
 import { DEFAULT_LIMITS } from '../src/range/types.js';
 import { base32, INSTANCE_ID_RE, newInstanceId } from '../src/range/ids.js';
 import { instanceHost, instanceIdOfHost, instanceOrigin, portalOrigin } from '../src/range/hosts.js';
-import { csrfOf, FAST_HASHER, serve, setCookieHeader, TEST_SECRET } from './helpers.js';
+import { csrfOf, FAST_HASHER, serve, setCookieHeader, setCookieValue, TEST_SECRET } from './helpers.js';
 import { parseRegistry } from '../src/lab-registry.js';
 import { ADMIN_PASSWORD, DOMAIN, FORWARD_SECRET, labEntry, player, portalApp, RANGE_KEY, signInAdmin, testRegistry, T0 } from './support/range.js';
 import { fakeWarden } from './support/fake-warden.js';
@@ -113,10 +113,17 @@ describe('portal-mode login options', () => {
     onTestFinished(() => { try { app.locals.db.close(); } catch { /* closed */ } });
     expect(app.locals.auth?.passwordMinLength).toBe(10);
     const agent = request.agent(app);
-    const form = { _csrf: csrfOf((await agent.get('/login').set('Host', DOMAIN)).text), username: 'admin', password: ADMIN_PASSWORD };
-    const plain = await agent.post('/login').set('Host', DOMAIN).set('Origin', `http://${DOMAIN}`).type('form').send(form);
+    const loginPage = await agent.get('/login').set('Host', DOMAIN);
+    expect(setCookieHeader(loginPage, 'hvwa_sid')).toMatch(/;\s*Secure/i);
+    // supertest speaks plain http, so a Secure hvwa_sid is not replayed by the jar: send it by hand to keep the CSRF
+    // token bound to the same session (exactly what a real https browser does).
+    const cookie = `hvwa_sid=${setCookieValue(loginPage, 'hvwa_sid')}`;
+    const form = { _csrf: csrfOf(loginPage.text), username: 'admin', password: ADMIN_PASSWORD };
+    const plain = await agent.post('/login').set('Host', DOMAIN).set('Cookie', cookie).set('Origin', `http://${DOMAIN}`)
+      .type('form').send(form);
     expect(plain.status).toBe(403);
-    const ok = await agent.post('/login').set('Host', DOMAIN).set('Origin', `https://${DOMAIN}`).type('form').send(form);
+    const ok = await agent.post('/login').set('Host', DOMAIN).set('Cookie', cookie).set('Origin', `https://${DOMAIN}`)
+      .type('form').send(form);
     expect(ok.status).toBe(303);
     expect(setCookieHeader(ok, 'hvwa_auth')).toMatch(/;\s*Secure/i);
   });
@@ -128,7 +135,10 @@ describe('portal-mode login options', () => {
     });
     onTestFinished(() => { try { app.locals.db.close(); } catch { /* closed */ } });
     const agent = request.agent(app);
-    const form = { _csrf: csrfOf((await agent.get('/login').set('Host', DOMAIN)).text), username: 'admin', password: ADMIN_PASSWORD };
+    const page = await agent.get('/login?lang=id').set('Host', DOMAIN);
+    expect(setCookieHeader(page, 'hvwa_sid')).not.toMatch(/Secure/i);
+    expect(setCookieHeader(page, 'hvwa_lang')).not.toMatch(/Secure/i);
+    const form = { _csrf: csrfOf(page.text), username: 'admin', password: ADMIN_PASSWORD };
     const ok = await agent.post('/login').set('Host', DOMAIN).set('Origin', `http://${DOMAIN}`).type('form').send(form);
     expect(ok.status).toBe(303);
     expect(setCookieHeader(ok, 'hvwa_auth')).not.toMatch(/Secure/i);
@@ -178,6 +188,36 @@ describe('the catalog', () => {
     expect(await ids('?show=todo')).toEqual(['r01']);
     expect(await ids('?difficulty=insane&category=%3Cx%3E')).toEqual(['r01', 'r02']);
     expect((await agent.get('/')).text).toContain('data-testid="range-score">200<');
+  });
+
+  it('searches and sorts (a GET form), and shows a solved-progress bar', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'alice');
+    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0);
+    const ids = async (q: string) => [...(await agent.get(`/${q}`)).text.matchAll(/data-lab="(r\d{2})"/g)].map((m) => m[1]);
+    expect(await ids('?q=courier')).toEqual(['r02']);
+    expect(await ids('?q=nothing-matches')).toEqual([]);
+    expect((await agent.get('/?q=nothing-matches')).text).toContain('data-testid="empty-clear"');
+    expect(await ids('?sort=solved')).toEqual(['r02', 'r01']);
+    expect(await ids('?sort=difficulty')).toEqual(['r01', 'r02']);
+    const html = (await agent.get('/')).text;
+    expect(html).toMatch(/data-testid="range-progress" max="2" value="1"/);
+    expect(html).not.toContain('data-testid="empty-clear"');
+  });
+
+  it('gives each lab its own theme class and icon, and a Continue hero for an active instance', async () => {
+    const kit = portalApp();
+    const { agent, userId } = await player(kit.app, 'alice');
+    const html = (await agent.get('/')).text;
+    expect(html).toContain('lab-card lab-theme-theme-clinic');
+    expect(html).toContain('data-theme="theme-clinic"');
+    expect(html).toContain('/static/icons.svg#i-bag'); // courier's identity icon
+    await kit.app.locals.range!.lifecycle.launch(userId, 'r01', 'templar');
+    const hero = (await agent.get('/')).text;
+    expect(hero).toMatch(/data-testid="continue-lab" data-state="starting"/);
+    expect(hero).toContain('Continue your lab');
+    expect(hero).toContain('App clinic');
+    expect(hero).toContain('href="/labs/r01?level=templar"');
   });
 
   it('shows the Indonesian texts with ?lang=id, and every value escaped', async () => {
@@ -247,6 +287,24 @@ describe('the leaderboard and the navigation', () => {
     expect(html).not.toMatch(/data-user="bob"[^>]*aria-current="true"/);
   });
 
+  it('emphasises the top three and pins the viewer\'s row when it is outside them', async () => {
+    const { app } = portalApp();
+    const a = await player(app, 'alice');
+    const b = await player(app, 'bob');
+    const c = await player(app, 'carol');
+    const d = await player(app, 'dave');
+    recordRangeSolve(app.locals.db, a.userId, 'r01', 'acolyte', 100, T0 + 4);
+    recordRangeSolve(app.locals.db, b.userId, 'r01', 'acolyte', 400, T0 + 1);
+    recordRangeSolve(app.locals.db, c.userId, 'r01', 'acolyte', 300, T0 + 2);
+    recordRangeSolve(app.locals.db, d.userId, 'r01', 'acolyte', 200, T0 + 3);
+    const html = (await a.agent.get('/leaderboard')).text;
+    expect(html).toMatch(/data-rank="1" data-user="bob" class="leaderboard-top leaderboard-top-1/);
+    expect(html).toMatch(/data-rank="3" data-user="dave" class="leaderboard-top leaderboard-top-3/);
+    expect(html).toContain('data-testid="leaderboard-you"');
+    expect(html).toMatch(/data-testid="leaderboard-you"[\s\S]*?data-rank="4" data-user="alice"/);
+    expect(html).toContain('Your position');
+  });
+
   it('Labs and Leaderboard for everyone; no Admin link (no admin pages in the POC); no Districts or Scoreboard links', async () => {
     const { app } = portalApp();
     const { agent } = await player(app, 'alice');
@@ -256,6 +314,64 @@ describe('the leaderboard and the navigation', () => {
       expect(html).not.toContain('data-testid="nav-admin"');
       expect(html).not.toContain('href="/scoreboard"');
     }
+    expect((await agent.get('/')).text).toMatch(/data-testid="nav-labs"[^>]*aria-current="page"/);
+    expect((await agent.get('/leaderboard')).text).toMatch(/data-testid="nav-leaderboard"[^>]*aria-current="page"/);
+  });
+});
+
+describe('portal copy and per-user headers', () => {
+  it('the public range never claims to run offline; the standalone shell keeps its copy', async () => {
+    const { app } = portalApp();
+    const login = (await request(app).get('/login')).text;
+    expect(login).toContain('data-mode="portal"');
+    expect(login).toContain('runs in your own isolated instance');
+    expect(login).not.toContain('Runs fully offline');
+    const { agent } = await player(app, 'alice');
+    for (const path of ['/', '/leaderboard', '/labs/r01']) {
+      const html = (await agent.get(path)).text;
+      expect(html, path).toContain('data-mode="portal"');
+      expect(html, path).not.toContain('Runs fully offline');
+      expect(html, path).not.toContain('Never expose it to an untrusted network');
+      expect(html, path).not.toContain('Nothing is sent anywhere');
+    }
+    const standalone = createApp({ flagSecret: TEST_SECRET });
+    onTestFinished(() => { try { standalone.locals.db.close(); } catch { /* closed */ } });
+    const old = (await request(standalone).get('/')).text;
+    expect(old).toContain('data-mode="standalone"');
+    expect(old).toContain('Runs fully offline');
+    expect(old).toContain('Never expose it to an untrusted network');
+  });
+
+  it('per-user pages and fragments are private, cookie-varied, nosniff and CSP-scoped', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice');
+    for (const path of ['/', '/leaderboard', '/labs/r01', '/labs/r01/panel?level=acolyte', '/my-lab/chip']) {
+      const res = await agent.get(path).set('HX-Request', 'true');
+      expect(res.status, path).toBe(200);
+      expect(res.headers['cache-control'], path).toBe('private, no-store');
+      expect(String(res.headers.vary), path).toMatch(/Cookie/i);
+      expect(res.headers['x-content-type-options'], path).toBe('nosniff');
+      expect(res.headers['content-security-policy'], path).toContain("default-src 'self'");
+      expect(res.headers['content-security-policy'], path).toContain("frame-ancestors 'self'");
+    }
+  });
+
+  it('a stale CSRF token on an htmx form is a tiny fragment + HX-Refresh, never a full page', async () => {
+    const kit = portalApp();
+    const { agent } = await player(kit.app, 'alice');
+    for (const [path, body] of [
+      ['/labs/r01/hint', { tier: '1' }], ['/labs/r01/launch', { level: 'acolyte' }], ['/labs/r01/submit', { submission: 'HVWA{x}' }],
+    ] as const) {
+      const res = await agent.post(path).set('HX-Request', 'true').type('form').send({ _csrf: 'stale', ...body });
+      expect(res.status, path).toBe(403);
+      expect(res.headers['hx-refresh'], path).toBe('true');
+      expect(res.text, path).not.toContain('<!doctype html>');
+      expect(res.text, path).toContain('data-error="csrf"');
+    }
+    expect(kit.warden.launched).toEqual([]); // a refused launch started nothing
+    const plain = await agent.post('/labs/r01/launch').type('form').send({ _csrf: 'stale', level: 'acolyte' });
+    expect(plain.status).toBe(403);
+    expect(plain.text).toContain('<!doctype html>'); // a normal page keeps the full refusal page
   });
 });
 
