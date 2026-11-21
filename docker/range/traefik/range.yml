@@ -1,5 +1,5 @@
-# docker/range/traefik/range.yml — Traefik's file-provider configuration for the HVWA range (a Go template: {{ env }} reads
-# the router container's environment). Mounted read-only at /etc/traefik/dynamic. Instance routers come from the labels
+# docker/range/traefik/range.yml — Traefik's file-provider configuration for the HVWA range (a Go template: its `env`
+# function reads the router container's environment). Mounted read-only at /etc/traefik/dynamic. Instance routers come from the labels
 # the warden puts on each lab container (src/warden/template.ts) and use the middleware and the service defined here
 # (hvwa-instance@file, hvwa-portal@file). Plain HTTP only: TLS ends at Cloudflare's edge (spec §12). Nothing secret here.
 http:

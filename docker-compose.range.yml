@@ -90,7 +90,9 @@ services:
     mem_limit: 512m
     cpus: 2.0
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      # The address is repeated here: `traefik healthcheck` reads flags, not this container's TRAEFIK_* environment
+      # (Traefik v3.7.19; without it the health check looks for the default :8080 and never goes healthy).
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entryPoint=ping", "--entryPoints.ping.address=127.0.0.1:8082"]
       interval: 15s
       timeout: 5s
       retries: 3

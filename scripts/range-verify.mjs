@@ -228,6 +228,17 @@ async function open(b) {
   if (u.protocol !== 'http:' || Number(u.port) !== HTTP_PORT || !/^i-[a-z2-7]{26}\.localhost$/.test(u.hostname)) throw new Error(`Open lab -> ${u.href}`);
   return { id: u.hostname.slice(2, -'.localhost'.length), host: u.hostname, gatePath: `${u.pathname}${u.search}` };
 }
+/** Follow an Open lab ticket, retrying while Traefik's Docker provider has not learned the new instance (its own 404):
+ *  the portal reports the instance ready a moment before the router exists, and an unrouted request never spends the
+ *  60 s ticket. Anything but Traefik's 404 is the gate's answer. */
+async function openLab(b, a) {
+  let r;
+  await poll(`Traefik to route ${a.host}`, async () => {
+    r = await b.get(a.host, a.gatePath);
+    return r.status !== 404;
+  }, 30_000, 250);
+  return r;
+}
 function randomInstanceId() {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
   return [...randomBytes(26)].map((b) => alphabet[b & 31]).join('');
@@ -266,7 +277,7 @@ const checks = [
     if (p.length) throw new Error(p.join('; '));
   }],
   ['Open lab: the single-use ticket becomes a host-only hvwa_gate cookie; the lab answers; a replay is refused', async () => {
-    const r = await s.alice.get(s.a.host, s.a.gatePath);
+    const r = await openLab(s.alice, s.a);
     if (r.status !== 303 || r.headers.location !== '/') throw new Error(`gate -> ${r.status} ${r.headers.location ?? ''}`);
     const line = r.setCookies.find((l) => l.startsWith('hvwa_gate=')) ?? '';
     for (const part of [/; HttpOnly/i, /; SameSite=Lax/i, /; Path=\//]) if (!part.test(line)) throw new Error(`hvwa_gate lacks ${part}: ${line}`);
@@ -286,7 +297,7 @@ const checks = [
   ["cross-user: no cookie, a forged cookie, and bob's own cookie on alice's host are 401", async () => {
     s.launchMs.push(await launch(s.bob, 'acolyte'));
     s.b = await open(s.bob);
-    await s.bob.get(s.b.host, s.b.gatePath);
+    await openLab(s.bob, s.b);
     const bobs = s.bob.jar.get(s.b.host, 'hvwa_gate');
     if (!bobs) throw new Error('bob got no gate cookie');
     const tries = [
