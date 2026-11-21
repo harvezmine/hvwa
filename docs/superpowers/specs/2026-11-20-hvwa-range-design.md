@@ -138,9 +138,13 @@ the admin.
 
 - **Value:** `HVWA{<base32 of HMAC-SHA256(rangeKey, "flag|" + instanceId + "|" + labId + "|" + level)>[:26]}`.
   `rangeKey` lives only in the portal.
-- **Delivery:** the warden passes the flag to the container as `HVWA_FLAG`. The lab's start hook plants it where
-  the lab's manifest says (§8.4), then removes it from `process.env` (or the language equivalent). A foothold
-  that can read the process environment only ever finds that level's own flag, which is acceptable.
+- **Delivery:** the warden creates and starts the container first, then writes the flag as a one-shot file through the
+  Docker Engine API (a tiny exec — uid/gid `10001` — that writes `.hvwa-flag` to `/tmp`, mode `0400`) — below Divine
+  only. A read-only rootfs means the Engine's archive endpoint refuses writes, so the exec is the delivery path. The
+  lab's start hook polls the non-secret `HVWA_FLAG_FILE` (`/tmp/.hvwa-flag`) for up to ~10 s, reads it once and unlinks
+  it, then plants it where the lab's manifest says (§8.4). The flag is never in the environment, the image, the
+  container configuration, `docker inspect` output or any log. If the write fails, the warden stops and removes the
+  container and the launch fails.
 - **Verification:** a submitted flag is accepted when it equals the flag of one of the **submitting user's**
   instances for that lab and level within the last 24 h. Instance records keep the flag hash, not the flag.
   A flag from another user's instance never matches.
@@ -163,6 +167,7 @@ Every instance container is created with exactly this configuration, fixed in th
 | PIDs / memory / CPU | 128 / 256 MiB (no swap) / 0.5 CPU by default; the manifest may lower them |
 | Network | its own internal network; no published ports; no egress; DNS only for itself |
 | Mounts | none (no volumes, no Docker socket, no host paths) |
+| Environment | `HVWA_LEVEL`, `HVWA_PORT`, `HVWA_INSTANCE_HOST`, `HOME=/tmp`, `HVWA_FLAG_FILE=/tmp/.hvwa-flag` only — never the flag |
 | Labels | `hvwa.range=1`, instance id, user id, lab id, level, expiry, Traefik router labels |
 | Restart policy | none (a crashed instance is reported as failed) |
 

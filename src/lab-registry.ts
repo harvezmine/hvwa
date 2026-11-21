@@ -17,7 +17,7 @@ export const DIFFICULTY_POINTS: Readonly<Record<Difficulty, number>> = Object.fr
  * `<repo>[:<tag>]@sha256:<64 hex>` (a pulled image, by its manifest digest). A tag alone is never enough.
  */
 export const IMAGE_REF_RE = /^(?:[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@)?sha256:[a-f0-9]{64}$/;
-/** Where the lab's start hook plants HVWA_FLAG (spec §6, §8.4). */
+/** Where the lab's start hook plants the flag (spec §6, §8.4). */
 export const FLAG_PLACEMENT_RE = /^(?:file:\/[A-Za-z0-9_./-]{1,200}|db:[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_]{0,62}|env-only|custom)$/;
 /** Spec §7's defaults, which are also the ceilings: a manifest may only lower them. */
 export const LAB_LIMITS = Object.freeze({ memoryMiB: 256, pids: 128, cpus: 0.5, tmpfsMiB: 64 });

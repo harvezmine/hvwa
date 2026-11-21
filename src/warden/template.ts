@@ -41,14 +41,12 @@ export interface InstanceSpecInput {
   readonly lab: LabEntry;
   readonly level: Level;
   readonly instanceId: string;
-  /** Absent at Divine. */
-  readonly flag?: string;
   readonly userId: number;
   readonly expiresAt: number;
 }
 
 export function containerSpec(input: InstanceSpecInput, settings: TemplateSettings): { name: string; body: Record<string, unknown> } {
-  const { lab, level, instanceId, flag, userId, expiresAt } = input;
+  const { lab, level, instanceId, userId, expiresAt } = input;
   const name = instanceResourceName(instanceId);
   const host = `i-${instanceId}.${settings.domain}`;
   const memory = Math.min(lab.resources.memoryMiB ?? LAB_LIMITS.memoryMiB, LAB_LIMITS.memoryMiB) * MIB;
@@ -61,9 +59,10 @@ export function containerSpec(input: InstanceSpecInput, settings: TemplateSettin
     body: {
       Image: lab.image,
       User: LAB_USER,
-      // The flag only below Divine; the lab's start hook plants it and removes it from its environment (spec §6).
+      // The flag is never in the environment (spec §6): the warden writes it as a one-shot file after start, at the
+      // path below. This name is non-secret; the file itself is read and unlinked by the lab's start hook.
       Env: [`HVWA_LEVEL=${level}`, `HVWA_PORT=${lab.port}`, `HVWA_INSTANCE_HOST=${host}`, 'HOME=/tmp',
-        ...(flag === undefined ? [] : [`HVWA_FLAG=${flag}`])],
+        'HVWA_FLAG_FILE=/tmp/.hvwa-flag'],
       Labels: {
         [RANGE_LABEL]: '1', 'hvwa.instance': instanceId, 'hvwa.user': String(userId), 'hvwa.lab': lab.id, 'hvwa.level': level,
         'hvwa.expires': String(expiresAt),

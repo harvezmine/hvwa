@@ -69,9 +69,11 @@ export function newFlag() {
 
 /**
  * The `docker run` arguments that mirror the range's hardening (src/warden/template.ts), for one lab container at one
- * level on the given internal network. `flag` is omitted at Divine. `runtime` comes from HVWA_LAB_TEST_RUNTIME (default runc).
+ * level on the given internal network. The flag is NEVER an env var; `lab-test.mjs` writes it afterwards as the one-shot
+ * file at HVWA_FLAG_FILE (a tiny `docker exec`, since a read-only rootfs blocks `docker cp`). `runtime` comes from
+ * HVWA_LAB_TEST_RUNTIME (default runc).
  */
-export function dockerRunArgs({ manifest, level, flag, network, name, image, runtime }) {
+export function dockerRunArgs({ manifest, level, network, name, image, runtime }) {
   const memMiB = Math.min(manifest.resources?.memoryMiB ?? LIMITS.memoryMiB, LIMITS.memoryMiB);
   const pids = Math.min(manifest.resources?.pids ?? LIMITS.pids, LIMITS.pids);
   const cpus = Math.min(manifest.resources?.cpus ?? LIMITS.cpus, LIMITS.cpus);
@@ -82,7 +84,7 @@ export function dockerRunArgs({ manifest, level, flag, network, name, image, run
     '-e', `HVWA_PORT=${manifest.port}`,
     '-e', 'HVWA_INSTANCE_HOST=i-labtest.localhost',
     '-e', 'HOME=/tmp',
-    ...(flag === undefined ? [] : ['-e', `HVWA_FLAG=${flag}`]),
+    '-e', 'HVWA_FLAG_FILE=/tmp/.hvwa-flag',
   ];
   return [
     'run', '-d', '--name', name, '--network', network,

@@ -1,17 +1,35 @@
-// labs/r02-courier/app/server.mjs — Courier. Start hook: build the in-memory store, planting HVWA_FLAG as parcel 1001's
-// private note, then DELETE HVWA_FLAG from the environment (spec §6). The HTML dashboard uses a demo-session cookie so a
-// plain browse works and shows only the demo customer's parcels; the JSON API uses a bearer token. Authorization (which
-// parcels a session may read) is the flaw and is chosen by HVWA_LEVEL (store.canRead). Listens on 0.0.0.0:$HVWA_PORT.
+// labs/r02-courier/app/server.mjs — Courier. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and unlink it,
+// then build the in-memory store, planting the flag as parcel 1001's private note (spec §6). The HTML dashboard uses a
+// demo-session cookie so a plain browse works and shows only the demo customer's parcels; the JSON API uses a bearer
+// token. Authorization (which parcels a session may read) is the flaw and is chosen by HVWA_LEVEL (store.canRead).
+// Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { createStore } from './store.mjs';
 import { page, esc } from './render.mjs';
 
 const LEVELS = ['acolyte', 'templar', 'divine'];
 const level = LEVELS.includes(process.env.HVWA_LEVEL ?? '') ? process.env.HVWA_LEVEL : 'acolyte';
 const port = Number(process.env.HVWA_PORT || 8080);
+const flagSource = process.env.HVWA_FLAG_FILE || '/tmp/.hvwa-flag';
 
-const flag = process.env.HVWA_FLAG;
-delete process.env.HVWA_FLAG;
+/** Poll for the one-shot flag file, read it once and unlink it. Below Divine only; otherwise exit non-zero. */
+async function readFlag() {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      const value = readFileSync(flagSource, 'utf8').trim();
+      if (value) { unlinkSync(flagSource); return value; }
+    } catch { /* the warden has not written it yet */ }
+    if (Date.now() >= deadline) {
+      console.error('courier: the flag file never appeared'); // never the flag itself
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+const flag = level === 'divine' ? undefined : await readFlag();
 const store = createStore(level, flag);
 
 const json = (res, status, obj) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };

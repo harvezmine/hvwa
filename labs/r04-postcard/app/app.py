@@ -1,10 +1,12 @@
-# labs/r04-postcard/app/app.py — Postcard. Start hook: write HVWA_FLAG (or a Divine decoy) to /tmp/postcard/flag.txt,
-# then pop HVWA_FLAG from the environment (spec §6). POST /preview renders the operator's message per level
-# (templating.render_card). No page renders the flag file. Serves on 0.0.0.0:$HVWA_PORT with Flask's threaded server
-# (debug OFF — debug would be its own vulnerability).
+# labs/r04-postcard/app/app.py — Postcard. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and unlink it,
+# then write it (or a Divine decoy) to /tmp/postcard/flag.txt (spec §6). POST /preview renders the operator's message per
+# level (templating.render_card). No page renders the flag file. Serves on 0.0.0.0:$HVWA_PORT with Flask's threaded
+# server (debug OFF — debug would be its own vulnerability).
 import json
 import os
 import pathlib
+import sys
+import time
 from flask import Flask, request, render_template_string
 from markupsafe import escape
 from templating import render_card
@@ -13,9 +15,31 @@ LEVELS = ("acolyte", "templar", "divine")
 LEVEL = os.environ.get("HVWA_LEVEL") if os.environ.get("HVWA_LEVEL") in LEVELS else "acolyte"
 PORT = int(os.environ.get("HVWA_PORT", "5000"))
 HERE = pathlib.Path(__file__).resolve().parent
+FLAG_SOURCE = os.environ.get("HVWA_FLAG_FILE", "/tmp/.hvwa-flag")
 
-_flag = os.environ.get("HVWA_FLAG")
-os.environ.pop("HVWA_FLAG", None)  # the process must not keep the flag in its environment
+
+def _read_flag():
+    """Poll for the one-shot flag file, read it once and unlink it. Below Divine only."""
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            with open(FLAG_SOURCE, "r", encoding="utf-8") as f:
+                value = f.read().strip()
+            if value:
+                try:
+                    os.unlink(FLAG_SOURCE)
+                except FileNotFoundError:
+                    pass
+                return value
+        except FileNotFoundError:
+            pass  # the warden has not written it yet
+        if time.monotonic() >= deadline:
+            print("postcard: the flag file never appeared", flush=True)  # never the flag itself
+            sys.exit(1)
+        time.sleep(0.1)
+
+
+_flag = None if LEVEL == "divine" else _read_flag()
 flag_dir = pathlib.Path("/tmp/postcard")
 flag_dir.mkdir(parents=True, exist_ok=True)
 _body = (_flag if (_flag and LEVEL != "divine")

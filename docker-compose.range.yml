@@ -151,14 +151,15 @@ services:
     # Dedicated network: the write proxy is reachable by the warden alone, never by the portal.
     networks: [docker]
     environment:
-      # The warden's: containers and networks, with writes (POST). Never exec, images, volumes, swarm, system.
+      # The warden's: containers, networks and exec (only to write the one-shot flag file into a read-only rootfs), with
+      # writes (POST). Never images, volumes, swarm, system.
       CONTAINERS: "1"
       NETWORKS: "1"
       POST: "1"
       EVENTS: "0"
       PING: "1"
       VERSION: "1"
-      EXEC: "0"
+      EXEC: "1"
       IMAGES: "0"
       VOLUMES: "0"
       BUILD: "0"

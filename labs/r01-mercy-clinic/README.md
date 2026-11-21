@@ -1,8 +1,9 @@
 # Mercy Clinic (r01) — SQL injection (Easy)
 
 Mercy Clinic is a community-clinic patient portal. Patients read notices and search them; staff-only notices are kept
-out of every public list. The flag is the body of a staff-only notice, planted at start from `HVWA_FLAG` and then
-scrubbed from the environment. The database lives in the `/tmp` tmpfs (the rootfs is read-only).
+out of every public list. The flag is the body of a staff-only notice: at start the app reads the one-shot flag file
+(`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`), unlinks it, then plants it. The flag is never in the environment. The
+database lives in the `/tmp` tmpfs (the rootfs is read-only).
 
 ## Vulnerable feature
 `GET /search?q=` — the notice search. All other queries in `db.mjs` are parameterised; only the search changes per level.

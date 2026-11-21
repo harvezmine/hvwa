@@ -1,8 +1,8 @@
-// labs/r03-beacon/app/server.mjs — Beacon. Start hook: write HVWA_FLAG (or a Divine decoy) to /tmp/beacon/flag.txt, then
-// DELETE HVWA_FLAG from the environment (spec §6). /diagnostics runs the per-level probe (diag.mjs). No page renders the
-// flag file; only a shell that reads it does. Listens on 0.0.0.0:$HVWA_PORT.
+// labs/r03-beacon/app/server.mjs — Beacon. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and unlink it,
+// then write it (or a Divine decoy) to /tmp/beacon/flag.txt (spec §6). /diagnostics runs the per-level probe (diag.mjs).
+// No page renders the flag file; only a shell that reads it does. Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { probe } from './diag.mjs';
@@ -12,9 +12,25 @@ const LEVELS = ['acolyte', 'templar', 'divine'];
 const level = LEVELS.includes(process.env.HVWA_LEVEL ?? '') ? process.env.HVWA_LEVEL : 'acolyte';
 const port = Number(process.env.HVWA_PORT || 8080);
 const device = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'seed', 'device.json'), 'utf8'));
+const flagSource = process.env.HVWA_FLAG_FILE || '/tmp/.hvwa-flag';
 
-const flag = process.env.HVWA_FLAG;
-delete process.env.HVWA_FLAG;
+/** Poll for the one-shot flag file, read it once and unlink it. Below Divine only; otherwise exit non-zero. */
+async function readFlag() {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      const value = readFileSync(flagSource, 'utf8').trim();
+      if (value) { unlinkSync(flagSource); return value; }
+    } catch { /* the warden has not written it yet */ }
+    if (Date.now() >= deadline) {
+      console.error('beacon: the flag file never appeared'); // never the flag itself
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+const flag = level === 'divine' ? undefined : await readFlag();
 mkdirSync('/tmp/beacon', { recursive: true });
 writeFileSync('/tmp/beacon/flag.txt',
   `${level === 'divine' || !flag ? 'Divine is the secure reference: the probe runs no shell, so there is nothing to inject.' : flag}\n`,

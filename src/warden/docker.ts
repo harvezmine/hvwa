@@ -37,6 +37,10 @@ export interface DockerClient {
   disconnectNetwork(network: string, container: string): Promise<void>;
   createContainer(name: string, body: object): Promise<string>;
   startContainer(nameOrId: string): Promise<void>;
+  /** Create an exec instance (the one-shot flag write) and return its id. */
+  execCreate(nameOrId: string, config: object): Promise<string>;
+  /** Run the exec instance to completion (non-detached). */
+  execStart(execId: string): Promise<void>;
   removeContainer(nameOrId: string): Promise<void>;
   inspectContainer(nameOrId: string): Promise<ContainerInspect | undefined>;
   listContainers(label: string): Promise<ContainerSummary[]>;
@@ -91,6 +95,16 @@ export function createDockerClient(baseUrl: string, opts: { timeoutMs?: number }
       return idOf(path, (await call('POST', path, body, [201])).json);
     },
     async startContainer(name: string) { await call('POST', `${DOCKER_API}/containers/${enc(name)}/start`, undefined, [204, 304]); },
+    async execCreate(name: string, config: object) {
+      const path = `${DOCKER_API}/containers/${enc(name)}/exec`;
+      return idOf(path, (await call('POST', path, config, [201])).json);
+    },
+    async execStart(execId: string) {
+      // Non-detached, no hijack: the Engine streams the (empty, no stdio attached) output as a chunked HTTP response and
+      // ends it when the command has finished, so this resolves only once the flag file has been written.
+      const path = `${DOCKER_API}/exec/${enc(execId)}/start`;
+      await call('POST', path, { Detach: false }, [200]);
+    },
     async removeContainer(name: string) { await call('DELETE', `${DOCKER_API}/containers/${enc(name)}?force=true&v=true`, undefined, [204, 404]); },
     async inspectContainer(name: string) {
       const r = await call('GET', `${DOCKER_API}/containers/${enc(name)}/json`, undefined, [200, 404]);
