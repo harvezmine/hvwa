@@ -8,6 +8,9 @@ import { appOptionsFromConfig, createApp } from './app.js';
 import { bindRefusal, loadConfig } from './config.js';
 import { listen, closeGracefully, listenUrl, startupBanner } from './lifecycle.js';
 import { adminPasswordNotice, scrubEnv } from './auth/startup.js';
+import { loadRangeConfig, RANGE_SECRET_NAMES, type RangeConfig } from './range/config.js';
+import { portalAppOptions } from './range/options.js';
+import type { Reaper } from './range/reaper.js';
 import type { Server } from 'node:http';
 
 // Validate the environment: one readable line per problem, then exit 1.
@@ -18,8 +21,19 @@ if (!loaded.ok) {
   process.exit(1);
 }
 const { config } = loaded;
-// The config holds it now; labs are built to leak, and code-execution ones reach process.env.
-scrubEnv(process.env, ['HVWA_ADMIN_PASSWORD']);
+// Portal mode (the range): its own settings, validated the same way, before anything else starts.
+let range: RangeConfig | undefined;
+if (config.HVWA_MODE === 'portal') {
+  const r = loadRangeConfig(process.env);
+  if (!r.ok) {
+    console.error('HVWA: invalid range configuration (HVWA_MODE=portal):');
+    for (const line of r.errors) console.error(`  ${line}`);
+    process.exit(1);
+  }
+  range = r.config;
+}
+// The config holds them now; labs are built to leak, and code-execution ones reach process.env.
+scrubEnv(process.env, ['HVWA_ADMIN_PASSWORD', ...RANGE_SECRET_NAMES]);
 
 // Deliberately vulnerable: refuse a non-loopback bind unless explicitly allowed.
 const refusal = bindRefusal(config);
@@ -38,7 +52,7 @@ mkdirSync(dataDir, { recursive: true });
 // Every registered challenge is checked, whichever edition is served: they all ship in dist/.
 for (const c of allChallenges()) assertChallengeFiles(c);
 
-const app = createApp(appOptionsFromConfig(config, dataDir));
+const app = createApp(range ? portalAppOptions(config, range, dataDir) : appOptionsFromConfig(config, dataDir));
 if (config.HVWA_ALLOWED_HOSTS.length > 0) {
   console.warn(`HVWA: also answering to Host ${config.HVWA_ALLOWED_HOSTS.join(', ')} (HVWA_ALLOWED_HOSTS)`);
 }
@@ -62,11 +76,19 @@ if (app.locals.auth?.usesDefaultPassword()) {
   console.warn('HVWA: the admin account still uses the DEFAULT password: sign in and change it at /account/password');
 }
 
+// Portal mode: reconcile the instance records with the warden now, then reap every 30 s.
+let reaper: Reaper | undefined;
+if (app.locals.range && range) {
+  console.log(`HVWA: mode portal (portal ${range.portalHost}, instances at i-<id>.${range.domain}, capacity ${range.capacity})`);
+  reaper = app.locals.range.start();
+}
+
 // Graceful stop: wait for server.close() to finish, then close the DB, then exit.
 let stopping = false;
 function shutdown(signal: NodeJS.Signals): void {
   if (stopping) return;
   stopping = true;
+  reaper?.stop();
   console.log(`${signal}: shutting down`);
   closeGracefully(server, app.locals.db).then(
     () => process.exit(0),
