@@ -1,6 +1,6 @@
 // src/core/i18n.ts
 import type { RequestHandler } from 'express';
-import { preference } from './cookies.js';
+import { cookieOptionsWith, preference } from './cookies.js';
 
 export const LANGS = Object.freeze(['id', 'en'] as const);
 export type Lang = (typeof LANGS)[number];
@@ -16,6 +16,15 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'app.footer': {
     id: 'Berjalan sepenuhnya offline di mesin ini. Tidak ada permintaan yang keluar.',
     en: 'Runs fully offline on this machine. Nothing is sent anywhere.',
+  },
+  // The range portal (HVWA_MODE=portal) is a network service: its footer and banner must NOT claim to run offline.
+  'app.portal_tagline': {
+    id: 'Range aplikasi web yang sengaja rentan, masing-masing di instans terisolasi.',
+    en: 'A range of deliberately vulnerable web apps, each in an isolated instance.',
+  },
+  'app.portal_footer': {
+    id: 'Lab berjalan di kontainer terpisah. Akun, skor, dan instans Anda milik Anda sendiri.',
+    en: 'Labs run in separate containers. Your account, score and instances belong to you.',
   },
   // The top navigation (core/views/layout.ejs).
   'nav.home': { id: 'Beranda', en: 'Home' },
@@ -438,6 +447,15 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'range.show_todo': { id: 'Belum terpecahkan', en: 'Not solved' },
   'range.show_done': { id: 'Terpecahkan', en: 'Solved' },
   'range.empty': { id: 'Tidak ada lab yang cocok.', en: 'No lab matches.' },
+  'range.empty_action': { id: 'Hapus saringan', en: 'Clear the filter' },
+  'range.search': { id: 'Cari lab', en: 'Search labs' },
+  'range.search_placeholder': { id: 'Nama aplikasi atau kata kunci', en: 'App name or keyword' },
+  'range.sort': { id: 'Urutkan', en: 'Sort' },
+  'range.sort_app': { id: 'Nama aplikasi', en: 'App name' },
+  'range.sort_difficulty': { id: 'Tingkat kesulitan', en: 'Difficulty' },
+  'range.sort_solved': { id: 'Terpecahkan dulu', en: 'Solved first' },
+  'range.continue_hero': { id: 'Lanjutkan lab Anda', en: 'Continue your lab' },
+  'range.progress_label': { id: 'Kemajuan katalog', en: 'Catalog progress' },
   'range.difficulty.easy': { id: 'Mudah', en: 'Easy' },
   'range.difficulty.medium': { id: 'Sedang', en: 'Medium' },
   'range.difficulty.hard': { id: 'Sulit', en: 'Hard' },
@@ -451,9 +469,19 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'range.howto2': { id: 'Buka lab di tab baru: hanya Anda yang dapat menjangkaunya.', en: 'Open it in a new tab: only you can reach it.' },
   'range.howto3': { id: 'Temukan flag di dalam aplikasi dan kirimkan di sini.', en: 'Find the flag inside the app and submit it here.' },
   'range.submit_help': {
-    id: 'A flag counts only from your own instance of this lab, for 24 hours after it was launched.',
+    id: 'Flag hanya dihitung dari instans lab ini milik Anda sendiri, selama 24 jam setelah diluncurkan.',
     en: 'A flag counts only from your own instance of this lab, for 24 hours after it was launched.',
   },
+  'range.idle_rule': {
+    id: 'Lab berhenti otomatis setelah {n} menit tanpa aktivitas.',
+    en: 'The lab stops automatically after {n} minutes without activity.',
+  },
+  'range.stopped.expired': { id: 'Lab terakhir berhenti karena mencapai batas waktunya.', en: 'Your last lab stopped when it reached its time limit.' },
+  'range.stopped.idle': { id: 'Lab terakhir berhenti karena tidak ada aktivitas.', en: 'Your last lab stopped after a period of inactivity.' },
+  'range.stopped.replaced': { id: 'Lab terakhir dihentikan saat Anda menjalankan yang baru.', en: 'Your last lab was stopped when you launched a new one.' },
+  'range.stopped.user': { id: 'Lab terakhir berhenti karena Anda menghentikannya.', en: 'Your last lab was stopped by you.' },
+  'range.stopped.lost': { id: 'Lab terakhir berhenti karena kontainernya hilang.', en: 'Your last lab stopped because its container was lost.' },
+  'range.stopped.interrupted': { id: 'Lab terakhir terhenti saat server dimulai ulang.', en: 'Your last lab was interrupted by a server restart.' },
   // The Lab panel and My Lab (compact POC: no queue, no Extend).
   'range.panel_title': { id: 'Lab Anda', en: 'Your lab' },
   'range.state.none': { id: 'Tidak berjalan', en: 'Not running' },
@@ -469,7 +497,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
     en: 'Launching this stops your running lab ({app}, {level}).',
   },
   'range.starting_help': { id: 'Lab Anda sedang disiapkan. Biasanya beberapa detik.', en: 'Your lab is being prepared. This usually takes a few seconds.' },
-  'range.full': { id: 'The range is full. Try again in a minute.', en: 'The range is full. Try again in a minute.' },
+  'range.full': { id: 'Range sedang penuh. Coba lagi sebentar lagi.', en: 'The range is full. Try again in a minute.' },
   'range.time_left': { id: 'sisa {n} menit', en: '{n} min left' },
   'range.open': { id: 'Buka lab', en: 'Open lab' },
   'range.reset': { id: 'Atur ulang', en: 'Reset' },
@@ -478,6 +506,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
     en: 'Reset creates a new instance with a new flag. Everything you changed in this lab is lost. Continue?',
   },
   'range.stop': { id: 'Hentikan', en: 'Stop' },
+  'range.stop_confirm': { id: 'Hentikan lab ini sekarang? Anda bisa menjalankannya lagi nanti.', en: 'Stop this lab now? You can launch it again later.' },
   'range.reason.start_timeout': { id: 'Lab tidak siap tepat waktu.', en: 'The lab did not become ready in time.' },
   'range.reason.unhealthy': { id: 'Pemeriksaan kesehatan lab gagal.', en: 'The lab failed its health check.' },
   'range.reason.no_healthcheck': { id: 'Image lab ini tidak punya pemeriksaan kesehatan.', en: 'This lab image has no health check.' },
@@ -506,12 +535,24 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'leaderboard.col_score': { id: 'Skor', en: 'Score' },
   'leaderboard.col_solved': { id: 'Lab terpecahkan', en: 'Labs solved' },
   'leaderboard.empty': { id: 'Belum ada yang terpecahkan.', en: 'Nothing solved yet.' },
+  'leaderboard.empty_action': { id: 'Jelajahi lab', en: 'Browse the labs' },
+  'leaderboard.pinned': { id: 'Posisi Anda', en: 'Your position' },
   'leaderboard.you': { id: '(Anda)', en: '(you)' },
   'safety.warning': {
     id: 'Lab latihan: aplikasi ini sengaja rentan. Jangan pernah mengeksposnya ke jaringan yang tidak tepercaya.',
     en: 'Training lab: this app is deliberately vulnerable. Never expose it to an untrusted network.',
   },
+  // Portal mode: each player gets an isolated instance through their own account. No "runs offline" claim is true here.
+  'safety.portal': {
+    id: 'Range latihan: setiap lab sengaja rentan dan berjalan di instans terisolasi milik Anda. Buka hanya melalui akun HVWA Anda.',
+    en: 'Training range: every lab is deliberately vulnerable and runs in your own isolated instance. Open it only through your HVWA account.',
+  },
 });
+
+/** Every dictionary key (the i18n spec checks that range.* keys are translated in both languages). */
+export function translationKeys(): readonly string[] {
+  return Object.keys(DICT);
+}
 
 export function isLang(x: unknown): x is Lang {
   return typeof x === 'string' && (LANGS as readonly string[]).includes(x);
@@ -539,9 +580,10 @@ export function districtBlurb(id: string, lang: Lang = DEFAULT_LANG): string {
 
 // lang = valid ?lang= → valid hvwa_lang cookie → DEFAULT_LANG.
 // Exposes req.lang + res.locals.{lang,t}.
-export function langMiddleware(): RequestHandler {
+export function langMiddleware(opts: { readonly secureCookies?: boolean } = {}): RequestHandler {
+  const cookieOptions = cookieOptionsWith(opts.secureCookies === true);
   return (req, res, next) => {
-    const lang = preference(req, res, { query: 'lang', cookie: 'hvwa_lang', isValid: isLang, fallback: DEFAULT_LANG });
+    const lang = preference(req, res, { query: 'lang', cookie: 'hvwa_lang', isValid: isLang, fallback: DEFAULT_LANG }, cookieOptions);
     req.lang = lang;
     res.locals.lang = lang;
     res.locals.t = (key: string) => t(key, lang);

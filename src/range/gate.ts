@@ -55,13 +55,44 @@ export function verifyGateCookie(key: Buffer, raw: unknown, now: number): GateCl
   return want.length === got.length && timingSafeEqual(want, got) ? { instanceId, userId, expMs } : undefined;
 }
 
-/** The 401 of the gate and of forward-auth: self-contained (a lab host has no /static), one link back to the portal. */
-export function deniedPage(portalUrl: string): string {
-  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-    + '<title>401 Lab not open here</title></head><body><main>'
+/**
+ * The 401 of the gate and of forward-auth: self-contained (an instance host has no /static), styled for either colour
+ * scheme, in English AND Indonesian (no portal cookie or language preference is available on this host), one link back
+ * to the portal, and — when a record exists — what happened to it (stopped, expired or failed).
+ */
+export function deniedPage(portalUrl: string, rec?: InstanceRecord): string {
+  const reason = rec === undefined ? undefined
+    : rec.state === 'failed' ? 'failed'
+      : rec.reason === 'expired' ? 'expired'
+        : rec.reason === 'idle' ? 'idle'
+          : rec.state === 'stopped' ? 'stopped' : undefined;
+  const enReason = reason === 'failed' ? 'The lab failed and was removed.'
+    : reason === 'expired' ? 'The lab reached its time limit and has expired.'
+      : reason === 'idle' ? 'The lab stopped after a period without activity.'
+        : reason === 'stopped' ? 'The lab has been stopped.' : '';
+  const idReason = reason === 'failed' ? 'Lab gagal dan telah dihapus.'
+    : reason === 'expired' ? 'Lab mencapai batas waktunya dan telah kedaluwarsa.'
+      : reason === 'idle' ? 'Lab berhenti setelah beberapa saat tanpa aktivitas.'
+        : reason === 'stopped' ? 'Lab telah dihentikan.' : '';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="dark light">'
+    + '<title>401 · Lab not open here / Lab tidak terbuka</title>'
+    + '<style>'
+    + ':root{color-scheme:dark light;--bg:#14161a;--surface:#1d2026;--text:#eef1f5;--muted:#a9b1bd;--primary:#8ab4f8;--border:#39404b}'
+    + '@media (prefers-color-scheme: light){:root{--bg:#f6f7f9;--surface:#ffffff;--text:#1a1d22;--muted:#4e5663;--primary:#0b57d0;--border:#c9cfd8}}'
+    + 'html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}'
+    + 'main{max-width:34rem;margin:12vh auto;padding:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:14px}'
+    + 'h1{font-size:1.35rem;margin:0 0 .75rem}p{margin:.5rem 0;color:var(--muted)}.lang{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:1.1rem}'
+    + 'a{color:var(--primary)}.reason{color:var(--text)}'
+    + '</style></head><body><main>'
     + '<h1>This lab is not open in this browser</h1>'
     + '<p>Labs open only from your account on the HVWA portal, and only while they run. Open it again from the portal.</p>'
-    + `<p><a href="${escapeHtml(portalUrl)}">Back to the HVWA portal</a></p>`
+    + (enReason === '' ? '' : `<p class="reason">${escapeHtml(enReason)}</p>`)
+    + '<p class="lang">Bahasa Indonesia</p>'
+    + '<h1>Lab ini tidak terbuka di peramban ini</h1>'
+    + '<p>Lab hanya terbuka dari akun Anda di portal HVWA, dan hanya selama lab berjalan. Buka lagi dari portal.</p>'
+    + (idReason === '' ? '' : `<p class="reason">${escapeHtml(idReason)}</p>`)
+    + `<p><a href="${escapeHtml(portalUrl)}">Back to the HVWA portal / Kembali ke portal HVWA</a></p>`
     + '</main></body></html>';
 }
 
@@ -73,11 +104,13 @@ export function edgeHandler(ctx: RangeContext): RequestHandler {
   const gateKey = gateKeyOf(opts.rangeKey);
   const portalUrl = `${portalOrigin(opts.portalHost, opts.publicScheme ?? 'https', opts.publicPort)}/`;
 
-  const deny = (res: Response) => {
+  const deny = (res: Response, detail?: InstanceRecord) => {
     res.status(401).set({
-      'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+      'Cache-Control': 'no-store',
+      // The static, self-contained page styles itself inline (no /static is reachable on an instance host).
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
       'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-    }).type('html').send(deniedPage(portalUrl));
+    }).type('html').send(deniedPage(portalUrl, detail));
   };
   /** The record when the instance is running, owned by `userId`, and that account is active. */
   const owned = (instanceId: string, userId: number): InstanceRecord | undefined => {
@@ -90,7 +123,7 @@ export function edgeHandler(ctx: RangeContext): RequestHandler {
     res.set('Referrer-Policy', 'no-referrer'); // the ticket never travels on in a Referer
     const claims = tickets.consume(req.query.t);
     const rec = claims !== undefined && claims.instanceId === instanceId ? owned(instanceId, claims.userId) : undefined;
-    if (!claims || !rec || rec.startedAt === null) { deny(res); return; }
+    if (!claims || !rec || rec.startedAt === null) { deny(res, lifecycle.store.get(instanceId)); return; }
     const expMs = rec.startedAt + opts.limits.maxMs;
     res.cookie(GATE_COOKIE, mintGateCookie(gateKey, instanceId, claims.userId, expMs), {
       httpOnly: true, sameSite: 'lax', path: '/', secure: opts.secureCookies === true, maxAge: Math.max(0, expMs - ctx.now()),
@@ -115,7 +148,7 @@ export function edgeHandler(ctx: RangeContext): RequestHandler {
     const instanceId = instanceIdOfHost(forwardedHost, opts.domain);
     if (instanceId === undefined || /^\/__hvwa(?:\/|$)/i.test(uri)) { deny(res); return; }
     const claims = verifyGateCookie(gateKey, req.cookies?.[GATE_COOKIE], ctx.now());
-    if (!claims || claims.instanceId !== instanceId || !owned(instanceId, claims.userId)) { deny(res); return; }
+    if (!claims || claims.instanceId !== instanceId || !owned(instanceId, claims.userId)) { deny(res, lifecycle.store.get(instanceId)); return; }
     lifecycle.touch(instanceId);
     res.status(200).end();
   }

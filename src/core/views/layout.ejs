@@ -1,5 +1,7 @@
 <!doctype html>
 <% const keep = typeof prefQuery === 'string' ? prefQuery : ''; -%>
+<% const portalMode = typeof mode !== 'undefined' && mode === 'portal'; -%>
+<% const navActive = typeof portalNav !== 'undefined' && portalNav && portalNav.active ? portalNav.active : ''; -%>
 <html lang="<%= typeof lang !== 'undefined' ? lang : 'en' %>"<% if (typeof uiTheme !== 'undefined' && (uiTheme === 'dark' || uiTheme === 'light')) { %> data-theme="<%= uiTheme %>"<% } %>>
 <head>
   <meta charset="utf-8">
@@ -14,7 +16,7 @@
 <body>
 <%# The shared page shell (render.ts page()). Every value goes through the escaped output tag; only the rendered view body and the platform partials are included raw. Icons come from the /static/icons.svg sprite, so a page stays small (the XSS oracle reads whole lab pages, up to XSS_LIMITS.htmlLength). The theme toggle and the language switch are plain links (no JavaScript needed); static/ui.js only enhances. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
   <a class="skip-link" href="#main"><%= t('nav.skip') %></a>
-  <div class="safety-banner" role="note"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t('safety.warning') %></span></div>
+  <div class="safety-banner" role="note" data-mode="<%= portalMode ? 'portal' : 'standalone' %>"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t(portalMode ? 'safety.portal' : 'safety.warning') %></span></div>
 <% if (platformAuth && platformAuth.defaultPassword) { -%>
   <div class="default-password-banner" role="alert" data-testid="default-password-banner">
     <div class="banner-inner">
@@ -34,8 +36,8 @@
 <% if (!platformAuth || platformAuth.signedIn) { -%>
       <nav class="site-nav" aria-label="<%= t('nav.main') %>">
 <% if (typeof portalNav !== 'undefined' && portalNav) { -%>
-        <a href="/" class="nav-link" data-testid="nav-labs"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><span><%= t('nav.labs') %></span></a>
-        <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.leaderboard') %></span></a>
+        <a href="/" class="nav-link" data-testid="nav-labs"<% if (navActive === 'labs') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><span><%= t('nav.labs') %></span></a>
+        <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"<% if (navActive === 'leaderboard') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.leaderboard') %></span></a>
 <% } else { -%>
         <a href="/" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><span><%= t('nav.districts') %></span></a>
         <a href="/scoreboard" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.scoreboard') %></span></a>
@@ -128,8 +130,8 @@
   <footer class="site-footer">
     <div class="footer-inner">
       <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg>HVWA</span>
-      <span><%= t('app.tagline') %></span>
-      <span><%= t('app.footer') %></span>
+      <span><%= t(portalMode ? 'app.portal_tagline' : 'app.tagline') %></span>
+      <span><%= t(portalMode ? 'app.portal_footer' : 'app.footer') %></span>
     </div>
   </footer>
 </body>

@@ -1,6 +1,6 @@
 // src/core/theme.ts — the colour theme preference (the layout's light/dark toggle).
 import type { RequestHandler } from 'express';
-import { preference } from './cookies.js';
+import { cookieOptionsWith, preference } from './cookies.js';
 
 /** 'system' follows prefers-color-scheme (no data-theme on <html>); 'dark' / 'light' are explicit choices. */
 export const THEMES = Object.freeze(['system', 'dark', 'light'] as const);
@@ -15,9 +15,12 @@ export function isTheme(x: unknown): x is Theme {
  * resolver as ?lang= and ?level=). Presentation only: the toggle is a plain link, so it works without JavaScript,
  * and the server renders the chosen theme on the next page (no flash of the wrong theme).
  */
-export function themeMiddleware(): RequestHandler {
+export function themeMiddleware(opts: { readonly secureCookies?: boolean } = {}): RequestHandler {
+  const cookieOptions = cookieOptionsWith(opts.secureCookies === true);
   return (req, res, next) => {
-    res.locals.uiTheme = preference<Theme>(req, res, { query: 'theme', cookie: 'hvwa_theme', isValid: isTheme, fallback: 'system' });
+    res.locals.uiTheme = preference<Theme>(
+      req, res, { query: 'theme', cookie: 'hvwa_theme', isValid: isTheme, fallback: 'system' }, cookieOptions,
+    );
     res.locals.prefQuery = keptQuery(req.originalUrl);
     next();
   };

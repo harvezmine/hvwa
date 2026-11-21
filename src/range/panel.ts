@@ -5,14 +5,18 @@
 import type { Request, Response } from 'express';
 import type { Level } from '../core/levels.js';
 import type { LabEntry, LabRegistry } from '../lab-registry.js';
-import type { InstanceRecord } from './store.js';
+import { isActiveState, type InstanceRecord } from './store.js';
 import type { RangeContext } from './types.js';
 
 /** Failure reasons the panel can name (range.reason.<code>); anything else shows as 'unknown'. */
 export const PANEL_REASONS = Object.freeze(['start_timeout', 'unhealthy', 'no_healthcheck', 'missing', 'crashed', 'exited', 'oom',
   'bad_request', 'unknown_lab', 'bad_level', 'exists', 'docker', 'unauthorized', 'unavailable'] as const);
-/** A failure older than this no longer shows on the panel. */
+/** Stop reasons whose notice is worth showing with a relaunch path (range.stopped.<reason>). */
+export const PANEL_STOP_REASONS = Object.freeze(['expired', 'idle', 'replaced'] as const);
+/** A failure — or a stop — older than this no longer shows on the panel or the My Lab chip. */
 export const FAILURE_SHOWN_MS = 15 * 60_000;
+/** The My Lab chip also shows a recently ended instance for this long, so a player can relaunch it. */
+export const MY_LAB_RECENT_MS = FAILURE_SHOWN_MS;
 
 /** What the panel shows: not running, being prepared, running, or the last attempt failed. */
 export type PanelState = 'none' | 'starting' | 'running' | 'failed';
@@ -25,10 +29,14 @@ export interface PanelModel {
   readonly minutesLeft: number;
   /** A PANEL_REASONS code or 'unknown' when failed; '' otherwise. */
   readonly reason: string;
+  /** A recent stop reason (expired, idle, replaced) worth a notice; undefined otherwise. */
+  readonly stoppedReason?: string;
   /** The user's instance elsewhere, which Launch would stop. */
   readonly replaces?: { readonly app: string; readonly levelLabel: string };
   /** The range is at capacity: the launch was refused and nothing started. */
   readonly full: boolean;
+  /** The idle limit, in minutes (the "stops after N minutes idle" rule). */
+  readonly idleMinutes: number;
   /** 0: no polling. */
   readonly pollSeconds: number;
   readonly csrf: string;
@@ -46,7 +54,7 @@ export function panelFor(ctx: RangeContext, req: Request, res: Response, lab: La
   const label = (l: Level) => t(l === 'divine' ? 'challenge.divine_tab' : `level.${l}`);
   const base = {
     labId: lab.id, level, levelLabel: label(level), minutesLeft: 0, reason: '', full: notice === 'full',
-    pollSeconds: 0, csrf: ctx.auth.csrfFor(req),
+    idleMinutes: Math.max(1, Math.round(ctx.opts.limits.idleMs / 60_000)), pollSeconds: 0, csrf: ctx.auth.csrfFor(req),
   };
   if (current && current.labId === lab.id && current.level === level) {
     const state: PanelState = current.state === 'running' ? 'running' : current.state === 'starting' ? 'starting' : 'none';
@@ -56,26 +64,53 @@ export function panelFor(ctx: RangeContext, req: Request, res: Response, lab: La
       pollSeconds: state === 'starting' ? 1 : state === 'running' ? 30 : 0,
     };
   }
-  if (current) {
-    return { ...base, state: 'none', replaces: { app: ctx.registry.get(current.labId)?.app ?? current.labId, levelLabel: label(current.level) } };
-  }
+  // The user's instance elsewhere (a different lab or level): Launch here would replace it.
+  const replaces = current === undefined ? undefined
+    : { app: ctx.registry.get(current.labId)?.app ?? current.labId, levelLabel: label(current.level) };
+  // This lab at this level, if one ended recently: show why, with the Launch button as the relaunch path.
   const latest = lifecycle.store.latestFor(userId, lab.id, level);
-  if (notice !== 'full' && latest?.state === 'failed' && latest.endedAt !== null && now - latest.endedAt < FAILURE_SHOWN_MS) {
-    const reason = (PANEL_REASONS as readonly string[]).includes(latest.reason ?? '') ? (latest.reason as string) : 'unknown';
-    return { ...base, state: 'failed', reason };
+  const recent = latest !== undefined && latest.endedAt !== null && now - latest.endedAt < FAILURE_SHOWN_MS;
+  if (notice !== 'full' && recent && latest !== undefined) {
+    if (latest.state === 'failed') {
+      const reason = (PANEL_REASONS as readonly string[]).includes(latest.reason ?? '') ? (latest.reason as string) : 'unknown';
+      return { ...base, state: 'failed', reason, ...(replaces === undefined ? {} : { replaces }) };
+    }
+    if (latest.state === 'stopped' && (PANEL_STOP_REASONS as readonly string[]).includes(latest.reason ?? '')) {
+      // Its container is gone, so the only action is to launch again (the relaunch path the panel already renders).
+      return { ...base, state: 'none', stoppedReason: latest.reason as string, ...(replaces === undefined ? {} : { replaces }) };
+    }
   }
+  if (replaces !== undefined) return { ...base, state: 'none', replaces };
   return { ...base, state: 'none' };
 }
 
 export interface MyLabChip { readonly href: string; readonly state: string; readonly text: string }
 
-/** The header's My Lab chip (res.locals.myLab). */
-export function myLabChip(current: InstanceRecord | undefined, registry: LabRegistry, now: number, t: (key: string) => string): MyLabChip {
-  if (!current) return { href: '/', state: 'none', text: t('range.my_lab_none') };
-  const app = registry.get(current.labId)?.app ?? current.labId;
-  const href = `/labs/${current.labId}?level=${current.level}`;
-  if (current.state === 'running') {
-    return { href, state: 'running', text: `${app} · ${t('range.time_left').replace('{n}', String(minutesUntil(current.expiresAt, now)))}` };
+/**
+ * The header's My Lab chip (res.locals.myLab). `latest` is the user's newest instance of any state. The chip is HIDDEN
+ * (undefined) when there is neither an active instance nor one that ended recently, and it names a failed or stopped
+ * instance so the player can relaunch it from the lab page.
+ */
+export function myLabChip(
+  latest: InstanceRecord | undefined, registry: LabRegistry, now: number, t: (key: string) => string,
+): MyLabChip | undefined {
+  if (!latest) return undefined;
+  const active = isActiveState(latest.state);
+  const recent = latest.endedAt !== null && now - latest.endedAt < MY_LAB_RECENT_MS;
+  if (!active && !recent) return undefined;
+  const app = registry.get(latest.labId)?.app ?? latest.labId;
+  const href = `/labs/${latest.labId}?level=${latest.level}`;
+  if (latest.state === 'running') {
+    return { href, state: 'running', text: `${app} · ${t('range.time_left').replace('{n}', String(minutesUntil(latest.expiresAt, now)))}` };
   }
-  return { href, state: current.state, text: `${app} · ${t(`range.state.${current.state}`)}` };
+  if (latest.state === 'failed') {
+    return { href, state: 'failed', text: `${app} · ${t('range.state.failed')}` };
+  }
+  if (latest.state === 'stopped') {
+    const key = `range.stopped.${latest.reason ?? ''}`;
+    const text = t(key) === key ? t('range.state.stopped') : t(key);
+    return { href, state: 'stopped', text: `${app} · ${text}` };
+  }
+  // starting (or queued, which the POC does not use)
+  return { href, state: latest.state, text: `${app} · ${t(`range.state.${latest.state}`)}` };
 }

@@ -1,6 +1,6 @@
 <%# Range lab page (src/range/catalog.ts): briefing, difficulty, the level picker with points, paid hints; the side column holds how the range works. Hooks: briefing, range-level-<level> (data-solved, aria-current), hint-<tier>. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
-<header class="page-head">
-  <p class="lab-card-meta"><span class="tag"><%= lab.category %></span><span class="badge difficulty-badge" data-difficulty="<%= lab.difficulty %>"><%= lab.difficultyLabel %></span></p>
+<header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>">
+  <p class="lab-card-meta"><span class="hero-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= lab.icon %>"></use></svg></span><span class="tag"><%= lab.category %></span><span class="badge difficulty-badge" data-difficulty="<%= lab.difficulty %>"><%= lab.difficultyLabel %></span></p>
   <h1 class="page-title"><span><%= lab.app %></span> <span class="muted"><%= lab.title %></span></h1>
 <% if (best) { -%>
   <p class="status status-solved"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-check-circle"></use></svg><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>

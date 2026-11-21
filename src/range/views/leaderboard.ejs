@@ -7,6 +7,7 @@
 <div class="empty">
   <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg>
   <p><%= t('leaderboard.empty') %></p>
+  <a class="btn btn-secondary" href="/" data-testid="leaderboard-empty-action"><%= t('leaderboard.empty_action') %></a>
 </div>
 <% } else { -%>
 <div class="table-wrap">
@@ -14,8 +15,8 @@
     <thead><tr><th scope="col" class="num"><%= t('leaderboard.col_rank') %></th><th scope="col"><%= t('leaderboard.col_player') %></th><th scope="col" class="num"><%= t('leaderboard.col_score') %></th><th scope="col" class="num"><%= t('leaderboard.col_solved') %></th></tr></thead>
     <tbody>
 <% rows.forEach(function (r) { -%>
-      <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>"<% if (r.userId === me) { %> class="leaderboard-me" aria-current="true"<% } %>>
-        <td class="num"><%= r.rank %></td>
+      <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="<% if (r.rank <= 3) { %>leaderboard-top leaderboard-top-<%= r.rank %> <% } %><% if (r.userId === me) { %>leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
+        <td class="num"><span class="leaderboard-rank"><%= r.rank %></span></td>
         <th scope="row"><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
         <td class="num"><%= r.score %></td>
         <td class="num"><%= r.solved %></td>
@@ -24,4 +25,19 @@
     </tbody>
   </table>
 </div>
+<% if (typeof pinned !== 'undefined' && pinned) { -%>
+<div class="table-wrap leaderboard-pinned" data-testid="leaderboard-you">
+  <p class="leaderboard-pinned-label"><%= t('leaderboard.pinned') %></p>
+  <table class="table">
+    <tbody>
+      <tr data-rank="<%= pinned.rank %>" data-user="<%= pinned.username %>" class="leaderboard-me" aria-current="true">
+        <td class="num"><%= pinned.rank %></td>
+        <th scope="row"><%= pinned.username %> <span class="muted"><%= t('leaderboard.you') %></span></th>
+        <td class="num"><%= pinned.score %></td>
+        <td class="num"><%= pinned.solved %></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<% } -%>
 <% } -%>

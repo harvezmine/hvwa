@@ -16,9 +16,8 @@ import type { RangeContext } from './types.js';
 export function labRoutes(router: Router, ctx: RangeContext): void {
   const { db, registry, auth, lifecycle, opts } = ctx;
   const levelOf = (raw: unknown, lab: LabEntry): Level | undefined => (isLevel(raw) && lab.levels.includes(raw) ? raw : undefined);
-  const sendPanel = async (req: Request, res: Response, lab: LabEntry, level: Level, notice?: 'full') => {
-    res.set('Cache-Control', 'no-store');
-    await sendFragment(res, rangeView('panel'), { panel: panelFor(ctx, req, res, lab, level, notice) });
+  const sendPanel = async (req: Request, res: Response, lab: LabEntry, level: Level, notice?: 'full', focus = false) => {
+    await sendFragment(res, rangeView('panel'), { panel: panelFor(ctx, req, res, lab, level, notice), focus });
   };
 
   router.post('/labs/:id/submit', async (req, res, next) => {
@@ -37,6 +36,7 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
     const level = levelOf(req.query.level, lab) ?? clampLevel(req.level, lab.levels);
     const current = lifecycle.current(userOf(res).userId);
     if (current?.state === 'starting') await lifecycle.refresh(current.id);
+    // A poll: no focus move (this fires every second while starting).
     await sendPanel(req, res, lab, level);
   });
 
@@ -57,7 +57,8 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
         if (action === 'reset') await lifecycle.reset(userId);
         else await lifecycle.stop(userId, 'user');
       }
-      if (isHtmx(req)) { await sendPanel(req, res, lab, level, notice); return; }
+      // An action swap moves focus to the panel; a poll (above) never does.
+      if (isHtmx(req)) { await sendPanel(req, res, lab, level, notice, true); return; }
       res.redirect(303, `/labs/${lab.id}?level=${level}${notice === 'full' ? '&r=full' : ''}`);
     });
   }
@@ -77,11 +78,13 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
   });
 
   router.get('/my-lab', (_req, res) => {
-    const current = lifecycle.current(userOf(res).userId);
-    res.redirect(303, current ? `/labs/${current.labId}?level=${current.level}` : '/');
+    // The chip's target: an active instance, or a recently ended one (this is the relaunch path).
+    const chip = res.locals.myLab;
+    res.redirect(303, chip ? chip.href : '/');
   });
   router.get('/my-lab/chip', async (_req, res) => {
-    res.set('Cache-Control', 'no-store');
+    // No active/recent instance: an empty swap removes the chip (htmx outerHTML).
+    if (!res.locals.myLab) { res.type('html').send(''); return; }
     await sendFragment(res, MY_LAB_VIEW);
   });
 }

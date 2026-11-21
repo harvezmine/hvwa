@@ -58,6 +58,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   const store = createInstanceStore(deps.db);
   const lastSeen = new Map<string, number>();
   const chains = new Map<number, Promise<unknown>>();
+  // Every launch's capacity decision runs here, so no two users can pass the check before either has reserved its slot.
+  // The job itself is synchronous (SQLite reads/writes only), so once it runs, no other launch can interleave; the old
+  // instance's container is stopped only AFTER the new record has reserved the slot (see launch()).
+  let capacityTail: Promise<unknown> = Promise.resolve();
 
   /** Run `job` after every earlier job of this user. */
   function serial<T>(userId: number, job: () => Promise<T>): Promise<T> {
@@ -66,6 +70,13 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     const tail = run.then(() => undefined, () => undefined);
     chains.set(userId, tail);
     void tail.then(() => { if (chains.get(userId) === tail) chains.delete(userId); });
+    return run;
+  }
+
+  /** Run `job` after every earlier capacity decision in this process. */
+  function withCapacityLock<T>(job: () => T): Promise<T> {
+    const run = capacityTail.then(job, job);
+    capacityTail = run.then(() => undefined, () => undefined);
     return run;
   }
 
@@ -93,6 +104,14 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     lastSeen.delete(rec.id);
   }
 
+  /** A record already marked stopped by a reservation: remove its container (best effort). */
+  async function stopContainer(rec: InstanceRecord): Promise<void> {
+    if (rec.state !== 'queued') {
+      try { await warden.stop(rec.id); } catch (err) { log(`range: stop of ${rec.id} failed (${codeOf(err)}); the reaper retries`); }
+    }
+    lastSeen.delete(rec.id);
+  }
+
   const lc: Lifecycle = {
     store,
     current: (userId) => store.activeFor(userId),
@@ -101,22 +120,25 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const lab = registry.get(labId);
       if (!lab) return { ok: false, error: 'unknown_lab' };
       if (!lab.levels.includes(level)) return { ok: false, error: 'bad_level' };
-      const prev = store.activeFor(userId);
-      // The compact POC has no queue: at capacity the launch is refused. Replacing the user's own instance frees its
-      // own slot, so a relaunch still succeeds at capacity (if the range is not full besides it).
-      const live = store.countLive() - (prev && prev.state !== 'queued' ? 1 : 0);
-      if (live >= limits.capacity) return { ok: false, error: 'full' };
-      if (prev) await stopRecord(prev, 'replaced');
-      // Re-check after the (awaited) stop: another user's launch may have taken a slot meanwhile (the per-user
-      // chains do not serialize different users). countLive() excludes the record just stopped; check and insert
-      // are synchronous, so no other launch can slip between them.
-      if (store.countLive() >= limits.capacity) return { ok: false, error: 'full' };
-      const id = newInstanceId();
-      const t = now();
-      const hash = level === 'divine' ? null : flagHash(rangeFlag(rangeKey, id, labId, level));
-      store.insert({ id, userId, labId, level, state: 'starting', flagHash: hash, createdAt: t, startedAt: t, expiresAt: t + limits.maxMs });
-      await start(store.get(id) as InstanceRecord);
-      return { ok: true, instance: store.get(id) as InstanceRecord };
+      // Reserve the new slot in ONE synchronous capacity decision: the compact POC has no queue, and a relaunch frees
+      // its own slot. The user's current instance is NOT stopped here: if the range is full besides it, the launch
+      // answers `full` and nothing is destroyed. Only after the slot is reserved (the new record inserted) is the old
+      // container stopped, so another user can never take the freed slot and leave the player with nothing.
+      const reserved = await withCapacityLock((): { ok: true; id: string; prev: InstanceRecord | undefined } | { ok: false } => {
+        const prev = store.activeFor(userId);
+        const live = store.countLive() - (prev && prev.state !== 'queued' ? 1 : 0);
+        if (live >= limits.capacity) return { ok: false };
+        if (prev) store.update(prev.id, { state: 'stopped', reason: 'replaced', endedAt: now() });
+        const id = newInstanceId();
+        const t = now();
+        const hash = level === 'divine' ? null : flagHash(rangeFlag(rangeKey, id, labId, level));
+        store.insert({ id, userId, labId, level, state: 'starting', flagHash: hash, createdAt: t, startedAt: t, expiresAt: t + limits.maxMs });
+        return { ok: true, id, prev };
+      });
+      if (!reserved.ok) return { ok: false, error: 'full' };
+      if (reserved.prev) await stopContainer(reserved.prev);
+      await start(store.get(reserved.id) as InstanceRecord);
+      return { ok: true, instance: store.get(reserved.id) as InstanceRecord };
     }),
 
     async stop(userId, reason = 'user') {

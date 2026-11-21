@@ -147,15 +147,18 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
     locals: Object.assign(base.locals, { db, edition, challenges, auth: login?.service, mode: 'standalone' as const, range: undefined }),
   });
 
+  // Standalone serves plain http on loopback by default; honour an explicit Secure setting if one is given.
+  const secureCookies = typeof opts.auth === 'object' && opts.auth.secureCookies === true;
   // FIRST: requests for a foreign Host (DNS rebinding) never reach anything else.
   app.use(hostGuard(opts.allowedHosts));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
-  app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock }));
-  app.use(levelMiddleware());
-  app.use(langMiddleware());
-  app.use(themeMiddleware());
+  app.use((_req, res, next) => { res.locals.mode = 'standalone'; next(); });
+  app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock, secureCookies }));
+  app.use(levelMiddleware({ secureCookies }));
+  app.use(langMiddleware({ secureCookies }));
+  app.use(themeMiddleware({ secureCookies }));
   serveStatic(app);
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
@@ -192,6 +195,11 @@ function createPortalApp(opts: AppOptions): HvwaApp {
   // Cloudflare, the portal itself only sees plain http); a budget of failed sign-ins per client IP (CF-Connecting-IP
   // behind the tunnel); /register, open unless HVWA_REGISTRATION_OPEN=0.
   const scheme = range.publicScheme ?? 'https';
+  // Secure on hvwa_sid, hvwa_gate and the preference cookies exactly when the browser speaks https. An explicit
+  // `auth.secureCookies` wins (the test kit turns it off because supertest speaks plain http); portalAppOptions derives
+  // it from the public scheme, so a local http run keeps working.
+  const secureCookies = typeof opts.auth === 'object' && opts.auth.secureCookies !== undefined
+    ? opts.auth.secureCookies : scheme === 'https';
   const login = platformAuth(db, {
     passwordMinLength: RANGE_PASSWORD_MIN_LENGTH, secureCookies: scheme === 'https', publicScheme: scheme,
     signInPerIp: SIGN_IN_PER_IP_DEFAULTS,
@@ -213,10 +221,14 @@ function createPortalApp(opts: AppOptions): HvwaApp {
   app.use(portal.edge);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock }));
-  app.use(levelMiddleware());
-  app.use(langMiddleware());
-  app.use(themeMiddleware());
+  // The layout switches its safety banner and footer on this: portal pages never claim to run offline.
+  app.use((_req, res, next) => { res.locals.mode = 'portal'; next(); });
+  app.use(sessionMiddleware({
+    maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock, secureCookies,
+  }));
+  app.use(levelMiddleware({ secureCookies }));
+  app.use(langMiddleware({ secureCookies }));
+  app.use(themeMiddleware({ secureCookies }));
   serveStatic(app);
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
 

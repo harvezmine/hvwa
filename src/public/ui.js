@@ -39,4 +39,21 @@
     input.addEventListener('input', update);
     update();
   });
+
+  // After an ACTION swap (not a poll), move focus to the swapped panel so keyboard and screen-reader users land on the
+  // new state. The server marks those responses data-focus-after-swap; poll responses never carry it.
+  document.addEventListener('htmx:afterSwap', function () {
+    var el = document.querySelector('[data-focus-after-swap]');
+    if (!el) return;
+    el.removeAttribute('data-focus-after-swap');
+    window.requestAnimationFrame(function () { try { el.focus(); } catch (e) { /* not focusable */ } });
+  });
+
+  // A plain (non-htmx) submit of a form with data-confirm asks first. htmx forms use hx-confirm instead, so skip them
+  // here to avoid asking twice.
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f || !f.getAttribute || !f.hasAttribute('data-confirm') || f.hasAttribute('hx-post')) return;
+    if (!window.confirm(f.getAttribute('data-confirm'))) e.preventDefault();
+  }, true);
 })();

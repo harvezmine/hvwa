@@ -1,7 +1,7 @@
 // src/core/session.ts
 import { randomUUID } from 'node:crypto';
 import type { RequestHandler } from 'express';
-import { COOKIE_OPTIONS } from './cookies.js';
+import { cookieOptionsWith } from './cookies.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,6 +12,8 @@ export interface SessionOptions {
   maxNewPerMinute?: number;
   /** Clock in ms (injectable for tests). Default Date.now. */
   now?: () => number;
+  /** Secure on hvwa_sid: true when the browser speaks https (portal mode); false for a local http run. */
+  secureCookies?: boolean;
 }
 
 // Requires cookie-parser to run first (createApp mounts it before this).
@@ -28,6 +30,7 @@ export function sessionMiddleware(opts: SessionOptions = {}): RequestHandler {
   if (!Number.isInteger(maxNewPerMinute) || maxNewPerMinute < 1) {
     throw new Error(`sessionMiddleware: maxNewPerMinute must be a positive integer (got ${String(maxNewPerMinute)})`);
   }
+  const cookieOptions = cookieOptionsWith(opts.secureCookies === true);
   const issued: number[] = [];
   return (req, res, next) => {
     const incoming = req.cookies?.hvwa_sid;
@@ -45,7 +48,7 @@ export function sessionMiddleware(opts: SessionOptions = {}): RequestHandler {
         issued.push(t);
       }
       sid = randomUUID();
-      res.cookie('hvwa_sid', sid, COOKIE_OPTIONS);
+      res.cookie('hvwa_sid', sid, cookieOptions);
     }
     req.sessionId = sid;
     next();

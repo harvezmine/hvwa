@@ -26,12 +26,19 @@ export interface PreferenceSpec<T extends string> {
  * cookie, only when it differs from the current cookie); otherwise a valid
  * cookie; otherwise the fallback.
  */
-export function preference<T extends string>(req: Request, res: Response, spec: PreferenceSpec<T>): T {
+export function preference<T extends string>(
+  req: Request, res: Response, spec: PreferenceSpec<T>, cookieOptions: CookieOptions = COOKIE_OPTIONS,
+): T {
   const fromQuery: unknown = req.query?.[spec.query];
   const fromCookie: unknown = req.cookies?.[spec.cookie];
   if (spec.isValid(fromQuery)) {
-    if (fromCookie !== fromQuery) res.cookie(spec.cookie, fromQuery, COOKIE_OPTIONS);
+    if (fromCookie !== fromQuery) res.cookie(spec.cookie, fromQuery, cookieOptions);
     return fromQuery;
   }
   return spec.isValid(fromCookie) ? fromCookie : spec.fallback;
+}
+
+/** The one cookie policy, with Secure added when the browser speaks https (portal mode behind the tunnel). */
+export function cookieOptionsWith(secure: boolean): CookieOptions {
+  return secure ? { ...COOKIE_OPTIONS, secure: true } : COOKIE_OPTIONS;
 }

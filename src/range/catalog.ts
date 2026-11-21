@@ -8,8 +8,9 @@ import { parseTier } from '../core/hints.js';
 import { clampLevel, FLAG_LEVELS, LEVELS, levelRank, type Level } from '../core/levels.js';
 import type { Lang } from '../core/i18n.js';
 import { DIFFICULTIES, labPoints, type Difficulty, type LabEntry } from '../lab-registry.js';
-import { panelFor } from './panel.js';
+import { MY_LAB_RECENT_MS, panelFor } from './panel.js';
 import { leaderboard, rangeScore, rangeSolvesOf, rangeUnlockedTiers, unlockRangeHint, type Best } from './progress.js';
+import { isActiveState } from './store.js';
 import type { RangeContext } from './types.js';
 
 export const rangeViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
@@ -32,12 +33,37 @@ function levelSolved(level: Level, best: Best | undefined): boolean {
   return level !== 'divine' && best !== undefined && levelRank(level) <= levelRank(best.level);
 }
 
+/** A sprite icon per lab identity (themeId); platform mapping, no manifest change. */
+const THEME_ICONS: Readonly<Record<string, string>> = Object.freeze({
+  'mercy-clinic': 'i-shield', courier: 'i-bag', beacon: 'i-compass', postcard: 'i-scroll',
+});
+const themeIcon = (themeId: string) => THEME_ICONS[themeId.replace(/^theme-/, '')] ?? 'i-flask';
+
 export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (key: string) => string) {
   return {
     id: lab.id, app: lab.app, title: lab.title[lang], category: lab.category, difficulty: lab.difficulty,
     difficultyLabel: t(`range.difficulty.${lab.difficulty}`), scenario: lab.scenario[lang], href: `/labs/${lab.id}`,
-    solved: best !== undefined, best: best?.level,
+    solved: best !== undefined, best: best?.level, themeId: lab.themeId, icon: themeIcon(lab.themeId),
     levels: LEVELS.filter((l) => lab.levels.includes(l)).map((l) => ({ id: l, solved: levelSolved(l, best) })),
+  };
+}
+
+/** The "Continue your lab" hero: the user's active (or recently ended) instance, if any. */
+function continueLabFor(ctx: RangeContext, userId: number, lang: Lang, t: (key: string) => string) {
+  const latest = ctx.lifecycle.store.latestForUser(userId);
+  if (!latest) return undefined;
+  const now = ctx.now();
+  const recent = latest.endedAt !== null && now - latest.endedAt < MY_LAB_RECENT_MS;
+  if (!isActiveState(latest.state) && !recent) return undefined;
+  const lab = ctx.registry.get(latest.labId);
+  if (!lab) return undefined;
+  const stopKey = `range.stopped.${latest.reason ?? ''}`;
+  const stateLabel = latest.state === 'stopped'
+    ? (t(stopKey) === stopKey ? t('range.state.stopped') : t(stopKey)) : t(`range.state.${latest.state}`);
+  return {
+    href: `/labs/${latest.labId}?level=${latest.level}`, app: lab.app, title: lab.title[lang], themeId: lab.themeId,
+    icon: themeIcon(lab.themeId), state: latest.state, stateLabel,
+    minutesLeft: latest.state === 'running' ? Math.max(0, Math.ceil(((latest.expiresAt ?? now) - now) / 60_000)) : 0,
   };
 }
 
@@ -58,12 +84,22 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const category = typeof req.query.category === 'string' && categories.includes(req.query.category) ? req.query.category : '';
     const difficulty = isDifficulty(req.query.difficulty) ? req.query.difficulty : '';
     const show = req.query.show === 'todo' || req.query.show === 'done' ? req.query.show : 'all';
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
+    const needle = q.toLowerCase();
+    const sort = req.query.sort === 'difficulty' || req.query.sort === 'solved' ? req.query.sort : 'app';
+    const byApp = (a: { app: string }, b: { app: string }) => a.app.localeCompare(b.app);
     const cards = registry.labs.map((lab) => labCard(lab, solves.get(lab.id), req.lang, t)).filter((c) =>
       (category === '' || c.category === category) && (difficulty === '' || c.difficulty === difficulty)
-      && (show === 'all' || (show === 'done') === c.solved));
+      && (show === 'all' || (show === 'done') === c.solved)
+      && (needle === '' || [c.app, c.title, c.scenario, c.category].some((s) => s.toLowerCase().includes(needle))));
+    cards.sort(sort === 'difficulty'
+      ? (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty) || byApp(a, b)
+      : sort === 'solved' ? (a, b) => Number(b.solved) - Number(a.solved) || byApp(a, b) : byApp);
     await sendPage(res, rangeView('catalog'), {
-      pageTitle: t('range.catalog_title'), cards, categories, difficulties: DIFFICULTIES, filter: { category, difficulty, show },
+      pageTitle: t('range.catalog_title'), cards, categories, difficulties: DIFFICULTIES,
+      filter: { category, difficulty, show, q, sort },
       score: rangeScore(db, userId), solved: registry.labs.filter((l) => solves.has(l.id)).length, total: registry.labs.length,
+      continueLab: continueLabFor(ctx, userId, req.lang, t),
     });
   });
 
@@ -113,8 +149,13 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
 
   router.get('/leaderboard', async (req, res) => {
     const t = res.locals.t;
+    const me = userOf(res).userId;
+    const rows = leaderboard(db, 100);
+    // The viewer's own row, even beyond the top 100: pinned below the table when it is not already in the top three.
+    const viewer = rows.find((r) => r.userId === me) ?? leaderboard(db, 100_000).find((r) => r.userId === me);
+    const pinned = viewer !== undefined && viewer.rank > 3 ? viewer : undefined;
     await sendPage(res, rangeView('leaderboard'), {
-      pageTitle: t('leaderboard.title'), rows: leaderboard(db, 100), me: userOf(res).userId,
+      pageTitle: t('leaderboard.title'), rows, me, viewer, pinned,
       crumbs: [{ label: t('nav.labs'), href: '/' }, { label: t('leaderboard.title') }],
     });
   });
