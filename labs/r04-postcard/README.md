@@ -6,20 +6,46 @@ at start the app reads the one-shot flag file (`HVWA_FLAG_FILE`, default `/tmp/.
 there. The flag is never in the environment. No page renders the file; only template code reading it does. Real template
 execution is intentional (spec §2); the container is the boundary.
 
+## The studio
+
+The visible app is a small handmade-card studio, not a bare demo form:
+
+- **Home (`/`)** — a hero, a working card maker that replaces the old style `<select>` with ten visual style swatches
+  (each with its own palette, type and ornament), a "fresh off the press" strip, and a studio promise panel.
+- **Gallery (`/gallery`)** — all ten seeded cards with occasion filters (`?occasion=wedding`, GET, escaped), sample text,
+  font, price and delivery time.
+- **Preview (`POST /preview`)** — the rendered card front on a 3D flip, a static front/back toggle (CSS checkbox),
+  print-only CSS, style metadata, an "Edit message" link back to the swatches, and a "Send this card" button that shows
+  a simulated confirmation. Nothing is persisted.
+- **Studio pages** — `/orders` (a seeded print queue), `/pricing`, `/about`, `/faq`, `/shipping`, `/contact`. A shared
+  header carries a static status widget ("Studio open / press queue: 3 cards ahead / order by 2 pm for same-day").
+- **Identity** — rose and plum palette, card-stock textures, per-occasion ornaments and borders, an inline studio mark
+  and `/favicon.svg`, a styled Templar rejection card, styled 404/405/500 pages, subtle transitions that stop under
+  `prefers-reduced-motion`, and a 375 px-friendly layout. Everything is inline SVG and CSS; no external assets.
+
+The seed at `seed/cards.json` holds ten cards with `style`, `occasion`, `sample`, `palette`, `font`, `price` and
+`delivery`. The occasion slug is the card's CSS class (`birthday`, `thanks`, `congrats`, `wedding`, `newbaby`,
+`anniversary`, `getwell`, `sympathy`, `justbecause`, `seasonal`).
+
 ## Vulnerable feature
+
 `POST /preview` — the card renderer (`templating.render_card`). The page chrome is a constant template; only the
-message reaches Jinja as source at acolyte/templar.
+message reaches Jinja as source at acolyte/templar. The studio chrome, gallery, pages and contact form escape every
+reflected value; the card message is the one value that goes through the designed renderer.
 
 ## Levels
+
 - **Acolyte.** The message is concatenated into the card template and rendered. A template expression that walks
   Python's object graph to `open()` prints the flag file into the card.
 - **Templar.** The press refuses a raw `__` or any of `os/popen/import/subprocess/eval/exec`, then still renders. The
-  literal Acolyte payload is caught. The same file read works if every blocked token is composed from Jinja string
-  escapes / `attr`-style access so the raw message never contains one. This is why Acolyte does not carry up.
+  literal Acolyte payload is caught and shown as a styled rejection card. The same file read works if every blocked
+  token is composed from Jinja string escapes / `attr`-style access so the raw message never contains one. This is why
+  Acolyte does not carry up.
 - **Divine.** The card is a constant `{{ message }}` template and the message is passed as a bound, autoescaped value,
   never as template source. No flag.
 
 ## Reference solves
+
 `solve/acolyte.mjs` and `solve/templar.mjs` are Node HTTP clients; the reference solve contains the intended template
 input for each level. `npm run labs:test -- --lab r04` proves each works at its level and that the Acolyte input fails
 at Templar and Divine.
