@@ -2,7 +2,7 @@
 // backoff and the CSRF tokens of the login/logout/password forms. PLATFORM code: it guards the lab and
 // must not be a vulnerability (docs/SECURITY.md "The platform login").
 //
-// Storage (platform DB, migration 2, src/db/auth.sql): auth_accounts holds the scrypt hash only;
+// Storage (platform DB, migrations 2 and 3, src/db/auth.sql + users.sql): users holds the scrypt hash only;
 // auth_tokens holds the SHA-256 of each token, never the token (the browser's hvwa_auth cookie has it).
 // The anonymous hvwa_sid is never touched: lab state, flags and the scoreboard stay keyed by it.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -142,19 +142,19 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
   const checks = slots(AUTH_LIMITS.checksInFlight, AUTH_LIMITS.checksQueued);
 
   const getAccount = db.prepare(
-    'SELECT username, password_hash, is_default, failures, locked_until FROM auth_accounts WHERE username = ?');
-  const setBackoff = db.prepare('UPDATE auth_accounts SET failures = ?, locked_until = ? WHERE username = ?');
-  const clearBackoff = db.prepare('UPDATE auth_accounts SET failures = 0, locked_until = 0 WHERE username = ?');
+    'SELECT username, password_hash, is_default, failures, locked_until FROM users WHERE username = ?');
+  const setBackoff = db.prepare('UPDATE users SET failures = ?, locked_until = ? WHERE username = ?');
+  const clearBackoff = db.prepare('UPDATE users SET failures = 0, locked_until = 0 WHERE username = ?');
   const insertToken = db.prepare(
     'INSERT INTO auth_tokens (token_hash, username, created_at, last_seen_at) VALUES (?, ?, ?, ?)');
   const pruneTokens = db.prepare(`DELETE FROM auth_tokens WHERE username = ? AND (created_at <= ? OR last_seen_at <= ?
     OR rowid NOT IN (SELECT rowid FROM auth_tokens WHERE username = ? ORDER BY rowid DESC LIMIT ?))`);
   const findToken = db.prepare(`SELECT t.username, t.created_at, t.last_seen_at, a.is_default
-    FROM auth_tokens t JOIN auth_accounts a ON a.username = t.username WHERE t.token_hash = ?`);
+    FROM auth_tokens t JOIN users a ON a.username = t.username WHERE t.token_hash = ?`);
   const touchToken = db.prepare('UPDATE auth_tokens SET last_seen_at = ? WHERE token_hash = ?');
   const deleteToken = db.prepare('DELETE FROM auth_tokens WHERE token_hash = ?');
   const deleteAllTokens = db.prepare('DELETE FROM auth_tokens WHERE username = ?');
-  const setPassword = db.prepare(`UPDATE auth_accounts SET password_hash = ?, is_default = ?, failures = 0, locked_until = 0,
+  const setPassword = db.prepare(`UPDATE users SET password_hash = ?, is_default = ?, failures = 0, locked_until = 0,
     changed_at = ? WHERE username = ?`);
 
   // First start: create the account. Synchronous (once), so the app never serves without one.
@@ -165,8 +165,9 @@ export function createAuthService(db: DatabaseSync, opts: AuthServiceOptions = {
       // Never the value itself in the message.
       throw new Error(`auth: the initial password must have ${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters and no control characters`);
     }
-    db.prepare(`INSERT INTO auth_accounts (username, password_hash, is_default, failures, locked_until, changed_at)
-      VALUES (?, ?, ?, 0, 0, ?)`).run(ADMIN_USERNAME, hasher.hashSync(first), first === DEFAULT_ADMIN_PASSWORD ? 1 : 0, now());
+    const t = now();
+    db.prepare(`INSERT INTO users (username, password_hash, role, created_at, is_default, failures, locked_until, changed_at)
+      VALUES (?, ?, 'admin', ?, ?, 0, 0, ?)`).run(ADMIN_USERNAME, hasher.hashSync(first), t, first === DEFAULT_ADMIN_PASSWORD ? 1 : 0, t);
   }
 
   // Same cost as a real check: unknown usernames and locked attempts verify against this.

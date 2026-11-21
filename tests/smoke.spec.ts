@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/app.js';
-import { openDb } from '../src/db/index.js';
+import { openDb, SCHEMA_VERSION } from '../src/db/index.js';
 import { TEST_SECRET } from './helpers.js';
 
 const tempDirs: string[] = [];
@@ -35,8 +35,8 @@ describe('smoke', () => {
     const check = openDb(dbPath);
     handles.push(check);
     const names = check.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
-    expect(names.map((r) => r.name)).toEqual(['auth_accounts', 'auth_tokens', 'events', 'hint_unlocks', 'solves']);
-    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 2 });
+    expect(names.map((r) => r.name)).toEqual(['auth_tokens', 'events', 'hint_unlocks', 'range_settings', 'solves', 'users']);
+    expect(check.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: SCHEMA_VERSION });
 
     // Release both handles, then the temp dir must be removable.
     check.close();
