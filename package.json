@@ -18,6 +18,7 @@
     "range:build": "node scripts/range-images.mjs build",
     "range:push": "node scripts/range-images.mjs push",
     "range:verify": "node scripts/range-verify.mjs",
+    "poc:e2e": "node scripts/poc-e2e.mjs",
     "labs:test": "node scripts/lab-test.mjs",
     "labs:build": "node scripts/lab-build.mjs",
     "gen:catalog": "tsx src/tools/gen-catalog.ts",

@@ -1,0 +1,697 @@
+{
+  "schema": 1,
+  "project": "hvwa-poc-e2e",
+  "runtime": "runc",
+  "generatedAt": "2026-11-21T19:08:24.543Z",
+  "labs": [
+    {
+      "id": "r01",
+      "app": "Mercy Clinic",
+      "levels": [
+        {
+          "level": "acolyte",
+          "ok": true,
+          "launchMs": 1430,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1430 ms (instance c2ob7fik4ft37sgbyf6mw7ugxi)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{a46nnw6qmass65ocdb2vqsjjva}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "templar",
+          "ok": true,
+          "launchMs": 1441,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1441 ms (instance b564g3n5ft5y2w5k576kgeh4p4)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{cwtwsuuy3f6hwdwfenhev4rio3}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "divine",
+          "ok": true,
+          "launchMs": 1343,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1343 ms (instance rpkhhevoobuujxqbtvvfohz4fe)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "divine-resists",
+              "ok": true,
+              "detail": "acolyte and templar print no flag"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r02",
+      "app": "Courier",
+      "levels": [
+        {
+          "level": "acolyte",
+          "ok": true,
+          "launchMs": 1407,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1407 ms (instance ixbfq5gdz3cam5zxtaml5nb5ni)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{u3gxrwd6rw7y7uvypyywibhknu}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "templar",
+          "ok": true,
+          "launchMs": 1498,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1498 ms (instance y2wjfslbr7emgwlmjwkc7g35py)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{4oetqf3xpxaj5s3bvczmjdhub5}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "divine",
+          "ok": true,
+          "launchMs": 1343,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1343 ms (instance 5r7pca757vu46zp4cfiga2dfsi)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "divine-resists",
+              "ok": true,
+              "detail": "acolyte and templar print no flag"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r03",
+      "app": "Beacon",
+      "levels": [
+        {
+          "level": "acolyte",
+          "ok": true,
+          "launchMs": 1454,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1454 ms (instance hxdafqfd6c2tymuxzdk4x3vffe)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{gal2enn7pl46mvt7gythezyr72}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "templar",
+          "ok": true,
+          "launchMs": 1019,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1019 ms (instance 6jkrk5nctifqydbtpvwtwfxb24)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{2w4bkwejrjyf7bob36wqtqvqwg}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "divine",
+          "ok": true,
+          "launchMs": 1365,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 1365 ms (instance fwpaqvsv7oii7aeer4b4pjvanu)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "divine-resists",
+              "ok": true,
+              "detail": "acolyte and templar print no flag"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "r04",
+      "app": "Postcard",
+      "levels": [
+        {
+          "level": "acolyte",
+          "ok": true,
+          "launchMs": 3517,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 3517 ms (instance ouhkuexce7xbimil5ctrmhfv3a)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{4feuhvr3pteri2ky5whqnjz5vi}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "templar",
+          "ok": true,
+          "launchMs": 3526,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 3526 ms (instance ejhlgrvxdam64t5cmrftzjm4gm)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "solve",
+              "ok": true,
+              "detail": "HVWA{v7uvaqb6e6eyhoifitww7wpsth}"
+            },
+            {
+              "name": "submit",
+              "ok": true,
+              "detail": "new_best"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        },
+        {
+          "level": "divine",
+          "ok": true,
+          "launchMs": 3383,
+          "checks": [
+            {
+              "name": "register+login",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "catalog",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "launch",
+              "ok": true,
+              "detail": "ready in 3383 ms (instance s36fvnbkgf5p5zxbbb6bck4rc4)"
+            },
+            {
+              "name": "open+gate",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "landing",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "gate-refused",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "divine-resists",
+              "ok": true,
+              "detail": "acolyte and templar print no flag"
+            },
+            {
+              "name": "no-leak",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stop",
+              "ok": true,
+              "detail": "container and network gone"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "ok": true
+}
