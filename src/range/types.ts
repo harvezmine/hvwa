@@ -5,6 +5,7 @@ import type { PlatformAuth } from '../auth/index.js';
 import type { LabRegistry } from '../lab-registry.js';
 import type { WardenApi } from '../warden/protocol.js';
 import type { Lifecycle } from './lifecycle.js';
+import type { TicketStore } from './tickets.js';
 
 /** Spec §5's limits in ms (src/range/config.ts reads them from HVWA_RANGE_* minutes). */
 export interface RangeLimits {
@@ -62,4 +63,5 @@ export interface RangeContext {
   readonly registry: LabRegistry;
   readonly now: () => number;
   readonly lifecycle: Lifecycle;
+  readonly tickets: TicketStore;
 }

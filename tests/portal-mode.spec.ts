@@ -75,13 +75,17 @@ describe('portal mode: what is mounted', () => {
   it('fails closed on instance hosts, the internal host and /__hvwa/* of the portal host; other hosts are 421', async () => {
     const { app } = portalApp();
     const lab = `i-${'a'.repeat(26)}.${DOMAIN}`;
-    for (const [host, path] of [[lab, '/'], [lab, '/__hvwa/gate?t=x'], ['portal', '/__hvwa/auth'], ['portal', '/'], [DOMAIN, '/__hvwa/gate'],
+    for (const [host, path] of [[lab, '/'], [lab, '/__hvwa/other'], ['portal', '/__hvwa/auth'], ['portal', '/'], [DOMAIN, '/__hvwa/gate'],
       [DOMAIN, '/__HVWA/gate'], [`${lab.toUpperCase()}:443`, '/login']]) {
       const res = await request(app).get(path).set('Host', host);
       expect(res.status, `${host}${path}`).toBe(404);
       expect(res.headers['set-cookie'], `${host}${path}`).toBeUndefined();
       expect(res.headers['cache-control'], `${host}${path}`).toBe('no-store');
     }
+    // Task 20: the gate path itself answers (401 without a valid ticket), still never with a portal cookie.
+    const gated = await request(app).get('/__hvwa/gate?t=x').set('Host', lab);
+    expect(gated.status).toBe(401);
+    expect(gated.headers['set-cookie']).toBeUndefined();
     expect((await request(app).get('/').set('Host', 'evil.example')).status).toBe(421);
     expect((await request(app).get('/').set('Host', `i-${'a'.repeat(25)}.${DOMAIN}`)).status).toBe(421);
   });
