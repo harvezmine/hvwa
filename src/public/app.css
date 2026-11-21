@@ -1194,6 +1194,18 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 4px; color: var(--danger)
 .difficulty-badge[data-difficulty="hard"] { color: var(--warning); background: var(--warning-bg); border-color: var(--warning-border); }
 .difficulty-badge[data-difficulty="expert"] { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-border); }
 .leaderboard-me { background: var(--surface-3); }
+.lab-panel .panel-state { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; margin: 0 0 var(--sp-3); }
+.lab-panel .panel-actions { display: grid; gap: var(--sp-2); }
+.lab-panel .panel-actions form { margin: 0; }
+.lab-panel[data-state="starting"] .panel-state .badge { color: var(--info); background: var(--info-bg); border-color: var(--info-border); }
+.lab-panel[data-state="running"] .panel-state .badge:first-child { color: var(--success); background: var(--success-bg); border-color: var(--success-border); }
+.lab-panel[data-state="failed"] .panel-state .badge:first-child { color: var(--danger); background: var(--danger-bg); border-color: var(--danger-border); }
+.my-lab { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: 0 var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); text-decoration: none; font-size: var(--fs-sm); }
+.my-lab:hover { border-color: var(--border-strong); }
+.my-lab-label { font-weight: 650; }
+.my-lab-meta { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
+.my-lab[data-state="running"] .icon { color: var(--success); }
+@media (max-width: 640px) { .my-lab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .my-lab-meta { max-width: 9rem; } }
 
 /* Reduced motion: no transitions, no transforms, no animation. */
 @media (prefers-reduced-motion: reduce) {

@@ -53,6 +53,9 @@
 <% if (typeof uiTheme === 'undefined' || uiTheme !== 'dark') { -%>
         <a href="?<%= keep %>theme=dark" class="icon-btn theme-toggle theme-to-dark" aria-label="<%= t('theme.to_dark') %>" title="<%= t('theme.to_dark') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-moon"></use></svg></a>
 <% } -%>
+<% if (typeof myLab !== 'undefined' && myLab) { -%>
+<%- include('my-lab') %>
+<% } -%>
 <% if (platformAuth && platformAuth.signedIn) { -%>
         <details class="menu account-menu" data-testid="account-nav">
           <summary class="menu-trigger">

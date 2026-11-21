@@ -109,6 +109,8 @@ segmented control in level colours, and "You are on <level>: <meaning>". Lab pag
 | Empty state | `<div class="empty">` icon + text + action | |
 | Loading | `.skeleton`; htmx forms get a spinner on the submit button while `.htmx-request` | |
 | Code | `<pre>`, `.source-view`, `.diff-wrap > .diff-view` | Scroll inside the block. |
+| Lab panel (portal mode) | `<section id="lab-panel" class="card panel lab-panel" data-state>` (src/range/views/panel.ejs) | State badge, level badge, one primary action (Launch or Open lab), Reset, danger Stop; a full range shows its message and Launch again. htmx re-fetches the whole section (`hx-swap="outerHTML"`): every 1 s starting, 30 s running. Open lab is a plain form with `target="_blank"`. |
+| My Lab chip (portal mode) | `<a class="my-lab" data-state>` (core/views/my-lab.ejs) | In the top bar on every signed-in page; the app and the minutes left in text; refreshes itself every 30 s. |
 
 ## 5. Writing a lab view
 

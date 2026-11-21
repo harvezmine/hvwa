@@ -5,6 +5,7 @@ import type { PlatformAuth } from '../auth/index.js';
 import type { LabRegistry } from '../lab-registry.js';
 import type { WardenApi } from '../warden/protocol.js';
 import type { Lifecycle } from './lifecycle.js';
+import type { TicketStore } from './tickets.js';
 
 /** Spec §5's limits in ms (src/range/config.ts reads them from HVWA_RANGE_* minutes). */
 export interface RangeLimits {
@@ -38,6 +39,8 @@ export interface RangePortalOptions {
   readonly publicPort?: number;
   /** HVWA_FORWARD_AUTH_HOST: the only Host /__hvwa/auth answers on (Traefik calls http://portal:1337/__hvwa/auth). */
   readonly internalHost: string;
+  /** HVWA_FORWARD_AUTH_SECRET: Traefik sends it as X-Hvwa-Auth-Secret on every forward-auth call. */
+  readonly forwardAuthSecret: string;
   readonly registry: LabRegistry;
   readonly limits: RangeLimits;
   /** HVWA_REGISTRATION_OPEN (RangeConfig.registrationOpen): false closes /register. Default true. */
@@ -62,4 +65,5 @@ export interface RangeContext {
   readonly registry: LabRegistry;
   readonly now: () => number;
   readonly lifecycle: Lifecycle;
+  readonly tickets: TicketStore;
 }
