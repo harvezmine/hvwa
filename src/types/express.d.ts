@@ -46,6 +46,10 @@ declare global {
         readonly defaultPassword?: boolean;
         readonly csrf?: string;
       };
+      /** Portal mode (src/range/index.ts): the range's navigation instead of Districts / Scoreboard. */
+      portalNav?: { readonly admin: boolean };
+      /** Portal mode: the My Lab chip in the header (src/range/panel.ts myLabChip). */
+      myLab?: { readonly href: string; readonly state: string; readonly text: string };
     }
   }
 }
