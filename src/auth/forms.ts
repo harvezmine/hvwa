@@ -1,13 +1,35 @@
 // src/auth/forms.ts — the platform's form guards, shared by every router that renders a platform form (login,
 // registration, account, range actions). PLATFORM code (docs/SECURITY.md "The platform login").
 import type { Request, RequestHandler, Response } from 'express';
+import { SCOPED_PAGE_CSP } from '../core/page-csp.js';
 import { AUTH_COOKIE } from './service.js';
 
-/** Platform pages of the login: never cached, never framed (no clickjacking of the password forms). */
+/**
+ * Platform pages of the login: never cached, never framed (no clickjacking of the password forms). An already-set
+ * Content-Security-Policy is kept: on a range page (or a refusal rendered from one) that is the router's scoped policy,
+ * which this must not replace with the narrower frame-ancestors directive.
+ */
 export function noStore(res: Response): void {
   res.set('Cache-Control', 'no-store');
   res.set('X-Frame-Options', 'DENY');
-  res.set('Content-Security-Policy', "frame-ancestors 'none'");
+  if (res.getHeader('Content-Security-Policy') === undefined) {
+    res.set('Content-Security-Policy', "frame-ancestors 'none'");
+  }
+}
+
+/**
+ * The per-response headers every platform page gets: keyed on the session cookie, nosniff, and the scoped page CSP.
+ * Mounted on the auth routers too (publicRouter / accountRouter), which sit outside portal.router.
+ */
+export function scopedPageHeaders(): RequestHandler {
+  return (_req, res, next) => {
+    res.vary('Cookie');
+    res.set('X-Content-Type-Options', 'nosniff');
+    if (res.getHeader('Content-Security-Policy') === undefined) {
+      res.set('Content-Security-Policy', SCOPED_PAGE_CSP);
+    }
+    next();
+  };
 }
 
 export const isApi = (req: Request) => /^\/api(?:\/|$)/i.test(req.path);

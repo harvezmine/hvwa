@@ -356,7 +356,7 @@ describe('portal copy and per-user headers', () => {
     }
   });
 
-  it('a stale CSRF token on an htmx form is a tiny fragment + HX-Refresh, never a full page', async () => {
+  it('a stale CSRF token on an htmx form is a tiny fragment + HX-Refresh, never a full page; the refusal keeps the scoped CSP', async () => {
     const kit = portalApp();
     const { agent } = await player(kit.app, 'alice');
     for (const [path, body] of [
@@ -367,11 +367,37 @@ describe('portal copy and per-user headers', () => {
       expect(res.headers['hx-refresh'], path).toBe('true');
       expect(res.text, path).not.toContain('<!doctype html>');
       expect(res.text, path).toContain('data-error="csrf"');
+      // noStore() must preserve the router's scoped policy, not replace it with frame-ancestors 'none'.
+      expect(res.headers['content-security-policy'], path).toContain("default-src 'self'");
+      expect(res.headers['content-security-policy'], path).toContain("frame-ancestors 'self'");
+      expect(res.headers['x-content-type-options'], path).toBe('nosniff');
+      expect(String(res.headers.vary), path).toMatch(/Cookie/i);
     }
     expect(kit.warden.launched).toEqual([]); // a refused launch started nothing
     const plain = await agent.post('/labs/r01/launch').type('form').send({ _csrf: 'stale', level: 'acolyte' });
     expect(plain.status).toBe(403);
     expect(plain.text).toContain('<!doctype html>'); // a normal page keeps the full refusal page
+    expect(plain.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(plain.headers['content-security-policy']).toContain("frame-ancestors 'self'");
+  });
+
+  it('the login and account pages (outside portal.router) carry the same scoped CSP, nosniff and Vary: Cookie', async () => {
+    const kit = portalApp();
+    const login = await request(kit.app).get('/login');
+    expect(login.status).toBe(200);
+    const account = await (await player(kit.app, 'alice')).agent.get('/account/password');
+    expect(account.status).toBe(200);
+    for (const [path, res] of [['/login', login], ['/account/password', account]] as const) {
+      expect(res.headers['content-security-policy'], path).toContain("default-src 'self'");
+      expect(res.headers['content-security-policy'], path).toContain("frame-ancestors 'self'");
+      expect(res.headers['x-content-type-options'], path).toBe('nosniff');
+      expect(String(res.headers.vary), path).toMatch(/Cookie/i);
+    }
+    // A refused account form keeps them too (noStore() preserves what the router set).
+    const refused = await (await player(kit.app, 'bob')).agent.post('/account/password').type('form').send({ _csrf: 'stale' });
+    expect(refused.status).toBe(403);
+    expect(refused.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(refused.headers['content-security-policy']).toContain("frame-ancestors 'self'");
   });
 });
 

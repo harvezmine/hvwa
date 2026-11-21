@@ -1,6 +1,7 @@
 // Portal pages may be framed only by HVWA itself: `Content-Security-Policy: frame-ancestors 'self'`. Without it a
-// same-SITE page (another port of 127.0.0.1, cookies included) could frame /c/<id> or the scoreboard. Lab routes
-// never get it: a lab's framing is its lesson, set per level by setLabHeaders (core/http.ts) and nothing else.
+// same-SITE page (another port of 127.0.0.1, cookies included) could frame /c/<id> or the scoreboard. The login and
+// account pages carry the same scoped page policy (core/page-csp.ts). Lab routes never get it: a lab's framing is its
+// lesson, set per level by setLabHeaders (core/http.ts) and nothing else.
 import { describe, it, expect, afterAll } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -57,10 +58,11 @@ describe("portal pages: frame-ancestors 'self'", () => {
     app.locals.db.close();
   });
 
-  it('the login and password pages keep their stricter frame-ancestors \'none\' (and X-Frame-Options: DENY)', async () => {
+  it('the login page carries the scoped page CSP (and X-Frame-Options: DENY)', async () => {
     const app = createApp({ flagSecret: TEST_SECRET, auth: true });
     const res = await request(app).get('/login');
-    expect(csp(res)).toBe("frame-ancestors 'none'");
+    expect(csp(res)).toContain("default-src 'self'");
+    expect(csp(res)).toContain("frame-ancestors 'self'");
     expect(res.headers['x-frame-options']).toBe('DENY');
     app.locals.db.close();
   });
