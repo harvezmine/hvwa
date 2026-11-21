@@ -14,6 +14,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 // reaches into portal/ or districts/.
 const layoutFile = join(here, 'views', 'layout.ejs');
 
+/** The My Lab chip (portal mode): included by the layout, and served alone as the htmx fragment /my-lab/chip. */
+export const MY_LAB_VIEW = join(here, 'views', 'my-lab.ejs');
+
 export function escapeHtml(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')

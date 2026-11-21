@@ -10,6 +10,7 @@ import { edgeHandler } from './gate.js';
 import { instanceIdOfHost } from './hosts.js';
 import { labRoutes } from './lab-routes.js';
 import { createLifecycle, type Lifecycle } from './lifecycle.js';
+import { myLabChip } from './panel.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
 import type { RangeContext, RangePortalOptions } from './types.js';
@@ -47,6 +48,8 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
 
   const locals: RequestHandler = (_req, res, next) => {
     res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin' };
+    const userId = res.locals.platformAuth?.userId;
+    if (userId !== undefined) res.locals.myLab = myLabChip(lifecycle.current(userId), opts.registry, now(), res.locals.t);
     next();
   };
 

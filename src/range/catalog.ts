@@ -8,6 +8,7 @@ import { parseTier } from '../core/hints.js';
 import { clampLevel, FLAG_LEVELS, LEVELS, levelRank, type Level } from '../core/levels.js';
 import type { Lang } from '../core/i18n.js';
 import { DIFFICULTIES, labPoints, type Difficulty, type LabEntry } from '../lab-registry.js';
+import { panelFor } from './panel.js';
 import { leaderboard, rangeScore, rangeSolvesOf, rangeUnlockedTiers, unlockRangeHint, type Best } from './progress.js';
 import type { RangeContext } from './types.js';
 
@@ -79,6 +80,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       lab: { ...labCard(lab, best, req.lang, t), briefing: lab.briefing[req.lang] },
       best, currentLevel, csrf: auth.csrfFor(req),
       flash: req.query.r === 'wrong' ? 'wrong' : req.query.r === 'solved' && best ? 'solved' : '',
+      panel: panelFor(ctx, req, res, lab, currentLevel, req.query.r === 'full' ? 'full' : undefined),
       levels: LEVELS.filter((l) => lab.levels.includes(l)).map((l) => ({
         id: l, scored: FLAG_LEVELS.includes(l), points: labPoints(lab, l), solved: levelSolved(l, best),
         current: l === currentLevel, href: `/labs/${lab.id}?level=${l}`,
