@@ -1,9 +1,9 @@
 // The lab registry (src/lab-registry.ts, spec range §8.4/§12): one schema for lab.json and labs/registry.json. It is the
 // warden's image allowlist (digest-pinned images only) and the portal's catalog, so anything outside it is refused.
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DIFFICULTY_POINTS, labManifestSchema, labPoints, loadRegistry, parseRegistry } from '../src/lab-registry.js';
+import { labDirs } from '../scripts/lab-harness.mjs';
 import { labEntry, testRegistry } from './support/range.js';
 
 const reg = (...labs: Record<string, unknown>[]) => ({ schema: 1, labs });
@@ -79,10 +79,15 @@ describe('parseRegistry', () => {
 });
 
 describe('labs/registry.json', () => {
-  it('is valid (empty until Plan B adds the pilot lab)', () => {
-    const path = join(process.cwd(), 'labs', 'registry.json');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ schema: 1, labs: [] });
-    expect(loadRegistry(path).labs).toEqual([]);
+  it('is valid, and once filled its entries are exactly the lab directories (empty before the first build)', () => {
+    const registry = loadRegistry(join(process.cwd(), 'labs', 'registry.json'));
+    const dirs = labDirs().map((d) => d.name);
+    if (registry.labs.length === 0) {
+      expect(registry.labs).toEqual([]); // no build yet (Plan B fills it via labs:build)
+      return;
+    }
+    // A stale registry (a missing lab, an entry for a deleted lab, or a stale id/slug pairing) fails here.
+    expect([...registry.labs].map((l) => `${l.id}-${l.slug}`).sort()).toEqual([...dirs].sort());
   });
 
   it('loadRegistry names the file in its errors', () => {

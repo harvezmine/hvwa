@@ -1,0 +1,6 @@
+[
+  { "name": "Dr. Alina Okonkwo", "role": "General practitioner", "room": "1A" },
+  { "name": "Dr. Ravi Menon", "role": "General practitioner", "room": "1B" },
+  { "name": "Sister Grace Abbott", "role": "Practice nurse", "room": "2A" },
+  { "name": "Tomas Lindqvist", "role": "Reception lead", "room": "Front desk" }
+]

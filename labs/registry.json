@@ -1,1 +1,281 @@
-{ "schema": 1, "labs": [] }
+{
+  "schema": 1,
+  "labs": [
+    {
+      "id": "r01",
+      "slug": "mercy-clinic",
+      "title": {
+        "en": "Mercy Clinic patient portal",
+        "id": "Portal pasien Mercy Clinic"
+      },
+      "app": "Mercy Clinic",
+      "category": "SQL injection",
+      "difficulty": "easy",
+      "levels": [
+        "acolyte",
+        "templar",
+        "divine"
+      ],
+      "port": 8080,
+      "health": "/healthz",
+      "flag": {
+        "placement": "db:notices.body"
+      },
+      "resources": {
+        "memoryMiB": 128,
+        "pids": 64
+      },
+      "tmpfs": [
+        {
+          "path": "/tmp",
+          "sizeMiB": 16
+        }
+      ],
+      "needsBot": false,
+      "themeId": "mercy-clinic",
+      "scenario": {
+        "en": "A community clinic portal whose notice search trusts what you type.",
+        "id": "Portal klinik komunitas yang pencarian pengumumannya memercayai masukan Anda."
+      },
+      "briefing": {
+        "en": "Mercy Clinic publishes notices for patients. Staff-only notices are kept out of the public lists. Read one you should not be able to read.",
+        "id": "Mercy Clinic menerbitkan pengumuman untuk pasien. Pengumuman khusus staf disembunyikan dari daftar publik. Baca satu yang seharusnya tidak bisa Anda baca."
+      },
+      "hints": [
+        {
+          "id": 1,
+          "cost": 10,
+          "text": {
+            "en": "Not everything the clinic stores is meant for patients. Where does the portal let you ask it a question?",
+            "id": "Tidak semua yang disimpan klinik ditujukan untuk pasien. Di mana portal membiarkan Anda bertanya?"
+          }
+        },
+        {
+          "id": 2,
+          "cost": 20,
+          "text": {
+            "en": "The notice search builds its database query from your text. Public notices are filtered in; staff notices are filtered out.",
+            "id": "Pencarian pengumuman menyusun kuerinya dari teks Anda. Pengumuman publik disaring masuk; pengumuman staf disaring keluar."
+          }
+        },
+        {
+          "id": 3,
+          "cost": 30,
+          "text": {
+            "en": "At Templar the filter removes two keywords once. One pass is not enough when a keyword can hide inside itself.",
+            "id": "Di Templar filter menghapus dua kata kunci sekali. Satu lintasan tidak cukup ketika kata kunci bisa bersembunyi di dalam dirinya sendiri."
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "image": "sha256:d7addd4fa874ec52a4c9eadab0f7d0fc7e2c3e6869994bf57e99a84354c04874"
+    },
+    {
+      "id": "r02",
+      "slug": "courier",
+      "title": {
+        "en": "Courier parcel tracking",
+        "id": "Pelacakan paket Courier"
+      },
+      "app": "Courier",
+      "category": "Broken access control",
+      "difficulty": "easy",
+      "levels": [
+        "acolyte",
+        "templar",
+        "divine"
+      ],
+      "port": 8080,
+      "health": "/healthz",
+      "flag": {
+        "placement": "custom"
+      },
+      "resources": {
+        "memoryMiB": 96,
+        "pids": 48
+      },
+      "tmpfs": [
+        {
+          "path": "/tmp",
+          "sizeMiB": 8
+        }
+      ],
+      "needsBot": false,
+      "themeId": "courier",
+      "scenario": {
+        "en": "A parcel-tracking API that checks who you are but not what is yours.",
+        "id": "API pelacakan paket yang memeriksa siapa Anda tetapi bukan apa milik Anda."
+      },
+      "briefing": {
+        "en": "Courier lets each customer track their own parcels. One parcel is not yours. Read its private delivery note.",
+        "id": "Courier membiarkan tiap pelanggan melacak paket mereka sendiri. Satu paket bukan milik Anda. Baca catatan pengiriman pribadinya."
+      },
+      "hints": [
+        {
+          "id": 1,
+          "cost": 10,
+          "text": {
+            "en": "Open the demo dashboard and watch what requests it makes for your parcels.",
+            "id": "Buka dasbor demo dan amati permintaan apa yang dibuatnya untuk paket Anda."
+          }
+        },
+        {
+          "id": 2,
+          "cost": 20,
+          "text": {
+            "en": "Parcel numbers are predictable. Yours begin with 2. What begins with 1?",
+            "id": "Nomor paket dapat ditebak. Milik Anda dimulai dengan 2. Apa yang dimulai dengan 1?"
+          }
+        },
+        {
+          "id": 3,
+          "cost": 30,
+          "text": {
+            "en": "At Templar the detail view guards ownership. The label does the same job — does it guard it too?",
+            "id": "Di Templar tampilan detail menjaga kepemilikan. Label melakukan tugas yang sama — apakah ia juga menjaganya?"
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "image": "sha256:d4524b8d3473ebd6f095f1884dda2a1d3b809f0cecab6004e47b3cdc4c459daf"
+    },
+    {
+      "id": "r03",
+      "slug": "beacon",
+      "title": {
+        "en": "Beacon router admin",
+        "id": "Admin router Beacon"
+      },
+      "app": "Beacon",
+      "category": "Command injection",
+      "difficulty": "medium",
+      "levels": [
+        "acolyte",
+        "templar",
+        "divine"
+      ],
+      "port": 8080,
+      "health": "/healthz",
+      "flag": {
+        "placement": "file:/tmp/beacon/flag.txt"
+      },
+      "resources": {
+        "memoryMiB": 128,
+        "pids": 96
+      },
+      "tmpfs": [
+        {
+          "path": "/tmp",
+          "sizeMiB": 16
+        }
+      ],
+      "needsBot": false,
+      "themeId": "beacon",
+      "scenario": {
+        "en": "A router admin panel whose diagnostics tool runs a real shell on what you type.",
+        "id": "Panel admin router yang alat diagnostiknya menjalankan shell sungguhan atas masukan Anda."
+      },
+      "briefing": {
+        "en": "Beacon's diagnostics let an operator probe a host. The router stores an operator secret in a file. Read it.",
+        "id": "Diagnostik Beacon membiarkan operator memeriksa sebuah host. Router menyimpan rahasia operator dalam sebuah berkas. Baca berkas itu."
+      },
+      "hints": [
+        {
+          "id": 1,
+          "cost": 10,
+          "text": {
+            "en": "The diagnostics page does something with the host you enter. What does it do with it?",
+            "id": "Halaman diagnostik melakukan sesuatu dengan host yang Anda masukkan. Apa yang dilakukannya?"
+          }
+        },
+        {
+          "id": 2,
+          "cost": 20,
+          "text": {
+            "en": "The probe runs in a real shell. A shell runs more than one command if you let it.",
+            "id": "Probe berjalan di shell sungguhan. Shell menjalankan lebih dari satu perintah jika Anda membiarkannya."
+          }
+        },
+        {
+          "id": 3,
+          "cost": 30,
+          "text": {
+            "en": "At Templar the obvious separators are blocked. A shell can run a command without any of them.",
+            "id": "Di Templar pemisah yang jelas diblokir. Shell bisa menjalankan perintah tanpa satu pun dari mereka."
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "image": "sha256:3c785657d9ee604e874e1a5072f673187b5aa7effabb5c2a0d1f91bb7742a029"
+    },
+    {
+      "id": "r04",
+      "slug": "postcard",
+      "title": {
+        "en": "Postcard greeting-card maker",
+        "id": "Pembuat kartu ucapan Postcard"
+      },
+      "app": "Postcard",
+      "category": "Template injection",
+      "difficulty": "hard",
+      "levels": [
+        "acolyte",
+        "templar",
+        "divine"
+      ],
+      "port": 5000,
+      "health": "/healthz",
+      "flag": {
+        "placement": "file:/tmp/postcard/flag.txt"
+      },
+      "resources": {
+        "memoryMiB": 192,
+        "pids": 96
+      },
+      "tmpfs": [
+        {
+          "path": "/tmp",
+          "sizeMiB": 16
+        }
+      ],
+      "needsBot": false,
+      "themeId": "postcard",
+      "scenario": {
+        "en": "A greeting-card maker that renders your message as a template.",
+        "id": "Pembuat kartu ucapan yang merender pesan Anda sebagai templat."
+      },
+      "briefing": {
+        "en": "Postcard turns your message into a printed card. The press keeps a studio secret in a file. Make the card print it.",
+        "id": "Postcard mengubah pesan Anda menjadi kartu cetak. Percetakan menyimpan rahasia studio dalam sebuah berkas. Buat kartu mencetaknya."
+      },
+      "hints": [
+        {
+          "id": 1,
+          "cost": 15,
+          "text": {
+            "en": "Preview a card and look closely at how your exact message comes back.",
+            "id": "Pratinjau sebuah kartu dan perhatikan baik-baik bagaimana pesan Anda kembali."
+          }
+        },
+        {
+          "id": 2,
+          "cost": 30,
+          "text": {
+            "en": "The press renders your message with a template engine. What does the engine do with its own syntax?",
+            "id": "Percetakan merender pesan Anda dengan mesin templat. Apa yang dilakukan mesin dengan sintaksnya sendiri?"
+          }
+        },
+        {
+          "id": 3,
+          "cost": 45,
+          "text": {
+            "en": "At Templar certain words and double underscores are refused outright. The engine can still be handed those names if they are never spelled out.",
+            "id": "Di Templar kata-kata tertentu dan garis bawah ganda ditolak langsung. Mesin tetap bisa menerima nama itu jika tidak pernah dieja."
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "image": "sha256:7fdb9a1587dd69ba42a4bb0c72ea8115682a77a0b9d61b72ec31cb43a1dd9296"
+    }
+  ]
+}

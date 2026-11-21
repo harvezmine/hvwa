@@ -2,5 +2,7 @@
 # checkout, including Windows with core.autocrlf=true.
 docker/** text eol=lf
 *.sh text eol=lf
+# Lab packages are read inside Linux containers: keep every lab file LF on checkout.
+labs/** text eol=lf
 # The pull-only compose file carries nginx.conf inline (read inside the proxy).
 docker-compose.hub.yml text eol=lf

@@ -1,0 +1,23 @@
+{
+  "id": "r02",
+  "slug": "courier",
+  "title": { "en": "Courier parcel tracking", "id": "Pelacakan paket Courier" },
+  "app": "Courier",
+  "category": "Broken access control",
+  "difficulty": "easy",
+  "levels": ["acolyte", "templar", "divine"],
+  "port": 8080,
+  "health": "/healthz",
+  "flag": { "placement": "custom" },
+  "resources": { "memoryMiB": 96, "pids": 48 },
+  "tmpfs": [{ "path": "/tmp", "sizeMiB": 8 }],
+  "needsBot": false,
+  "themeId": "courier",
+  "scenario": { "en": "A parcel-tracking API that checks who you are but not what is yours.", "id": "API pelacakan paket yang memeriksa siapa Anda tetapi bukan apa milik Anda." },
+  "briefing": { "en": "Courier lets each customer track their own parcels. One parcel is not yours. Read its private delivery note.", "id": "Courier membiarkan tiap pelanggan melacak paket mereka sendiri. Satu paket bukan milik Anda. Baca catatan pengiriman pribadinya." },
+  "hints": [
+    { "id": 1, "cost": 10, "text": { "en": "Open the demo dashboard and watch what requests it makes for your parcels.", "id": "Buka dasbor demo dan amati permintaan apa yang dibuatnya untuk paket Anda." } },
+    { "id": 2, "cost": 20, "text": { "en": "Parcel numbers are predictable. Yours begin with 2. What begins with 1?", "id": "Nomor paket dapat ditebak. Milik Anda dimulai dengan 2. Apa yang dimulai dengan 1?" } },
+    { "id": 3, "cost": 30, "text": { "en": "At Templar the detail view guards ownership. The label does the same job — does it guard it too?", "id": "Di Templar tampilan detail menjaga kepemilikan. Label melakukan tugas yang sama — apakah ia juga menjaganya?" } }
+  ]
+}

@@ -1,0 +1,6 @@
+[
+  { "id": 2001, "owner": "demo", "to": "A. Demo, 14 Harbour Row", "status": "Out for delivery", "note": "Leave with the concierge." },
+  { "id": 2002, "owner": "demo", "to": "A. Demo, 14 Harbour Row", "status": "Delivered", "note": "Signed for by A. Demo." },
+  { "id": 1001, "owner": "vault", "to": "Vault Logistics, Bay 7", "status": "Held at depot", "note": "Awaiting customs release (overwritten at start by the flag, or by the Divine decoy)." },
+  { "id": 1002, "owner": "vault", "to": "Vault Logistics, Bay 7", "status": "In transit", "note": "Fragile: ceramics." }
+]
