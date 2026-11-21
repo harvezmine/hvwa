@@ -16,10 +16,13 @@ const tables = (db: DatabaseSync) =>
     .map((r) => r.name);
 
 describe('db', () => {
-  it('the platform schema holds only platform state: solves, hint_unlocks, events, the login (users, auth_tokens), the range settings', () => {
+  it('the platform schema holds only platform state: solves, hint_unlocks, events, the login (users, auth_tokens), the range (settings, solves, hint unlocks, instances)', () => {
     const db = openDb(':memory:');
     migrate(db);
-    expect(tables(db)).toEqual(['auth_tokens', 'events', 'hint_unlocks', 'range_settings', 'solves', 'users']);
+    expect(tables(db)).toEqual(['auth_tokens', 'events', 'hint_unlocks', 'range_hint_unlocks', 'range_instances',
+      'range_settings', 'range_solves', 'solves', 'users']);
+    expect(columns(db, 'range_instances')).toEqual(['id', 'user_id', 'lab_id', 'level', 'state', 'reason', 'flag_hash',
+      'created_at', 'started_at', 'ready_at', 'expires_at', 'last_seen_at', 'ended_at']);
     // The login keeps hashes only (src/auth): no column could hold a password or a token in plaintext.
     expect(columns(db, 'users')).toEqual(['id', 'username', 'password_hash', 'role', 'created_at', 'disabled', 'is_default',
       'failures', 'locked_until', 'changed_at']);
