@@ -79,10 +79,11 @@ describe('parseRegistry', () => {
 });
 
 describe('labs/registry.json', () => {
-  it('is valid (empty until Plan B adds the pilot lab)', () => {
+  it('is valid (Plan B fills it via labs:build; empty before the first build)', () => {
     const path = join(process.cwd(), 'labs', 'registry.json');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ schema: 1, labs: [] });
-    expect(loadRegistry(path).labs).toEqual([]);
+    const raw = JSON.parse(readFileSync(path, 'utf8'));
+    expect(raw.schema).toBe(1);
+    expect(loadRegistry(path).labs.map((l) => l.id)).toEqual(raw.labs.map((l: { id: string }) => l.id));
   });
 
   it('loadRegistry names the file in its errors', () => {
