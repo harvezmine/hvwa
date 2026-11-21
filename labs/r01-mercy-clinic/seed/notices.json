@@ -1,6 +1,115 @@
 [
-  { "title": "Flu clinic every Tuesday", "body": "Walk-in flu shots are available every Tuesday from 9am to noon. No appointment needed." },
-  { "title": "New online repeat prescriptions", "body": "You can now request repeat prescriptions from your portal account. Allow two working days." },
-  { "title": "Car park resurfacing", "body": "The west car park is closed for resurfacing until the end of the month. Please use the street entrance." },
-  { "title": "Measles vaccination reminder", "body": "Children aged 1 to 5 are due their second MMR dose. Call reception to book." }
+  {
+    "title": "Winter flu clinic every Tuesday",
+    "body": "Walk-in flu vaccinations run every Tuesday from 09:00 to 12:00 in the community room. No appointment is needed; please bring your NHS number if you have it. Housebound patients can call reception to arrange a home visit.",
+    "category": "Vaccinations",
+    "author": "Sister Grace Abbott",
+    "published_at": "2026-11-20"
+  },
+  {
+    "title": "Repeat prescriptions are moving online",
+    "body": "From 1 December you can request repeat prescriptions through the patient portal. Requests are checked by the pharmacy team and are usually ready within two working days. Paper requests will still be accepted at reception.",
+    "category": "Prescriptions",
+    "author": "Reception team",
+    "published_at": "2026-11-18"
+  },
+  {
+    "title": "West car park resurfacing",
+    "body": "The west car park is closed for resurfacing until 30 November. Please use the Willow Lane entrance or the pay-and-display car park opposite the library. The accessible bays by the main door remain open.",
+    "category": "Parking",
+    "author": "Estates office",
+    "published_at": "2026-11-17"
+  },
+  {
+    "title": "MMR catch-up for children aged 1 to 5",
+    "body": "Children aged 1 to 5 who have not had their second MMR dose are invited to a catch-up clinic. Call reception on 01233 555 014 to book. Please bring your child's red book.",
+    "category": "Vaccinations",
+    "author": "Dr. Ravi Menon",
+    "published_at": "2026-11-14"
+  },
+  {
+    "title": "Extended opening hours from December",
+    "body": "From 2 December the practice will open at 07:30 on weekdays and stay open until 19:00 on Tuesdays and Thursdays. The pharmacy counter will follow the same hours.",
+    "category": "Opening hours",
+    "author": "Mariam Haddad",
+    "published_at": "2026-11-12"
+  },
+  {
+    "title": "New physiotherapy clinic",
+    "body": "Dr. Priya Shah holds a physiotherapy clinic on Monday and Thursday afternoons. Referrals can be made by your GP or by calling reception. The clinic room is on the third floor and is step-free by lift.",
+    "category": "Clinic news",
+    "author": "Dr. Priya Shah",
+    "published_at": "2026-11-10"
+  },
+  {
+    "title": "Bank holiday closure — 25 December",
+    "body": "The practice is closed on 25 and 26 December and on 1 January. If you need urgent medical help while we are closed, call NHS 111. For a life-threatening emergency, call 999.",
+    "category": "Opening hours",
+    "author": "Mariam Haddad",
+    "published_at": "2026-11-07"
+  },
+  {
+    "title": "Pharmacy counter now open on Saturdays",
+    "body": "The pharmacy counter is open on Saturdays from 09:00 to 12:30. Repeat prescriptions can be collected and medication queries answered. The main reception desk is also open.",
+    "category": "Clinic news",
+    "author": "Amara Boateng",
+    "published_at": "2026-11-05"
+  },
+  {
+    "title": "Help us keep appointments free",
+    "body": "If you can no longer attend an appointment, please let us know at least 24 hours in advance. Missed appointments mean another patient waits longer. You can cancel by phone or through the portal.",
+    "category": "Appointments",
+    "author": "Reception team",
+    "published_at": "2026-11-03"
+  },
+  {
+    "title": "Free blood pressure checks",
+    "body": "Drop in for a free blood pressure check on Wednesday mornings between 09:00 and 11:00. No appointment is needed. Our nursing team can also offer advice on home monitoring.",
+    "category": "Clinic news",
+    "author": "Sister Grace Abbott",
+    "published_at": "2026-10-28"
+  },
+  {
+    "title": "Mental health drop-in moves to Thursdays",
+    "body": "The weekly mental health drop-in now runs on Thursdays from 14:00 to 16:00 in room 3A. Jonah Field, our mental health counsellor, is available for a confidential conversation. No referral is needed.",
+    "category": "Clinic news",
+    "author": "Jonah Field",
+    "published_at": "2026-10-24"
+  },
+  {
+    "title": "Step-free entrance and accessible route",
+    "body": "The main entrance on Willow Lane is step-free. A lift serves all floors, and an accessible toilet is available on the ground floor. Please ask at reception if you need assistance.",
+    "category": "Clinic news",
+    "author": "Estates office",
+    "published_at": "2026-10-20"
+  },
+  {
+    "title": "Community coffee morning",
+    "body": "Join us on the first Friday of each month from 10:00 to 11:30 in the community room. Meet neighbours, ask questions and enjoy a free hot drink. Everyone is welcome.",
+    "category": "Community",
+    "author": "Volunteer team",
+    "published_at": "2026-10-15"
+  },
+  {
+    "title": "Travel vaccination appointments",
+    "body": "Travel health appointments are available on Wednesday afternoons. Please book at least six weeks before you travel and bring your itinerary. Some vaccines are available on the NHS; others are private.",
+    "category": "Vaccinations",
+    "author": "Nurse Daniel Okafor",
+    "published_at": "2026-10-10"
+  },
+  {
+    "title": "Autumn patient newsletter",
+    "body": "The autumn edition of our patient newsletter is now available at reception. It includes updates on the new appointment system, flu clinic dates and ways to get involved in the patient participation group.",
+    "category": "Community",
+    "author": "Mariam Haddad",
+    "published_at": "2026-10-01"
+  },
+  {
+    "title": "Weekend rota change — 29 November",
+    "body": "Dr. Okonkwo and Nurse Okafor will cover Saturday 29 November. The dispensary will open at 09:30 and the front-desk handover sheet should be updated by Friday 17:00. Please note the change in the shared rota.",
+    "visibility": "staff",
+    "category": "Staff rota",
+    "author": "Mariam Haddad",
+    "published_at": "2026-11-21"
+  }
 ]
