@@ -1,0 +1,43 @@
+# docker/range/traefik/range.yml — Traefik's file-provider configuration for the HVWA range (a Go template: {{ env }} reads
+# the router container's environment). Mounted read-only at /etc/traefik/dynamic. Instance routers come from the labels
+# the warden puts on each lab container (src/warden/template.ts) and use the middleware and the service defined here
+# (hvwa-instance@file, hvwa-portal@file). Plain HTTP only: TLS ends at Cloudflare's edge (spec §12). Nothing secret here.
+http:
+  routers:
+    hvwa-portal:
+      rule: 'Host(`{{ env "HVWA_PORTAL_HOST" }}`)'
+      service: hvwa-portal
+      priority: 100
+
+  services:
+    hvwa-portal:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://portal:1337"
+
+  middlewares:
+    # Every request to an instance host is checked by the portal first (/__hvwa/auth: the host-only hvwa_gate cookie).
+    # The secret header proves the call comes from this Traefik: set just before the check, removed just after it, so
+    # the lab never sees it (the portal compares it in constant time).
+    hvwa-auth-secret:
+      headers:
+        customRequestHeaders:
+          X-Hvwa-Auth-Secret: '{{ env "HVWA_FORWARD_AUTH_SECRET" }}'
+    hvwa-forward-auth:
+      forwardAuth:
+        address: "http://portal:1337/__hvwa/auth"
+        trustForwardHeader: false
+        authRequestHeaders:
+          - Cookie
+          - X-Hvwa-Auth-Secret
+    hvwa-strip-secret:
+      headers:
+        customRequestHeaders:
+          X-Hvwa-Auth-Secret: ""
+    hvwa-instance:
+      chain:
+        middlewares:
+          - hvwa-auth-secret
+          - hvwa-forward-auth
+          - hvwa-strip-secret
