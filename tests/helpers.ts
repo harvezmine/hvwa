@@ -1,4 +1,5 @@
 // tests/helpers.ts — shared test utilities.
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect, onTestFinished } from 'vitest';
@@ -7,6 +8,7 @@ import type { Express } from 'express';
 import { createApp } from '../src/app.js';
 import { LEVELS, type Level } from '../src/core/levels.js';
 import type { Challenge } from '../src/core/registry.js';
+import type { PasswordHasher } from '../src/auth/password.js';
 
 // `supertest` is aliased to tests/support/supertest.ts (see vitest.config.ts): every app listens on ONE
 // server, closed when the test ends. Use `serve(app)` when you need the http.Server itself.
@@ -459,3 +461,13 @@ export function hygieneProblems(root: string, dirs: string[]): { badUtf8: string
   }
   return { badUtf8, control };
 }
+
+/**
+ * A password hasher for specs that create many accounts: SHA-256, NOT scrypt. Only tests use it (scrypt itself is
+ * covered by tests/auth-password.spec.ts and the auth specs that pass no hasher).
+ */
+export const FAST_HASHER: PasswordHasher = Object.freeze({
+  hash: async (p: string) => `fast$${createHash('sha256').update(p).digest('hex')}`,
+  hashSync: (p: string) => `fast$${createHash('sha256').update(p).digest('hex')}`,
+  verify: async (p: string, stored: string) => stored === `fast$${createHash('sha256').update(p).digest('hex')}`,
+});
