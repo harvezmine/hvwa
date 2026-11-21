@@ -1,0 +1,54 @@
+# HVWA Range images (spec docs/superpowers/specs/2026-11-20-hvwa-range-design.md §12): the portal and the warden, as tags
+# of sigmajo/hvwa. Run them ONLY through docker-compose.range.yml (internal networks, socket proxies, Traefik).
+#   docker build -f Dockerfile.range --target range-portal -t sigmajo/hvwa:range-portal-<version> .
+#   docker build -f Dockerfile.range --target range-warden -t sigmajo/hvwa:range-warden-<version> .
+# `npm run range:build` does both (scripts/range-images.mjs). The standalone images (Dockerfile) are unchanged.
+ARG NODE_IMAGE=node:22.23.5-alpine3.24
+
+# --- build: full deps + TypeScript, emits dist/ (server, range portal, warden, views)
+FROM ${NODE_IMAGE} AS build
+WORKDIR /src
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY tsconfig.json ./
+COPY scripts/clean-dist.mjs scripts/copy-assets.mjs scripts/main-module.mjs ./scripts/
+COPY src ./src
+RUN npm run build
+
+# --- range-base: production deps only, no package managers, the compiled app
+FROM ${NODE_IMAGE} AS range-base
+ENV NODE_ENV=production
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+ && rm -rf /root/.npm /tmp/* \
+    /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
+COPY --from=build /src/dist ./dist
+
+# --- range-warden: the only component that creates lab containers (through the socket proxy, over TCP)
+FROM range-base AS range-warden
+ENV HOST=0.0.0.0 \
+    PORT=8080
+LABEL org.opencontainers.image.title="HVWA Range warden" \
+      org.opencontainers.image.description="Creates and removes HVWA range lab containers through a docker-socket-proxy. Run it only with docker-compose.range.yml." \
+      org.opencontainers.image.licenses="MIT"
+USER node
+EXPOSE 8080
+CMD ["node", "dist/warden/main.js"]
+
+# --- range-portal: accounts, catalog, instances, gate and forward-auth (HVWA_MODE=portal). Mounts no labs.
+FROM range-base AS range-portal
+RUN mkdir -p /data && chown node:node /data
+ENV HOST=0.0.0.0 \
+    PORT=1337 \
+    HVWA_ALLOW_REMOTE=1 \
+    HVWA_DATA_DIR=/data \
+    HVWA_MODE=portal
+LABEL org.opencontainers.image.title="HVWA Range portal" \
+      org.opencontainers.image.description="The HVWA range portal (accounts, catalog, per-user lab instances). Run it only with docker-compose.range.yml." \
+      org.opencontainers.image.licenses="MIT"
+USER node
+EXPOSE 1337
+CMD ["node", "dist/server.js"]
