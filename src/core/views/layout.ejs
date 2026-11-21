@@ -19,7 +19,7 @@
   <div class="default-password-banner" role="alert" data-testid="default-password-banner">
     <div class="banner-inner">
       <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg>
-      <span class="banner-text"><%= t('auth.default_banner') %></span>
+      <span class="banner-text"><%= t(typeof portalNav !== 'undefined' && portalNav ? 'auth.temp_banner' : 'auth.default_banner') %></span>
       <a class="btn btn-xs btn-primary" href="/account/password"><%= t('auth.change_password') %></a>
     </div>
   </div>
@@ -33,8 +33,13 @@
       </a>
 <% if (!platformAuth || platformAuth.signedIn) { -%>
       <nav class="site-nav" aria-label="<%= t('nav.main') %>">
+<% if (typeof portalNav !== 'undefined' && portalNav) { -%>
+        <a href="/" class="nav-link" data-testid="nav-labs"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><span><%= t('nav.labs') %></span></a>
+        <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.leaderboard') %></span></a>
+<% } else { -%>
         <a href="/" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><span><%= t('nav.districts') %></span></a>
         <a href="/scoreboard" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.scoreboard') %></span></a>
+<% } -%>
       </nav>
 <% } -%>
       <div class="topbar-tools">

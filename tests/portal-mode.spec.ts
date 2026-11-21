@@ -1,0 +1,272 @@
+// HVWA_MODE=portal (createApp({ mode: 'portal', range })): the range portal mounts no labs and no /api, puts every page
+// behind the login, lists the range labs from the registry (difficulty, levels, points, hints), ranks players, shows the
+// range navigation, and fails closed on instance hosts and the internal host until the gate exists.
+// Compact POC (plan amendment): no admin pages, so no Admin link; registration follows `registrationOpen`.
+import { describe, it, expect, onTestFinished } from 'vitest';
+import request from 'supertest';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import '../src/districts/index.js'; // the standalone challenges are registered: portal mode must serve none of them
+import { createApp, type HvwaApp } from '../src/app.js';
+import { recordRangeSolve } from '../src/range/progress.js';
+import { DEFAULT_LIMITS } from '../src/range/types.js';
+import { base32, INSTANCE_ID_RE, newInstanceId } from '../src/range/ids.js';
+import { instanceHost, instanceIdOfHost, instanceOrigin, portalOrigin } from '../src/range/hosts.js';
+import { csrfOf, FAST_HASHER, serve, setCookieHeader, TEST_SECRET } from './helpers.js';
+import { parseRegistry } from '../src/lab-registry.js';
+import { ADMIN_PASSWORD, DOMAIN, labEntry, player, portalApp, signInAdmin, testRegistry, T0 } from './support/range.js';
+
+const rangeOptions = () => ({ domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry: testRegistry(), limits: DEFAULT_LIMITS });
+
+/** GET with an absolute-form request target (`GET http://name/ HTTP/1.1`), which supertest cannot send. */
+async function absoluteGet(app: HvwaApp, target: string, host: string): Promise<{ status: number; setCookie: unknown }> {
+  const { port } = serve(app).address() as AddressInfo;
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path: target, headers: { Host: host }, agent: false }, (res) => {
+      res.resume();
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, setCookie: res.headers['set-cookie'] }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+describe('portal mode: what is mounted', () => {
+  it('signed out: every page goes to /login; /login, /register, /healthz and /static are open', async () => {
+    const { app } = portalApp();
+    for (const path of ['/', '/labs/r01', '/leaderboard', '/no-such-page']) {
+      const res = await request(app).get(path);
+      expect(res.status, path).toBe(303);
+      expect(res.headers.location, path).toBe(`/login?next=${encodeURIComponent(path)}`);
+    }
+    for (const path of ['/login', '/register', '/healthz', '/static/app.css']) expect((await request(app).get(path)).status, path).toBe(200);
+  });
+
+  it('mounts no labs, no standalone portal pages, no admin pages and no JSON API, even signed in', async () => {
+    const { app } = portalApp();
+    expect(app.locals.mode).toBe('portal');
+    expect(app.locals.challenges.all()).toEqual([]);
+    const { agent } = await player(app, 'alice');
+    for (const path of ['/d/gatekeeper/sqli-login', '/d/gatekeeper', '/c/GK-01', '/scoreboard', '/api/submit', '/admin/users']) {
+      expect((await agent.get(path)).status, path).toBe(404);
+    }
+    expect((await agent.post('/api/submit').send({ challengeId: 'GK-01', submission: 'x' })).status).toBe(404);
+    const admin = await signInAdmin(app);
+    for (const path of ['/admin/users', '/admin/range', '/admin/settings']) expect((await admin.get(path)).status, path).toBe(404);
+  });
+
+  it('needs its range options and the login', () => {
+    expect(() => createApp({ flagSecret: TEST_SECRET, mode: 'portal' })).toThrow(/range/);
+    expect(() => createApp({ flagSecret: TEST_SECRET, mode: 'portal', auth: false, range: rangeOptions() })).toThrow(/login/);
+  });
+
+  it('standalone stays the default (HVWA_MODE unset): labs mounted, no range', () => {
+    const app = createApp({ flagSecret: TEST_SECRET });
+    expect(app.locals.mode).toBe('standalone');
+    expect(app.locals.range).toBeUndefined();
+    expect(app.locals.challenges.all().length).toBeGreaterThan(0);
+    app.locals.db.close();
+  });
+
+  it('fails closed on instance hosts, the internal host and /__hvwa/* of the portal host; other hosts are 421', async () => {
+    const { app } = portalApp();
+    const lab = `i-${'a'.repeat(26)}.${DOMAIN}`;
+    for (const [host, path] of [[lab, '/'], [lab, '/__hvwa/gate?t=x'], ['portal', '/__hvwa/auth'], ['portal', '/'], [DOMAIN, '/__hvwa/gate'],
+      [DOMAIN, '/__HVWA/gate'], [`${lab.toUpperCase()}:443`, '/login']]) {
+      const res = await request(app).get(path).set('Host', host);
+      expect(res.status, `${host}${path}`).toBe(404);
+      expect(res.headers['set-cookie'], `${host}${path}`).toBeUndefined();
+      expect(res.headers['cache-control'], `${host}${path}`).toBe('no-store');
+    }
+    expect((await request(app).get('/').set('Host', 'evil.example')).status).toBe(421);
+    expect((await request(app).get('/').set('Host', `i-${'a'.repeat(25)}.${DOMAIN}`)).status).toBe(421);
+  });
+
+  it('an absolute-form target naming an instance host is answered by the edge, whatever the Host says', async () => {
+    const { app } = portalApp();
+    const lab = `i-${'a'.repeat(26)}.${DOMAIN}`;
+    for (const r of [await absoluteGet(app, `http://${lab}/`, DOMAIN), await absoluteGet(app, `http://portal/login`, DOMAIN)]) {
+      expect(r.status).toBe(404);
+      expect(r.setCookie).toBeUndefined();
+    }
+    expect((await absoluteGet(app, `http://${DOMAIN}/`, DOMAIN)).status).toBe(303); // the portal itself: to the login
+  });
+});
+
+describe('portal-mode login options', () => {
+  it('behind the tunnel by default (public scheme https): hvwa_auth is Secure, a form Origin must be https, 10-character passwords', async () => {
+    const app = createApp({
+      flagSecret: TEST_SECRET, mode: 'portal', auth: { initialPassword: ADMIN_PASSWORD, hasher: FAST_HASHER }, range: rangeOptions(),
+    });
+    onTestFinished(() => { try { app.locals.db.close(); } catch { /* closed */ } });
+    expect(app.locals.auth?.passwordMinLength).toBe(10);
+    const agent = request.agent(app);
+    const form = { _csrf: csrfOf((await agent.get('/login').set('Host', DOMAIN)).text), username: 'admin', password: ADMIN_PASSWORD };
+    const plain = await agent.post('/login').set('Host', DOMAIN).set('Origin', `http://${DOMAIN}`).type('form').send(form);
+    expect(plain.status).toBe(403);
+    const ok = await agent.post('/login').set('Host', DOMAIN).set('Origin', `https://${DOMAIN}`).type('form').send(form);
+    expect(ok.status).toBe(303);
+    expect(setCookieHeader(ok, 'hvwa_auth')).toMatch(/;\s*Secure/i);
+  });
+
+  it('a local run (public scheme http): hvwa_auth is not Secure and the Origin is http', async () => {
+    const app = createApp({
+      flagSecret: TEST_SECRET, mode: 'portal', auth: { initialPassword: ADMIN_PASSWORD, hasher: FAST_HASHER },
+      range: { ...rangeOptions(), publicScheme: 'http' },
+    });
+    onTestFinished(() => { try { app.locals.db.close(); } catch { /* closed */ } });
+    const agent = request.agent(app);
+    const form = { _csrf: csrfOf((await agent.get('/login').set('Host', DOMAIN)).text), username: 'admin', password: ADMIN_PASSWORD };
+    const ok = await agent.post('/login').set('Host', DOMAIN).set('Origin', `http://${DOMAIN}`).type('form').send(form);
+    expect(ok.status).toBe(303);
+    expect(setCookieHeader(ok, 'hvwa_auth')).not.toMatch(/Secure/i);
+  });
+
+  it('registration is open unless registrationOpen is false (HVWA_REGISTRATION_OPEN=0)', async () => {
+    expect((await request(portalApp().app).get('/register')).status).toBe(200);
+    const closed = portalApp({ range: { registrationOpen: false } }).app;
+    expect((await request(closed).get('/register')).status).toBe(403);
+    expect((await request(closed).get('/login')).text).not.toContain('href="/register"');
+  });
+
+  it('failed sign-ins are budgeted per client IP (30 per 15 minutes), in front of the per-account backoff', async () => {
+    const { app } = portalApp();
+    const agent = request.agent(app);
+    const csrf = csrfOf((await agent.get('/login')).text);
+    const attempt = (ip: string, n: number) => agent.post('/login').set('CF-Connecting-IP', ip).type('form')
+      .send({ _csrf: csrf, username: `nobody${n}`, password: 'Wrong-Pass-1' });
+    for (let i = 0; i < 30; i++) expect((await attempt('203.0.113.7', i)).status).toBe(401);
+    expect((await attempt('203.0.113.7', 30)).status).toBe(429);
+    expect((await attempt('203.0.113.8', 31)).status).toBe(401);
+  });
+});
+
+describe('the catalog', () => {
+  it('lists every registry lab: app, title, category, difficulty badge, scenario and level chips', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice');
+    const html = (await agent.get('/')).text;
+    const cards = [...html.matchAll(/data-testid="lab-card" data-lab="(r\d{2})" data-difficulty="([a-z]+)" data-solved="(true|false)"/g)]
+      .map((m) => m.slice(1).join(':'));
+    expect(cards).toEqual(['r01:easy:false', 'r02:medium:false']);
+    for (const text of ['App clinic', 'clinic title', 'Scenario of clinic', 'SQL injection', 'Easy', 'Medium', 'Broken access control']) {
+      expect(html, text).toContain(text);
+    }
+    expect(html).toContain('href="/labs/r01"');
+  });
+
+  it('filters by category, difficulty and solved state (a GET form: no JavaScript), ignoring unknown values', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'alice');
+    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0);
+    const ids = async (q: string) => [...(await agent.get(`/${q}`)).text.matchAll(/data-lab="(r\d{2})"/g)].map((m) => m[1]);
+    expect(await ids('?difficulty=medium')).toEqual(['r02']);
+    expect(await ids(`?category=${encodeURIComponent('SQL injection')}`)).toEqual(['r01']);
+    expect(await ids('?show=done')).toEqual(['r02']);
+    expect(await ids('?show=todo')).toEqual(['r01']);
+    expect(await ids('?difficulty=insane&category=%3Cx%3E')).toEqual(['r01', 'r02']);
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">200<');
+  });
+
+  it('shows the Indonesian texts with ?lang=id, and every value escaped', async () => {
+    const { app } = portalApp({ range: { registry: parseRegistry({ schema: 1, labs: [labEntry('r01', 'clinic', { app: '<b>App</b>' })] }) } });
+    const { agent } = await player(app, 'alice');
+    const html = (await agent.get('/?lang=id')).text;
+    expect(html).toContain('judul clinic');
+    expect(html).toContain('Skenario clinic');
+    expect(html).toContain('&lt;b&gt;App&lt;/b&gt;');
+    expect(html).not.toContain('<b>App</b>');
+  });
+});
+
+describe('a lab page', () => {
+  it('briefing, scenario and a level picker with points (Easy: 100 / 150 / 200, Divine not scored); ?level= is clamped', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice');
+    const html = (await agent.get('/labs/r01?level=templar')).text;
+    expect(html).toContain('Briefing of clinic');
+    for (const [level, text] of [['acolyte', '100'], ['templar', '150'], ['inquisitor', '200']]) {
+      expect(html).toMatch(new RegExp(`data-testid="range-level-${level}"[^>]*>[\\s\\S]*?${text} `));
+    }
+    expect(html).toMatch(/data-testid="range-level-templar"[^>]*aria-current="true"/);
+    const courier = (await agent.get('/labs/r02?level=inquisitor')).text; // r02 has acolyte + divine: clamped to acolyte
+    expect(courier).toMatch(/data-testid="range-level-acolyte"[^>]*aria-current="true"/);
+    expect((await agent.get('/labs/r99')).status).toBe(404);
+  });
+
+  it('a hint costs points: the account CSRF token is required; it shows the text and the score drops once', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'alice');
+    recordRangeSolve(app.locals.db, userId, 'r01', 'acolyte', 100, T0);
+    expect((await agent.post('/labs/r01/hint').type('form').send({ tier: '1' })).status).toBe(403);
+    const csrf = csrfOf((await agent.get('/labs/r01')).text);
+    expect((await agent.post('/labs/r01/hint').set('Origin', 'https://evil.example').type('form').send({ _csrf: csrf, tier: '1' })).status)
+      .toBe(403);
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">100<');
+    const res = await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '1' });
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Hint one of clinic');
+    const again = await agent.post('/labs/r01/hint').type('form').send({ _csrf: csrf, tier: '1' });
+    expect(again.status).toBe(303);
+    expect(again.headers.location).toBe('/labs/r01#hint-1');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">90<');
+    expect((await agent.get('/labs/r01')).text).toMatch(/data-tier="1">Hint one of clinic</);
+    expect((await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '3' })).status).toBe(400);
+    expect((await agent.post('/labs/r99/hint').type('form').send({ _csrf: csrf, tier: '1' })).status).toBe(404);
+  });
+
+  it('a locked hint never shows its text', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice');
+    expect((await agent.get('/labs/r01')).text).not.toContain('Hint one of clinic');
+  });
+});
+
+describe('the leaderboard and the navigation', () => {
+  it('ranks players by score, then by the earlier last solve; marks the viewer', async () => {
+    const { app } = portalApp();
+    const a = await player(app, 'alice');
+    const b = await player(app, 'bob');
+    recordRangeSolve(app.locals.db, a.userId, 'r01', 'templar', 150, T0 + 2);
+    recordRangeSolve(app.locals.db, b.userId, 'r01', 'templar', 150, T0 + 1);
+    const html = (await a.agent.get('/leaderboard')).text;
+    expect([...html.matchAll(/data-rank="(\d+)" data-user="([a-z_0-9]+)"/g)].map((m) => `${m[1]}:${m[2]}`)).toEqual(['1:bob', '2:alice']);
+    expect(html).toMatch(/data-user="alice"[^>]*aria-current="true"/);
+    expect(html).not.toMatch(/data-user="bob"[^>]*aria-current="true"/);
+  });
+
+  it('Labs and Leaderboard for everyone; no Admin link (no admin pages in the POC); no Districts or Scoreboard links', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice');
+    for (const html of [(await agent.get('/')).text, (await (await signInAdmin(app)).get('/')).text]) {
+      expect(html).toContain('data-testid="nav-labs"');
+      expect(html).toContain('data-testid="nav-leaderboard"');
+      expect(html).not.toContain('data-testid="nav-admin"');
+      expect(html).not.toContain('href="/scoreboard"');
+    }
+  });
+});
+
+describe('range ids and hosts', () => {
+  it('base32 is RFC 4648 in lower case without padding; an instance id is 128 bits in 26 characters', () => {
+    const enc = (s: string) => base32(new TextEncoder().encode(s));
+    expect(['', 'f', 'fo', 'foo', 'foob', 'fooba', 'foobar'].map(enc)).toEqual(['', 'my', 'mzxq', 'mzxw6', 'mzxw6yq', 'mzxw6ytb', 'mzxw6ytboi']);
+    const ids = new Set(Array.from({ length: 50 }, () => newInstanceId()));
+    expect(ids.size).toBe(50);
+    for (const id of ids) expect(id).toMatch(INSTANCE_ID_RE);
+  });
+
+  it('instance hosts are one level deep; origins carry a port only when it is not the scheme default', () => {
+    const id = 'a'.repeat(26);
+    expect(instanceHost(id, DOMAIN)).toBe(`i-${id}.${DOMAIN}`);
+    expect(instanceIdOfHost(`i-${id}.${DOMAIN}`, DOMAIN)).toBe(id);
+    for (const h of [`i-${id}.x.${DOMAIN}`, `i-${id}x.${DOMAIN}`, `c-${id}.${DOMAIN}`, `i-${id}.other.test`, `i-${'A'.repeat(26)}.${DOMAIN}`, DOMAIN]) {
+      expect(instanceIdOfHost(h, DOMAIN), h).toBeUndefined();
+    }
+    expect(instanceOrigin(id, DOMAIN)).toBe(`https://i-${id}.${DOMAIN}`);
+    expect(instanceOrigin(id, DOMAIN, 'https', 443)).toBe(`https://i-${id}.${DOMAIN}`);
+    expect(instanceOrigin(id, 'localhost', 'http', 18080)).toBe(`http://i-${id}.localhost:18080`);
+    expect(portalOrigin('hvwa.localhost', 'http', 80)).toBe('http://hvwa.localhost');
+    expect(portalOrigin(DOMAIN)).toBe(`https://${DOMAIN}`);
+  });
+});
