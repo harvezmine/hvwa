@@ -62,6 +62,8 @@ describe('lab package layout (spec §8.4)', () => {
     const dir = join(LABS_DIR, `${e.id}-${e.slug}`);
     it(`${e.id} has Dockerfile, app/, README.md, VERSION, a .dockerignore hiding solve/, and a solve per exploitable level`, () => {
       expect(existsSync(join(dir, 'Dockerfile'))).toBe(true);
+      expect(existsSync(join(dir, 'app')), `${e.id}/app`).toBe(true);
+      expect(existsSync(join(dir, 'seed')), `${e.id}/seed`).toBe(true);
       expect(existsSync(join(dir, 'README.md'))).toBe(true);
       expect(readFileSync(join(dir, 'VERSION'), 'utf8').trim()).toMatch(/^\d+\.\d+\.\d+$/);
       expect(readFileSync(join(dir, '.dockerignore'), 'utf8').replace(/\r\n/g, '\n')).toMatch(/(^|\n)solve($|\/|\n)/);
@@ -84,11 +86,21 @@ describe('lab package layout (spec §8.4)', () => {
 });
 
 describe('labs/registry.json', () => {
-  it('parses, and once filled, each entry matches the lab dir manifest (id/slug/image pinned by digest)', () => {
+  // Everything the warden and portal act on: a stale registry must fail here, not at launch (e.g. a manifest port
+  // changed to 9090 while the registry still pins 8080). Version and image are the registry's own additions.
+  const OPERATIONAL = ['port', 'health', 'flag', 'tmpfs', 'resources', 'levels', 'hints', 'app', 'scenario',
+    'themeId', 'difficulty', 'needsBot'] as const;
+
+  it('parses, and once filled, each entry matches its lab dir manifest on every operational field', () => {
     const reg = parseRegistry(JSON.parse(readFileSync(join(process.cwd(), 'labs', 'registry.json'), 'utf8')));
     for (const entry of reg.labs) {
-      const m = readManifest(join(LABS_DIR, `${entry.id}-${entry.slug}`));
-      expect(entry).toMatchObject({ id: m.id, slug: m.slug, category: m.category });
+      const dir = join(LABS_DIR, `${entry.id}-${entry.slug}`);
+      expect(existsSync(dir), `${entry.id}: no lab directory ${entry.id}-${entry.slug}`).toBe(true);
+      const m = labManifestSchema.parse(readManifest(dir));
+      for (const field of OPERATIONAL) {
+        expect(entry[field], `${entry.id}: registry ${field} has drifted from ${entry.id}-${entry.slug}/lab.json`)
+          .toEqual(m[field]);
+      }
       expect(entry.image).toMatch(/^(?:.+@)?sha256:[a-f0-9]{64}$/);
     }
   });
