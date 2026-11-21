@@ -9,6 +9,7 @@ import { portalFramePolicy } from '../portal/frame-policy.js';
 import { catalogRoutes } from './catalog.js';
 import { instanceIdOfHost } from './hosts.js';
 import { createLifecycle, type Lifecycle } from './lifecycle.js';
+import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import type { RangeContext, RangePortalOptions } from './types.js';
 
 export type { RangeLimits, RangePortalOptions } from './types.js';
@@ -25,6 +26,8 @@ export interface RangePortal {
   readonly router: Router;
   /** The instance lifecycle (server.ts starts its reaper; the panels use it). */
   readonly lifecycle: Lifecycle;
+  /** Reconcile with the warden now (logged on failure), then reap every 30 s. server.ts calls it once listening. */
+  start(): Reaper;
 }
 
 export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: RangePortalOptions): RangePortal {
@@ -54,5 +57,12 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const router = Router();
   router.use(portalFramePolicy());
   catalogRoutes(router, ctx);
-  return Object.freeze({ isInstanceHost, edge, locals, router, lifecycle });
+  const log = opts.log ?? ((line: string) => console.warn(line));
+  const start = (): Reaper => {
+    reconcile(lifecycle, opts.warden, now).catch((err: unknown) => {
+      log(`HVWA range: startup reconcile failed (${err instanceof Error ? err.message : String(err)}); the reaper catches up`);
+    });
+    return startReaper(() => reapOnce(lifecycle, opts.warden, opts.limits, now));
+  };
+  return Object.freeze({ isInstanceHost, edge, locals, router, lifecycle, start });
 }
