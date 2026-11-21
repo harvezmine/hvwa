@@ -48,7 +48,7 @@ function serverEjsOptions(): Options {
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
   'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery',
-  'portalNav', 'myLab', 'mode', 'navActive',
+  'portalNav', 'myLab', 'mode',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */

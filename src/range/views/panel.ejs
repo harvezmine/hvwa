@@ -17,7 +17,7 @@
   <p class="help" data-testid="idle-rule"><%= t('range.idle_rule').replace('{n}', panel.idleMinutes) %></p>
 <% } -%>
 <% if (panel.replaces) { -%>
-  <p class="help" data-testid="lab-replaces"><%= t('range.launch_replaces').replace('{app}', panel.replaces.app).replace('{level}', panel.replaces.levelLabel) %></p>
+  <p class="help" data-testid="lab-replaces"><%= t('range.launch_replaces').replace('{app}', () => panel.replaces.app).replace('{level}', () => panel.replaces.levelLabel) %></p>
 <% } -%>
   <div class="panel-actions">
 <% if (panel.state === 'none' || panel.state === 'failed') { -%>
