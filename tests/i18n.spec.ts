@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { t } from '../src/core/i18n.js';
+import { t, translationKeys } from '../src/core/i18n.js';
 
 describe('i18n', () => {
   it('returns different strings per language and echoes unknown keys', () => {
@@ -12,6 +12,23 @@ describe('i18n', () => {
   it('both safety banners warn against UNtrusted networks', () => {
     expect(t('safety.warning', 'en')).toMatch(/never expose it to an untrusted network/i);
     expect(t('safety.warning', 'id')).toMatch(/jangan pernah mengeksposnya ke jaringan yang tidak tepercaya/i);
+  });
+
+  it('the portal banner does not claim to run offline (the standalone one still does)', () => {
+    expect(t('app.footer', 'en')).toContain('offline');
+    expect(t('app.footer', 'id')).toContain('offline');
+    expect(t('safety.portal', 'en')).not.toMatch(/offline|nothing is sent|never expose/i);
+    expect(t('safety.portal', 'id')).not.toMatch(/offline|tidak ada permintaan|jangan pernah mengekspos/i);
+    for (const [key, lang] of [['safety.portal', 'en'], ['safety.portal', 'id']] as const) {
+      expect(t(key, lang).length, `${key}/${lang}`).toBeGreaterThan(20);
+    }
+  });
+
+  it('every range.* key is really translated in Indonesian (no English copy left behind)', () => {
+    const keys = translationKeys().filter((k) => k.startsWith('range.'));
+    expect(keys.length).toBeGreaterThan(30);
+    const untranslated = keys.filter((k) => t(k, 'id') === t(k, 'en'));
+    expect(untranslated).toEqual([]);
   });
 
   it('the simulated-victim panel keys follow the underscore convention (no hyphenated keys)', () => {
