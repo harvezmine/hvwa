@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from './db/index.js';
-import { authModeFrom, editionFrom, type Config } from './config.js';
+import { authModeFrom, editionFrom, modeFrom, type Config, type Mode } from './config.js';
 import { editionChallengeIds, type Edition } from './editions.js';
 import { challengeSet, getChallenge, type ChallengeSet } from './core/registry.js';
 import { setFlagSecret } from './core/flags.js';
@@ -19,7 +19,9 @@ import { checkerRouter } from './core/checker.js';
 import { errorHandler, notFoundHandler } from './core/errors.js';
 import { mountChallenges } from './core/mount.js';
 import { portalRouter } from './portal/index.js';
-import { platformAuth, type AuthOptions, type AuthService } from './auth/index.js';
+import { platformAuth, SIGN_IN_PER_IP_DEFAULTS, type AuthOptions, type AuthService } from './auth/index.js';
+import { RANGE_PASSWORD_MIN_LENGTH } from './range/config.js';
+import { createRangePortal, type RangePortal, type RangePortalOptions } from './range/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // Vendored htmx (pinned dependency), served locally — no network at runtime.
@@ -64,8 +66,17 @@ export interface AppOptions {
    * Overrides the environment; when omitted, HVWA_AUTH decides, and unset/blank HVWA_AUTH means ON only
    * when NODE_ENV=production (config.ts authModeFrom). server.ts passes the validated config value;
    * tests/support/setup.ts pins HVWA_AUTH=off, so only specs that pass `auth` run with the login.
+   * Portal mode always has the login (false is refused there).
    */
   auth?: boolean | AuthOptions;
+  /**
+   * standalone (every lab in one process: the lite and full images) or portal (the range portal: accounts, catalog,
+   * instances; it mounts no labs). Overrides the environment; when omitted, HVWA_MODE decides (blank/unset =
+   * standalone). tests/support/setup.ts pins standalone; portal-mode specs pass `mode: 'portal'` and `range`.
+   */
+  mode?: Mode;
+  /** Portal mode only, and required there: the range (src/range/options.ts portalAppOptions builds it). */
+  range?: RangePortalOptions;
 }
 
 /**
@@ -88,11 +99,14 @@ export function appOptionsFromConfig(
 
 /**
  * The Express app plus its typed platform DB handle on `locals.db`, the edition it serves
- * (`locals.challenges` is what it mounts, lists and scores; server.ts prints its count), and the
- * login service when auth is on (`locals.auth`, undefined when off).
+ * (`locals.challenges` is what it mounts, lists and scores; server.ts prints its count), the
+ * login service when auth is on (`locals.auth`, undefined when off), its mode, and the range portal in portal mode.
  */
 export type HvwaApp = Express & {
-  locals: { db: DatabaseSync; edition: Edition; challenges: ChallengeSet; auth: AuthService | undefined };
+  locals: {
+    db: DatabaseSync; edition: Edition; challenges: ChallengeSet; auth: AuthService | undefined;
+    mode: Mode; range: RangePortal | undefined;
+  };
 };
 
 /** The ChallengeSet of an edition. Every challenge the edition lists must be registered by now. */
@@ -106,8 +120,17 @@ function editionSet(edition: Edition): ChallengeSet {
   return challengeSet(ids);
 }
 
+/** /static (the shell's CSS, icons, ui.js) and the vendored htmx: open before any login, in both modes. */
+function serveStatic(app: Express): void {
+  app.get('/static/vendor/htmx.min.js', (_req, res, next) => {
+    res.sendFile('htmx.min.js', { root: htmxDistDir }, (err) => { if (err) next(err); });
+  });
+  app.use('/static', express.static(join(here, 'public'), { index: false }));
+}
+
 export function createApp(opts: AppOptions = {}): HvwaApp {
   if (opts.flagSecret) setFlagSecret(opts.flagSecret);
+  if ((opts.mode ?? modeFrom(process.env)) === 'portal') return createPortalApp(opts);
   const edition = opts.edition ?? editionFrom(process.env);
   const challenges = editionSet(edition);
   const authOn = opts.auth === undefined ? authModeFrom(process.env) === 'on' : opts.auth !== false;
@@ -120,7 +143,9 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   // use a file DB (Windows cannot delete a file SQLite still holds open).
   // Object.assign keeps the same locals object and yields the typed shape.
   const base = express();
-  const app: HvwaApp = Object.assign(base, { locals: Object.assign(base.locals, { db, edition, challenges, auth: login?.service }) });
+  const app: HvwaApp = Object.assign(base, {
+    locals: Object.assign(base.locals, { db, edition, challenges, auth: login?.service, mode: 'standalone' as const, range: undefined }),
+  });
 
   // FIRST: requests for a foreign Host (DNS rebinding) never reach anything else.
   app.use(hostGuard(opts.allowedHosts));
@@ -131,10 +156,7 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use(levelMiddleware());
   app.use(langMiddleware());
   app.use(themeMiddleware());
-  app.get('/static/vendor/htmx.min.js', (_req, res, next) => {
-    res.sendFile('htmx.min.js', { root: htmxDistDir }, (err) => { if (err) next(err); });
-  });
-  app.use('/static', express.static(join(here, 'public'), { index: false }));
+  serveStatic(app);
 
   app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
   // The platform login: /login stays open; EVERYTHING after the gate (the API, every lab, the portal,
@@ -147,6 +169,62 @@ export function createApp(opts: AppOptions = {}): HvwaApp {
   app.use('/api', checkerRouter(db, challenges));
   mountChallenges(app, { now: opts.resetClock, challenges }); // the edition's challenges at /d/<district>/<slug>
   app.use('/', portalRouter(db, challenges));
+
+  app.use(notFoundHandler());
+  app.use(errorHandler()); // must stay last
+  return app;
+}
+
+/**
+ * Portal mode (spec 2026-11-20 range): accounts, the range catalog, instances, the gate and forward-auth. No lab is
+ * mounted and there is no /api: range labs run in their own containers, behind Traefik.
+ */
+function createPortalApp(opts: AppOptions): HvwaApp {
+  const range = opts.range;
+  if (!range) throw new Error('createApp: portal mode needs the `range` option (src/range/options.ts portalAppOptions)');
+  if (opts.auth === false) throw new Error('createApp: portal mode always has the login (auth cannot be false)');
+  const edition = opts.edition ?? editionFrom(process.env);
+  const db = openDb(opts.dbPath ?? ':memory:');
+  migrate(db);
+  const authOpts: AuthOptions = typeof opts.auth === 'object' ? opts.auth : {};
+  // Portal-mode login defaults (an explicit `auth` object overrides each): 10-character passwords (spec §4); the
+  // forms' Origin check against the public scheme and Secure on hvwa_auth exactly when it is https (TLS ends at
+  // Cloudflare, the portal itself only sees plain http); a budget of failed sign-ins per client IP (CF-Connecting-IP
+  // behind the tunnel); /register, open unless HVWA_REGISTRATION_OPEN=0.
+  const scheme = range.publicScheme ?? 'https';
+  const login = platformAuth(db, {
+    passwordMinLength: RANGE_PASSWORD_MIN_LENGTH, secureCookies: scheme === 'https', publicScheme: scheme,
+    signInPerIp: SIGN_IN_PER_IP_DEFAULTS,
+    ...authOpts,
+    registration: { open: range.registrationOpen ?? true, ...authOpts.registration },
+  });
+  const portal = createRangePortal(db, login, range);
+
+  const base = express();
+  const app: HvwaApp = Object.assign(base, {
+    locals: Object.assign(base.locals, {
+      db, edition, challenges: challengeSet([]), auth: login.service, mode: 'portal' as const, range: portal,
+    }),
+  });
+  // FIRST: foreign Hosts get 421. The portal host, the internal forward-auth host and instance hosts pass; `edge`
+  // then answers everything on the last two (and /__hvwa/* anywhere) before a session cookie could be issued.
+  app.use(hostGuard([...(opts.allowedHosts ?? []), range.portalHost, range.internalHost], portal.isInstanceHost));
+  app.use(cookieParser());
+  app.use(portal.edge);
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(sessionMiddleware({ maxNewPerMinute: opts.maxNewSessionsPerMinute, now: opts.sessionClock }));
+  app.use(levelMiddleware());
+  app.use(langMiddleware());
+  app.use(themeMiddleware());
+  serveStatic(app);
+  app.get('/healthz', (_req, res) => { res.json({ status: 'ok' }); });
+
+  app.use(login.publicRouter); // /login, /register
+  app.use(login.gate);         // everything below needs a signed-in, active account
+  app.use(portal.locals);
+  app.use(login.accountRouter);
+  app.use(portal.router);
 
   app.use(notFoundHandler());
   app.use(errorHandler()); // must stay last

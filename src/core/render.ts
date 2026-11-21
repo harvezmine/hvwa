@@ -14,6 +14,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 // reaches into portal/ or districts/.
 const layoutFile = join(here, 'views', 'layout.ejs');
 
+/** The My Lab chip (portal mode): included by the layout, and served alone as the htmx fragment /my-lab/chip. */
+export const MY_LAB_VIEW = join(here, 'views', 'my-lab.ejs');
+
 export function escapeHtml(s: unknown): string {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -39,11 +42,13 @@ function serverEjsOptions(): Options {
  * from res.locals; challenge, level and labPath on challenge routes; platformAuth, the login's account bar
  * and default-password banner, from res.locals; uiTheme, the colour theme, and prefQuery, the query the
  * language and theme toggles keep, from res.locals), plus title: the document <title> is the
- * platform's (portal pages pass pageTitle, which stays unreserved; a lab page gets labBar.pageTitle).
+ * platform's (portal pages pass pageTitle, which stays unreserved; a lab page gets labBar.pageTitle),
+ * plus portalNav and myLab, the range portal's header, from res.locals.
  */
 export const RESERVED_VIEW_KEYS: ReadonlySet<string> = new Set([
   'escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
   'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery',
+  'portalNav', 'myLab',
 ]);
 
 /** The layout's lab bar: player guidance shown above every challenge route's view. */
@@ -127,6 +132,21 @@ export async function page(res: Response, viewFile: string, data: Record<string,
  */
 export async function sendPage(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<void> {
   res.type('html').send(await page(res, viewFile, data));
+}
+
+/**
+ * Render an EJS view (absolute .ejs path) WITHOUT the layout: an htmx fragment (the range's Lab panel, the My Lab chip).
+ * Same context and the same reserved-key rule as page().
+ */
+export async function fragment(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<string> {
+  assertViewFile(viewFile);
+  assertNoReservedKeys(data);
+  return renderFile(viewFile, { ...res.locals, ...data }, serverEjsOptions());
+}
+
+/** fragment() sent as text/html. */
+export async function sendFragment(res: Response, viewFile: string, data: Record<string, unknown> = {}): Promise<void> {
+  res.type('html').send(await fragment(res, viewFile, data));
 }
 
 /**

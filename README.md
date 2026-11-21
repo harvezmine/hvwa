@@ -142,7 +142,7 @@ the vulnerable part; the login is not one of them.
   with no restart:
 
   ```sh
-  docker exec hvwa-app-1 node -e "new (require('node:sqlite').DatabaseSync)('/data/hvwa.db').exec('UPDATE auth_accounts SET failures=0, locked_until=0')"
+  docker exec hvwa-app-1 node -e "new (require('node:sqlite').DatabaseSync)('/data/hvwa.db').exec('UPDATE users SET failures=0, locked_until=0')"
   ```
 
 - **Forgot the password?** `docker compose down -v` resets everything. To keep your progress, delete
@@ -150,13 +150,16 @@ the vulnerable part; the login is not one of them.
   `password` if that is unset:
 
   ```sh
-  docker exec hvwa-app-1 node -e "new (require('node:sqlite').DatabaseSync)('/data/hvwa.db').exec('DELETE FROM auth_accounts; DELETE FROM auth_tokens')"
+  docker exec hvwa-app-1 node -e "new (require('node:sqlite').DatabaseSync)('/data/hvwa.db').exec('DELETE FROM auth_tokens; DELETE FROM users')"
   docker restart hvwa-app-1
   ```
 
   These work with both compose files: their project is named `hvwa`, so the app container is
   `hvwa-app-1`. Without Docker, run the same `node -e` line against `data/hvwa.db`: the unlock
   works while the server runs, but stop the server before deleting the account.
+
+  Images published before the range release (for example `sigmajo/hvwa:lite` of 2026-11-18) still call the account
+  table `auth_accounts`: with those, write `auth_accounts` where the commands above say `users`.
 
 The login does not make HVWA safe to expose: see [docs/SECURITY.md](docs/SECURITY.md#the-platform-login).
 

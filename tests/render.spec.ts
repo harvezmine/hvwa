@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { diffView, page, sendPage, RESERVED_VIEW_KEYS } from '../src/core/render.js';
+import { diffView, fragment, page, sendFragment, sendPage, RESERVED_VIEW_KEYS } from '../src/core/render.js';
 import { langMiddleware } from '../src/core/i18n.js';
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'hello.ejs');
@@ -143,11 +143,11 @@ describe('page() / sendPage() guards', () => {
   it('reserves exactly the keys ejs and the layout depend on', () => {
     expect([...RESERVED_VIEW_KEYS].sort()).toEqual(
       ['__append', '__output', 'body', 'challenge', 'escapeFn', 'include', 'labBar', 'lang', 'level', 'locals',
-        'labPath', 'platformAuth', 'rethrow', 'simPanel', 't', 'title', 'uiTheme', 'prefQuery'].sort());
+        'labPath', 'platformAuth', 'rethrow', 'simPanel', 't', 'title', 'uiTheme', 'prefQuery', 'portalNav', 'myLab'].sort());
   });
 
   it.each(['escapeFn', 'include', 'rethrow', '__append', '__output', 'locals', 'body', 't', 'lang',
-    'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery'])(
+    'challenge', 'level', 'labBar', 'labPath', 'simPanel', 'title', 'platformAuth', 'uiTheme', 'prefQuery', 'portalNav', 'myLab'])(
     'rejects reserved data key %s', async (key) => {
       const app = appWith(async (_req, res) => { res.send(await page(res, fixture, { name: 'x', [key]: 'y' })); });
       const res = await request(app).get('/');
@@ -171,5 +171,26 @@ describe('page() / sendPage() guards', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/html/);
     expect(res.text).toContain('<p id="hello">Districts &lt;i&gt;w&lt;/i&gt;</p>');
+  });
+
+  describe('fragment() (htmx partials)', () => {
+    it('renders a view WITHOUT the layout, with res.locals, and refuses reserved keys like page()', async () => {
+      const ok = appWith(async (_req, res) => { res.send(await fragment(res, fixture, { name: 'part' })); });
+      const html = (await request(ok).get('/')).text;
+      expect(html).toContain('part');
+      expect(html).toContain('Districts'); // t() from res.locals
+      expect(html).not.toContain('<!doctype html>');
+      const bad = appWith(async (_req, res) => { res.send(await fragment(res, fixture, { name: 'x', myLab: 'y' })); });
+      expect((await request(bad).get('/')).body.message).toMatch(/reserved.*"myLab"/);
+      const relative = appWith(async (_req, res) => { res.send(await fragment(res, 'tests/fixtures/hello.ejs', { name: 'x' })); });
+      expect((await request(relative).get('/')).body.message).toMatch(/absolute/);
+    });
+
+    it('sendFragment() sends it as text/html', async () => {
+      const app = appWith(async (_req, res) => { await sendFragment(res, fixture, { name: '<i>w</i>' }); });
+      const res = await request(app).get('/');
+      expect(res.headers['content-type']).toMatch(/text\/html/);
+      expect(res.text.trim()).toBe('<p id="hello">Districts &lt;i&gt;w&lt;/i&gt;</p>');
+    });
   });
 });

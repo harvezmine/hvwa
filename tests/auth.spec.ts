@@ -286,7 +286,7 @@ describe('signing in', () => {
 
   it('runs exactly one password check per attempt: a dummy hash for an unknown username', async () => {
     const { app, verifies } = authApp();
-    const stored = (app.locals.db.prepare("SELECT password_hash h FROM auth_accounts WHERE username='admin'").get() as { h: string }).h;
+    const stored = (app.locals.db.prepare("SELECT password_hash h FROM users WHERE username='admin'").get() as { h: string }).h;
     const agent = request.agent(app);
     const csrf = csrfOf((await agent.get('/login')).text);
     await agent.post('/login').type('form').send({ _csrf: csrf, username: 'nobody', password: 'password' });
@@ -353,7 +353,7 @@ describe('password checks in flight (CPU: every attempt, even a locked one, cost
     }
     expect(done).toHaveLength(0);
     expect(verifies).toHaveLength(AUTH_LIMITS.checksInFlight);
-    expect(db.prepare("SELECT failures FROM auth_accounts WHERE username='admin'").get()).toEqual({ failures: 0 });
+    expect(db.prepare("SELECT failures FROM users WHERE username='admin'").get()).toEqual({ failures: 0 });
     expect(app.locals.auth?.checkLoad()).toEqual(full);
     // Release one check at a time: each frees its slot for the next queued attempt, never more than the cap.
     const results = await drain(held, Promise.all(all));
@@ -445,7 +445,7 @@ describe('brute-force backoff (fake clock)', () => {
 
   it('a parallel burst gets at most 5 real password checks before the lock holds', async () => {
     const { app, verifies } = authApp();
-    const stored = (app.locals.db.prepare("SELECT password_hash h FROM auth_accounts WHERE username='admin'").get() as { h: string }).h;
+    const stored = (app.locals.db.prepare("SELECT password_hash h FROM users WHERE username='admin'").get() as { h: string }).h;
     const agent = request.agent(app);
     const csrf = csrfOf((await agent.get('/login')).text);
     const results = await Promise.all(Array.from({ length: 12 }, (_, i) =>
@@ -475,7 +475,7 @@ describe('brute-force backoff (fake clock)', () => {
   it('the README recipes work as written: the unlock applies to a running app at once; the account reset re-creates it', async () => {
     const readme = readFileSync(join(process.cwd(), 'README.md'), 'utf8');
     const sql = [...readme.matchAll(/hvwa\.db'\)\.exec\('([^']+)'\)/g)].map((m) => m[1]);
-    expect(sql).toEqual(['UPDATE auth_accounts SET failures=0, locked_until=0', 'DELETE FROM auth_accounts; DELETE FROM auth_tokens']);
+    expect(sql).toEqual(['UPDATE users SET failures=0, locked_until=0', 'DELETE FROM auth_tokens; DELETE FROM users']);
     const dir = mkdtempSync(join(tmpdir(), 'hvwa-auth-'));
     tempDirs.push(dir);
     const dbPath = join(dir, 'hvwa.db');
@@ -878,10 +878,10 @@ describe('storage: only hashes', () => {
   it('a tampered account row asking for N=2^30 is a plain failed sign-in: no crash, no terabyte, the app keeps answering', async () => {
     const { app } = authApp();
     const db = app.locals.db;
-    const stored = (db.prepare("SELECT password_hash h FROM auth_accounts WHERE username='admin'").get() as { h: string }).h;
+    const stored = (db.prepare("SELECT password_hash h FROM users WHERE username='admin'").get() as { h: string }).h;
     const tampered = stored.replace(/^scrypt\$\d+\$/, `scrypt$${2 ** 30}$`);
     expect(tampered).not.toBe(stored);
-    db.prepare("UPDATE auth_accounts SET password_hash = ? WHERE username='admin'").run(tampered);
+    db.prepare("UPDATE users SET password_hash = ? WHERE username='admin'").run(tampered);
     const t0 = performance.now();
     const res = await signIn(request.agent(app));
     expect(res.status).toBe(401);
@@ -901,7 +901,7 @@ describe('storage: only hashes', () => {
     const token = authCookie(changed) as string;
     await signIn(request.agent(app), { password: 'Wrong-Guess-789' });
     const db = app.locals.db;
-    const account = db.prepare('SELECT * FROM auth_accounts').all();
+    const account = db.prepare('SELECT * FROM users').all();
     expect(account).toHaveLength(1);
     expect(account[0]).toMatchObject({ username: 'admin', is_default: 0 });
     expect(String(account[0].password_hash)).toMatch(/^scrypt\$32768\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{86}$/);
@@ -934,7 +934,7 @@ describe('auth OFF (the default outside production) leaves the portal exactly as
     expect((await request(app).post('/logout')).status).toBe(404);
     expect((await request(app).get('/account/password')).status).toBe(404);
     expect((await request(app).post('/api/submit').send({ challengeId: 'ZA-01', submission: 'x' })).status).toBe(200);
-    expect(app.locals.db.prepare('SELECT COUNT(*) n FROM auth_accounts').get()).toEqual({ n: 0 }); // no account is created
+    expect(app.locals.db.prepare('SELECT COUNT(*) n FROM users').get()).toEqual({ n: 0 }); // no account is created
   });
 
   it('the createApp option overrides the environment both ways', async () => {

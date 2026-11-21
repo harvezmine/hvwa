@@ -4,6 +4,9 @@
   <span class="auth-mark"><svg class="icon icon-lg" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg></span>
   <h1 class="page-title" id="login-title"><%= t('auth.login_heading') %></h1>
   <p class="auth-intro"><%= t('auth.login_intro') %></p>
+<% if (registered) { -%>
+  <p class="result result-ok" role="status" data-testid="registered"><%= t('auth.registered') %></p>
+<% } -%>
 <% if (notice) { -%>
   <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
 <% } -%>
@@ -23,5 +26,8 @@
     </div>
     <button type="submit" class="btn btn-primary btn-lg btn-block"><%= t('auth.login_button') %></button>
   </form>
+<% if (registerLink) { -%>
+  <p class="auth-switch"><a href="/register" data-testid="register-link"><%= t('auth.register_link') %></a></p>
+<% } -%>
 </section>
 </div>

@@ -25,6 +25,10 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'schema.sql'), 'utf8')),
   // 2: the platform login (auth_accounts, auth_tokens; src/auth). Created whether or not auth is on.
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'auth.sql'), 'utf8')),
+  // 3: many users (users replaces auth_accounts; auth_tokens unchanged) and the range's admin switches. src/auth.
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'users.sql'), 'utf8')),
+  // 4: the range (portal mode): solves and hint unlocks keyed by users.id, and the instance records. src/range.
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'range.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

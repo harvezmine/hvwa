@@ -16,17 +16,51 @@ const tables = (db: DatabaseSync) =>
     .map((r) => r.name);
 
 describe('db', () => {
-  it('the platform schema holds only platform state: solves, hint_unlocks, events and the login (auth_*)', () => {
+  it('the platform schema holds only platform state: solves, hint_unlocks, events, the login (users, auth_tokens), the range (settings, solves, hint unlocks, instances)', () => {
     const db = openDb(':memory:');
     migrate(db);
-    expect(tables(db)).toEqual(['auth_accounts', 'auth_tokens', 'events', 'hint_unlocks', 'solves']);
+    expect(tables(db)).toEqual(['auth_tokens', 'events', 'hint_unlocks', 'range_hint_unlocks', 'range_instances',
+      'range_settings', 'range_solves', 'solves', 'users']);
+    expect(columns(db, 'range_instances')).toEqual(['id', 'user_id', 'lab_id', 'level', 'state', 'reason', 'flag_hash',
+      'created_at', 'started_at', 'ready_at', 'expires_at', 'last_seen_at', 'ended_at']);
     // The login keeps hashes only (src/auth): no column could hold a password or a token in plaintext.
-    expect(columns(db, 'auth_accounts')).toEqual(['username', 'password_hash', 'is_default', 'failures', 'locked_until', 'changed_at']);
+    expect(columns(db, 'users')).toEqual(['id', 'username', 'password_hash', 'role', 'created_at', 'disabled', 'is_default',
+      'failures', 'locked_until', 'changed_at']);
     expect(columns(db, 'auth_tokens')).toEqual(['token_hash', 'username', 'created_at', 'last_seen_at']);
+    expect(columns(db, 'range_settings')).toEqual(['key', 'value']);
     expect(columns(db, 'solves')).toEqual(
       expect.arrayContaining(['session_id', 'challenge_id', 'level', 'points', 'solved_at']));
     expect(columns(db, 'hint_unlocks')).toEqual(
       expect.arrayContaining(['session_id', 'challenge_id', 'tier', 'cost']));
+  });
+
+  it('upgrades a version-2 (lite) database: the admin keeps its hash, backoff and banner state; tokens and progress stay', () => {
+    const db = openDb(':memory:');
+    migrate(db, MIGRATIONS.slice(0, 2));
+    db.prepare(`INSERT INTO auth_accounts (username, password_hash, is_default, failures, locked_until, changed_at)
+      VALUES ('admin', 'scrypt$kept', 0, 3, 0, 1700)`).run();
+    db.prepare("INSERT INTO auth_tokens (token_hash, username, created_at, last_seen_at) VALUES ('t1', 'admin', 1, 2)").run();
+    db.prepare("INSERT INTO solves (session_id,challenge_id,level,points,solved_at) VALUES ('s','GK-01','acolyte',100,1)").run();
+    migrate(db);
+    expect(userVersion(db)).toBe(SCHEMA_VERSION);
+    expect(db.prepare(`SELECT id, username, password_hash, role, created_at, disabled, is_default, failures, locked_until, changed_at
+      FROM users`).all()).toEqual([{
+      id: 1, username: 'admin', password_hash: 'scrypt$kept', role: 'admin', created_at: 1700, disabled: 0, is_default: 0,
+      failures: 3, locked_until: 0, changed_at: 1700,
+    }]);
+    expect(db.prepare('SELECT token_hash, username FROM auth_tokens').all()).toEqual([{ token_hash: 't1', username: 'admin' }]);
+    expect(db.prepare('SELECT COUNT(*) c FROM solves').get()).toMatchObject({ c: 1 });
+    expect(tables(db)).not.toContain('auth_accounts');
+  });
+
+  it('usernames are unique whatever their case; a role is player or admin', () => {
+    const db = openDb(':memory:');
+    migrate(db);
+    const add = (name: string, role: string) => db.prepare(
+      'INSERT INTO users (username, password_hash, role, created_at, changed_at) VALUES (?, ?, ?, 1, 1)').run(name, 'h', role);
+    add('alice', 'player');
+    expect(() => add('ALICE', 'player')).toThrow(/UNIQUE/);
+    expect(() => add('bob', 'root')).toThrow(/CHECK/);
   });
 
   it('takes a version-0 database to the latest version and records it', () => {

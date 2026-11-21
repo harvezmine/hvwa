@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseConfig, loadConfig, isLoopbackHost, bindRefusal, editionFrom, authModeFrom } from '../src/config.js';
+import { parseConfig, loadConfig, isLoopbackHost, bindRefusal, editionFrom, authModeFrom, modeFrom } from '../src/config.js';
 import { resolveFlagSecret } from '../src/core/secrets.js';
 
 const dirs: string[] = [];
@@ -16,7 +16,7 @@ describe('parseConfig', () => {
     expect(c).toEqual({
       HOST: '127.0.0.1', PORT: 1337, AI_BACKEND: 'sim',
       FLAG_SECRET: undefined, HVWA_ALLOW_REMOTE: false, HVWA_DATA_DIR: undefined, HVWA_ALLOWED_HOSTS: [],
-      HVWA_EDITION: 'full', HVWA_AUTH: 'off', HVWA_ADMIN_PASSWORD: undefined,
+      HVWA_EDITION: 'full', HVWA_AUTH: 'off', HVWA_ADMIN_PASSWORD: undefined, HVWA_MODE: 'standalone',
     });
     expect(parseConfig({ SESSION_SECRET: 'x' })).not.toHaveProperty('SESSION_SECRET');
     expect(parseConfig({ NODE_ENV: 'production' })).not.toHaveProperty('NODE_ENV'); // read for HVWA_AUTH only
@@ -136,6 +136,18 @@ describe('parseConfig', () => {
     const secret = resolveFlagSecret(dir, parseConfig({ FLAG_SECRET: '' }).FLAG_SECRET);
     expect(secret).toMatch(/^[0-9a-f]{64}$/);
     expect(readFileSync(join(dir, 'flag-secret'), 'utf8').trim()).toBe(secret);
+  });
+
+  it('HVWA_MODE is standalone (default, blank) or portal; anything else is a readable error', () => {
+    expect(parseConfig({}).HVWA_MODE).toBe('standalone');
+    expect(parseConfig({ HVWA_MODE: '  ' }).HVWA_MODE).toBe('standalone');
+    expect(parseConfig({ HVWA_MODE: 'portal' }).HVWA_MODE).toBe('portal');
+    const r = loadConfig({ HVWA_MODE: 'range' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors).toEqual([expect.stringMatching(/^HVWA_MODE: /)]);
+    expect(modeFrom({})).toBe('standalone');
+    expect(modeFrom({ HVWA_MODE: 'portal' })).toBe('portal');
+    expect(() => modeFrom({ HVWA_MODE: 'cluster' })).toThrow(/^HVWA_MODE: /);
   });
 });
 

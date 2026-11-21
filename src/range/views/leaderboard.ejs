@@ -1,0 +1,27 @@
+<%# Range leaderboard (src/range/catalog.ts, progress.ts leaderboard): rank, player, score, labs solved; the viewer's row is marked. Hooks: leaderboard, data-rank, data-user. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('leaderboard.title') %></h1>
+  <p class="page-lead"><%= t('leaderboard.lead') %></p>
+</header>
+<% if (rows.length === 0) { -%>
+<div class="empty">
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg>
+  <p><%= t('leaderboard.empty') %></p>
+</div>
+<% } else { -%>
+<div class="table-wrap">
+  <table class="table" data-testid="leaderboard">
+    <thead><tr><th scope="col" class="num"><%= t('leaderboard.col_rank') %></th><th scope="col"><%= t('leaderboard.col_player') %></th><th scope="col" class="num"><%= t('leaderboard.col_score') %></th><th scope="col" class="num"><%= t('leaderboard.col_solved') %></th></tr></thead>
+    <tbody>
+<% rows.forEach(function (r) { -%>
+      <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>"<% if (r.userId === me) { %> class="leaderboard-me" aria-current="true"<% } %>>
+        <td class="num"><%= r.rank %></td>
+        <th scope="row"><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
+        <td class="num"><%= r.score %></td>
+        <td class="num"><%= r.solved %></td>
+      </tr>
+<% }); -%>
+    </tbody>
+  </table>
+</div>
+<% } -%>

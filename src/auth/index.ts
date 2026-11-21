@@ -1,7 +1,7 @@
 // src/auth/index.ts — the platform login's routes and gate (createApp({ auth })). PLATFORM code, secure
 // by design: the labs behind it are the vulnerable part, this is not (docs/SECURITY.md "The platform login").
 //
-//   publicRouter   GET/POST /login                         (before the gate)
+//   publicRouter   GET/POST /login, GET/POST /register (portal mode only)   (before the gate)
 //   gate           everything mounted after it needs a live hvwa_auth token
 //   accountRouter  POST /logout, GET/POST /account/password (after the gate)
 //
@@ -14,66 +14,52 @@ import { fileURLToPath } from 'node:url';
 import { sendPage } from '../core/render.js';
 import { field } from '../core/lab.js';
 import { safeNext } from './next.js';
+import { clientIp } from './client-ip.js';
+import { authTokenOf, fetchSiteOk, isApi, isHtmx, noStore, originOk, ownHost } from './forms.js';
+import { windowLimiter } from './rate-limit.js';
+import { registrationRouter, type RegistrationOptions } from './register.js';
 import { AUTH_COOKIE, AUTH_LIMITS, createAuthService, type AuthService, type AuthServiceOptions } from './service.js';
 
 export { safeNext } from './next.js';
-export type { AuthService } from './service.js';
+export { requireAdmin } from './forms.js';
+export type { AuthService, AuthSession, Role, UserSummary } from './service.js';
+export type { RegistrationOptions } from './register.js';
+
+/** The failed-sign-in budget per client IP in portal mode (createApp). */
+export const SIGN_IN_PER_IP_DEFAULTS = Object.freeze({ max: 30, windowMs: 15 * 60_000 });
 
 /** createApp's `auth` option as an object (`auth: true` = all defaults). */
-export type AuthOptions = AuthServiceOptions;
-
-const viewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
-const view = (name: string) => join(viewsDir, `${name}.ejs`);
-
-// Explicit attributes: HttpOnly (no script reads it), SameSite=Lax (cross-site subrequests and posts never
-// carry it), Path=/, Max-Age = the token's absolute lifetime. No Domain (host-only). Not Secure: HVWA is
-// served over plain http on loopback, where a Secure cookie would be dropped by most clients.
-const COOKIE: Readonly<CookieOptions> = Object.freeze({ httpOnly: true, sameSite: 'lax', path: '/', maxAge: AUTH_LIMITS.tokenTtlMs });
-const CLEAR: Readonly<CookieOptions> = Object.freeze({ httpOnly: true, sameSite: 'lax', path: '/' });
-
-/** Platform pages of the login: never cached, never framed (no clickjacking of the password forms). */
-function noStore(res: Response): void {
-  res.set('Cache-Control', 'no-store');
-  res.set('X-Frame-Options', 'DENY');
-  res.set('Content-Security-Policy', "frame-ancestors 'none'");
+export interface AuthOptions extends AuthServiceOptions {
+  /**
+   * Give hvwa_auth the Secure attribute: portal mode behind the Cloudflare Tunnel (public scheme https). Off by default:
+   * standalone serves plain http on loopback, where a Secure cookie would be dropped by most clients.
+   */
+  secureCookies?: boolean;
+  /**
+   * The scheme the BROWSER uses (portal mode: HVWA_RANGE_PUBLIC_SCHEME). The forms' Origin check compares against it,
+   * since behind the tunnel the portal itself only sees plain http. Default: the request's own scheme.
+   */
+  publicScheme?: 'http' | 'https';
+  /**
+   * Mount GET/POST /register (portal mode); `open: false` (HVWA_REGISTRATION_OPEN=0) shows it closed. Absent: no
+   * registration at all (standalone).
+   */
+  registration?: RegistrationOptions;
+  /**
+   * Portal mode: at most `max` FAILED sign-ins per client IP (clientIp) per `windowMs`; beyond it a sign-in is refused
+   * before any password check (429). In front of, not instead of, the per-account backoff. Absent: off (standalone).
+   */
+  signInPerIp?: { readonly max: number; readonly windowMs: number };
 }
 
-const isApi = (req: Request) => /^\/api(?:\/|$)/i.test(req.path);
-const isHtmx = (req: Request) => req.get('HX-Request') === 'true';
+export const authViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
+const view = (name: string) => join(authViewsDir, `${name}.ejs`);
 
-/** The request's own origin host (Host header, normalised like URL.host: lowercased, default port dropped). */
-function ownHost(req: Request): string | undefined {
-  try { return new URL(`http://${req.headers.host ?? ''}`).host; } catch { return undefined; }
-}
-
-/**
- * Same-origin check for the forms: an absent Origin passes (older clients, curl; the synchroniser token
- * still applies), a present one must be exactly this origin: the request's own scheme (req.protocol: 'http'
- * here, as 'trust proxy' is off, so X-Forwarded-Proto cannot change it) and Host, port included. 'null', another
- * port of the same host and every other origin are refused.
- */
-function originOk(req: Request): boolean {
-  const origin = req.get('origin');
-  if (origin === undefined) return true;
-  let u: URL;
-  try { u = new URL(origin); } catch { return false; }
-  return u.protocol === `${req.protocol}:` && u.origin === origin.toLowerCase() && u.host === ownHost(req);
-}
-
-/**
- * Fetch metadata: a browser marks every request with Sec-Fetch-Site. The forms accept only 'same-origin' (a
- * page of ours posting), or no header at all (older clients, curl). 'same-site' (another port of this host),
- * 'cross-site' and 'none' are refused: 'none' is a user-typed navigation, which is never a form POST.
- */
-function fetchSiteOk(req: Request): boolean {
-  const site = req.get('sec-fetch-site');
-  return site === undefined || site.trim().toLowerCase() === 'same-origin';
-}
-
-/** The hvwa_auth cookie as presented (a string, else ''). */
-function authTokenOf(req: Request): string {
-  const v: unknown = req.cookies?.[AUTH_COOKIE];
-  return typeof v === 'string' ? v : '';
+// Explicit attributes: HttpOnly (no script reads it), SameSite=Lax (cross-site subrequests and posts never carry it),
+// Path=/, Max-Age = the token's absolute lifetime, Secure only behind HTTPS (portal mode). No Domain (host-only).
+function cookieAttributes(secure: boolean): { set: Readonly<CookieOptions>; clear: Readonly<CookieOptions> } {
+  const base = { httpOnly: true, sameSite: 'lax', path: '/', ...(secure ? { secure: true } : {}) } as const;
+  return { set: Object.freeze({ ...base, maxAge: AUTH_LIMITS.tokenTtlMs }), clear: Object.freeze({ ...base }) };
 }
 
 /** Where the login page should return a signed-out request to. */
@@ -109,11 +95,23 @@ export interface PlatformAuth {
   readonly publicRouter: Router;
   readonly gate: RequestHandler;
   readonly accountRouter: Router;
+  /**
+   * An ACCOUNT form of this browser, posted from one of our pages: same Origin, same-origin Sec-Fetch-Site, and the
+   * token bound to hvwa_sid AND the sign-in (hvwa_auth). Every state-changing platform form after the gate uses it.
+   */
+  formOk(req: Request): boolean;
+  /** The account-form token for a form another router renders. */
+  csrfFor(req: Request): string;
+  /** The 403 "request refused" page for a failed formOk. */
+  refuse(req: Request, res: Response, back: string): Promise<void>;
 }
 
 /** The login for one app over its platform DB (creates the admin account on first use). */
 export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): PlatformAuth {
   const service = createAuthService(db, opts);
+  const cookies = cookieAttributes(opts.secureCookies === true);
+  // The login page links to /register only when registration is mounted and open (read once: an env switch).
+  const registerLink = opts.registration !== undefined && opts.registration.open !== false;
 
   const refuse = async (req: Request, res: Response, back: string) => {
     noStore(res);
@@ -123,9 +121,10 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
   };
   /**
    * A form post is ours: same Origin, same-origin Sec-Fetch-Site, and the synchroniser token. The login form's
-   * token is bound to hvwa_sid; an account form's (`account`) to hvwa_sid and the sign-in (hvwa_auth).
+   * token is bound to hvwa_sid; an account form's (`account`) to hvwa_sid and the sign-in (hvwa_auth). The Origin
+   * must carry the public scheme when one is configured (portal mode behind the tunnel).
    */
-  const formOk = (req: Request, account: boolean) => originOk(req) && fetchSiteOk(req) &&
+  const formOk = (req: Request, account: boolean) => originOk(req, opts.publicScheme ?? req.protocol) && fetchSiteOk(req) &&
     service.checkCsrf(req.sessionId, field(req, '_csrf'), account ? authTokenOf(req) : undefined);
 
   const renderLogin = (req: Request, res: Response, next: string, failed: boolean, notice?: string) => {
@@ -133,6 +132,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     res.locals.platformAuth = { signedIn: false };
     return sendPage(res, view('login'), {
       pageTitle: res.locals.t('auth.login_heading'), csrf: service.csrfToken(req.sessionId), next, failed, notice,
+      registered: req.query.registered === '1', registerLink,
     });
   };
 
@@ -142,34 +142,51 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     if (service.session(req.cookies?.[AUTH_COOKIE])) { noStore(res); res.redirect(303, next); return; }
     await renderLogin(req, res, next, false);
   });
+  const perIp = opts.signInPerIp;
+  const ipFailures = perIp ? windowLimiter({ max: perIp.max, windowMs: perIp.windowMs, now: opts.now }) : undefined;
   publicRouter.post('/login', async (req, res) => {
     if (!formOk(req, false)) { await refuse(req, res, '/login'); return; }
     const next = safeNext(field(req, 'next'));
+    const ip = clientIp(req);
+    if (ipFailures && perIp && ipFailures.count(ip) >= perIp.max) {
+      res.status(429).set('Retry-After', String(Math.ceil(perIp.windowMs / 1000)));
+      await renderLogin(req, res, next, false, res.locals.t('auth.login_limited'));
+      return;
+    }
     const result = await service.signIn(field(req, 'username'), field(req, 'password'));
     if (!result.ok) {
       if (result.busy) { await renderLogin(req, res, next, false, busy(req, res)); return; }
+      ipFailures?.allow(ip); // one failure spent from this IP's budget
       res.status(401);
       await renderLogin(req, res, next, true);
       return;
     }
     service.revoke(req.cookies?.[AUTH_COOKIE]); // a fresh token per sign-in; the old one dies
     noStore(res);
-    res.cookie(AUTH_COOKIE, result.token, COOKIE);
+    res.cookie(AUTH_COOKIE, result.token, cookies.set);
     res.redirect(303, next);
   });
+  if (opts.registration) {
+    publicRouter.use(registrationRouter({
+      service, options: opts.registration, view: view('register'),
+      loginFormOk: (req) => formOk(req, false), refuse,
+      signedIn: (req) => service.session(req.cookies?.[AUTH_COOKIE]) !== undefined,
+    }));
+  }
 
   const gate: RequestHandler = (req, res, next) => {
     const presented: unknown = req.cookies?.[AUTH_COOKIE];
     const session = service.session(presented);
     if (session) {
       res.locals.platformAuth = {
-        signedIn: true, user: session.username, defaultPassword: session.defaultPassword,
+        signedIn: true, userId: session.userId, user: session.username, role: session.role,
+        defaultPassword: session.defaultPassword,
         csrf: service.csrfToken(req.sessionId, authTokenOf(req)), // the layout's logout form: an account form
       };
       next();
       return;
     }
-    if (presented !== undefined) res.clearCookie(AUTH_COOKIE, CLEAR); // stale, revoked or forged
+    if (presented !== undefined) res.clearCookie(AUTH_COOKIE, cookies.clear); // stale, revoked or forged
     res.set('Cache-Control', 'no-store');
     if (isApi(req)) { res.status(401).json({ error: 'unauthorized' }); return; }
     const target = loginHref(nextFor(req));
@@ -185,7 +202,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     if (!formOk(req, true)) { await refuse(req, res, '/'); return; }
     service.revoke(req.cookies?.[AUTH_COOKIE]);
     noStore(res);
-    res.clearCookie(AUTH_COOKIE, CLEAR);
+    res.clearCookie(AUTH_COOKIE, cookies.clear);
     res.redirect(303, '/login');
   });
 
@@ -194,6 +211,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     return sendPage(res, view('password'), {
       pageTitle: res.locals.t('auth.pw_heading'), csrf: service.csrfToken(req.sessionId, authTokenOf(req)),
       user: res.locals.platformAuth?.user ?? '', error: data.error, changed: data.changed === true, notice: data.notice,
+      pwMin: service.passwordMinLength,
     });
   };
   accountRouter.get('/account/password', async (req, res) => {
@@ -210,9 +228,14 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
       return;
     }
     noStore(res);
-    res.cookie(AUTH_COOKIE, result.token, COOKIE); // every other token is gone; this browser stays signed in
+    res.cookie(AUTH_COOKIE, result.token, cookies.set); // every other token is gone; this browser stays signed in
     res.redirect(303, '/account/password?changed=1');
   });
 
-  return Object.freeze({ service, publicRouter, gate, accountRouter });
+  return Object.freeze({
+    service, publicRouter, gate, accountRouter,
+    formOk: (req: Request) => formOk(req, true),
+    csrfFor: (req: Request) => service.csrfToken(req.sessionId, authTokenOf(req)),
+    refuse,
+  });
 }

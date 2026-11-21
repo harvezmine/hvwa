@@ -68,7 +68,9 @@ one process, used by the lite and full images. Nothing in standalone mode change
 ### Networks
 
 - **`edge`**: Traefik and the portal.
-- **`control`**: internal; the portal, the warden and the write socket proxy.
+- **`control`**: internal; the portal and the warden.
+- **`docker`**: internal; the warden and the write socket proxy. The portal is not on it, so the portal can never
+  reach the write proxy.
 - **`traefik-ro`**: internal; Traefik and the read-only socket proxy.
 - **`bot`**: internal; the victim bot and Traefik.
 - **One network per instance**, `hvwa-i-<instance>`: internal (no egress), holding only the instance container

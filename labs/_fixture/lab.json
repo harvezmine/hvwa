@@ -1,0 +1,19 @@
+{
+  "id": "r00",
+  "slug": "fixture",
+  "title": { "en": "Range fixture", "id": "Fixture range" },
+  "app": "Fixture",
+  "category": "Platform check",
+  "difficulty": "easy",
+  "levels": ["acolyte", "templar", "inquisitor", "divine"],
+  "port": 8080,
+  "health": "/healthz",
+  "flag": { "placement": "file:/tmp/hvwa/flag.txt" },
+  "resources": {},
+  "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
+  "needsBot": false,
+  "themeId": "fixture",
+  "scenario": { "en": "Not a lab: proves the range platform end to end.", "id": "Bukan lab: membuktikan platform range dari ujung ke ujung." },
+  "briefing": { "en": "The flag is on /flag at every exploitable level.", "id": "Flag ada di /flag pada setiap level yang dapat dieksploitasi." },
+  "hints": []
+}

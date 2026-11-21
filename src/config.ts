@@ -23,6 +23,13 @@ const EDITION_SETTING = unsetIfBlank(z.enum(EDITIONS).default(DEFAULT_EDITION));
 const AUTH_SETTING = unsetIfBlank(z.enum(['on', 'off']).optional());
 export type AuthMode = 'on' | 'off';
 
+// The process's role (spec 2026-11-20 range §3). standalone: every lab in one process, the lite and full images, exactly
+// as before. portal: the range portal (accounts, catalog, instances, gate, forward-auth), which mounts no labs; its
+// own settings are parsed by src/range/config.ts, only in that mode.
+export const MODES = Object.freeze(['standalone', 'portal'] as const);
+export type Mode = (typeof MODES)[number];
+const MODE_SETTING = unsetIfBlank(z.enum(MODES).default('standalone'));
+
 /** HVWA_AUTH's default: 'on' for NODE_ENV=production (any case or padding: never fail open on spelling). */
 export function defaultAuthMode(nodeEnv: string | undefined): AuthMode {
   return nodeEnv?.trim().toLowerCase() === 'production' ? 'on' : 'off';
@@ -60,6 +67,7 @@ const schema = z.object({
     .min(PASSWORD_MIN_LENGTH, `must be at least ${PASSWORD_MIN_LENGTH} characters`)
     .max(PASSWORD_MAX_LENGTH, `must be at most ${PASSWORD_MAX_LENGTH} characters`)
     .refine((v) => !/[\u0000-\u001f\u007f]/.test(v), 'must not contain control characters').optional()),
+  HVWA_MODE: MODE_SETTING,
   // Read only to resolve HVWA_AUTH's default; not part of Config.
   NODE_ENV: z.string().optional(),
 }).transform(({ NODE_ENV, HVWA_AUTH, ...rest }) => ({ ...rest, HVWA_AUTH: HVWA_AUTH ?? defaultAuthMode(NODE_ENV) }));
@@ -101,6 +109,11 @@ export function editionFrom(env: Record<string, string | undefined> = process.en
 /** HVWA_AUTH (and NODE_ENV for its default) alone: createApp()'s login mode when it is given no `auth` option. */
 export function authModeFrom(env: Record<string, string | undefined> = process.env): AuthMode {
   return setting('HVWA_AUTH', AUTH_SETTING, env) ?? defaultAuthMode(env.NODE_ENV);
+}
+
+/** HVWA_MODE alone: createApp()'s mode when it is given none. Throws on an invalid value. */
+export function modeFrom(env: Record<string, string | undefined> = process.env): Mode {
+  return setting('HVWA_MODE', MODE_SETTING, env);
 }
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '::1', 'localhost']);

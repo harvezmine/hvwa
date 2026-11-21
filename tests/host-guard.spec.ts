@@ -1,20 +1,21 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import request from 'supertest';
+import express, { type Express } from 'express';
 import { once } from 'node:events';
 import { connect, type AddressInfo } from 'node:net';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
-import { appOptionsFromConfig, createApp, type HvwaApp } from '../src/app.js';
+import { appOptionsFromConfig, createApp } from '../src/app.js';
 import { parseConfig } from '../src/config.js';
-import { hostnameOf, targetHostname, LOOPBACK_HOSTNAMES } from '../src/core/host-guard.js';
+import { hostGuard, hostnameOf, targetHostname, LOOPBACK_HOSTNAMES } from '../src/core/host-guard.js';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 3 }); });
 
 /** Send a raw request (so Host can be omitted, empty, duplicated...) and return status, raw head and body. */
-async function raw(app: HvwaApp, head: string): Promise<{ status: number; head: string; body: string }> {
+async function raw(app: Express, head: string): Promise<{ status: number; head: string; body: string }> {
   const server: Server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try {
@@ -228,6 +229,27 @@ describe('appOptionsFromConfig (what server.ts passes to createApp)', () => {
       expect((await request(app).get('/healthz').set('Host', 'evil.example')).status).toBe(421);
     } finally {
       app.locals.db.close(); // Windows cannot delete a file SQLite holds open
+    }
+  });
+});
+
+describe('hostGuard with a host predicate (portal mode: i-<instance>.<domain>)', () => {
+  const app = express();
+  app.use(hostGuard(['range.test'], (h) => /^i-[a-z2-7]{26}\.range\.test$/.test(h)));
+  app.use((_req, res) => { res.send('in'); });
+  const lab = `i-${'a'.repeat(26)}.range.test`;
+
+  it('passes the exact names and whatever the predicate accepts, in Host and in an absolute-form target', async () => {
+    expect((await request(app).get('/').set('Host', 'range.test')).text).toBe('in');
+    expect((await request(app).get('/').set('Host', `${lab}:8443`)).text).toBe('in');
+    expect((await request(app).get('/').set('Host', lab.toUpperCase())).text).toBe('in');
+    expect((await raw(app, `GET http://${lab}/ HTTP/1.1\r\nHost: range.test\r\n${close}`)).body).toBe('in');
+    expect((await raw(app, `GET http://evil.example/ HTTP/1.1\r\nHost: ${lab}\r\n${close}`)).status).toBe(421);
+  });
+
+  it('still refuses everything else with 421', async () => {
+    for (const host of ['evil.example', `x.${lab}`, `${'a'.repeat(26)}.range.test`, `i-${'a'.repeat(25)}.range.test`]) {
+      expect((await request(app).get('/').set('Host', host)).status, host).toBe(421);
     }
   });
 });

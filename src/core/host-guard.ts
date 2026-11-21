@@ -55,18 +55,21 @@ function hostHeaderCount(rawHeaders: readonly string[]): number {
 }
 
 /**
- * Middleware: pass requests whose Host hostname is a loopback name or one of
- * `extraHostnames` (exact, case-insensitive) and, for an absolute-form target
- * (`GET http://name/...`, which HTTP says overrides Host), whose target names
- * an allowed host too. Everything else, including a missing Host, gets 421.
- * More than one Host header gets 400: which one counts would be ambiguous.
- * Only the raw Host header counts, never req.hostname or X-Forwarded-Host:
- * with `trust proxy` those come from the client, and labs may use them as
- * attack vectors (host-header poisoning). Mounted first, so rejected requests
- * get no session cookie and reach no route.
+ * Middleware: pass requests whose Host hostname is a loopback name, one of
+ * `extraHostnames` (exact, case-insensitive) or accepted by `extraMatch`
+ * (portal mode: instance hosts i-<id>.<domain>, which the range's edge router
+ * then handles alone), and, for an absolute-form target (`GET http://name/...`,
+ * which HTTP says overrides Host), whose target is allowed the same way.
+ * Everything else, including a missing Host, gets 421. More than one Host
+ * header gets 400: which one counts would be ambiguous. Only the raw Host
+ * header counts, never req.hostname or X-Forwarded-Host: with `trust proxy`
+ * those come from the client, and labs may use them as attack vectors
+ * (host-header poisoning). Mounted first, so rejected requests get no session
+ * cookie and reach no route. `extraMatch` gets the lower-cased, port-less name.
  */
-export function hostGuard(extraHostnames: readonly string[] = []): RequestHandler {
+export function hostGuard(extraHostnames: readonly string[] = [], extraMatch?: (hostname: string) => boolean): RequestHandler {
   const allowed = new Set([...LOOPBACK_HOSTNAMES, ...extraHostnames.map((h) => h.toLowerCase())]);
+  const ok = (h: string) => allowed.has(h) || (extraMatch !== undefined && extraMatch(h));
   return (req, res, next) => {
     if (hostHeaderCount(req.rawHeaders) > 1) {
       res.status(400).type('text/plain').send(DUPLICATE_HOST_BODY);
@@ -74,8 +77,8 @@ export function hostGuard(extraHostnames: readonly string[] = []): RequestHandle
     }
     const name = hostnameOf(req.headers.host);
     const target = targetHostname(req.originalUrl);
-    const targetOk = target === null || (target !== undefined && allowed.has(target));
-    if (name !== undefined && allowed.has(name) && targetOk) {
+    const targetOk = target === null || (target !== undefined && ok(target));
+    if (name !== undefined && ok(name) && targetOk) {
       next();
       return;
     }

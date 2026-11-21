@@ -1,0 +1,65 @@
+<%# Range catalog (src/range/catalog.ts): the player's score, filters (a GET form, no JavaScript), one card per lab. Hooks: range-score, range-solved, lab-card (data-lab, data-difficulty, data-solved). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('range.catalog_title') %></h1>
+  <p class="page-lead"><%= t('range.catalog_lead') %></p>
+</header>
+<div class="stat-row">
+  <div class="card stat">
+    <div class="stat-label"><%= t('range.your_score') %></div>
+    <div class="stat-value accent" data-testid="range-score"><%= score %></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label"><%= t('home.stat_solved') %></div>
+    <div class="stat-value" data-testid="range-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></div>
+  </div>
+</div>
+<form method="get" action="/" class="range-filters" data-testid="range-filters">
+  <div class="field">
+    <label for="f-category"><%= t('range.filter_category') %></label>
+    <select id="f-category" name="category">
+      <option value=""><%= t('range.filter_all') %></option>
+<% categories.forEach(function (c) { -%>
+      <option value="<%= c %>"<% if (c === filter.category) { %> selected<% } %>><%= c %></option>
+<% }); -%>
+    </select>
+  </div>
+  <div class="field">
+    <label for="f-difficulty"><%= t('range.filter_difficulty') %></label>
+    <select id="f-difficulty" name="difficulty">
+      <option value=""><%= t('range.filter_all') %></option>
+<% difficulties.forEach(function (d) { -%>
+      <option value="<%= d %>"<% if (d === filter.difficulty) { %> selected<% } %>><%= t('range.difficulty.' + d) %></option>
+<% }); -%>
+    </select>
+  </div>
+  <div class="field">
+    <label for="f-show"><%= t('range.filter_show') %></label>
+    <select id="f-show" name="show">
+      <option value="all"><%= t('range.filter_all') %></option>
+      <option value="todo"<% if (filter.show === 'todo') { %> selected<% } %>><%= t('range.show_todo') %></option>
+      <option value="done"<% if (filter.show === 'done') { %> selected<% } %>><%= t('range.show_done') %></option>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-secondary"><%= t('range.filter_apply') %></button>
+</form>
+<% if (cards.length === 0) { -%>
+<div class="empty">
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg>
+  <p><%= t('range.empty') %></p>
+</div>
+<% } -%>
+<div class="catalog-grid">
+<% cards.forEach(function (c) { -%>
+  <a class="card lab-card" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>">
+    <p class="lab-card-meta"><span class="tag"><%= c.category %></span><span class="badge difficulty-badge" data-difficulty="<%= c.difficulty %>"><%= c.difficultyLabel %></span></p>
+    <h2 class="lab-card-app"><%= c.app %></h2>
+    <p class="lab-card-title"><%= c.title %></p>
+    <p class="lab-card-scenario"><%= c.scenario %></p>
+    <ul class="level-chips" aria-label="<%= t('challenge.levels') %>">
+<% c.levels.forEach(function (l) { -%>
+      <li class="level-chip level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>"><%= t('level.' + l.id) %><% if (l.solved) { %><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-check"></use></svg><span class="sr-only"> <%= t('challenge.solved') %></span><% } %></li>
+<% }); -%>
+    </ul>
+  </a>
+<% }); -%>
+</div>

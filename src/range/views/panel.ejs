@@ -1,0 +1,41 @@
+<%# The Lab panel (src/range/panel.ts): state, time left, Launch / Open lab / Reset / Stop. htmx polls it while it starts (1 s) or runs (30 s); every action swaps it. Open lab is a plain form into a new tab (the gate ticket is minted on click). Compact POC: no queue, no Extend. Hooks: lab-panel (data-state), lab-state, time-left, range-full, lab-failed (data-reason), lab-replaces, lab-launch, lab-open, lab-reset, lab-stop. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<section id="lab-panel" class="card panel lab-panel" data-testid="lab-panel" data-state="<%= panel.state %>" data-level="<%= panel.level %>" aria-labelledby="lab-panel-title"<% if (panel.pollSeconds > 0) { %> hx-get="/labs/<%= panel.labId %>/panel?level=<%= panel.level %>" hx-trigger="every <%= panel.pollSeconds %>s" hx-swap="outerHTML"<% } %>>
+  <h2 id="lab-panel-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><%= t('range.panel_title') %></h2>
+  <p class="panel-state" aria-live="polite"><span class="badge" data-testid="lab-state"><%= t('range.state.' + panel.state) %></span> <span class="badge level-badge" data-level="<%= panel.level %>"><%= panel.levelLabel %></span></p>
+<% if (panel.full) { -%>
+  <p class="result result-bad" role="alert" data-testid="range-full"><%= t('range.full') %></p>
+<% } else if (panel.state === 'starting') { -%>
+  <p class="help"><%= t('range.starting_help') %></p>
+<% } else if (panel.state === 'running') { -%>
+  <p data-testid="time-left"><%= t('range.time_left').replace('{n}', panel.minutesLeft) %></p>
+<% } else if (panel.state === 'failed') { -%>
+  <p class="result result-bad" role="alert" data-testid="lab-failed" data-reason="<%= panel.reason %>"><%= t('range.reason.' + panel.reason) %></p>
+<% } -%>
+<% if (panel.replaces) { -%>
+  <p class="help" data-testid="lab-replaces"><%= t('range.launch_replaces').replace('{app}', panel.replaces.app).replace('{level}', panel.replaces.levelLabel) %></p>
+<% } -%>
+  <div class="panel-actions">
+<% if (panel.state === 'none' || panel.state === 'failed') { -%>
+    <form method="post" action="/labs/<%= panel.labId %>/launch" hx-post="/labs/<%= panel.labId %>/launch" hx-target="#lab-panel" hx-swap="outerHTML">
+      <input type="hidden" name="_csrf" value="<%= panel.csrf %>"><input type="hidden" name="level" value="<%= panel.level %>">
+      <button type="submit" class="btn btn-primary btn-block" data-testid="lab-launch"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><%= t('range.launch_at').replace('{level}', panel.levelLabel) %></button>
+    </form>
+<% } -%>
+<% if (panel.state === 'running') { -%>
+    <form method="post" action="/labs/<%= panel.labId %>/open" target="_blank" rel="noopener">
+      <input type="hidden" name="_csrf" value="<%= panel.csrf %>">
+      <button type="submit" class="btn btn-primary btn-block" data-testid="lab-open"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg><%= t('range.open') %></button>
+    </form>
+    <form method="post" action="/labs/<%= panel.labId %>/reset" hx-post="/labs/<%= panel.labId %>/reset" hx-target="#lab-panel" hx-swap="outerHTML" hx-confirm="<%= t('range.reset_confirm') %>">
+      <input type="hidden" name="_csrf" value="<%= panel.csrf %>"><input type="hidden" name="level" value="<%= panel.level %>">
+      <button type="submit" class="btn btn-secondary btn-sm" data-testid="lab-reset"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-rotate"></use></svg><%= t('range.reset') %></button>
+    </form>
+<% } -%>
+<% if (panel.state === 'running' || panel.state === 'starting') { -%>
+    <form method="post" action="/labs/<%= panel.labId %>/stop" hx-post="/labs/<%= panel.labId %>/stop" hx-target="#lab-panel" hx-swap="outerHTML">
+      <input type="hidden" name="_csrf" value="<%= panel.csrf %>"><input type="hidden" name="level" value="<%= panel.level %>">
+      <button type="submit" class="btn btn-danger btn-sm" data-testid="lab-stop"><%= t('range.stop') %></button>
+    </form>
+<% } -%>
+  </div>
+</section>

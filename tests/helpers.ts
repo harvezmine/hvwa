@@ -1,12 +1,22 @@
 // tests/helpers.ts — shared test utilities.
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it, expect, onTestFinished } from 'vitest';
 import request from 'supertest';
+import express from 'express';
+import cookieParser from 'cookie-parser';
 import type { Express } from 'express';
 import { createApp } from '../src/app.js';
 import { LEVELS, type Level } from '../src/core/levels.js';
 import type { Challenge } from '../src/core/registry.js';
+import type { PasswordHasher } from '../src/auth/password.js';
+import { openDb, migrate } from '../src/db/index.js';
+import { platformAuth, type AuthOptions, type PlatformAuth } from '../src/auth/index.js';
+import { sessionMiddleware } from '../src/core/session.js';
+import { langMiddleware } from '../src/core/i18n.js';
+import { themeMiddleware } from '../src/core/theme.js';
+import { errorHandler, notFoundHandler } from '../src/core/errors.js';
 
 // `supertest` is aliased to tests/support/supertest.ts (see vitest.config.ts): every app listens on ONE
 // server, closed when the test ends. Use `serve(app)` when you need the http.Server itself.
@@ -458,4 +468,49 @@ export function hygieneProblems(root: string, dirs: string[]): { badUtf8: string
     }
   }
   return { badUtf8, control };
+}
+
+/**
+ * A password hasher for specs that create many accounts: SHA-256, NOT scrypt. Only tests use it (scrypt itself is
+ * covered by tests/auth-password.spec.ts and the auth specs that pass no hasher).
+ */
+export const FAST_HASHER: PasswordHasher = Object.freeze({
+  hash: async (p: string) => `fast$${createHash('sha256').update(p).digest('hex')}`,
+  hashSync: (p: string) => `fast$${createHash('sha256').update(p).digest('hex')}`,
+  verify: async (p: string, stored: string) => stored === `fast$${createHash('sha256').update(p).digest('hex')}`,
+});
+
+/** The `_csrf` hidden field of a rendered form. */
+export function csrfOf(html: string): string {
+  const v = /name="_csrf" value="([^"]+)"/.exec(html)?.[1];
+  if (!v) throw new Error('no _csrf field on the page');
+  return v;
+}
+
+/** The first password of the admin account in authHarness() apps. */
+export const HARNESS_ADMIN_PASSWORD = 'Admin-Pass-1234';
+
+/**
+ * A bare Express app with only the platform login (no labs, no portal), for auth specs that mount routes of their own
+ * after the gate (`extra`). FAST_HASHER unless `opts.hasher` is given; the DB closes when the test ends.
+ */
+export function authHarness(opts: AuthOptions = {}, extra?: (app: Express, auth: PlatformAuth) => void) {
+  const db = openDb(':memory:');
+  migrate(db);
+  const auth = platformAuth(db, { hasher: FAST_HASHER, initialPassword: HARNESS_ADMIN_PASSWORD, ...opts });
+  const app = express();
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
+  app.use(sessionMiddleware());
+  app.use(langMiddleware());
+  app.use(themeMiddleware());
+  app.use(auth.publicRouter);
+  app.use(auth.gate);
+  app.use(auth.accountRouter);
+  extra?.(app, auth);
+  app.use(notFoundHandler());
+  app.use(errorHandler());
+  onTestFinished(() => { try { db.close(); } catch { /* closed by the test */ } });
+  return { app, db, auth };
 }
