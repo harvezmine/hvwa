@@ -1,1 +1,142 @@
-{ "model": "Beacon B-6", "firmware": "2.4.1", "uptime": "6 days, 4 hours", "wan": "fibre", "lan": "192.168.1.1/24" }
+{
+  "model": "Beacon B-6",
+  "serial": "BCN-B6-7F42-0193",
+  "firmware": "2.4.1",
+  "firmwareBuild": "2026-09-14",
+  "firmwareChannel": "stable",
+  "hardware": "rev C",
+  "hostname": "beacon-gw",
+  "locale": "en-GB",
+  "uptime": "6 days, 4 hours",
+  "uptimeSeconds": 533040,
+  "lastBoot": "2026-11-16T03:12:44Z",
+  "wan": {
+    "iface": "eth0",
+    "type": "Fibre (GPON)",
+    "state": "up",
+    "ipv4": "203.0.113.42/32",
+    "gateway": "203.0.113.1",
+    "dns": ["1.1.1.1", "9.9.9.9"],
+    "mtu": 1500,
+    "lease": "dynamic",
+    "leaseExpires": "2026-11-29T18:04:00Z",
+    "mac": "a4:2b:8c:1d:6e:01",
+    "rxMbps": 941,
+    "txMbps": 312,
+    "linkMbps": 1000
+  },
+  "lan": {
+    "iface": "br0",
+    "ipv4": "192.168.1.1/24",
+    "gateway": "192.168.1.1",
+    "mac": "a4:2b:8c:1d:6e:02",
+    "dhcp": { "enabled": true, "start": "192.168.1.100", "end": "192.168.1.199", "leaseHours": 24, "used": 7, "pool": 100 }
+  },
+  "interfaces": [
+    { "name": "eth0", "role": "WAN", "state": "up", "ipv4": "203.0.113.42", "mac": "a4:2b:8c:1d:6e:01", "rx": "941 Mb/s", "tx": "312 Mb/s", "mtu": 1500 },
+    { "name": "eth1", "role": "LAN trunk", "state": "up", "ipv4": "—", "mac": "a4:2b:8c:1d:6e:02", "rx": "88 Mb/s", "tx": "41 Mb/s", "mtu": 1500 },
+    { "name": "br0", "role": "LAN bridge", "state": "up", "ipv4": "192.168.1.1", "mac": "a4:2b:8c:1d:6e:02", "rx": "88 Mb/s", "tx": "41 Mb/s", "mtu": 1500 },
+    { "name": "wlan0", "role": "Wi-Fi 2.4 GHz", "state": "up", "ipv4": "192.168.1.1", "mac": "a4:2b:8c:1d:6e:10", "rx": "17 Mb/s", "tx": "9 Mb/s", "mtu": 1500 },
+    { "name": "wlan1", "role": "Wi-Fi 5 GHz", "state": "up", "ipv4": "192.168.1.1", "mac": "a4:2b:8c:1d:6e:11", "rx": "203 Mb/s", "tx": "74 Mb/s", "mtu": 1500 }
+  ],
+  "clients": [
+    { "name": "sahuagin-laptop", "ip": "192.168.1.104", "mac": "3c:7a:8f:2e:91:aa", "iface": "wlan1", "band": "5 GHz", "signal": "-41 dBm", "signalLevel": 4, "rate": "867 Mb/s", "lastSeen": "just now", "online": true },
+    { "name": "kraken-nas", "ip": "192.168.1.12", "mac": "00:11:32:6a:1f:04", "iface": "eth1", "band": "wired", "signal": "—", "signalLevel": 4, "rate": "1 Gb/s", "lastSeen": "just now", "online": true },
+    { "name": "living-room-tv", "ip": "192.168.1.108", "mac": "b8:27:eb:44:0d:71", "iface": "wlan1", "band": "5 GHz", "signal": "-58 dBm", "signalLevel": 3, "rate": "390 Mb/s", "lastSeen": "1 min ago", "online": true },
+    { "name": "attic-repeater", "ip": "192.168.1.7", "mac": "a4:2b:8c:9f:22:5c", "iface": "eth1", "band": "wired", "signal": "—", "signalLevel": 4, "rate": "1 Gb/s", "lastSeen": "just now", "online": true },
+    { "name": "pixel-phone", "ip": "192.168.1.117", "mac": "f0:18:98:3b:07:e2", "iface": "wlan1", "band": "5 GHz", "signal": "-63 dBm", "signalLevel": 3, "rate": "433 Mb/s", "lastSeen": "just now", "online": true },
+    { "name": "thermostat", "ip": "192.168.1.131", "mac": "44:65:0d:91:aa:30", "iface": "wlan0", "band": "2.4 GHz", "signal": "-71 dBm", "signalLevel": 2, "rate": "72 Mb/s", "lastSeen": "3 min ago", "online": true },
+    { "name": "printer", "ip": "192.168.1.120", "mac": "9c:93:4e:10:6b:88", "iface": "wlan0", "band": "2.4 GHz", "signal": "-78 dBm", "signalLevel": 1, "rate": "39 Mb/s", "lastSeen": "12 min ago", "online": false }
+  ],
+  "dhcpLeases": [
+    { "hostname": "sahuagin-laptop", "ip": "192.168.1.104", "mac": "3c:7a:8f:2e:91:aa", "expires": "23h 41m", "iface": "wlan1" },
+    { "hostname": "kraken-nas", "ip": "192.168.1.12", "mac": "00:11:32:6a:1f:04", "expires": "static", "iface": "eth1" },
+    { "hostname": "living-room-tv", "ip": "192.168.1.108", "mac": "b8:27:eb:44:0d:71", "expires": "21h 08m", "iface": "wlan1" },
+    { "hostname": "attic-repeater", "ip": "192.168.1.7", "mac": "a4:2b:8c:9f:22:5c", "expires": "static", "iface": "eth1" },
+    { "hostname": "pixel-phone", "ip": "192.168.1.117", "mac": "f0:18:98:3b:07:e2", "expires": "22h 55m", "iface": "wlan1" },
+    { "hostname": "thermostat", "ip": "192.168.1.131", "mac": "44:65:0d:91:aa:30", "expires": "19h 12m", "iface": "wlan0" },
+    { "hostname": "printer", "ip": "192.168.1.120", "mac": "9c:93:4e:10:6b:88", "expires": "17h 40m", "iface": "wlan0" }
+  ],
+  "wifi": {
+    "ssid": "Beacon-Home",
+    "security": "WPA3-SAE",
+    "hidden": false,
+    "country": "GB",
+    "guestEnabled": true,
+    "guestSsid": "Beacon-Guest",
+    "guestIsolation": true,
+    "bands": [
+      { "band": "2.4 GHz", "channel": 6, "width": "20 MHz", "txPower": "18 dBm", "clients": 3, "utilisation": 34 },
+      { "band": "5 GHz", "channel": 36, "width": "80 MHz", "txPower": "20 dBm", "clients": 4, "utilisation": 51 }
+    ],
+    "clients": [
+      { "name": "sahuagin-laptop", "ip": "192.168.1.104", "mac": "3c:7a:8f:2e:91:aa", "band": "5 GHz", "signal": "-41 dBm", "signalLevel": 4, "rate": "867 Mb/s" },
+      { "name": "living-room-tv", "ip": "192.168.1.108", "mac": "b8:27:eb:44:0d:71", "band": "5 GHz", "signal": "-58 dBm", "signalLevel": 3, "rate": "390 Mb/s" },
+      { "name": "pixel-phone", "ip": "192.168.1.117", "mac": "f0:18:98:3b:07:e2", "band": "5 GHz", "signal": "-63 dBm", "signalLevel": 3, "rate": "433 Mb/s" },
+      { "name": "thermostat", "ip": "192.168.1.131", "mac": "44:65:0d:91:aa:30", "band": "2.4 GHz", "signal": "-71 dBm", "signalLevel": 2, "rate": "72 Mb/s" }
+    ]
+  },
+  "dns": { "servers": ["1.1.1.1", "9.9.9.9"], "searchDomain": "beacon.lan", "localNames": 7, "cacheEntries": 214, "dnssec": true },
+  "routes": [
+    { "destination": "0.0.0.0/0", "gateway": "203.0.113.1", "iface": "eth0", "metric": 10, "type": "default" },
+    { "destination": "203.0.113.0/24", "gateway": "on-link", "iface": "eth0", "metric": 0, "type": "connected" },
+    { "destination": "192.168.1.0/24", "gateway": "on-link", "iface": "br0", "metric": 0, "type": "connected" },
+    { "destination": "10.8.0.0/24", "gateway": "on-link", "iface": "wg0", "metric": 50, "type": "vpn" }
+  ],
+  "firewall": [
+    { "id": "WAN-IN-01", "action": "drop", "proto": "any", "source": "any", "dest": "router", "port": "any", "comment": "WAN to router: default deny" },
+    { "id": "WAN-IN-02", "action": "accept", "proto": "udp", "source": "any", "dest": "router", "port": "51820", "comment": "WireGuard peer" },
+    { "id": "FWD-01", "action": "accept", "proto": "any", "source": "192.168.1.0/24", "dest": "wan", "port": "any", "comment": "LAN to WAN (NAT)" },
+    { "id": "FWD-02", "action": "accept", "proto": "tcp", "source": "wan", "dest": "192.168.1.12:443", "port": "443", "comment": "NAS admin (port forward)" },
+    { "id": "GUEST-01", "action": "drop", "proto": "any", "source": "guest", "dest": "lan", "port": "any", "comment": "Guest isolation" }
+  ],
+  "system": {
+    "cpuModel": "MediaTek MT7621A",
+    "cpuCores": 2,
+    "cpuPercent": 18,
+    "memoryPercent": 42,
+    "memoryUsedMiB": 214,
+    "memoryTotalMiB": 512,
+    "loadAverage": [0.34, 0.28, 0.21],
+    "temperatureC": 47,
+    "fanRpm": 1180,
+    "storageUsedMiB": 96,
+    "storageTotalMiB": 512,
+    "cpuHistory": [12, 15, 14, 22, 19, 16, 13, 21, 26, 18, 15, 18],
+    "ramHistory": [39, 40, 41, 42, 43, 43, 42, 44, 45, 43, 42, 42],
+    "wanHistory": [210, 260, 240, 320, 480, 410, 560, 720, 640, 520, 380, 460],
+    "services": [
+      { "name": "dnsmasq", "desc": "DHCP + DNS", "state": "running", "pid": 412, "uptime": "6d 04h" },
+      { "name": "hostapd", "desc": "Wi-Fi AP (2.4 + 5 GHz)", "state": "running", "pid": 388, "uptime": "6d 04h" },
+      { "name": "dropbear", "desc": "SSH admin daemon", "state": "running", "pid": 401, "uptime": "6d 04h" },
+      { "name": "lighttpd", "desc": "Admin web UI", "state": "running", "pid": 405, "uptime": "6d 04h" },
+      { "name": "wg-quick", "desc": "WireGuard tunnel", "state": "running", "pid": 430, "uptime": "6d 03h" },
+      { "name": "ntpd", "desc": "Time sync", "state": "running", "pid": 377, "uptime": "6d 04h" }
+    ],
+    "sessions": [
+      { "user": "operator", "from": "192.168.1.104", "via": "https", "idle": "0s", "since": "2026-11-22T01:04:12Z" },
+      { "user": "operator", "from": "192.168.1.117", "via": "https", "idle": "4m", "since": "2026-11-22T00:41:55Z" },
+      { "user": "svc-backup", "from": "10.8.0.6", "via": "ssh", "idle": "12m", "since": "2026-11-21T23:50:08Z" }
+    ]
+  },
+  "logs": [
+    { "ts": "2026-11-22T01:38:02Z", "severity": "info", "source": "dnsmasq", "message": "DHCPACK(br0) 192.168.1.104 3c:7a:8f:2e:91:aa sahuagin-laptop" },
+    { "ts": "2026-11-22T01:35:47Z", "severity": "info", "source": "hostapd", "message": "wlan1: STA f0:18:98:3b:07:e2 associated (5 GHz)" },
+    { "ts": "2026-11-22T01:31:19Z", "severity": "notice", "source": "diagnostics", "message": "probe completed for host 192.168.1.1 (1 reply, 0.4 ms)" },
+    { "ts": "2026-11-22T01:22:54Z", "severity": "warning", "source": "kernel", "message": "eth0: link speed negotiated at 1000 Mb/s, duplex full" },
+    { "ts": "2026-11-22T01:18:30Z", "severity": "info", "source": "wg-quick", "message": "wg0: handshake from 198.51.100.77, keepalive 25s" },
+    { "ts": "2026-11-22T01:09:11Z", "severity": "notice", "source": "web", "message": "admin login accepted for operator from 192.168.1.104" },
+    { "ts": "2026-11-22T00:58:44Z", "severity": "error", "source": "dnsmasq", "message": "failed to send packet: Network unreachable (upstream 9.9.9.9)" },
+    { "ts": "2026-11-22T00:47:02Z", "severity": "debug", "source": "ntpd", "message": "adjusting clock by +0.0018 s, stratum 2" },
+    { "ts": "2026-11-22T00:31:25Z", "severity": "info", "source": "firewall", "message": "rule GUEST-01 dropped 14 packets from guest zone" },
+    { "ts": "2026-11-22T00:12:57Z", "severity": "notice", "source": "hostapd", "message": "wlan0: STA 44:65:0d:91:aa:30 re-associated (2.4 GHz)" },
+    { "ts": "2026-11-21T23:58:13Z", "severity": "info", "source": "system", "message": "scheduled firmware update check: no update available" },
+    { "ts": "2026-11-21T23:40:08Z", "severity": "warning", "source": "kernel", "message": "board temperature 47 C, fan 1180 rpm" }
+  ],
+  "changelog": [
+    { "version": "2.4.1", "date": "2026-09-14", "notes": ["Hardened WPA3-SAE roaming for mixed 2.4/5 GHz clients", "Fixed DHCP lease display showing stale hostnames", "Improved diagnostics probe timeout handling"] },
+    { "version": "2.4.0", "date": "2026-07-02", "notes": ["New dark admin interface with per-page status tiles", "Added per-band Wi-Fi client view and signal strength", "WireGuard tunnel now starts before DHCP"] },
+    { "version": "2.3.2", "date": "2026-04-18", "notes": ["Security: blocked malformed DNS packets upstream", "Fixed uptime counter after NTP step correction"] },
+    { "version": "2.3.0", "date": "2026-02-05", "notes": ["Introduced guest network isolation by default", "Firewall rules now editable from the admin UI"] }
+  ]
+}
