@@ -1,12 +1,18 @@
 // labs/r02-courier/app/server.mjs — Courier. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and unlink it,
-// then build the in-memory store, planting the flag as parcel 1001's private note (spec §6). The HTML dashboard uses a
-// demo-session cookie so a plain browse works and shows only the demo customer's parcels; the JSON API uses a bearer
-// token. Authorization (which parcels a session may read) is the flaw and is chosen by HVWA_LEVEL (store.canRead).
+// then build the in-memory store, planting the flag as parcel 1001's private note (spec §6). The HTML portal uses a
+// demo-session cookie so a plain browse works and shows only the demo customer's parcels; the JSON API also accepts a
+// bearer token. Authorization (which parcels a session may read) is the flaw and is chosen by HVWA_LEVEL (store.canRead).
+// The label route content-negotiates: browsers get a printable label page, API clients (Accept: */*) get the JSON the
+// reference solves rely on. The authorization decision is made before either representation is chosen.
 // Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { createStore } from './store.mjs';
-import { page, esc } from './render.mjs';
+import { labelDocument } from './render.mjs';
+import {
+  landingPage, dashboardPage, trackPage, accountPage, supportPage, pricingPage, faqPage,
+  signinPage, notFoundPage, serverErrorPage,
+} from './pages.mjs';
 
 const LEVELS = ['acolyte', 'templar', 'divine'];
 const level = LEVELS.includes(process.env.HVWA_LEVEL ?? '') ? process.env.HVWA_LEVEL : 'acolyte';
@@ -34,28 +40,52 @@ const store = createStore(level, flag);
 
 const json = (res, status, obj) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
+const redirect = (res, location) => { res.writeHead(303, { location, 'cache-control': 'no-store' }); res.end(); };
 const bearer = (req) => (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '') || undefined;
 const cookieToken = (req) => Object.fromEntries((req.headers.cookie ?? '').split(';').map((c) => c.trim().split('=')))['cs'];
+const wantsHtml = (req) => /text\/html/i.test(req.headers.accept ?? '');
 
-createServer((req, res) => {
+/** Resolve the portal's cookie session, opening a demo session (and setting the cookie) on first visit. */
+function portalSession(req, res) {
+  let token = cookieToken(req);
+  let customer = store.customerFor(token);
+  if (!customer) {
+    token = store.openDemoSession();
+    customer = store.customerFor(token);
+    res.setHeader('set-cookie', `cs=${token}; Path=/; HttpOnly; SameSite=Lax`);
+  }
+  return customer;
+}
+
+const summary = ({ id, to, status, service, weight, eta }) => ({ id, to, status, service, weight, eta });
+
+function handle(req, res) {
   const url = new URL(req.url ?? '/', 'http://courier');
   const p = url.pathname;
 
   if (p === '/healthz') return json(res, 200, { status: 'ok' });
 
-  // --- HTML: landing and the demo dashboard (browser side; cookie session so a plain GET works) ---
-  if (p === '/' && req.method === 'GET') {
-    return html(res, 200, page('Home',
-      `<h2>Track your parcels</h2><p>Courier customers can follow every parcel from depot to door.</p>`
-      + `<p><a class="btn" href="/dashboard">View demo dashboard</a></p>`));
-  }
-  if (p === '/dashboard' && req.method === 'GET') {
-    let token = cookieToken(req);
-    if (!store.customerFor(token)) { token = store.openDemoSession(); res.setHeader('set-cookie', `cs=${token}; Path=/; HttpOnly; SameSite=Lax`); }
-    const mine = store.parcelsOf('demo').map((p) =>
-      `<div class="parcel"><h3>Parcel #${p.id}</h3><div class="status">${esc(p.status)}</div>`
-      + `<p>${esc(p.to)}</p><p><a href="/api/parcels/${p.id}/label">Print label</a></p></div>`).join('');
-    return html(res, 200, page('Dashboard', `<h2>Your parcels</h2>${mine}`));
+  // --- HTML portal (browser side; cookie session so a plain GET works) ---
+  if (req.method === 'GET') {
+    if (p === '/') return html(res, 200, landingPage());
+    if (p === '/signin') return html(res, 200, signinPage());
+    if (p === '/dashboard') {
+      const customer = portalSession(req, res);
+      return html(res, 200, dashboardPage(store.parcelsOf(customer)));
+    }
+    if (p === '/track') {
+      const customer = portalSession(req, res);
+      const mine = store.parcelsOf(customer);
+      const raw = url.searchParams.get('id') ?? '';
+      if (!raw) return html(res, 200, trackPage({ mine, query: '' }));
+      const parcel = /^\d+$/.test(raw) ? store.parcel(Number(raw)) : undefined;
+      const own = parcel && parcel.owner === customer ? parcel : undefined; // browsing pages only ever show your own
+      return html(res, own ? 200 : 404, trackPage({ parcel: own, mine, query: raw }));
+    }
+    if (p === '/account') return html(res, 200, accountPage());
+    if (p === '/support') return html(res, 200, supportPage());
+    if (p === '/pricing') return html(res, 200, pricingPage());
+    if (p === '/faq') return html(res, 200, faqPage());
   }
 
   // --- JSON API ---
@@ -63,12 +93,12 @@ createServer((req, res) => {
     const token = store.openDemoSession();
     return json(res, 200, { token, customer: 'demo' });
   }
-  const customer = store.customerFor(bearer(req));
+  const customer = store.customerFor(bearer(req) ?? cookieToken(req));
   if (p.startsWith('/api/') && p !== '/api/session') {
-    if (!customer) return json(res, 401, { error: 'sign in: POST /api/session' });
+    if (!customer) return wantsHtml(req) ? redirect(res, '/dashboard') : json(res, 401, { error: 'sign in: POST /api/session' });
 
     if (p === '/api/parcels' && req.method === 'GET') {
-      return json(res, 200, { parcels: store.parcelsOf(customer).map(({ id, to, status }) => ({ id, to, status })) });
+      return json(res, 200, { parcels: store.parcelsOf(customer).map(summary) });
     }
     const mDetail = p.match(/^\/api\/parcels\/(\d+)$/);
     const mLabel = p.match(/^\/api\/parcels\/(\d+)\/label$/);
@@ -79,12 +109,40 @@ createServer((req, res) => {
       const parcel = store.parcel(id);
       if (!parcel) return json(res, 404, { error: 'no such parcel' });
       if (!store.canRead(customer, parcel, route)) return json(res, 403, { error: 'not your parcel' });
-      if (route === 'detail') return json(res, 200, { id: parcel.id, to: parcel.to, status: parcel.status, note: parcel.note });
-      if (route === 'label') return json(res, 200, { id: parcel.id, address: parcel.to, note: parcel.note });
-      return json(res, 200, { id: parcel.id, events: [{ at: 'depot', status: parcel.status }] });
+      if (route === 'detail') {
+        return json(res, 200, {
+          id: parcel.id, to: parcel.to, status: parcel.status, note: parcel.note,
+          service: parcel.service, weight: parcel.weight, eta: parcel.eta,
+        });
+      }
+      if (route === 'label') {
+        // Same authorization decision above; only the representation changes.
+        if (wantsHtml(req)) return html(res, 200, labelDocument(parcel));
+        return json(res, 200, {
+          id: parcel.id, address: parcel.to, note: parcel.note,
+          service: parcel.service, weight: parcel.weight, eta: parcel.eta,
+        });
+      }
+      const events = Array.isArray(parcel.events) && parcel.events.length
+        ? parcel.events
+        : [{ at: 'depot', status: parcel.status }];
+      return json(res, 200, { id: parcel.id, events });
     }
     return json(res, 404, { error: 'unknown resource' });
   }
 
-  return html(res, 404, page('Not found', `<p class="parcel">Page not found.</p>`));
+  return html(res, 404, notFoundPage());
+}
+
+createServer((req, res) => {
+  try {
+    handle(req, res);
+  } catch {
+    // Never echo exception details (they can include request data). The flag is never in a message anyway.
+    console.error('courier: request failed');
+    try {
+      if (!res.headersSent) html(res, 500, serverErrorPage());
+      else res.destroy();
+    } catch { /* the socket is already gone */ }
+  }
 }).listen(port, '0.0.0.0', () => console.log(`courier on :${port} (${level})`));
