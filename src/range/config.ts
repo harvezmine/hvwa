@@ -57,7 +57,9 @@ const schema = z.object({
   need('HVWA_WARDEN_SECRET', c.HVWA_WARDEN_SECRET !== undefined, 'is required in portal mode');
   need('HVWA_FORWARD_AUTH_SECRET', c.HVWA_FORWARD_AUTH_SECRET !== undefined, 'is required in portal mode');
   // Spec §5: i-<id>.<domain> are instances and c-<user>.<domain> request catchers; nothing else may look like them.
-  need('HVWA_PORTAL_HOST', !/^[ic]-/.test(c.HVWA_PORTAL_HOST ?? ''),
+  // Check the effective portal host: HVWA_PORTAL_HOST when set, otherwise the host derived from HVWA_RANGE_DOMAIN.
+  need(c.HVWA_PORTAL_HOST === undefined ? 'HVWA_RANGE_DOMAIN' : 'HVWA_PORTAL_HOST',
+    !/^[ic]-/.test(c.HVWA_PORTAL_HOST ?? c.HVWA_RANGE_DOMAIN ?? ''),
     'its first label must not start with i- or c- (instance and request-catcher hosts)');
 }).transform((c) => ({
   domain: c.HVWA_RANGE_DOMAIN as string,

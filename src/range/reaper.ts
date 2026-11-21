@@ -48,7 +48,11 @@ export async function reconcile(lc: Lifecycle, warden: WardenApi, now: () => num
     lc.store.update(rec.id, { state: 'stopped', reason: rec.reason ?? 'interrupted', endedAt: now() });
   }
   for (const rec of lc.store.listActive()) {
-    if (rec.state !== 'queued' && !present.has(rec.id)) lc.store.update(rec.id, { state: 'stopped', reason: 'lost', endedAt: now() });
+    if (rec.state === 'queued' || present.has(rec.id)) continue;
+    lc.store.update(rec.id, { state: 'stopped', reason: 'lost', endedAt: now() });
+    // The container vanished out of band, but its per-instance network can survive. The warden's stop is idempotent
+    // and also removes that network; best effort, so one stuck cleanup does not fail the whole reconcile.
+    try { await warden.stop(rec.id); } catch { /* the next portal start retries */ }
   }
   const owned = owners(lc);
   for (const c of listed) if (!owned.has(c.instanceId)) await warden.stop(c.instanceId);

@@ -107,6 +107,10 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       const live = store.countLive() - (prev && prev.state !== 'queued' ? 1 : 0);
       if (live >= limits.capacity) return { ok: false, error: 'full' };
       if (prev) await stopRecord(prev, 'replaced');
+      // Re-check after the (awaited) stop: another user's launch may have taken a slot meanwhile (the per-user
+      // chains do not serialize different users). countLive() excludes the record just stopped; check and insert
+      // are synchronous, so no other launch can slip between them.
+      if (store.countLive() >= limits.capacity) return { ok: false, error: 'full' };
       const id = newInstanceId();
       const t = now();
       const hash = level === 'divine' ? null : flagHash(rangeFlag(rangeKey, id, labId, level));
@@ -148,9 +152,14 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     async refresh(id) {
       const rec = store.get(id);
       if (!rec || rec.state !== 'starting') return rec;
-      let health: InstanceHealth;
-      try { health = await warden.health(id); } catch { return rec; }
-      const timedOut = now() - (rec.startedAt ?? rec.createdAt) > limits.startTimeoutMs;
+      // The timeout is decided from the clock alone: an unreachable warden must not keep a starting instance alive.
+      const timedOut = now() - (rec.startedAt ?? rec.createdAt) >= limits.startTimeoutMs;
+      let health: InstanceHealth | undefined;
+      try { health = await warden.health(id); } catch { health = undefined; }
+      if (health === undefined) {
+        if (timedOut) await lc.fail(id, 'start_timeout');
+        return store.get(id);
+      }
       if (health.status === 'ready') store.update(id, { state: 'running', readyAt: now() });
       else if (health.status !== 'starting') await lc.fail(id, health.reason ?? health.status);
       else if (timedOut) await lc.fail(id, 'start_timeout');

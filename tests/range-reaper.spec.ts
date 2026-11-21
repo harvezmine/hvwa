@@ -99,6 +99,21 @@ describe('reconcile (portal start)', () => {
     expect(lc.store.get(kept)?.state).toBe('running');
     expect(lc.store.get('q'.repeat(26))?.state).toBe('queued');
     expect(warden.stopped).toContain('o'.repeat(26));
+    // A lost record also asks the warden to clean up, so its per-instance network cannot leak.
+    expect(warden.stopped).toContain('l'.repeat(26));
+  });
+
+  it('a lost record calls the warden\'s idempotent stop; a failing cleanup does not fail the reconcile', async () => {
+    const { lc, warden, now } = make();
+    const id = 'x'.repeat(26);
+    lc.store.insert({ id, userId: 5, labId: 'r01', level: 'acolyte', state: 'starting', flagHash: null, createdAt: now(), startedAt: now(), expiresAt: now() + 1 });
+    const stops: string[] = [];
+    const original = warden.stop.bind(warden);
+    warden.stop = async (stoppedId: string) => { stops.push(stoppedId); throw new Error('docker down'); };
+    await expect(reconcile(lc, warden, now)).resolves.toBeUndefined();
+    expect(stops).toEqual([id]);
+    expect(lc.store.get(id)).toMatchObject({ state: 'stopped', reason: 'lost' });
+    warden.stop = original;
   });
 });
 

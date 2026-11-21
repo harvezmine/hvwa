@@ -84,6 +84,15 @@ describe('loadRangeConfig', () => {
     }
   });
 
+  it('checks the effective portal host, including the domain-derived default', () => {
+    for (const domain of ['i-hvwa.my.id', 'c-hvwa.my.id']) {
+      expect(errors({ ...BASE, HVWA_RANGE_DOMAIN: domain }))
+        .toEqual(['HVWA_RANGE_DOMAIN: its first label must not start with i- or c- (instance and request-catcher hosts)']);
+    }
+    // An explicit, well-formed portal host overrides a domain that would otherwise derive a forbidden one.
+    expect(ok({ ...BASE, HVWA_RANGE_DOMAIN: 'i-hvwa.my.id', HVWA_PORTAL_HOST: 'hvwa.my.id' }).portalHost).toBe('hvwa.my.id');
+  });
+
   it('names the variables server.ts removes from process.env', () => {
     expect(RANGE_SECRET_NAMES).toEqual(['HVWA_WARDEN_SECRET', 'HVWA_FORWARD_AUTH_SECRET', 'HVWA_RANGE_KEY']);
   });

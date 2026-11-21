@@ -91,6 +91,30 @@ describe('capacity (no queue)', () => {
     expect(lc.store.get(first.id)).toMatchObject({ state: 'stopped', reason: 'replaced' });
     expect(warden.launched).toHaveLength(2);
   });
+
+  it('concurrent launches across users cannot exceed capacity (re-checked after the awaited stop)', async () => {
+    const base = fakeWarden({ autoReady: true });
+    const realStop = base.stop.bind(base);
+    let gate: Promise<void> | undefined;
+    let release!: () => void;
+    let signalStop!: () => void;
+    const stopped = new Promise<void>((r) => { signalStop = r; });
+    base.stop = async (id: string) => { if (gate) { signalStop(); await gate; } return realStop(id); };
+    const { lc } = make({ capacity: 2 }, base);
+    await lc.launch(1, 'r01', 'acolyte'); // user 1's instance
+    await lc.launch(2, 'r01', 'acolyte'); // user 2's instance: the range is now full
+
+    gate = new Promise<void>((r) => { release = r; });
+    const relaunch = lc.launch(1, 'r02', 'acolyte'); // frees its own slot, then parks on the stop
+    await stopped; // user 1 is now between the stop and the insert
+    const third = await lc.launch(3, 'r01', 'acolyte'); // takes the slot user 1 just freed
+    expect(third.ok).toBe(true);
+    release();
+    expect(await relaunch).toEqual({ ok: false, error: 'full' });
+    expect(lc.store.countLive()).toBe(2);
+    expect(lc.store.activeFor(1)).toBeUndefined();
+    expect(lc.store.listActive()).toHaveLength(2);
+  });
 });
 
 describe('readiness (refresh)', () => {
@@ -117,6 +141,15 @@ describe('readiness (refresh)', () => {
     const b = (await lc.launch(2, 'r01', 'acolyte') as { ok: true; instance: { id: string } }).instance;
     warden.boxes.delete(b.id);
     expect(await lc.refresh(b.id)).toMatchObject({ state: 'failed', reason: 'missing' });
+  });
+
+  it('an unreachable warden still times out a starting instance once startTimeoutMs has passed', async () => {
+    const { lc, warden, advance } = make({ startTimeoutMs: 5000 });
+    const a = (await lc.launch(1, 'r01', 'acolyte') as { ok: true; instance: { id: string } }).instance;
+    warden.down = true; // health (and the cleanup stop) always throw
+    advance(5000);
+    expect(await lc.refresh(a.id)).toMatchObject({ state: 'failed', reason: 'start_timeout' });
+    expect(lc.store.get(a.id)?.state).toBe('failed');
   });
 });
 
