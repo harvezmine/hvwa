@@ -6,19 +6,18 @@ import { containerSpec, LAB_USER, networkSpec } from '../src/warden/template.js'
 import { labEntry, testRegistry } from './support/range.js';
 
 const ID = 'abcdefghijklmnopqrstuvwxyz';
-const FLAG = 'HVWA{abcdefghijklmnopqrstuvwxyz}'; // 26 base32 characters (RANGE_FLAG_RE)
 const SETTINGS = { domain: 'hvwa.my.id', runtime: 'runc' as const };
 const MIB = 1024 * 1024;
 
 describe('containerSpec', () => {
   it('is exactly spec §7 for a lab with the default limits', () => {
     const lab = testRegistry().get('r01')!;
-    const { name, body } = containerSpec({ lab, level: 'templar', instanceId: ID, flag: FLAG, userId: 7, expiresAt: 1_800_000_000_000 }, SETTINGS);
+    const { name, body } = containerSpec({ lab, level: 'templar', instanceId: ID, userId: 7, expiresAt: 1_800_000_000_000 }, SETTINGS);
     expect(name).toBe(`hvwa-i-${ID}`);
     expect(body).toEqual({
       Image: lab.image,
       User: '10001:10001',
-      Env: ['HVWA_LEVEL=templar', 'HVWA_PORT=8080', `HVWA_INSTANCE_HOST=i-${ID}.hvwa.my.id`, 'HOME=/tmp', `HVWA_FLAG=${FLAG}`],
+      Env: ['HVWA_LEVEL=templar', 'HVWA_PORT=8080', `HVWA_INSTANCE_HOST=i-${ID}.hvwa.my.id`, 'HOME=/tmp', 'HVWA_FLAG_FILE=/tmp/.hvwa-flag'],
       Labels: {
         'hvwa.range': '1', 'hvwa.instance': ID, 'hvwa.user': '7', 'hvwa.lab': 'r01', 'hvwa.level': 'templar', 'hvwa.expires': '1800000000000',
         'traefik.enable': 'true',
@@ -62,7 +61,7 @@ describe('containerSpec', () => {
   });
 
   it('spec §7 row by row: non-root, read-only, no capabilities, no new privileges, default seccomp, no swap, no mounts, no ports', () => {
-    const { body } = containerSpec({ lab: testRegistry().get('r01')!, level: 'acolyte', instanceId: ID, flag: FLAG, userId: 1, expiresAt: 1 }, SETTINGS);
+    const { body } = containerSpec({ lab: testRegistry().get('r01')!, level: 'acolyte', instanceId: ID, userId: 1, expiresAt: 1 }, SETTINGS);
     const hc = body.HostConfig as Record<string, unknown>;
     expect(Number(LAB_USER.split(':')[0])).toBeGreaterThanOrEqual(1000);
     expect(hc.ReadonlyRootfs).toBe(true);
@@ -75,7 +74,7 @@ describe('containerSpec', () => {
     expect(hc.RestartPolicy).toEqual({ Name: 'no', MaximumRetryCount: 0 });
   });
 
-  it('a manifest may only lower the limits; its tmpfs list is used; Divine gets no HVWA_FLAG; runsc when asked', () => {
+  it('a manifest may only lower the limits; its tmpfs list is used; Divine gets no flag env; runsc when asked', () => {
     const lab = parseRegistry({ schema: 1, labs: [labEntry('r05', 'beacon', {
       port: 3000, resources: { memoryMiB: 128, pids: 64, cpus: 0.25 }, tmpfs: [{ path: '/tmp', sizeMiB: 16 }, { path: '/var/run/beacon', sizeMiB: 8 }],
     })] }).get('r05')!;
@@ -83,7 +82,7 @@ describe('containerSpec', () => {
     const hc = body.HostConfig as Record<string, unknown>;
     expect([hc.Memory, hc.MemorySwap, hc.PidsLimit, hc.NanoCpus, hc.Runtime]).toEqual([128 * MIB, 128 * MIB, 64, 250_000_000, 'runsc']);
     expect(hc.Tmpfs).toEqual({ '/tmp': 'rw,noexec,nosuid,nodev,size=16m', '/var/run/beacon': 'rw,noexec,nosuid,nodev,size=8m' });
-    expect(body.Env).toEqual(['HVWA_LEVEL=divine', 'HVWA_PORT=3000', `HVWA_INSTANCE_HOST=i-${ID}.localhost`, 'HOME=/tmp']);
+    expect(body.Env).toEqual(['HVWA_LEVEL=divine', 'HVWA_PORT=3000', `HVWA_INSTANCE_HOST=i-${ID}.localhost`, 'HOME=/tmp', 'HVWA_FLAG_FILE=/tmp/.hvwa-flag']);
     expect((body.Labels as Record<string, string>)[`traefik.http.services.i-${ID}.loadbalancer.server.port`]).toBe('3000');
   });
 });

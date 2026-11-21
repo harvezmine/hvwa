@@ -9,7 +9,7 @@ import { player, portalApp, signInAs, PLAYER_PASSWORD, type Agent, type Kit } fr
 async function launched(kit: Kit, userId: number, labId: string, level: 'acolyte' | 'templar' | 'inquisitor' | 'divine') {
   const r = await kit.app.locals.range!.lifecycle.launch(userId, labId, level);
   if (!r.ok) throw new Error(r.error);
-  return kit.warden.launched.at(-1)!.flag; // what the lab container received as HVWA_FLAG
+  return kit.warden.launched.at(-1)!.flag; // what the lab container received as its one-shot flag
 }
 async function submit(agent: Agent, labId: string, flag: string, htmx = true) {
   const csrf = csrfOf((await agent.get(`/labs/${labId}`)).text);

@@ -1,10 +1,10 @@
 // The fixture lab (labs/_fixture: NOT a catalog lab; scripts/range-verify.mjs launches it), run here as a plain Node
-// process: it plants HVWA_FLAG as a file and as a page, removes it from its environment, answers its health path; its
+// process: it reads the one-shot flag file, unlinks it, plants it as a file and a page, answers its health path; its
 // manifest parses and its Dockerfile follows the range lab runtime contract.
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer, type AddressInfo } from 'node:net';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { labManifestSchema } from '../src/lab-registry.js';
@@ -28,9 +28,13 @@ async function run(level: string, flag?: string) {
   const data = mkdtempSync(join(tmpdir(), 'hvwa-fixture-'));
   dirs.push(data);
   const flagFile = join(data, 'hvwa', 'flag.txt');
-  const env: NodeJS.ProcessEnv = { ...process.env, HVWA_LEVEL: level, HVWA_PORT: String(port), HVWA_INSTANCE_HOST: 'i-x.localhost', HVWA_FIXTURE_FLAG_FILE: flagFile };
+  const sourceFile = join(data, 'one-shot-flag');
+  const env: NodeJS.ProcessEnv = {
+    ...process.env, HVWA_LEVEL: level, HVWA_PORT: String(port), HVWA_INSTANCE_HOST: 'i-x.localhost',
+    HVWA_FIXTURE_FLAG_FILE: flagFile, HVWA_FLAG_FILE: sourceFile,
+  };
   delete env.HVWA_FLAG;
-  if (flag !== undefined) env.HVWA_FLAG = flag;
+  if (flag !== undefined) writeFileSync(sourceFile, `${flag}\n`, { mode: 0o400 });
   const child = spawn(process.execPath, [join(dir, 'app', 'server.mjs')], { env, stdio: 'ignore' });
   kids.push(child);
   const base = `http://127.0.0.1:${port}`;
@@ -40,18 +44,19 @@ async function run(level: string, flag?: string) {
     if (Date.now() > deadline) throw new Error('the fixture did not start');
     await new Promise((r) => setTimeout(r, 100));
   }
-  return { base, port, flagFile };
+  return { base, port, flagFile, sourceFile };
 }
 const health = (port: number) => spawnSync(process.execPath, [join(dir, 'app', 'health.mjs')], { env: { ...process.env, HVWA_PORT: String(port) }, timeout: 10_000 }).status;
 
 describe('labs/_fixture/app', () => {
-  it('Templar: the flag is a file and a page, gone from the environment; health passes', async () => {
-    const { base, port, flagFile } = await run('templar', FLAG);
+  it('Templar: the flag is a file and a page, gone from the environment, its one-shot file unlinked; health passes', async () => {
+    const { base, port, flagFile, sourceFile } = await run('templar', FLAG);
     expect(await (await fetch(`${base}/healthz`)).json()).toEqual({ status: 'ok' });
     expect(await (await fetch(`${base}/`)).text()).toContain('data-testid="level">templar<');
     expect(await (await fetch(`${base}/flag`)).text()).toContain(FLAG);
     expect(readFileSync(flagFile, 'utf8').trim()).toBe(FLAG);
     expect(await (await fetch(`${base}/env`)).json()).toMatchObject({ flagInEnv: false });
+    expect(existsSync(sourceFile)).toBe(false); // read once, then unlinked
     expect((await fetch(`${base}/nope`)).status).toBe(404);
     expect(health(port)).toBe(0);
     expect(health(await freePort())).toBe(1);

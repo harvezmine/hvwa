@@ -35,6 +35,19 @@ describe('createDockerClient', () => {
     for (const c of stub.calls) expect(c.path, c.path).toMatch(new RegExp(`^(/_ping|${DOCKER_API.replace('.', '\\.')}/(containers|networks)[/?])`));
   });
 
+  it('creates and starts an exec instance (the one-shot flag write)', async () => {
+    const { stub, docker } = await setup();
+    await docker.createNetwork({ Name: 'net-a', Internal: true });
+    await docker.createContainer('box-a', { Image: 'img@sha256:x', HostConfig: { NetworkMode: 'net-a' } });
+    await docker.startContainer('box-a');
+    const execId = await docker.execCreate('box-a', { User: '10001:10001', Cmd: ['sh', '-c', 'cat > /tmp/.hvwa-flag', 'sh', 'HVWA{abcdefghijklmnopqrstuvwxyz}'] });
+    expect(execId).toMatch(/^[0-9a-f]{64}$/);
+    await docker.execStart(execId);
+    const [exec] = stub.execs();
+    expect(exec).toMatchObject({ container: 'box-a', started: true });
+    expect((exec.config.Cmd as string[]).at(-1)).toBe('HVWA{abcdefghijklmnopqrstuvwxyz}');
+  });
+
   it('turns Engine errors into DockerError with the status and the Engine\'s message', async () => {
     const { stub, docker } = await setup();
     await docker.createNetwork({ Name: 'net-b' });
