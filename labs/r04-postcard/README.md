@@ -1,9 +1,10 @@
 # Postcard (r04) — Server-side template injection (Hard)
 
 Postcard is a greeting-card maker on real Flask/Jinja2. The card preview renders the operator's message. At the lower
-levels the message becomes Jinja2 template source (SSTI). The flag is a file (`/tmp/postcard/flag.txt`, in the tmpfs),
-written at start from `HVWA_FLAG` and then popped from the environment. No page renders the file; only template code
-reading it does. Real template execution is intentional (spec §2); the container is the boundary.
+levels the message becomes Jinja2 template source (SSTI). The flag is a file (`/tmp/postcard/flag.txt`, in the tmpfs):
+at start the app reads the one-shot flag file (`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`), unlinks it, then writes it
+there. The flag is never in the environment. No page renders the file; only template code reading it does. Real template
+execution is intentional (spec §2); the container is the boundary.
 
 ## Vulnerable feature
 `POST /preview` — the card renderer (`templating.render_card`). The page chrome is a constant template; only the

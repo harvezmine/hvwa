@@ -2,8 +2,9 @@
 
 Courier is a parcel-tracking customer portal with a small JSON API. Getting a session is trivial (demo mode); the flaw
 is that parcel resources do not consistently check *ownership*. The flag is parcel 1001's private delivery `note`
-(owned by the `vault` customer), planted at start from `HVWA_FLAG` and scrubbed from the environment. Placement is
-`custom` (an in-memory record).
+(owned by the `vault` customer): at start the app reads the one-shot flag file (`HVWA_FLAG_FILE`, default
+`/tmp/.hvwa-flag`), unlinks it, then plants it. The flag is never in the environment. Placement is `custom` (an
+in-memory record).
 
 ## Vulnerable feature
 The parcel API: `GET /api/parcels/:id`, `GET /api/parcels/:id/label`, `GET /api/parcels/:id/events`. The browser

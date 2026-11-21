@@ -16,7 +16,7 @@ const fixture = parseRegistry({ schema: 1, labs: [{
 
 /** What `docker container inspect` / `docker network inspect` report for a container made from the template. */
 function reported(runtime: Runtime = 'runc') {
-  const { body } = containerSpec({ lab: fixture, level: 'templar', instanceId: ID, flag: `HVWA{${'a'.repeat(26)}}`, userId: 1, expiresAt: 1 },
+  const { body } = containerSpec({ lab: fixture, level: 'templar', instanceId: ID, userId: 1, expiresAt: 1 },
     { domain: 'localhost', runtime });
   const hc = body.HostConfig as Record<string, unknown>;
   return {

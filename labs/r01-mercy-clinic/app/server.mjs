@@ -1,16 +1,33 @@
-// labs/r01-mercy-clinic/app/server.mjs — Mercy Clinic. Start hook: open the SQLite DB in /tmp, seed it, plant the flag
-// as a staff-only notice, then DELETE HVWA_FLAG from the environment before serving (spec §6). The notice search at
-// /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). Listens on 0.0.0.0:$HVWA_PORT.
+// labs/r01-mercy-clinic/app/server.mjs — Mercy Clinic. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and
+// unlink it, then open the SQLite DB in /tmp, seed it and plant the flag as a staff-only notice (spec §6). The notice
+// search at /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { openDb, plantFlag, listPublic, getPublic, listPatients, searchNotices } from './db.mjs';
 import { page, noticeCard, esc } from './render.mjs';
 
 const LEVELS = ['acolyte', 'templar', 'divine'];
 const level = LEVELS.includes(process.env.HVWA_LEVEL ?? '') ? process.env.HVWA_LEVEL : 'acolyte';
 const port = Number(process.env.HVWA_PORT || 8080);
+const flagSource = process.env.HVWA_FLAG_FILE || '/tmp/.hvwa-flag';
 
-const flag = process.env.HVWA_FLAG;
-delete process.env.HVWA_FLAG;                 // the process must not keep the flag in its environment
+/** Poll for the one-shot flag file, read it once and unlink it. Below Divine only; otherwise exit non-zero. */
+async function readFlag() {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      const value = readFileSync(flagSource, 'utf8').trim();
+      if (value) { unlinkSync(flagSource); return value; }
+    } catch { /* the warden has not written it yet */ }
+    if (Date.now() >= deadline) {
+      console.error('mercy-clinic: the flag file never appeared'); // never the flag itself
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+const flag = level === 'divine' ? undefined : await readFlag();
 const db = openDb('/tmp/clinic.db');
 plantFlag(db, level, flag);
 

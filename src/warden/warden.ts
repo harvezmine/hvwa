@@ -56,11 +56,23 @@ export function createWarden(deps: WardenDeps): WardenApi {
       await serial(r.instanceId, async () => {
         try {
           if (await docker.inspectContainer(name)) throw new WardenError('exists', 409);
-          const spec = containerSpec({ lab, level: r.level, instanceId: r.instanceId, flag: r.flag, userId: r.userId, expiresAt: r.expiresAt }, settings);
+          const spec = containerSpec({ lab, level: r.level, instanceId: r.instanceId, userId: r.userId, expiresAt: r.expiresAt }, settings);
           await docker.createNetwork(networkSpec(r.instanceId));
           await docker.createContainer(spec.name, spec.body);
           await docker.connectNetwork(name, settings.traefikContainer);
           await docker.startContainer(name);
+          // Deliver the flag only below Divine (spec §6): after start, as a one-shot file in the tmpfs, never in the
+          // environment, the image, the container config or `docker inspect`. A read-only rootfs means the Engine's
+          // archive endpoint refuses writes, so the warden runs a tiny exec (uid 10001) that writes the flag to
+          // HVWA_FLAG_FILE. The lab's start hook polls for it, reads it once and unlinks it. A failed delivery is a
+          // failed launch: the catch below stops and removes the container, leaving nothing behind.
+          if (r.flag !== undefined) {
+            const execId = await docker.execCreate(name, {
+              User: '10001:10001', AttachStdin: false, AttachStdout: false, AttachStderr: false, Tty: false,
+              Cmd: ['sh', '-c', 'umask 077; printf \'%s\\n\' "$1" > /tmp/.hvwa-flag; chmod 400 /tmp/.hvwa-flag', 'sh', r.flag],
+            });
+            await docker.execStart(execId);
+          }
           log(`warden: launched ${r.instanceId} ${r.labId}/${r.level} for user ${r.userId}`);
         } catch (err) {
           if (err instanceof WardenError) throw err;

@@ -7,7 +7,7 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 
 export const STUB_API = '/v1.44';
-export interface StubCall { readonly method: string; readonly path: string; readonly body: unknown }
+export interface StubCall { readonly method: string; readonly path: string; readonly body: unknown; readonly raw: Buffer }
 export type StubHealth = 'starting' | 'healthy' | 'unhealthy';
 export interface StubContainer {
   readonly id: string;
@@ -19,6 +19,7 @@ export interface StubContainer {
   health: StubHealth | undefined;
   readonly networks: Set<string>;
 }
+export interface StubExec { readonly id: string; readonly container: string; readonly config: Record<string, unknown>; started: boolean }
 export interface StubNetwork { readonly id: string; readonly name: string; readonly body: Record<string, unknown>; readonly containers: Set<string> }
 
 export interface DockerStub {
@@ -31,6 +32,8 @@ export interface DockerStub {
   containers(): StubContainer[];
   network(nameOrId: string): StubNetwork | undefined;
   networks(): StubNetwork[];
+  /** Every exec instance created and started (the one-shot flag write). */
+  execs(): StubExec[];
   setHealth(name: string, health: StubHealth | undefined): void;
   exit(name: string, code: number, oom?: boolean): void;
   /** The next request matching `method` and the path regex answers `status` (once). */
@@ -46,6 +49,7 @@ export async function startDockerStub(): Promise<DockerStub> {
   const images = new Map<string, { healthcheck: boolean }>();
   const containers = new Map<string, StubContainer>();
   const networks = new Map<string, StubNetwork>();
+  const execs = new Map<string, StubExec>();
   const failures: { method: string; path: RegExp; status: number }[] = [];
   let seq = 0;
   const newId = () => (++seq).toString(16).padStart(64, '0');
@@ -69,7 +73,7 @@ export async function startDockerStub(): Promise<DockerStub> {
   }
 
   /** [status, payload]; null payload = no body; undefined = not modelled. */
-  function handle(method: string, url: URL, body: unknown): [number, unknown] | undefined {
+  function handle(method: string, url: URL, body: unknown, raw: Buffer): [number, unknown] | undefined {
     const p = url.pathname;
     if (method === 'GET' && p === '/_ping') return [200, 'OK'];
     if (!p.startsWith(`${STUB_API}/`)) return undefined;
@@ -119,6 +123,19 @@ export async function startDockerStub(): Promise<DockerStub> {
       c.health = images.get(String(c.body.Image))?.healthcheck ? 'starting' : undefined;
       return [204, null];
     }
+    if (method === 'POST' && (m = /^\/containers\/([^/]+)\/exec$/.exec(rest))) {
+      const c = findC(decodeURIComponent(m[1]));
+      if (!c) return [404, { message: 'No such container' }];
+      const id = newId();
+      execs.set(id, { id, container: c.name, config: b, started: false });
+      return [201, { Id: id }];
+    }
+    if (method === 'POST' && (m = /^\/exec\/([^/]+)\/start$/.exec(rest))) {
+      const e = execs.get(decodeURIComponent(m[1]));
+      if (!e) return [404, { message: 'No such exec instance' }];
+      e.started = true;
+      return [200, null];
+    }
     if (method === 'GET' && (m = /^\/containers\/([^/]+)\/json$/.exec(rest))) {
       const c = findC(decodeURIComponent(m[1]));
       return c ? [200, inspect(c)] : [404, { message: 'No such container' }];
@@ -144,12 +161,14 @@ export async function startDockerStub(): Promise<DockerStub> {
   }
 
   const server = http.createServer((req, res) => {
-    let raw = '';
-    req.setEncoding('utf8').on('data', (d: string) => { raw += d; }).on('end', () => {
+    const chunks: Buffer[] = [];
+    req.on('data', (d: Buffer) => chunks.push(d)).on('end', () => {
+      const raw = Buffer.concat(chunks);
+      const text = raw.toString('utf8');
       const url = new URL(req.url ?? '/', 'http://stub');
       let body: unknown;
-      try { body = raw === '' ? undefined : JSON.parse(raw); } catch { body = raw; }
-      const call: StubCall = { method: req.method ?? 'GET', path: `${url.pathname}${url.search}`, body };
+      try { body = text === '' ? undefined : JSON.parse(text); } catch { body = text; }
+      const call: StubCall = { method: req.method ?? 'GET', path: `${url.pathname}${url.search}`, body, raw };
       calls.push(call);
       const f = failures.findIndex((x) => x.method === call.method && x.path.test(url.pathname));
       let out: [number, unknown] | undefined;
@@ -157,7 +176,7 @@ export async function startDockerStub(): Promise<DockerStub> {
         const [fail] = failures.splice(f, 1);
         out = [fail.status, { message: `stub failure ${fail.status}` }];
       } else {
-        out = handle(call.method, url, body);
+        out = handle(call.method, url, body, raw);
       }
       if (out === undefined) { unexpected.push(call); out = [404, { message: 'page not found' }]; }
       const [status, payload] = out;
@@ -173,6 +192,7 @@ export async function startDockerStub(): Promise<DockerStub> {
     url: `http://127.0.0.1:${port}`, calls, unexpected, images,
     container: findC, containers: () => [...containers.values()],
     network: findN, networks: () => [...networks.values()],
+    execs: () => [...execs.values()],
     setHealth(name, health) { const c = findC(name); if (c) c.health = health; },
     exit(name, code, oom = false) { const c = findC(name); if (c) { c.status = 'exited'; c.exitCode = code; c.oom = oom; c.health = undefined; } },
     failNext(method, path, status) { failures.push({ method, path, status }); },

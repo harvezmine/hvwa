@@ -1,8 +1,9 @@
 # Beacon (r03) — OS command injection (Medium)
 
 Beacon is a home-router admin panel. Its diagnostics tool probes a host the operator types by running a real busybox
-shell. The flag is a file (`/tmp/beacon/flag.txt`, in the tmpfs because the rootfs is read-only), written at start from
-`HVWA_FLAG` and then scrubbed from the environment. No page renders the file; only a shell reading it does.
+shell. The flag is a file (`/tmp/beacon/flag.txt`, in the tmpfs because the rootfs is read-only): at start the app reads
+the one-shot flag file (`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`), unlinks it, then writes it there. The flag is
+never in the environment. No page renders the file; only a shell reading it does.
 
 ## Vulnerable feature
 `POST /diagnostics` — the connectivity probe. The shell string is `echo "Diagnostics for <host>"; ping -c 1 -W 1

@@ -1,8 +1,9 @@
-// labs/_fixture/app/server.mjs — the range fixture (NOT a lab). Its start hook plants HVWA_FLAG where lab.json says (a
-// file) and serves it as a page, then removes it from process.env, as every range lab must (spec range §6). Divine gets
-// no flag and plants a decoy. /env and /headers are diagnostics for scripts/range-verify.mjs.
+// labs/_fixture/app/server.mjs — the range fixture (NOT a lab). Its start hook reads the one-shot flag file the warden
+// wrote after start (HVWA_FLAG_FILE, default /tmp/.hvwa-flag), unlinks it, then plants it where lab.json says (a file)
+// and serves it as a page (spec range §6). Divine gets no flag and plants a decoy. /env and /headers are diagnostics for
+// scripts/range-verify.mjs.
 import { createServer } from 'node:http';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const LEVELS = ['acolyte', 'templar', 'inquisitor', 'divine'];
@@ -11,10 +12,26 @@ const port = Number(process.env.HVWA_PORT || 8080);
 const host = process.env.HVWA_INSTANCE_HOST || 'localhost';
 // Only the fixture's own spec moves the file (it runs outside a container); in the image it is lab.json's path.
 const flagFile = process.env.HVWA_FIXTURE_FLAG_FILE || '/tmp/hvwa/flag.txt';
+const flagSource = process.env.HVWA_FLAG_FILE || '/tmp/.hvwa-flag';
 const DECOY = 'Divine is the secure reference: there is no flag here.';
 
-const flag = process.env.HVWA_FLAG;
-delete process.env.HVWA_FLAG;
+/** Poll for the one-shot flag file, read it once and unlink it. Below Divine only; otherwise exit non-zero. */
+async function readFlag() {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      const value = readFileSync(flagSource, 'utf8').trim();
+      if (value) { unlinkSync(flagSource); return value; }
+    } catch { /* the warden has not written it yet */ }
+    if (Date.now() >= deadline) {
+      console.error('fixture: the flag file never appeared'); // never the flag itself
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+const flag = level === 'divine' ? undefined : await readFlag();
 mkdirSync(dirname(flagFile), { recursive: true });
 writeFileSync(flagFile, `${level === 'divine' || !flag ? DECOY : flag}\n`, { mode: 0o400 });
 

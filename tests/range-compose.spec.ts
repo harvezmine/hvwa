@@ -28,6 +28,8 @@ function service(name: string): string[] {
 const services = ['router', 'socket-proxy-ro', 'socket-proxy', 'warden', 'portal'];
 const OFF = ['EXEC', 'IMAGES', 'VOLUMES', 'BUILD', 'COMMIT', 'DISTRIBUTION', 'AUTH', 'SECRETS', 'CONFIGS', 'SERVICES', 'SWARM', 'NODES',
   'TASKS', 'PLUGINS', 'SYSTEM', 'INFO', 'SESSION', 'GRPC', 'ALLOW_START', 'ALLOW_STOP', 'ALLOW_RESTARTS'];
+/** The write proxy also allows exec (the one-shot flag write into a read-only rootfs); everything else stays off. */
+const OFF_WRITE = OFF.filter((n) => n !== 'EXEC');
 const env = (name: string, value: string) => `      ${name}: "${value}"`;
 
 describe('docker-compose.range.yml', () => {
@@ -78,9 +80,9 @@ describe('docker-compose.range.yml', () => {
     expect(r.join('\n')).not.toMatch(/TRAEFIK_ENTRYPOINTS_WEB_ADDRESS: /); // never a fixed (all-interfaces) address
   });
 
-  it('the write proxy: containers, networks, POST; nothing else; on `docker` only', () => {
+  it('the write proxy: containers, networks, exec (the flag write), POST; nothing else; on `docker` only', () => {
     expect(service('socket-proxy')).toEqual(expect.arrayContaining([env('CONTAINERS', '1'), env('NETWORKS', '1'), env('POST', '1'),
-      env('EVENTS', '0'), env('PING', '1'), env('VERSION', '1'), ...OFF.map((n) => env(n, '0')), '    networks: [docker]']));
+      env('EXEC', '1'), env('EVENTS', '0'), env('PING', '1'), env('VERSION', '1'), ...OFF_WRITE.map((n) => env(n, '0')), '    networks: [docker]']));
   });
 
   it('the portal shares no network with the write socket proxy: only the warden joins `docker`', () => {
@@ -154,7 +156,7 @@ describe('docker/range/traefik/range.yml', () => {
   it('the portal router and service, and exactly the names the warden\'s labels reference', () => {
     expect(dynamic).toContain("      rule: 'Host(`{{ env \"HVWA_PORTAL_HOST\" }}`)'");
     expect(dynamic).toContain('        servers:\n          - url: "http://portal:1337"');
-    const labels = containerSpec({ lab: testRegistry().get('r01')!, level: 'acolyte', instanceId: 'a'.repeat(26), flag: `HVWA{${'b'.repeat(26)}}`, userId: 1, expiresAt: 1 },
+    const labels = containerSpec({ lab: testRegistry().get('r01')!, level: 'acolyte', instanceId: 'a'.repeat(26), userId: 1, expiresAt: 1 },
       { domain: 'localhost', runtime: 'runc' }).body.Labels as Record<string, string>;
     const refs = Object.entries(labels).filter(([k]) => /\.(middlewares|service)$/.test(k)).map(([, v]) => v).filter((v) => v.endsWith('@file'));
     expect(refs.sort()).toEqual(['hvwa-instance@file', 'hvwa-portal@file']);

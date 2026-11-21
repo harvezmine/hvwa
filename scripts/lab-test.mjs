@@ -102,9 +102,31 @@ async function testLab(dir, report) {
       flags[level] = flag;
       const name = `${net}-${level}`;
       containers[level] = name; // tracked before `run`: a failed start can still leave a Created container behind
-      dockerOk(dockerRunArgs({ manifest, level, flag, network: net, name, image, runtime: RUNTIME }), `${id}/${level}: run`);
+      dockerOk(dockerRunArgs({ manifest, level, network: net, name, image, runtime: RUNTIME }), `${id}/${level}: run`);
+      if (flag !== undefined) {
+        // Deliver the flag exactly as the warden does (spec §6): after start, into /tmp, as a one-shot file — never an
+        // env var (a read-only rootfs blocks `docker cp`/the archive endpoint, so both use a tiny exec that writes it).
+        const r = docker(['exec', name, 'sh', '-c', "umask 077; printf '%s\\n' \"$1\" > /tmp/.hvwa-flag; chmod 400 /tmp/.hvwa-flag", 'sh', flag]);
+        if (r.status !== 0) fail(`${level}: deliver the one-shot flag file (docker exec exited ${r.status}): ${r.stderr}`);
+      }
       await waitHealthy(name);                                                             // check 1
       pass(`${level}: health passes`);
+
+      // No-leak checks: the flag must be reachable only through the intended exploit, never from the environment,
+      // inspect output, logs or the delivered file itself (which the start hook must have unlinked).
+      const inspectOut = docker(['inspect', name]).stdout;
+      const logsOut = docker(['logs', name]).stdout;
+      if (/HVWA\{/.test(inspectOut) || /HVWA\{/.test(logsOut)) fail(`${level}: docker inspect or logs leak the flag`);
+      pass(`${level}: docker inspect and logs contain no HVWA{`);
+      if (flag !== undefined) {
+        const imageCfg = docker(['inspect', image]).stdout;
+        if (imageCfg.includes(flag) || inspectOut.includes(flag)) fail(`${level}: the image or container config holds the flag`);
+        pass(`${level}: image and container config hold no flag`);
+      } else {
+        pass(`${level}: no flag to leak at Divine`);
+      }
+      if (docker(['exec', name, 'test', '!', '-e', '/tmp/.hvwa-flag']).status !== 0) fail(`${level}: the one-shot flag file still exists`);
+      pass(`${level}: the one-shot flag file is gone`);
     }
 
     const exploitable = manifest.levels.filter((l) => l !== 'divine');

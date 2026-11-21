@@ -349,17 +349,32 @@ const checks = [
     if (!(await submit(s.bob, flag)).includes('data-result="wrong"')) throw new Error("bob scored alice's flag");
     if (!(await submit(s.alice, flag)).includes('data-result="new_best"')) throw new Error('alice could not score her own flag');
   }],
-  ['the socket proxies: only containers and networks; the read-only one refuses writes', () => {
+  ['the flag never leaks into the platform or instance logs, inspect output, or the delivered file', () => {
+    const platform = compose(['logs', '--no-color', 'portal', 'warden']);
+    if (/HVWA\{/.test(`${platform.out}\n${platform.err}`)) throw new Error('portal or warden logs contain a flag');
+    const c = `hvwa-i-${s.a.id}`;
+    const insp = run('docker', ['inspect', c]);
+    if (/HVWA\{/.test(`${insp.out}\n${insp.err}`)) throw new Error('the instance inspect output contains a flag');
+    const ilogs = run('docker', ['logs', c]);
+    if (/HVWA\{/.test(`${ilogs.out}\n${ilogs.err}`)) throw new Error('the instance logs contain a flag');
+    const gone = run('docker', ['exec', c, 'test', '!', '-e', '/tmp/.hvwa-flag']);
+    if (gone.code !== 0) throw new Error('the one-shot flag file still exists inside the instance');
+  }],
+  ['the socket proxies: only containers, networks and exec (write); the read-only one refuses writes and exec', () => {
     const w = serviceContainer('warden');
     const status = (path, method) => Number(must('docker', ['exec', w, 'node', '-e',
       `fetch('http://socket-proxy:2375${path}',{method:'${method}'}).then(r=>console.log(r.status),()=>console.log(0))`]));
+    // exec is allowed on the WRITE proxy (the one-shot flag write), so a bogus exec id reaches the Engine and 404s;
+    // images/volumes/info/swarm/build are still refused at the proxy (403). The read-only proxy keeps exec off.
     const table = [['/v1.44/containers/json', 'GET', 200], ['/v1.44/networks', 'GET', 200], ['/v1.44/images/json', 'GET', 403],
-      ['/v1.44/volumes', 'GET', 403], ['/v1.44/info', 'GET', 403], ['/v1.44/swarm', 'GET', 403], ['/v1.44/exec/x/start', 'POST', 403],
+      ['/v1.44/volumes', 'GET', 403], ['/v1.44/info', 'GET', 403], ['/v1.44/swarm', 'GET', 403], ['/v1.44/exec/x/start', 'POST', 404],
       ['/v1.44/build', 'POST', 403]];
     const wrong = table.map(([p, m, want]) => [p, m, want, status(p, m)]).filter(([, , want, got]) => got !== want);
     if (wrong.length) throw new Error(wrong.map(([p, m, want, got]) => `${m} ${p}: ${got}, want ${want}`).join('; '));
     const post = run('docker', ['exec', TRAEFIK, 'wget', '-q', '-O', '-', '--post-data=', 'http://socket-proxy-ro:2375/v1.44/containers/create']);
     if (post.code === 0 || !/403/.test(post.err)) throw new Error(`the read-only proxy accepted a POST (${show(post)})`);
+    const execRo = run('docker', ['exec', TRAEFIK, 'wget', '-q', '-O', '-', '--post-data=', 'http://socket-proxy-ro:2375/v1.44/exec/x/start']);
+    if (execRo.code === 0 || !/403/.test(execRo.err)) throw new Error(`the read-only proxy accepted an exec start (${show(execRo)})`);
     const read = run('docker', ['exec', TRAEFIK, 'wget', '-q', '-O', '/dev/null', 'http://socket-proxy-ro:2375/v1.44/containers/json']);
     if (read.code !== 0) throw new Error(`the read-only proxy refused a read (${show(read)})`);
   }],
