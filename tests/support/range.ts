@@ -52,6 +52,8 @@ export const ADMIN_PASSWORD = 'Admin-Pass-1234';
 export const PLAYER_PASSWORD = 'Player-Pass-1';
 /** The range key every test app uses (>= MIN_RANGE_KEY_LENGTH); never a production value. */
 export const RANGE_KEY = 'r'.repeat(40);
+/** HVWA_FORWARD_AUTH_SECRET: what Traefik sends as X-Hwva-Auth-Secret on every forward-auth call. */
+export const FORWARD_SECRET = 'f'.repeat(40);
 
 export interface Clock { readonly now: () => number; readonly advance: (ms: number) => void }
 export interface Kit { readonly app: HvwaApp; readonly clock: Clock; readonly registry: LabRegistry; readonly warden: FakeWarden }
@@ -81,7 +83,7 @@ export function portalApp(o: {
     },
     range: {
       domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry, limits: DEFAULT_LIMITS, now: clock.now,
-      warden, rangeKey: RANGE_KEY, log: () => {}, ...o.range,
+      warden, rangeKey: RANGE_KEY, forwardAuthSecret: FORWARD_SECRET, log: () => {}, ...o.range,
     },
   });
   onTestFinished(() => { try { app.locals.db.close(); } catch { /* closed by the test */ } });

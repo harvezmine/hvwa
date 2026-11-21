@@ -13,7 +13,12 @@
 //
 // Every other request on an instance host, on the internal host, or for /__hvwa/* elsewhere ends here with 404, before
 // the session middleware: no portal cookie is ever set on a lab host.
-import { createHmac, timingSafeEqual } from 'node:crypto';
+//
+// GET /__hvwa/auth on the internal host (Traefik's forwardAuth, http://portal:1337): the shared secret header, Traefik's
+// X-Forwarded-Host/-Uri/-Method, then hvwa_gate verified statelessly and bound to the X-Forwarded-Host's instance, which
+// must be running, owned by the cookie's user, whose account is active. 200 = pass (last-seen kept in memory); 401 = the
+// page home; 403 = not Traefik (no secret, no X-Forwarded-*).
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request, RequestHandler, Response } from 'express';
 import { escapeHtml } from '../core/render.js';
 import { hostnameOf, targetHostname } from '../core/host-guard.js';
@@ -94,6 +99,27 @@ export function edgeHandler(ctx: RangeContext): RequestHandler {
     res.redirect(303, '/');
   }
 
+  const secretDigest = createHash('sha256').update(opts.forwardAuthSecret, 'utf8').digest();
+  const secretOk = (v: string | undefined) =>
+    v !== undefined && timingSafeEqual(createHash('sha256').update(v, 'utf8').digest(), secretDigest);
+  const refused = (res: Response) => { res.status(403).type('text/plain').send('forward-auth: refused\n'); };
+
+  /** Traefik's forwardAuth call for one request to an instance host (see the task notes: what it trusts and why). */
+  function forwardAuth(req: Request, res: Response): void {
+    res.set('Cache-Control', 'no-store');
+    if (!secretOk(req.get('x-hvwa-auth-secret'))) { refused(res); return; }
+    const method = req.get('x-forwarded-method');
+    const uri = req.get('x-forwarded-uri');
+    const forwardedHost = hostnameOf(req.get('x-forwarded-host'));
+    if (!method || uri === undefined || forwardedHost === undefined) { refused(res); return; }
+    const instanceId = instanceIdOfHost(forwardedHost, opts.domain);
+    if (instanceId === undefined || /^\/__hvwa(?:\/|$)/i.test(uri)) { deny(res); return; }
+    const claims = verifyGateCookie(gateKey, req.cookies?.[GATE_COOKIE], ctx.now());
+    if (!claims || claims.instanceId !== instanceId || !owned(instanceId, claims.userId)) { deny(res); return; }
+    lifecycle.touch(instanceId);
+    res.status(200).end();
+  }
+
   return (req, res, next) => {
     const headerHost = hostnameOf(req.headers.host);
     // An absolute-form target overrides Host (HTTP); when it names one of ours, that is what we answer for, so it can
@@ -107,7 +133,11 @@ export function edgeHandler(ctx: RangeContext): RequestHandler {
       notFound(res);
       return;
     }
-    if (host === opts.internalHost) { notFound(res); return; }
+    if (host === opts.internalHost) {
+      if (req.method === 'GET' && req.path === '/__hvwa/auth') { forwardAuth(req, res); return; }
+      notFound(res);
+      return;
+    }
     if (/^\/__hvwa(?:\/|$)/i.test(req.path)) { notFound(res); return; }
     next();
   };

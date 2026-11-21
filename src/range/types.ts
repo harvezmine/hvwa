@@ -39,6 +39,8 @@ export interface RangePortalOptions {
   readonly publicPort?: number;
   /** HVWA_FORWARD_AUTH_HOST: the only Host /__hvwa/auth answers on (Traefik calls http://portal:1337/__hvwa/auth). */
   readonly internalHost: string;
+  /** HVWA_FORWARD_AUTH_SECRET: Traefik sends it as X-Hvwa-Auth-Secret on every forward-auth call. */
+  readonly forwardAuthSecret: string;
   readonly registry: LabRegistry;
   readonly limits: RangeLimits;
   /** HVWA_REGISTRATION_OPEN (RangeConfig.registrationOpen): false closes /register. Default true. */

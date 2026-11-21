@@ -14,12 +14,12 @@ import { base32, INSTANCE_ID_RE, newInstanceId } from '../src/range/ids.js';
 import { instanceHost, instanceIdOfHost, instanceOrigin, portalOrigin } from '../src/range/hosts.js';
 import { csrfOf, FAST_HASHER, serve, setCookieHeader, TEST_SECRET } from './helpers.js';
 import { parseRegistry } from '../src/lab-registry.js';
-import { ADMIN_PASSWORD, DOMAIN, labEntry, player, portalApp, RANGE_KEY, signInAdmin, testRegistry, T0 } from './support/range.js';
+import { ADMIN_PASSWORD, DOMAIN, FORWARD_SECRET, labEntry, player, portalApp, RANGE_KEY, signInAdmin, testRegistry, T0 } from './support/range.js';
 import { fakeWarden } from './support/fake-warden.js';
 
 const rangeOptions = () => ({
   domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry: testRegistry(), limits: DEFAULT_LIMITS,
-  warden: fakeWarden({ autoReady: true }), rangeKey: RANGE_KEY,
+  warden: fakeWarden({ autoReady: true }), rangeKey: RANGE_KEY, forwardAuthSecret: FORWARD_SECRET,
 });
 
 /** GET with an absolute-form request target (`GET http://name/ HTTP/1.1`), which supertest cannot send. */
@@ -75,7 +75,7 @@ describe('portal mode: what is mounted', () => {
   it('fails closed on instance hosts, the internal host and /__hvwa/* of the portal host; other hosts are 421', async () => {
     const { app } = portalApp();
     const lab = `i-${'a'.repeat(26)}.${DOMAIN}`;
-    for (const [host, path] of [[lab, '/'], [lab, '/__hvwa/other'], ['portal', '/__hvwa/auth'], ['portal', '/'], [DOMAIN, '/__hvwa/gate'],
+    for (const [host, path] of [[lab, '/'], [lab, '/__hvwa/other'], ['portal', '/'], [DOMAIN, '/__hvwa/gate'],
       [DOMAIN, '/__HVWA/gate'], [`${lab.toUpperCase()}:443`, '/login']]) {
       const res = await request(app).get(path).set('Host', host);
       expect(res.status, `${host}${path}`).toBe(404);
@@ -86,6 +86,10 @@ describe('portal mode: what is mounted', () => {
     const gated = await request(app).get('/__hvwa/gate?t=x').set('Host', lab);
     expect(gated.status).toBe(401);
     expect(gated.headers['set-cookie']).toBeUndefined();
+    // Task 21: the internal host's forward-auth refuses a caller without the shared secret (403), never a portal cookie.
+    const auth = await request(app).get('/__hvwa/auth').set('Host', 'portal');
+    expect(auth.status).toBe(403);
+    expect(auth.headers['set-cookie']).toBeUndefined();
     expect((await request(app).get('/').set('Host', 'evil.example')).status).toBe(421);
     expect((await request(app).get('/').set('Host', `i-${'a'.repeat(25)}.${DOMAIN}`)).status).toBe(421);
   });
