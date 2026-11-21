@@ -64,7 +64,7 @@ describe('lab package layout (spec §8.4)', () => {
       expect(existsSync(join(dir, 'Dockerfile'))).toBe(true);
       expect(existsSync(join(dir, 'README.md'))).toBe(true);
       expect(readFileSync(join(dir, 'VERSION'), 'utf8').trim()).toMatch(/^\d+\.\d+\.\d+$/);
-      expect(readFileSync(join(dir, '.dockerignore'), 'utf8')).toMatch(/(^|\n)solve($|\/|\n)/);
+      expect(readFileSync(join(dir, '.dockerignore'), 'utf8').replace(/\r\n/g, '\n')).toMatch(/(^|\n)solve($|\/|\n)/);
       const m = readManifest(dir);
       for (const level of m.levels.filter((l: string) => l !== 'divine')) {
         expect(existsSync(join(dir, 'solve', `${level}.mjs`)), `${e.id}/solve/${level}.mjs`).toBe(true);
