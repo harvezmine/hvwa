@@ -54,6 +54,26 @@
 <% }); -%>
       </ul>
     </section>
+
+    <section class="card panel" aria-labelledby="submit-title">
+      <h2 id="submit-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flag"></use></svg><%= t('challenge.submit_heading') %></h2>
+      <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <label class="label" for="flag-input"><%= t('challenge.submit_label') %></label>
+        <div class="form-row">
+          <div class="field"><input id="flag-input" class="input input-mono" type="text" name="submission" autocomplete="off" spellcheck="false" placeholder="HVWA{…}" aria-describedby="flag-help" required></div>
+          <button type="submit" class="btn btn-primary"><%= t('challenge.submit_button') %></button>
+        </div>
+        <p class="help" id="flag-help"><%= t('range.submit_help') %></p>
+      </form>
+      <div id="submit-result" aria-live="polite">
+<% if (flash === 'wrong') { -%>
+        <p class="result result-bad" data-solved="false" data-result="wrong" role="status"><%= t('challenge.result_bad') %></p>
+<% } else if (flash === 'solved') { -%>
+        <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
+<% } -%>
+      </div>
+    </section>
   </div>
 
   <aside class="player-side">

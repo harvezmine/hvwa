@@ -450,6 +450,10 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'range.howto1': { id: 'Pilih level, lalu jalankan lab Anda sendiri.', en: 'Pick a level, then launch your own lab.' },
   'range.howto2': { id: 'Buka lab di tab baru: hanya Anda yang dapat menjangkaunya.', en: 'Open it in a new tab: only you can reach it.' },
   'range.howto3': { id: 'Temukan flag di dalam aplikasi dan kirimkan di sini.', en: 'Find the flag inside the app and submit it here.' },
+  'range.submit_help': {
+    id: 'A flag counts only from your own instance of this lab, for 24 hours after it was launched.',
+    en: 'A flag counts only from your own instance of this lab, for 24 hours after it was launched.',
+  },
   // The leaderboard.
   'leaderboard.title': { id: 'Papan Peringkat', en: 'Leaderboard' },
   'leaderboard.lead': {

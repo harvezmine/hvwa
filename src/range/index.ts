@@ -8,6 +8,7 @@ import { portalFramePolicy } from '../portal/frame-policy.js';
 import { catalogRoutes } from './catalog.js';
 import { edgeHandler } from './gate.js';
 import { instanceIdOfHost } from './hosts.js';
+import { labRoutes } from './lab-routes.js';
 import { createLifecycle, type Lifecycle } from './lifecycle.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
@@ -52,6 +53,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const router = Router();
   router.use(portalFramePolicy());
   catalogRoutes(router, ctx);
+  labRoutes(router, ctx);
   const log = opts.log ?? ((line: string) => console.warn(line));
   const start = (): Reaper => {
     reconcile(lifecycle, opts.warden, now).catch((err: unknown) => {
