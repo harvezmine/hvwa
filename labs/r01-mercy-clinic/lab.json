@@ -1,0 +1,23 @@
+{
+  "id": "r01",
+  "slug": "mercy-clinic",
+  "title": { "en": "Mercy Clinic patient portal", "id": "Portal pasien Mercy Clinic" },
+  "app": "Mercy Clinic",
+  "category": "SQL injection",
+  "difficulty": "easy",
+  "levels": ["acolyte", "templar", "divine"],
+  "port": 8080,
+  "health": "/healthz",
+  "flag": { "placement": "db:notices.body" },
+  "resources": { "memoryMiB": 128, "pids": 64 },
+  "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
+  "needsBot": false,
+  "themeId": "mercy-clinic",
+  "scenario": { "en": "A community clinic portal whose notice search trusts what you type.", "id": "Portal klinik komunitas yang pencarian pengumumannya memercayai masukan Anda." },
+  "briefing": { "en": "Mercy Clinic publishes notices for patients. Staff-only notices are kept out of the public lists. Read one you should not be able to read.", "id": "Mercy Clinic menerbitkan pengumuman untuk pasien. Pengumuman khusus staf disembunyikan dari daftar publik. Baca satu yang seharusnya tidak bisa Anda baca." },
+  "hints": [
+    { "id": 1, "cost": 10, "text": { "en": "Not everything the clinic stores is meant for patients. Where does the portal let you ask it a question?", "id": "Tidak semua yang disimpan klinik ditujukan untuk pasien. Di mana portal membiarkan Anda bertanya?" } },
+    { "id": 2, "cost": 20, "text": { "en": "The notice search builds its database query from your text. Public notices are filtered in; staff notices are filtered out.", "id": "Pencarian pengumuman menyusun kuerinya dari teks Anda. Pengumuman publik disaring masuk; pengumuman staf disaring keluar." } },
+    { "id": 3, "cost": 30, "text": { "en": "At Templar the filter removes two keywords once. One pass is not enough when a keyword can hide inside itself.", "id": "Di Templar filter menghapus dua kata kunci sekali. Satu lintasan tidak cukup ketika kata kunci bisa bersembunyi di dalam dirinya sendiri." } }
+  ]
+}
