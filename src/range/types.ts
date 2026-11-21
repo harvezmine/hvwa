@@ -3,6 +3,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { PlatformAuth } from '../auth/index.js';
 import type { LabRegistry } from '../lab-registry.js';
+import type { WardenApi } from '../warden/protocol.js';
+import type { Lifecycle } from './lifecycle.js';
 
 /** Spec §5's limits in ms (src/range/config.ts reads them from HVWA_RANGE_* minutes). */
 export interface RangeLimits {
@@ -44,6 +46,12 @@ export interface RangePortalOptions {
   readonly secureCookies?: boolean;
   /** Clock (ms); tests inject one. */
   readonly now?: () => number;
+  /** The warden (src/range/warden-client.ts in production, tests/support/fake-warden.ts in specs). */
+  readonly warden: WardenApi;
+  /** The range key (src/core/secrets.ts resolveRangeKey): flags and gate cookies. */
+  readonly rangeKey: string;
+  /** Problem lines (never a flag). Default console.warn. */
+  readonly log?: (line: string) => void;
 }
 
 /** What every range router gets. */
@@ -53,4 +61,5 @@ export interface RangeContext {
   readonly opts: RangePortalOptions;
   readonly registry: LabRegistry;
   readonly now: () => number;
+  readonly lifecycle: Lifecycle;
 }

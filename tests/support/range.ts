@@ -7,6 +7,7 @@ import type { AuthOptions, RegistrationOptions } from '../../src/auth/index.js';
 import { parseRegistry, type LabRegistry } from '../../src/lab-registry.js';
 import { DEFAULT_LIMITS, type RangePortalOptions } from '../../src/range/types.js';
 import { csrfOf, FAST_HASHER, TEST_SECRET } from '../helpers.js';
+import { fakeWarden, type FakeWarden } from './fake-warden.js';
 
 /** One registry entry as labs/registry.json holds it: a valid default, overridden per test. */
 export function labEntry(id: string, slug: string, over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -49,9 +50,11 @@ export const T0 = Date.UTC(2026, 10, 20, 12);
 export const DOMAIN = 'range.test';
 export const ADMIN_PASSWORD = 'Admin-Pass-1234';
 export const PLAYER_PASSWORD = 'Player-Pass-1';
+/** The range key every test app uses (>= MIN_RANGE_KEY_LENGTH); never a production value. */
+export const RANGE_KEY = 'r'.repeat(40);
 
 export interface Clock { readonly now: () => number; readonly advance: (ms: number) => void }
-export interface Kit { readonly app: HvwaApp; readonly clock: Clock; readonly registry: LabRegistry }
+export interface Kit { readonly app: HvwaApp; readonly clock: Clock; readonly registry: LabRegistry; readonly warden: FakeWarden }
 export type Agent = ReturnType<typeof request.agent>;
 
 /**
@@ -63,11 +66,12 @@ export type Agent = ReturnType<typeof request.agent>;
  * tests/portal-mode.spec.ts checks the real default (Secure behind https) without this override.
  */
 export function portalApp(o: {
-  range?: Partial<RangePortalOptions>; registration?: RegistrationOptions; auth?: Partial<AuthOptions>;
+  range?: Partial<RangePortalOptions>; registration?: RegistrationOptions; auth?: Partial<AuthOptions>; warden?: FakeWarden;
 } = {}): Kit {
   let t = T0;
   const clock: Clock = { now: () => t, advance: (ms) => { t += ms; } };
   const registry = o.range?.registry ?? testRegistry();
+  const warden = o.warden ?? fakeWarden({ autoReady: true });
   const app = createApp({
     flagSecret: TEST_SECRET, mode: 'portal',
     auth: {
@@ -75,10 +79,13 @@ export function portalApp(o: {
       ...o.auth,
       registration: { perIp: 1000, now: clock.now, ...o.registration },
     },
-    range: { domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry, limits: DEFAULT_LIMITS, now: clock.now, ...o.range },
+    range: {
+      domain: DOMAIN, portalHost: DOMAIN, internalHost: 'portal', registry, limits: DEFAULT_LIMITS, now: clock.now,
+      warden, rangeKey: RANGE_KEY, log: () => {}, ...o.range,
+    },
   });
   onTestFinished(() => { try { app.locals.db.close(); } catch { /* closed by the test */ } });
-  return { app, clock, registry };
+  return { app, clock, registry, warden };
 }
 
 /** Create a player through the service (no HTTP); returns its id. */

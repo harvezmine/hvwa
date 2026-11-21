@@ -33,3 +33,29 @@ export function resolveFlagSecret(
   writeFileSync(file, `${secret}\n`, { mode: 0o600 });
   return secret;
 }
+
+/** Shortest range key (portal mode: the flag MAC key and the gate-cookie key's root). */
+export const MIN_RANGE_KEY_LENGTH = 32;
+
+/**
+ * The range key (portal mode, spec range §6): HVWA_RANGE_KEY if set, else a random 32-byte hex key created once and
+ * persisted at <dataDir>/range-key (mode 0600), like the flag secret. A stored key that is too short is regenerated
+ * with a warning: flags of live instances then stop verifying (records keep only hashes) and every gate cookie expires.
+ */
+export function resolveRangeKey(dataDir: string, configured: string | undefined, warn: (message: string) => void = console.warn): string {
+  const fromConfig = configured?.trim();
+  if (fromConfig) {
+    if (fromConfig.length < MIN_RANGE_KEY_LENGTH) throw new Error(`HVWA_RANGE_KEY must be at least ${MIN_RANGE_KEY_LENGTH} characters`);
+    return fromConfig;
+  }
+  const file = join(dataDir, 'range-key');
+  if (existsSync(file)) {
+    const stored = readFileSync(file, 'utf8').trim();
+    if (stored.length >= MIN_RANGE_KEY_LENGTH) return stored;
+    warn(`${file}: stored range key is shorter than ${MIN_RANGE_KEY_LENGTH} characters; regenerating it`);
+  }
+  mkdirSync(dataDir, { recursive: true });
+  const key = randomBytes(32).toString('hex');
+  writeFileSync(file, `${key}\n`, { mode: 0o600 });
+  return key;
+}
