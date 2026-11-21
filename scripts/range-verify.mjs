@@ -318,7 +318,7 @@ const checks = [
       ['the portal (edge)', ipOn(serviceContainer('portal'), 'edge'), 1337],
       ['the portal (control)', ipOn(serviceContainer('portal'), 'control'), 1337],
       ['the warden', ipOn(serviceContainer('warden'), 'control'), 8080],
-      ['the write socket proxy', ipOn(serviceContainer('socket-proxy'), 'control'), 2375],
+      ['the write socket proxy', ipOn(serviceContainer('socket-proxy'), 'docker'), 2375],
       ['the read-only socket proxy', ipOn(serviceContainer('socket-proxy-ro'), 'traefik-ro'), 2375],
       ["bob's instance", ipOn(`hvwa-i-${s.b.id}`, `hvwa-i-${s.b.id}`), 8080],
       ["Traefik's tunnel-side address", ipOn(TRAEFIK, EDGE_NETWORK), 80],

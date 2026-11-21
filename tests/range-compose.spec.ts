@@ -52,11 +52,11 @@ describe('docker-compose.range.yml', () => {
     expect(service('router').join('\n')).toContain('    networks:\n      hvwa-edge:\n        aliases: [traefik]\n      edge: {}\n      traefik-ro: {}');
     const nets = yml.slice(yml.indexOf('\nnetworks:\n'));
     expect(nets).toContain('  hvwa-edge:\n    external: true\n    name: ${HVWA_EDGE_NETWORK:-hvwa-edge}');
-    for (const n of ['edge', 'control', 'traefik-ro']) {
+    for (const n of ['edge', 'control', 'docker', 'traefik-ro']) {
       expect(nets).toContain(`  ${n}:\n    internal: true\n    driver_opts:\n      com.docker.network.bridge.gateway_mode_ipv4: isolated`);
     }
     expect(service('portal')).toContain('    networks: [edge, control]');
-    expect(service('warden')).toContain('    networks: [control]');
+    expect(service('warden')).toContain('    networks: [control, docker]');
   });
 
   it('one entrypoint on port 80, bound at start to the hvwa-edge address (the alias traefik), never 0.0.0.0', () => {
@@ -78,9 +78,22 @@ describe('docker-compose.range.yml', () => {
     expect(r.join('\n')).not.toMatch(/TRAEFIK_ENTRYPOINTS_WEB_ADDRESS: /); // never a fixed (all-interfaces) address
   });
 
-  it('the write proxy: containers, networks, POST; nothing else; on `control` only', () => {
+  it('the write proxy: containers, networks, POST; nothing else; on `docker` only', () => {
     expect(service('socket-proxy')).toEqual(expect.arrayContaining([env('CONTAINERS', '1'), env('NETWORKS', '1'), env('POST', '1'),
-      env('EVENTS', '0'), env('PING', '1'), env('VERSION', '1'), ...OFF.map((n) => env(n, '0')), '    networks: [control]']));
+      env('EVENTS', '0'), env('PING', '1'), env('VERSION', '1'), ...OFF.map((n) => env(n, '0')), '    networks: [docker]']));
+  });
+
+  it('the portal shares no network with the write socket proxy: only the warden joins `docker`', () => {
+    const networkNames = (name: string) => {
+      const line = service(name).find((l) => l.startsWith('    networks: [')) ?? '';
+      return line.slice(line.indexOf('[') + 1, line.lastIndexOf(']')).split(',').map((n) => n.trim()).filter(Boolean);
+    };
+    const portal = networkNames('portal');
+    const warden = networkNames('warden');
+    expect(networkNames('socket-proxy')).toEqual(['docker']);
+    expect(warden).toEqual(['control', 'docker']);
+    expect(portal).toEqual(['edge', 'control']);
+    expect(portal.filter((n) => n === 'docker')).toEqual([]);
   });
 
   it('the read-only proxy: containers, networks, events, no POST; on `traefik-ro` only', () => {
@@ -112,7 +125,7 @@ describe('docker-compose.range.yml', () => {
       '      HVWA_WARDEN_URL: http://warden:8080', '      HVWA_LAB_REGISTRY: /etc/hvwa/registry.json', '      HVWA_FORWARD_AUTH_HOST: portal']));
     expect(p.join('\n')).not.toMatch(/TRUST_PROXY/);
     expect(service('warden')).toEqual(expect.arrayContaining(['      HVWA_DOCKER_URL: http://socket-proxy:2375',
-      '      HVWA_RANGE_RUNTIME: "${HVWA_RANGE_RUNTIME:-runc}"', '      HVWA_TRAEFIK_CONTAINER: "${HVWA_TRAEFIK_CONTAINER:-hvwa-range-traefik}"']));
+      '      HVWA_RANGE_RUNTIME: "${HVWA_RANGE_RUNTIME:-runsc}"', '      HVWA_TRAEFIK_CONTAINER: "${HVWA_TRAEFIK_CONTAINER:-hvwa-range-traefik}"']));
     expect(service('router')).toContain('    container_name: "${HVWA_TRAEFIK_CONTAINER:-hvwa-range-traefik}"');
   });
 

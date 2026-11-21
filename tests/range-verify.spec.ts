@@ -78,4 +78,10 @@ describe('the script', () => {
     expect(src).toContain("'label=hvwa.range=1'");
     expect(src).toContain('BLOCKED');
   });
+
+  it('passes the runtime explicitly: runc locally (the compose default is runsc), HVWA_VERIFY_RUNTIME to override', () => {
+    const src = readFileSync(join(process.cwd(), 'scripts', 'range-verify.mjs'), 'utf8');
+    expect(src).toContain("const RUNTIME = (process.env.HVWA_VERIFY_RUNTIME || 'runc').trim();");
+    expect(src).toContain('HVWA_RANGE_RUNTIME: RUNTIME');
+  });
 });

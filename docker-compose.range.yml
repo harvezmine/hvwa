@@ -6,7 +6,8 @@
 #        +-> portal:1337 (network edge)          Host = HVWA_PORTAL_HOST (the domain)
 #        +-> i-<id>.<domain>                     forward-auth -> portal, then the lab
 #        +-> i-<id>.<domain>/__hvwa/*            the portal (the gate)
-#   portal --control--> warden:8080 --control--> socket-proxy:2375     (containers + networks, write)
+#   portal --control--> warden:8080
+#   warden --docker--> socket-proxy:2375                                (containers + networks, write; never the portal)
 #   router --traefik-ro--> socket-proxy-ro:2375                         (containers + networks, read only)
 #   each instance: its own internal network hvwa-i-<id> (no egress, isolated gateway), shared with the router only,
 #   which listens on nothing there.
@@ -15,7 +16,8 @@
 #   HVWA_RANGE_DOMAIN                     e.g. hvwa.my.id (instances at i-<id>.hvwa.my.id)
 #   HVWA_ADMIN_PASSWORD                   the first admin's password, 10+ characters (used once; change it after)
 #   HVWA_WARDEN_SECRET, HVWA_FORWARD_AUTH_SECRET   each from `openssl rand -hex 32`
-#   HVWA_RANGE_RUNTIME=runsc              on a host with gVisor (the POC host requires it)
+#   HVWA_RANGE_RUNTIME                     the default is runsc (gVisor); the POC host has it. A local run without
+#                                          gVisor must set HVWA_RANGE_RUNTIME=runc explicitly (see below).
 # Optional: HVWA_PORTAL_HOST, HVWA_RANGE_CAPACITY, HVWA_RANGE_IDLE_MIN / _MAX_MIN (compact POC: 20 and 60),
 #   HVWA_REGISTRATION_OPEN, HVWA_RANGE_KEY, HVWA_RANGE_VERSION (image tags), HVWA_LAB_REGISTRY_FILE (default
 #   ./labs/registry.json), HVWA_EDGE_NETWORK (default hvwa-edge), HVWA_RANGE_PUBLIC_SCHEME / HVWA_RANGE_PUBLIC_PORT
@@ -26,7 +28,7 @@
 # Local run (no tunnel; browsers resolve *.localhost to loopback):
 #   docker network create hvwa-edge
 #   HVWA_RANGE_DOMAIN=localhost HVWA_PORTAL_HOST=hvwa.localhost HVWA_RANGE_PUBLIC_SCHEME=http HVWA_RANGE_PUBLIC_PORT=18080 \
-#     ...the secrets... docker compose -f docker-compose.range.yml up -d
+#     HVWA_RANGE_RUNTIME=runc ...the secrets... docker compose -f docker-compose.range.yml up -d
 #   and a forwarder in place of cloudflared:
 #   docker run -d --name hvwa-local-tunnel --network hvwa-edge -p 127.0.0.1:18080:8080 sigmajo/hvwa:range-portal-0.1.0 \
 #     node -e "const n=require('node:net');n.createServer((c)=>{const u=n.connect(80,'traefik');c.pipe(u).pipe(c);c.on('error',()=>u.destroy());u.on('error',()=>c.destroy())}).listen(8080)"
@@ -146,7 +148,8 @@ services:
 
   socket-proxy:
     image: tecnativa/docker-socket-proxy:v0.5.0
-    networks: [control]
+    # Dedicated network: the write proxy is reachable by the warden alone, never by the portal.
+    networks: [docker]
     environment:
       # The warden's: containers and networks, with writes (POST). Never exec, images, volumes, swarm, system.
       CONTAINERS: "1"
@@ -195,15 +198,17 @@ services:
     depends_on:
       socket-proxy:
         condition: service_started
-    networks: [control]
+    # `control` for the portal, `docker` for the write socket proxy; the portal is not on the latter.
+    networks: [control, docker]
     environment:
       HVWA_WARDEN_SECRET: "${HVWA_WARDEN_SECRET:?set HVWA_WARDEN_SECRET}"
       HVWA_DOCKER_URL: http://socket-proxy:2375
       HVWA_LAB_REGISTRY: /etc/hvwa/registry.json
       HVWA_RANGE_DOMAIN: "${HVWA_RANGE_DOMAIN:?set HVWA_RANGE_DOMAIN}"
       HVWA_TRAEFIK_CONTAINER: "${HVWA_TRAEFIK_CONTAINER:-hvwa-range-traefik}"
-      # runsc (gVisor) on the POC host; the warden always writes it as HostConfig.Runtime.
-      HVWA_RANGE_RUNTIME: "${HVWA_RANGE_RUNTIME:-runc}"
+      # runsc (gVisor) by default: the POC host has it. Local runs without gVisor set HVWA_RANGE_RUNTIME=runc.
+      # The warden always writes it as HostConfig.Runtime.
+      HVWA_RANGE_RUNTIME: "${HVWA_RANGE_RUNTIME:-runsc}"
     volumes:
       - "${HVWA_LAB_REGISTRY_FILE:-./labs/registry.json}:/etc/hvwa/registry.json:ro"
     read_only: true
@@ -287,6 +292,10 @@ networks:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
   control:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  docker:
     internal: true
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
