@@ -1,6 +1,92 @@
 [
-  { "name": "Dr. Alina Okonkwo", "role": "General practitioner", "room": "1A" },
-  { "name": "Dr. Ravi Menon", "role": "General practitioner", "room": "1B" },
-  { "name": "Sister Grace Abbott", "role": "Practice nurse", "room": "2A" },
-  { "name": "Tomas Lindqvist", "role": "Reception lead", "room": "Front desk" }
+  {
+    "name": "Dr. Alina Okonkwo",
+    "role": "General practitioner",
+    "department": "General practice",
+    "room": "1A",
+    "extension": "101",
+    "pronouns": "she/her",
+    "bio": "Alina has looked after families in Ashford for twelve years and leads our diabetes clinic. She is also the practice's safeguarding lead."
+  },
+  {
+    "name": "Dr. Ravi Menon",
+    "role": "General practitioner",
+    "department": "General practice",
+    "room": "1B",
+    "extension": "102",
+    "pronouns": "he/him",
+    "bio": "Ravi joined in 2018 and runs the respiratory clinic. He is interested in helping patients manage asthma and COPD at home."
+  },
+  {
+    "name": "Dr. Elena Rossi",
+    "role": "General practitioner",
+    "department": "General practice",
+    "room": "1C",
+    "extension": "103",
+    "pronouns": "she/her",
+    "bio": "Elena has a special interest in women's health and minor surgery. She also supervises our GP trainees."
+  },
+  {
+    "name": "Sister Grace Abbott",
+    "role": "Practice nurse",
+    "department": "Nursing & vaccinations",
+    "room": "2A",
+    "extension": "201",
+    "pronouns": "she/her",
+    "bio": "Grace leads the vaccination programme, including the winter flu clinic. She has been a practice nurse for over twenty years."
+  },
+  {
+    "name": "Nurse Daniel Okafor",
+    "role": "Practice nurse",
+    "department": "Nursing & vaccinations",
+    "room": "2B",
+    "extension": "202",
+    "pronouns": "he/him",
+    "bio": "Daniel runs our travel health and wound-care clinics. He is happy to talk through vaccination options before you book."
+  },
+  {
+    "name": "Amara Boateng",
+    "role": "Pharmacist",
+    "department": "Pharmacy",
+    "room": "0A",
+    "extension": "011",
+    "pronouns": "she/her",
+    "bio": "Amara advises on repeat prescriptions and medication reviews. The pharmacy counter is on the ground floor beside reception."
+  },
+  {
+    "name": "Dr. Priya Shah",
+    "role": "Physiotherapist",
+    "department": "Physiotherapy",
+    "room": "3C",
+    "extension": "301",
+    "pronouns": "she/her",
+    "bio": "Priya treats joint, muscle and back pain and runs a weekly exercise group. She works with patients to build a plan they can keep up at home."
+  },
+  {
+    "name": "Jonah Field",
+    "role": "Mental health counsellor",
+    "department": "Mental health & wellbeing",
+    "room": "3A",
+    "extension": "310",
+    "pronouns": "they/them",
+    "bio": "Jonah offers short-term counselling and runs the Thursday drop-in. No referral is needed to start a conversation."
+  },
+  {
+    "name": "Tomas Lindqvist",
+    "role": "Reception lead",
+    "department": "Administration",
+    "room": "Front desk",
+    "extension": "001",
+    "pronouns": "he/him",
+    "bio": "Tomas leads the reception team and can help with appointments, letters and access requests. The front desk is open during all clinic hours."
+  },
+  {
+    "name": "Mariam Haddad",
+    "role": "Practice manager",
+    "department": "Administration",
+    "room": "2C",
+    "extension": "200",
+    "pronouns": "she/her",
+    "bio": "Mariam looks after the day-to-day running of the practice, including staffing, estates and patient feedback."
+  }
 ]

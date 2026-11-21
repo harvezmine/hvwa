@@ -5,8 +5,25 @@ out of every public list. The flag is the body of a staff-only notice: at start 
 (`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`), unlinks it, then plants it. The flag is never in the environment. The
 database lives in the `/tmp` tmpfs (the rootfs is read-only).
 
+## The portal
+The app is a small, fully offline clinic site with its own teal/cream CSS and inline SVG only:
+
+- `/` — hero, live open/closed status, next flu clinic, latest notices, team preview and notice search.
+- `/notices` and `/notices/:id` — every public notice as a dated, authored card; detail pages carry related notices.
+- `/search?q=` — **the vulnerable feature**.
+- `/patients` — staff directory (department, room, extension, bio).
+- `/departments`, `/appointments`, `/opening-hours`, `/about`, `/contact` — clinic information, a seven-day session
+  table and a booking request form that shows a simulated confirmation and stores nothing.
+- `/healthz` — the container health check.
+
+The seed carries 15 public notices, one innocuous staff-only rota notice, ten staff and a week of appointment rows. Only
+the public notices, the staff directory and de-identified session availability are rendered. Patient labels in the
+appointments seed are never displayed.
+
 ## Vulnerable feature
 `GET /search?q=` — the notice search. All other queries in `db.mjs` are parameterised; only the search changes per level.
+The search still returns exactly the three columns the reference solves expect (`id`, `title`, `body`); date, author and
+category are joined from the public-notice map in the server, not by changing the vulnerable SELECT.
 
 ## Levels
 - **Acolyte.** `q` is concatenated into a `LIKE '%…%'` string literal over `visibility='public'` notices. Intended

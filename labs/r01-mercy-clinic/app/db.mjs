@@ -9,16 +9,36 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const seed = (name) => JSON.parse(readFileSync(join(here, 'seed', name), 'utf8'));
 
+/** Build an absolute UTC timestamp from today's date plus a day offset and an HH:MM time. */
+function startsAt(dayOffset, time) {
+  const now = new Date();
+  const [hour, minute] = String(time).split(':').map(Number);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dayOffset, hour, minute)).toISOString();
+}
+
 export function openDb(path = '/tmp/clinic.db') {
   const db = new DatabaseSync(path);
   db.exec(`
-    CREATE TABLE patients (id INTEGER PRIMARY KEY, name TEXT, role TEXT, room TEXT);
-    CREATE TABLE notices  (id INTEGER PRIMARY KEY, title TEXT, body TEXT, visibility TEXT NOT NULL DEFAULT 'public');
+    CREATE TABLE patients (id INTEGER PRIMARY KEY, name TEXT, role TEXT, department TEXT, room TEXT,
+                           extension TEXT, pronouns TEXT, bio TEXT);
+    CREATE TABLE notices  (id INTEGER PRIMARY KEY, title TEXT, body TEXT, visibility TEXT NOT NULL DEFAULT 'public',
+                           category TEXT, author TEXT, published_at TEXT);
+    CREATE TABLE appointments (id INTEGER PRIMARY KEY, patient_label TEXT, clinician TEXT, department TEXT, room TEXT,
+                               starts_at TEXT, duration_min INTEGER, status TEXT);
   `);
-  const ins = db.prepare('INSERT INTO patients (name, role, room) VALUES (?, ?, ?)');
-  for (const p of seed('patients.json')) ins.run(p.name, p.role, p.room);
-  const insN = db.prepare('INSERT INTO notices (title, body, visibility) VALUES (?, ?, ?)');
-  for (const n of seed('notices.json')) insN.run(n.title, n.body, 'public');
+  const insPatient = db.prepare('INSERT INTO patients (name, role, department, room, extension, pronouns, bio) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  for (const p of seed('patients.json')) {
+    insPatient.run(p.name, p.role, p.department ?? null, p.room ?? null, p.extension ?? null, p.pronouns ?? null, p.bio ?? null);
+  }
+  const insNotice = db.prepare('INSERT INTO notices (title, body, visibility, category, author, published_at) VALUES (?, ?, ?, ?, ?, ?)');
+  for (const n of seed('notices.json')) {
+    insNotice.run(n.title, n.body, n.visibility ?? 'public', n.category ?? null, n.author ?? null, n.published_at ?? null);
+  }
+  const insAppointment = db.prepare('INSERT INTO appointments (patient_label, clinician, department, room, starts_at, duration_min, status) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  for (const a of seed('appointments.json')) {
+    insAppointment.run(a.patient_label ?? null, a.clinician, a.department, a.room ?? null,
+      startsAt(a.day_offset ?? 0, a.time), a.duration_min ?? 15, a.status ?? 'booked');
+  }
   return db;
 }
 
@@ -32,9 +52,11 @@ export function plantFlag(db, level, flag) {
 }
 
 /** Public notices for the home page and /notices/:id (always visibility='public'; parameterised everywhere). */
-export const listPublic = (db) => db.prepare("SELECT id, title, body FROM notices WHERE visibility = 'public' ORDER BY id").all();
-export const getPublic = (db, id) => db.prepare("SELECT id, title, body FROM notices WHERE visibility = 'public' AND id = ?").get(id);
-export const listPatients = (db) => db.prepare('SELECT name, role, room FROM patients ORDER BY id').all();
+export const listPublic = (db) => db.prepare("SELECT id, title, body, category, author, published_at FROM notices WHERE visibility = 'public' ORDER BY published_at DESC, id DESC").all();
+export const getPublic = (db, id) => db.prepare("SELECT id, title, body, category, author, published_at FROM notices WHERE visibility = 'public' AND id = ?").get(id);
+export const relatedPublic = (db, category, id) => db.prepare("SELECT id, title, body, category, author, published_at FROM notices WHERE visibility = 'public' AND category = ? AND id <> ? ORDER BY published_at DESC, id DESC LIMIT 3").all(category, id);
+export const listPatients = (db) => db.prepare('SELECT name, role, department, room, extension, pronouns, bio FROM patients ORDER BY department, name').all();
+export const listAppointments = (db) => db.prepare('SELECT clinician, department, room, starts_at, duration_min, status FROM appointments ORDER BY starts_at, clinician').all();
 
 /**
  * The notice search, per level. Returns rows [{ id, title, body }].
