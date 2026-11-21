@@ -89,8 +89,29 @@ describe('/__hvwa/auth', () => {
       const res = await ask(kit, h);
       expect(res.status, JSON.stringify(h)).toBe(401);
       expect(res.text).toContain(`href="https://${DOMAIN}/"`);
-      expect(res.headers['content-security-policy']).toBe("default-src 'none'; frame-ancestors 'none'");
+      // The page styles itself inline (an instance host has no /static), so only style-src is allowed.
+      expect(res.headers['content-security-policy']).toBe("default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
     }
+  });
+
+  it('the 401 is bilingual and says whether the instance stopped, expired or failed', async () => {
+    const kit = portalApp();
+    const alice = await createUser(kit.app, 'alice');
+    const id = await running(kit, alice);
+    const ask401 = () => ask(kit, { fhost: `i-${id}.${DOMAIN}`, cookie: cookieFor(id, alice) });
+    expect((await ask401()).status).toBe(200);
+    // Both languages are always present (no cookie or language preference exists on an instance host).
+    const stopped = await (async () => {
+      await kit.app.locals.range!.lifecycle.stopInstance(id, 'expired');
+      return ask401();
+    })();
+    expect(stopped.status).toBe(401);
+    expect(stopped.text).toContain('This lab is not open in this browser');
+    expect(stopped.text).toContain('Lab ini tidak terbuka di peramban ini');
+    expect(stopped.text).toContain('reached its time limit');
+    expect(stopped.text).toContain('batas waktunya');
+    expect(stopped.text).toContain('<style>'); // themed, self-contained
   });
 
   it('401 once the instance stops or the account is disabled, whatever the cookie says', async () => {

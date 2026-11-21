@@ -46,14 +46,29 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   // The gate on instance hosts, 404 for the rest of them, the internal host and /__hvwa/* anywhere (src/range/gate.ts).
   const edge = edgeHandler(ctx);
 
-  const locals: RequestHandler = (_req, res, next) => {
-    res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin' };
+  const locals: RequestHandler = (req, res, next) => {
+    const active = req.path === '/leaderboard' ? 'leaderboard'
+      : req.path === '/' || req.path.startsWith('/labs/') ? 'labs' : undefined;
+    res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin', active };
     const userId = res.locals.platformAuth?.userId;
-    if (userId !== undefined) res.locals.myLab = myLabChip(lifecycle.current(userId), opts.registry, now(), res.locals.t);
+    if (userId !== undefined) {
+      // An active or recently ended instance (the chip hides itself when there is neither).
+      res.locals.myLab = myLabChip(lifecycle.store.latestForUser(userId), opts.registry, now(), res.locals.t);
+    }
     next();
   };
 
   const router = Router();
+  // Per-user pages and fragments: never cached by a shared cache, and keyed on the session cookie. The CSP is the
+  // portal's own (no inline script or style); labs run in their own containers and keep their own headers.
+  const PORTAL_CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'self'";
+  router.use((_req, res, next) => {
+    res.set('Cache-Control', 'private, no-store');
+    res.vary('Cookie');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Security-Policy', PORTAL_CSP);
+    next();
+  });
   router.use(portalFramePolicy());
   catalogRoutes(router, ctx);
   labRoutes(router, ctx);

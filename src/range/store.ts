@@ -58,6 +58,8 @@ export interface InstanceStore {
   levelForFlag(userId: number, labId: string, hash: string, since: number): Level | undefined;
   /** The newest record of this user for this lab and level, any state. */
   latestFor(userId: number, labId: string, level: Level): InstanceRecord | undefined;
+  /** The newest record of this user, any lab, level or state (the My Lab chip's "recent" instance). */
+  latestForUser(userId: number): InstanceRecord | undefined;
 }
 
 interface Row {
@@ -93,6 +95,7 @@ export function createInstanceStore(db: DatabaseSync): InstanceStore {
   const flag = db.prepare(`SELECT level FROM range_instances WHERE user_id = ? AND lab_id = ? AND flag_hash = ? AND created_at >= ?
     ORDER BY created_at DESC LIMIT 1`);
   const latest = db.prepare(`${SELECT} WHERE user_id = ? AND lab_id = ? AND level = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`);
+  const latestUser = db.prepare(`${SELECT} WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`);
   const rows = (stmt: StatementSync, ...args: (string | number)[]) => (stmt.all(...args) as unknown as Row[]).map(toRecord);
   const queued = () => rows(byState, 'queued');
 
@@ -119,6 +122,10 @@ export function createInstanceStore(db: DatabaseSync): InstanceStore {
     },
     latestFor(userId: number, labId: string, level: Level) {
       const r = latest.get(userId, labId, level) as Row | undefined;
+      return r ? toRecord(r) : undefined;
+    },
+    latestForUser(userId: number) {
+      const r = latestUser.get(userId) as Row | undefined;
       return r ? toRecord(r) : undefined;
     },
   });

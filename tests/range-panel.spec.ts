@@ -30,7 +30,8 @@ describe('the Lab panel', () => {
     const polled = (await agent.get('/labs/r01/panel?level=acolyte').set('HX-Request', 'true')).text; // refresh: fake warden is ready
     expect(stateOf(polled)).toBe('running');
     expect(polled).toContain('hx-trigger="every 30s"');
-    expect(polled).toContain('data-testid="time-left">60 min left<');
+    expect(polled).toMatch(/data-testid="time-left"[^>]*>60 min left</);
+    expect(polled).toContain('aria-live="polite"'); // the countdown is a live region
     for (const hook of ['lab-open', 'lab-reset', 'lab-stop']) expect(polled).toContain(`data-testid="${hook}"`);
     expect(polled).not.toContain('lab-extend');
     expect(polled).not.toContain('queue-position');
@@ -116,11 +117,14 @@ describe('the Lab panel', () => {
 });
 
 describe('My Lab in the header', () => {
-  it('says "none" without an instance; names the app and the time left while running; /my-lab goes to it', async () => {
+  it('is hidden without an active or recent instance; names the app and time left while running; /my-lab goes to it', async () => {
     const kit = portalApp();
     const { agent } = await player(kit.app, 'alice');
-    expect((await agent.get('/leaderboard')).text).toMatch(/data-testid="my-lab" data-state="none"/);
+    expect((await agent.get('/leaderboard')).text).not.toContain('data-testid="my-lab"');
     expect((await agent.get('/my-lab')).headers.location).toBe('/');
+    const emptyChip = await agent.get('/my-lab/chip').set('HX-Request', 'true');
+    expect(emptyChip.status).toBe(200);
+    expect(emptyChip.text).toBe(''); // an empty swap removes the chip
     await act(agent, 'r01', 'launch', 'templar');
     await agent.get('/labs/r01/panel?level=templar');
     const html = (await agent.get('/leaderboard')).text;
@@ -130,5 +134,65 @@ describe('My Lab in the header', () => {
     const chip = await agent.get('/my-lab/chip').set('HX-Request', 'true');
     expect(chip.text.trim()).toMatch(/^<a class="my-lab"/);
     expect(chip.text).not.toContain('<!doctype html>');
+  });
+
+  it('names a failed or recently stopped instance so the player can relaunch it', async () => {
+    const warden = fakeWarden({ autoReady: true });
+    const kit = portalApp({ warden });
+    const { agent } = await player(kit.app, 'alice');
+    warden.failNextLaunch('docker');
+    await act(agent, 'r01', 'launch');
+    expect((await agent.get('/leaderboard')).text).toMatch(/data-testid="my-lab" data-state="failed"/);
+    await act(agent, 'r01', 'launch'); // now running
+    await act(agent, 'r01', 'stop');
+    const stopped = (await agent.get('/leaderboard')).text;
+    expect(stopped).toMatch(/data-testid="my-lab" data-state="stopped"/);
+    expect(stopped).toContain('stopped by you');
+    expect((await agent.get('/my-lab')).headers.location).toBe('/labs/r01?level=acolyte');
+  });
+});
+
+describe('instance state visibility', () => {
+  it('labels a starting instance as starting (not running) and surfaces the idle-stop rule', async () => {
+    const kit = portalApp();
+    const { agent } = await player(kit.app, 'alice');
+    const started = await act(agent, 'r01', 'launch');
+    expect(stateOf(started.text)).toBe('starting');
+    expect(started.text).toContain('Starting…');
+    expect(started.text).not.toContain('Running');
+    expect(started.text).toMatch(/data-testid="idle-rule">The lab stops automatically after 20 minutes/);
+  });
+
+  it('shows a recent stop reason with Launch again: replaced after a relaunch', async () => {
+    const kit = portalApp();
+    const { agent } = await player(kit.app, 'alice');
+    await act(agent, 'r01', 'launch', 'acolyte');
+    await act(agent, 'r01', 'launch', 'templar'); // replaces the acolyte instance
+    const page = panelOf((await agent.get('/labs/r01?level=acolyte')).text);
+    expect(stateOf(page)).toBe('none');
+    expect(page).toContain('data-testid="lab-stopped" data-reason="replaced"');
+    expect(page).toContain('data-testid="lab-launch"');
+  });
+
+  it('shows the expired and idle reasons the reaper stored', async () => {
+    const kit = portalApp();
+    const { agent, userId } = await player(kit.app, 'alice');
+    await act(agent, 'r01', 'launch');
+    await kit.app.locals.range!.lifecycle.stopInstance(kit.app.locals.range!.lifecycle.current(userId)!.id, 'expired');
+    expect((await agent.get('/labs/r01?level=acolyte')).text).toContain('data-testid="lab-stopped" data-reason="expired"');
+    await act(agent, 'r01', 'launch');
+    await kit.app.locals.range!.lifecycle.stopInstance(kit.app.locals.range!.lifecycle.current(userId)!.id, 'idle');
+    expect((await agent.get('/labs/r01?level=acolyte')).text).toContain('data-testid="lab-stopped" data-reason="idle"');
+  });
+
+  it('asks for confirmation before Stop', async () => {
+    const kit = portalApp();
+    const { agent } = await player(kit.app, 'alice');
+    const started = await act(agent, 'r01', 'launch');
+    await agent.get('/labs/r01/panel?level=acolyte');
+    const running = (await agent.get('/labs/r01?level=acolyte')).text;
+    expect(running).toMatch(/hx-confirm="Stop this lab now\?/);
+    expect(running).toMatch(/data-confirm="Stop this lab now\?/);
+    expect(started.status).toBe(200);
   });
 });

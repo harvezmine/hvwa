@@ -115,8 +115,16 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
 
   const refuse = async (req: Request, res: Response, back: string) => {
     noStore(res);
-    res.locals.platformAuth ??= { signedIn: false }; // /login is before the gate
     res.status(403);
+    // A stale or forged form token on an htmx request: never swap a whole page into a fragment. A tiny role=alert
+    // fragment plus HX-Refresh makes htmx reload the page (a fresh token) instead of showing a page inside a card.
+    if (isHtmx(req)) {
+      const tf = typeof res.locals.t === 'function' ? res.locals.t : (key: string) => key;
+      res.set('HX-Refresh', 'true').type('html')
+        .send(`<p class="result result-bad" role="alert" data-error="csrf">${tf('auth.csrf_failed')}</p>`);
+      return;
+    }
+    res.locals.platformAuth ??= { signedIn: false }; // /login is before the gate
     await sendPage(res, view('refused'), { pageTitle: res.locals.t('auth.csrf_heading'), back });
   };
   /**
