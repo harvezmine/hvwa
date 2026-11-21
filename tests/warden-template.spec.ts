@@ -6,7 +6,7 @@ import { containerSpec, LAB_USER, networkSpec } from '../src/warden/template.js'
 import { labEntry, testRegistry } from './support/range.js';
 
 const ID = 'abcdefghijklmnopqrstuvwxyz';
-const FLAG = 'HVWA{abcdefghijklmnopqrstuvwx}';
+const FLAG = 'HVWA{abcdefghijklmnopqrstuvwxyz}'; // 26 base32 characters (RANGE_FLAG_RE)
 const SETTINGS = { domain: 'hvwa.my.id', runtime: 'runc' as const };
 const MIB = 1024 * 1024;
 
