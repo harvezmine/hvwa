@@ -18,6 +18,6 @@ dashboard shows only the demo customer's own parcels.
   foreign id is 403. No flag; parcel 1001's note is a decoy.
 
 ## Reference solves
-`solve/acolyte.mjs` and `solve/templar.mjs` are complete (no payload string: the attack is an id you do not own via an
-unguarded route). `npm run labs:test -- --lab r02` proves each works at its level, that Acolyte fails at Templar and
-Divine, and that Templar fails at Divine.
+`solve/acolyte.mjs` and `solve/templar.mjs` are complete HTTP clients; the reference solve contains the intended input
+(an id you do not own via an unguarded route). `npm run labs:test -- --lab r02` proves each works at its level, that
+Acolyte fails at Templar and Divine, and that Templar fails at Divine.

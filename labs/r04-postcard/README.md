@@ -19,5 +19,6 @@ message reaches Jinja as source at acolyte/templar.
   never as template source. No flag.
 
 ## Reference solves
-`solve/acolyte.mjs` and `solve/templar.mjs` are Node HTTP clients; the template payload is left to the implementer.
-`npm run labs:test -- --lab r04` proves each works at its level and that the Acolyte payload fails at Templar and Divine.
+`solve/acolyte.mjs` and `solve/templar.mjs` are Node HTTP clients; the reference solve contains the intended template
+input for each level. `npm run labs:test -- --lab r04` proves each works at its level and that the Acolyte input fails
+at Templar and Divine.

@@ -18,6 +18,6 @@ scrubbed from the environment. The database lives in the `/tmp` tmpfs (the rootf
   `q` can never become SQL syntax and the staff notice is unreachable. No flag exists; a decoy staff notice explains it.
 
 ## Reference solves
-`solve/acolyte.mjs` and `solve/templar.mjs` are HTTP clients that read the flag out of the search results. The exact
-injection string is left to the implementer; `npm run labs:test -- --lab r01` is the proof it works and that the
-Acolyte string fails at Templar and Divine, and the Templar string fails at Divine.
+`solve/acolyte.mjs` and `solve/templar.mjs` are HTTP clients that read the flag out of the search results; the
+reference solve contains the intended injection input for each level. `npm run labs:test -- --lab r01` is the proof:
+each solve gets its own flag, the Acolyte input fails at Templar and Divine, and the Templar input fails at Divine.

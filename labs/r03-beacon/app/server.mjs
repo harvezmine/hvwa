@@ -21,7 +21,15 @@ writeFileSync('/tmp/beacon/flag.txt',
   { mode: 0o400 });
 
 const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
-const readBody = (req) => new Promise((resolve) => { let b = ''; req.on('data', (c) => { b += c; if (b.length > 4096) req.destroy(); }); req.on('end', () => resolve(b)); });
+const readBody = (req) => new Promise((resolve, reject) => {
+  let b = '';
+  let settled = false;
+  const settle = (fn, value) => { if (!settled) { settled = true; fn(value); } }; // never settle twice
+  req.on('data', (c) => { b += c; if (b.length > 4096) req.destroy(); });
+  req.on('end', () => settle(resolve, b));
+  req.on('error', (err) => settle(reject, err));
+  req.on('close', () => settle(reject, new Error('request closed before the body was read')));
+});
 
 const diagForm = (host = '', output = '') =>
   `<div class="panel"><h2>Connectivity diagnostics</h2>`
@@ -43,8 +51,12 @@ createServer(async (req, res) => {
   }
   if (p === '/diagnostics' && req.method === 'GET') return html(res, 200, page('Diagnostics', diagForm()));
   if (p === '/diagnostics' && req.method === 'POST') {
-    const body = new URLSearchParams(await readBody(req));
-    const host = body.get('host') ?? '';
+    let host;
+    try {
+      host = new URLSearchParams(await readBody(req)).get('host') ?? '';
+    } catch {
+      return html(res, 400, page('Diagnostics', diagForm('', 'Could not read the request body.')));
+    }
     const r = await probe(level, host);
     return html(res, 200, page('Diagnostics', diagForm(host, r.error ?? r.output)));
   }

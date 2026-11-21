@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const MAX_SESSIONS = 256; // bounded: a lab, not an auth service; oldest sessions are evicted first
 
 export function createStore(level, flag) {
   const parcels = JSON.parse(readFileSync(join(here, 'seed', 'parcels.json'), 'utf8'));
@@ -16,7 +17,12 @@ export function createStore(level, flag) {
   const sessions = new Map(); // token -> customerId
 
   return {
-    openDemoSession() { const token = randomBytes(18).toString('base64url'); sessions.set(token, 'demo'); return token; },
+    openDemoSession() {
+      const token = randomBytes(18).toString('base64url');
+      if (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value);
+      sessions.set(token, 'demo');
+      return token;
+    },
     customerFor(token) { return token ? sessions.get(token) : undefined; },
     parcel(id) { return parcels.find((p) => p.id === id); },
     parcelsOf(customer) { return parcels.filter((p) => p.owner === customer); },

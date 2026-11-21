@@ -19,5 +19,6 @@ Note: `ping` may lack `CAP_NET_RAW` under the range hardening and fail; that is 
 and the flag path run through `echo`/the shell, not through a successful ping.
 
 ## Reference solves
-`solve/acolyte.mjs` and `solve/templar.mjs` are HTTP clients; the shell payload is left to the implementer. `npm run
-labs:test -- --lab r03` proves each works at its level and that the Acolyte payload fails at Templar and Divine.
+`solve/acolyte.mjs` and `solve/templar.mjs` are HTTP clients; the reference solve contains the intended shell input for
+each level. `npm run labs:test -- --lab r03` proves each works at its level and that the Acolyte input fails at Templar
+and Divine.

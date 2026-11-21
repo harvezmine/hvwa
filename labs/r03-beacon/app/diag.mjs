@@ -3,7 +3,10 @@
 // divine runs no shell at all.
 import { execFile } from 'node:child_process';
 
-const HOSTNAME_RE = /^[A-Za-z0-9.-]{1,253}$/;                 // divine's strict allow-list
+// divine's strict allow-list: a dotted hostname or IPv4 address. Each label starts and ends alphanumeric (so a
+// leading '-' such as `-f`/`--help` is rejected, as `execFile` would otherwise read it as a ping option), at most
+// 63 chars per label and 253 overall.
+const HOSTNAME_RE = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
 const BLOCKED = /[;&|`\n\r]/;                                 // templar's naive blocklist (misses $() substitution)
 
 /** Run the probe for `host` at `level`; resolves { output } (combined stdout+stderr) or { error }. */
