@@ -24,5 +24,8 @@ docker-compose*.yml
 # ...except the pull-only one, which the image ships (Dockerfile COPY).
 !docker-compose.hub.yml
 Dockerfile
+Dockerfile.range
+# Lab packages build their own images (their own context); the portal and warden images never contain them.
+labs
 .dockerignore
 *.md

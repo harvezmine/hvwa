@@ -1,0 +1,299 @@
+# HVWA Range — the platform stack (spec docs/superpowers/specs/2026-11-20-hvwa-range-design.md §3, §12).
+# Every lab is DELIBERATELY VULNERABLE and runs in its own container, which only the warden creates.
+#
+#   browser --HTTPS--> Cloudflare (TLS) --tunnel--> cloudflared (the owner's bootstrap compose, NOT this stack)
+#     --http on network hvwa-edge--> router (Traefik, alias `traefik`, :80 on its hvwa-edge address only)
+#        +-> portal:1337 (network edge)          Host = HVWA_PORTAL_HOST (the domain)
+#        +-> i-<id>.<domain>                     forward-auth -> portal, then the lab
+#        +-> i-<id>.<domain>/__hvwa/*            the portal (the gate)
+#   portal --control--> warden:8080 --control--> socket-proxy:2375     (containers + networks, write)
+#   router --traefik-ro--> socket-proxy-ro:2375                         (containers + networks, read only)
+#   each instance: its own internal network hvwa-i-<id> (no egress, isolated gateway), shared with the router only,
+#   which listens on nothing there.
+#
+# No published ports and no TLS here. Needs Docker Engine 28+. Required in a .env next to this file (never commit it):
+#   HVWA_RANGE_DOMAIN                     e.g. hvwa.my.id (instances at i-<id>.hvwa.my.id)
+#   HVWA_ADMIN_PASSWORD                   the first admin's password, 10+ characters (used once; change it after)
+#   HVWA_WARDEN_SECRET, HVWA_FORWARD_AUTH_SECRET   each from `openssl rand -hex 32`
+#   HVWA_RANGE_RUNTIME=runsc              on a host with gVisor (the POC host requires it)
+# Optional: HVWA_PORTAL_HOST, HVWA_RANGE_CAPACITY, HVWA_RANGE_IDLE_MIN / _MAX_MIN (compact POC: 20 and 60),
+#   HVWA_REGISTRATION_OPEN, HVWA_RANGE_KEY, HVWA_RANGE_VERSION (image tags), HVWA_LAB_REGISTRY_FILE (default
+#   ./labs/registry.json), HVWA_EDGE_NETWORK (default hvwa-edge), HVWA_RANGE_PUBLIC_SCHEME / HVWA_RANGE_PUBLIC_PORT
+#   (local runs: http and the forwarder's port), HVWA_TRAEFIK_CONTAINER.
+# Compact POC: no queue, no Extend, no ceiling and no event/registration code (plan amendment 2026-11-21).
+# Lab images listed in the registry must already be on this engine (the warden never pulls: IMAGES=0 on its proxy).
+#
+# Local run (no tunnel; browsers resolve *.localhost to loopback):
+#   docker network create hvwa-edge
+#   HVWA_RANGE_DOMAIN=localhost HVWA_PORTAL_HOST=hvwa.localhost HVWA_RANGE_PUBLIC_SCHEME=http HVWA_RANGE_PUBLIC_PORT=18080 \
+#     ...the secrets... docker compose -f docker-compose.range.yml up -d
+#   and a forwarder in place of cloudflared:
+#   docker run -d --name hvwa-local-tunnel --network hvwa-edge -p 127.0.0.1:18080:8080 sigmajo/hvwa:range-portal-0.1.0 \
+#     node -e "const n=require('node:net');n.createServer((c)=>{const u=n.connect(80,'traefik');c.pipe(u).pipe(c);c.on('error',()=>u.destroy());u.on('error',()=>c.destroy())}).listen(8080)"
+#   `npm run range:verify` does all of this on its own throwaway network, checks spec §11, and removes everything.
+
+name: hvwa-range
+
+services:
+  router:
+    image: traefik:v3.7.19
+    # The warden connects this container to every instance network, by this name.
+    container_name: "${HVWA_TRAEFIK_CONTAINER:-hvwa-range-traefik}"
+    user: "65532:65532"
+    depends_on:
+      socket-proxy-ro:
+        condition: service_started
+      portal:
+        condition: service_healthy
+    networks:
+      hvwa-edge:
+        aliases: [traefik]
+      edge: {}
+      traefik-ro: {}
+    # One entrypoint, port 80, on the hvwa-edge address alone (plan D3). The alias `traefik` exists only on hvwa-edge,
+    # so resolving it gives exactly that address; instance networks (connected later by the warden) find nothing listening.
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        addr="$$(getent hosts traefik | awk 'NR==1 {print $$1}')"
+        if [ -z "$$addr" ]; then echo "router: no address on the hvwa-edge network (alias traefik)" >&2; exit 1; fi
+        export TRAEFIK_ENTRYPOINTS_WEB_ADDRESS="$$addr:80" TRAEFIK_ENTRYPOINTS_WEB_ASDEFAULT=true
+        exec traefik
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    environment:
+      TRAEFIK_ENTRYPOINTS_PING_ADDRESS: "127.0.0.1:8082"
+      TRAEFIK_PING: "true"
+      TRAEFIK_PING_ENTRYPOINT: "ping"
+      TRAEFIK_PROVIDERS_DOCKER: "true"
+      TRAEFIK_PROVIDERS_DOCKER_ENDPOINT: "tcp://socket-proxy-ro:2375"
+      TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT: "false"
+      TRAEFIK_PROVIDERS_DOCKER_CONSTRAINTS: "Label(`hvwa.range`,`1`)"
+      TRAEFIK_PROVIDERS_FILE_DIRECTORY: "/etc/traefik/dynamic"
+      TRAEFIK_PROVIDERS_FILE_WATCH: "false"
+      TRAEFIK_API: "false"
+      TRAEFIK_GLOBAL_CHECKNEWVERSION: "false"
+      TRAEFIK_GLOBAL_SENDANONYMOUSUSAGE: "false"
+      TRAEFIK_LOG_LEVEL: "INFO"
+      TRAEFIK_ACCESSLOG: "true"
+      # Read by docker/range/traefik/range.yml ({{ env }}).
+      HVWA_PORTAL_HOST: "${HVWA_PORTAL_HOST:-${HVWA_RANGE_DOMAIN:?set HVWA_RANGE_DOMAIN}}"
+      HVWA_FORWARD_AUTH_SECRET: "${HVWA_FORWARD_AUTH_SECRET:?set HVWA_FORWARD_AUTH_SECRET}"
+    volumes:
+      - ./docker/range/traefik:/etc/traefik/dynamic:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 512m
+    cpus: 2.0
+    healthcheck:
+      # The address is repeated here: `traefik healthcheck` reads flags, not this container's TRAEFIK_* environment
+      # (Traefik v3.7.19; without it the health check looks for the default :8080 and never goes healthy).
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entryPoint=ping", "--entryPoints.ping.address=127.0.0.1:8082"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 1s
+
+  socket-proxy-ro:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    networks: [traefik-ro]
+    environment:
+      # Read only (POST=0): what Traefik's Docker provider needs.
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      EVENTS: "1"
+      PING: "1"
+      VERSION: "1"
+      POST: "0"
+      EXEC: "0"
+      IMAGES: "0"
+      VOLUMES: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      DISTRIBUTION: "0"
+      AUTH: "0"
+      SECRETS: "0"
+      CONFIGS: "0"
+      SERVICES: "0"
+      SWARM: "0"
+      NODES: "0"
+      TASKS: "0"
+      PLUGINS: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      SESSION: "0"
+      GRPC: "0"
+      ALLOW_START: "0"
+      ALLOW_STOP: "0"
+      ALLOW_RESTARTS: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run:rw,nosuid,nodev,size=1m
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+      - /var/lib/haproxy:rw,noexec,nosuid,nodev,size=1m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.5
+
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    networks: [control]
+    environment:
+      # The warden's: containers and networks, with writes (POST). Never exec, images, volumes, swarm, system.
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      POST: "1"
+      EVENTS: "0"
+      PING: "1"
+      VERSION: "1"
+      EXEC: "0"
+      IMAGES: "0"
+      VOLUMES: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      DISTRIBUTION: "0"
+      AUTH: "0"
+      SECRETS: "0"
+      CONFIGS: "0"
+      SERVICES: "0"
+      SWARM: "0"
+      NODES: "0"
+      TASKS: "0"
+      PLUGINS: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      SESSION: "0"
+      GRPC: "0"
+      ALLOW_START: "0"
+      ALLOW_STOP: "0"
+      ALLOW_RESTARTS: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run:rw,nosuid,nodev,size=1m
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+      - /var/lib/haproxy:rw,noexec,nosuid,nodev,size=1m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 64m
+    cpus: 0.5
+
+  warden:
+    image: sigmajo/hvwa:range-warden-${HVWA_RANGE_VERSION:-0.1.0}
+    init: true
+    depends_on:
+      socket-proxy:
+        condition: service_started
+    networks: [control]
+    environment:
+      HVWA_WARDEN_SECRET: "${HVWA_WARDEN_SECRET:?set HVWA_WARDEN_SECRET}"
+      HVWA_DOCKER_URL: http://socket-proxy:2375
+      HVWA_LAB_REGISTRY: /etc/hvwa/registry.json
+      HVWA_RANGE_DOMAIN: "${HVWA_RANGE_DOMAIN:?set HVWA_RANGE_DOMAIN}"
+      HVWA_TRAEFIK_CONTAINER: "${HVWA_TRAEFIK_CONTAINER:-hvwa-range-traefik}"
+      # runsc (gVisor) on the POC host; the warden always writes it as HostConfig.Runtime.
+      HVWA_RANGE_RUNTIME: "${HVWA_RANGE_RUNTIME:-runc}"
+    volumes:
+      - "${HVWA_LAB_REGISTRY_FILE:-./labs/registry.json}:/etc/hvwa/registry.json:ro"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 1s
+
+  portal:
+    image: sigmajo/hvwa:range-portal-${HVWA_RANGE_VERSION:-0.1.0}
+    init: true
+    depends_on:
+      warden:
+        condition: service_healthy
+    networks: [edge, control]
+    environment:
+      HVWA_MODE: portal
+      HVWA_RANGE_DOMAIN: "${HVWA_RANGE_DOMAIN:?set HVWA_RANGE_DOMAIN}"
+      HVWA_PORTAL_HOST: "${HVWA_PORTAL_HOST:-}"
+      # https behind the tunnel (Secure, host-only cookies; the forms' Origin check); http only for local runs.
+      HVWA_RANGE_PUBLIC_SCHEME: "${HVWA_RANGE_PUBLIC_SCHEME:-https}"
+      HVWA_RANGE_PUBLIC_PORT: "${HVWA_RANGE_PUBLIC_PORT:-}"
+      HVWA_ADMIN_PASSWORD: "${HVWA_ADMIN_PASSWORD:?set HVWA_ADMIN_PASSWORD (10+ characters)}"
+      HVWA_WARDEN_URL: http://warden:8080
+      HVWA_WARDEN_SECRET: "${HVWA_WARDEN_SECRET:?set HVWA_WARDEN_SECRET}"
+      HVWA_FORWARD_AUTH_SECRET: "${HVWA_FORWARD_AUTH_SECRET:?set HVWA_FORWARD_AUTH_SECRET}"
+      HVWA_FORWARD_AUTH_HOST: portal
+      HVWA_RANGE_KEY: "${HVWA_RANGE_KEY:-}"
+      HVWA_RANGE_CAPACITY: "${HVWA_RANGE_CAPACITY:-140}"
+      # Compact POC (plan amendment): idle 20 min, hard lifetime 60 min; no Extend, no separate ceiling.
+      HVWA_RANGE_IDLE_MIN: "${HVWA_RANGE_IDLE_MIN:-20}"
+      HVWA_RANGE_MAX_MIN: "${HVWA_RANGE_MAX_MIN:-60}"
+      HVWA_REGISTRATION_OPEN: "${HVWA_REGISTRATION_OPEN:-1}"
+      HVWA_LAB_REGISTRY: /etc/hvwa/registry.json
+    volumes:
+      - range-data:/data
+      - "${HVWA_LAB_REGISTRY_FILE:-./labs/registry.json}:/etc/hvwa/registry.json:ro"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1337/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 1s
+
+  # The tunnel connector is NOT part of this stack: it runs in the owner's bootstrap compose on the same external
+  # network, roughly like this (its token comes from the owner's 0600 secret file, never from this repository):
+  #   cloudflared:
+  #     image: cloudflare/cloudflared:<pinned version>
+  #     command: ["tunnel", "--no-autoupdate", "run"]
+  #     networks: [hvwa-edge]
+  #     read_only: true
+  #     cap_drop: [ALL]
+  #     security_opt: ["no-new-privileges:true"]
+  #   with the tunnel's public hostnames hvwa.my.id and *.hvwa.my.id -> http://traefik:80
+
+networks:
+  hvwa-edge:
+    external: true
+    name: ${HVWA_EDGE_NETWORK:-hvwa-edge}
+  edge:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  control:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  traefik-ro:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+
+volumes:
+  range-data: {}
