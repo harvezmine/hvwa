@@ -1,5 +1,92 @@
 [
-  { "style": "Birthday", "sample": "Wishing you a wonderful year ahead." },
-  { "style": "Thank you", "sample": "Thank you so much for your kindness." },
-  { "style": "Congratulations", "sample": "So proud of everything you have achieved." }
+  {
+    "style": "Birthday",
+    "occasion": "birthday",
+    "sample": "Wishing you a wonderful year ahead.",
+    "palette": "rose & marigold",
+    "font": "Hand-set serif",
+    "price": "$6.50",
+    "delivery": "Same-day if ordered by 2 pm"
+  },
+  {
+    "style": "Thank you",
+    "occasion": "thanks",
+    "sample": "Thank you so much for your kindness.",
+    "palette": "sage & cream",
+    "font": "Quiet humanist sans",
+    "price": "$5.75",
+    "delivery": "Ships in 1-2 days"
+  },
+  {
+    "style": "Congratulations",
+    "occasion": "congrats",
+    "sample": "So proud of everything you have achieved.",
+    "palette": "ink & brass",
+    "font": "Bold slab display",
+    "price": "$7.00",
+    "delivery": "Same-day if ordered by 2 pm"
+  },
+  {
+    "style": "Wedding",
+    "occasion": "wedding",
+    "sample": "Two hearts, one beautiful beginning.",
+    "palette": "ivory & pearl",
+    "font": "Delicate script",
+    "price": "$8.25",
+    "delivery": "Ships in 2-3 days"
+  },
+  {
+    "style": "New baby",
+    "occasion": "newbaby",
+    "sample": "A little one has arrived to fill the world with joy.",
+    "palette": "sky & butter",
+    "font": "Soft rounded sans",
+    "price": "$6.00",
+    "delivery": "Ships in 1-2 days"
+  },
+  {
+    "style": "Anniversary",
+    "occasion": "anniversary",
+    "sample": "Here's to all the years, and all the ones ahead.",
+    "palette": "wine & blush",
+    "font": "Romantic serif",
+    "price": "$7.50",
+    "delivery": "Same-day if ordered by 2 pm"
+  },
+  {
+    "style": "Get well",
+    "occasion": "getwell",
+    "sample": "Rest easy and feel better soon.",
+    "palette": "mint & daisy",
+    "font": "Gentle humanist sans",
+    "price": "$5.50",
+    "delivery": "Ships in 1-2 days"
+  },
+  {
+    "style": "Sympathy",
+    "occasion": "sympathy",
+    "sample": "Holding you close in thought.",
+    "palette": "slate & lily",
+    "font": "Quiet old-style serif",
+    "price": "$5.75",
+    "delivery": "Ships in 2-3 days"
+  },
+  {
+    "style": "Just because",
+    "occasion": "justbecause",
+    "sample": "No reason at all - just thinking of you.",
+    "palette": "terracotta & sun",
+    "font": "Playful hand",
+    "price": "$4.95",
+    "delivery": "Ships in 1-2 days"
+  },
+  {
+    "style": "Season's greetings",
+    "occasion": "seasonal",
+    "sample": "Warmest wishes for a bright and cozy season.",
+    "palette": "midnight & spruce",
+    "font": "Festive display serif",
+    "price": "$6.25",
+    "delivery": "Ships in 2-3 days"
+  }
 ]
