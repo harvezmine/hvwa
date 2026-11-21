@@ -1,7 +1,7 @@
 // src/auth/index.ts — the platform login's routes and gate (createApp({ auth })). PLATFORM code, secure
 // by design: the labs behind it are the vulnerable part, this is not (docs/SECURITY.md "The platform login").
 //
-//   publicRouter   GET/POST /login                         (before the gate)
+//   publicRouter   GET/POST /login, GET/POST /register (portal mode only)   (before the gate)
 //   gate           everything mounted after it needs a live hvwa_auth token
 //   accountRouter  POST /logout, GET/POST /account/password (after the gate)
 //
@@ -14,12 +14,19 @@ import { fileURLToPath } from 'node:url';
 import { sendPage } from '../core/render.js';
 import { field } from '../core/lab.js';
 import { safeNext } from './next.js';
+import { clientIp } from './client-ip.js';
 import { authTokenOf, fetchSiteOk, isApi, isHtmx, noStore, originOk, ownHost } from './forms.js';
+import { windowLimiter } from './rate-limit.js';
+import { registrationRouter, type RegistrationOptions } from './register.js';
 import { AUTH_COOKIE, AUTH_LIMITS, createAuthService, type AuthService, type AuthServiceOptions } from './service.js';
 
 export { safeNext } from './next.js';
 export { requireAdmin } from './forms.js';
 export type { AuthService, AuthSession, Role, UserSummary } from './service.js';
+export type { RegistrationOptions } from './register.js';
+
+/** The failed-sign-in budget per client IP in portal mode (createApp). */
+export const SIGN_IN_PER_IP_DEFAULTS = Object.freeze({ max: 30, windowMs: 15 * 60_000 });
 
 /** createApp's `auth` option as an object (`auth: true` = all defaults). */
 export interface AuthOptions extends AuthServiceOptions {
@@ -33,6 +40,16 @@ export interface AuthOptions extends AuthServiceOptions {
    * since behind the tunnel the portal itself only sees plain http. Default: the request's own scheme.
    */
   publicScheme?: 'http' | 'https';
+  /**
+   * Mount GET/POST /register (portal mode); `open: false` (HVWA_REGISTRATION_OPEN=0) shows it closed. Absent: no
+   * registration at all (standalone).
+   */
+  registration?: RegistrationOptions;
+  /**
+   * Portal mode: at most `max` FAILED sign-ins per client IP (clientIp) per `windowMs`; beyond it a sign-in is refused
+   * before any password check (429). In front of, not instead of, the per-account backoff. Absent: off (standalone).
+   */
+  signInPerIp?: { readonly max: number; readonly windowMs: number };
 }
 
 export const authViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
@@ -93,6 +110,8 @@ export interface PlatformAuth {
 export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): PlatformAuth {
   const service = createAuthService(db, opts);
   const cookies = cookieAttributes(opts.secureCookies === true);
+  // The login page links to /register only when registration is mounted and open (read once: an env switch).
+  const registerLink = opts.registration !== undefined && opts.registration.open !== false;
 
   const refuse = async (req: Request, res: Response, back: string) => {
     noStore(res);
@@ -113,6 +132,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     res.locals.platformAuth = { signedIn: false };
     return sendPage(res, view('login'), {
       pageTitle: res.locals.t('auth.login_heading'), csrf: service.csrfToken(req.sessionId), next, failed, notice,
+      registered: req.query.registered === '1', registerLink,
     });
   };
 
@@ -122,12 +142,21 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     if (service.session(req.cookies?.[AUTH_COOKIE])) { noStore(res); res.redirect(303, next); return; }
     await renderLogin(req, res, next, false);
   });
+  const perIp = opts.signInPerIp;
+  const ipFailures = perIp ? windowLimiter({ max: perIp.max, windowMs: perIp.windowMs, now: opts.now }) : undefined;
   publicRouter.post('/login', async (req, res) => {
     if (!formOk(req, false)) { await refuse(req, res, '/login'); return; }
     const next = safeNext(field(req, 'next'));
+    const ip = clientIp(req);
+    if (ipFailures && perIp && ipFailures.count(ip) >= perIp.max) {
+      res.status(429).set('Retry-After', String(Math.ceil(perIp.windowMs / 1000)));
+      await renderLogin(req, res, next, false, res.locals.t('auth.login_limited'));
+      return;
+    }
     const result = await service.signIn(field(req, 'username'), field(req, 'password'));
     if (!result.ok) {
       if (result.busy) { await renderLogin(req, res, next, false, busy(req, res)); return; }
+      ipFailures?.allow(ip); // one failure spent from this IP's budget
       res.status(401);
       await renderLogin(req, res, next, true);
       return;
@@ -137,6 +166,13 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     res.cookie(AUTH_COOKIE, result.token, cookies.set);
     res.redirect(303, next);
   });
+  if (opts.registration) {
+    publicRouter.use(registrationRouter({
+      service, options: opts.registration, view: view('register'),
+      loginFormOk: (req) => formOk(req, false), refuse,
+      signedIn: (req) => service.session(req.cookies?.[AUTH_COOKIE]) !== undefined,
+    }));
+  }
 
   const gate: RequestHandler = (req, res, next) => {
     const presented: unknown = req.cookies?.[AUTH_COOKIE];

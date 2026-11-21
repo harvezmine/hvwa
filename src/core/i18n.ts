@@ -372,6 +372,50 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'auth.pw_err_mismatch': { id: 'Kedua kata sandi baru tidak sama.', en: 'The two new passwords do not match.' },
   'auth.pw_err_same': { id: 'Kata sandi baru harus berbeda dari yang sekarang.', en: 'The new password must differ from the current one.' },
   'auth.pw_err_default': { id: 'Kata sandi baru tidak boleh kata sandi bawaan.', en: 'The new password cannot be the default password.' },
+  // Registration (portal mode, src/auth/register.ts).
+  'auth.register_heading': { id: 'Buat akun', en: 'Create an account' },
+  'auth.register_intro': {
+    id: 'Pilih nama pengguna dan kata sandi. Skor dan lab Anda tersimpan di akun ini.',
+    en: 'Choose a username and a password. Your score and your labs belong to this account.',
+  },
+  'auth.register_button': { id: 'Buat akun', en: 'Create account' },
+  'auth.register_link': { id: 'Belum punya akun? Buat akun', en: 'No account yet? Create one' },
+  'auth.login_link': { id: 'Sudah punya akun? Masuk', en: 'Already have an account? Log in' },
+  'auth.registered': { id: 'Akun dibuat. Silakan masuk.', en: 'Account created. Log in.' },
+  'auth.username_help': {
+    id: '3 sampai 24 karakter: huruf kecil, angka, dan garis bawah.',
+    en: '3 to 24 characters: lowercase letters, digits and underscores.',
+  },
+  'auth.reg_pw_help': {
+    id: 'Minimal {n} karakter. Lebih panjang lebih kuat: frasa sandi empat kata atau lebih paling baik.',
+    en: 'At least {n} characters. Longer is stronger: a passphrase of four or more words is best.',
+  },
+  'auth.pw_confirm_plain': { id: 'Ulangi kata sandi', en: 'Repeat the password' },
+  'auth.reg_closed': {
+    id: 'Pendaftaran sedang ditutup. Minta akun kepada penyelenggara.',
+    en: 'Registration is closed. Ask the organiser for an account.',
+  },
+  'auth.reg_limited': {
+    id: 'Terlalu banyak akun dibuat dari jaringan Anda. Coba lagi nanti.',
+    en: 'Too many accounts were created from your network. Try again later.',
+  },
+  'auth.reg_err_username': {
+    id: 'Nama pengguna harus 3 sampai 24 karakter: huruf kecil, angka, atau garis bawah.',
+    en: 'The username needs 3 to 24 characters: lowercase letters, digits or underscores.',
+  },
+  'auth.reg_err_taken': { id: 'Nama pengguna ini sudah dipakai.', en: 'This username is taken.' },
+  'auth.reg_err_too_short': { id: 'Kata sandi minimal {n} karakter.', en: 'The password needs at least {n} characters.' },
+  'auth.reg_err_too_long': { id: 'Kata sandi maksimal 1024 karakter.', en: 'The password can have at most 1024 characters.' },
+  'auth.reg_err_control': { id: 'Kata sandi tidak boleh berisi karakter kontrol.', en: 'The password cannot contain control characters.' },
+  'auth.reg_err_mismatch': { id: 'Kedua kata sandi tidak sama.', en: 'The two passwords do not match.' },
+  'auth.login_limited': {
+    id: 'Terlalu banyak percobaan masuk yang gagal dari jaringan Anda. Coba lagi nanti.',
+    en: 'Too many failed sign-ins from your network. Try again later.',
+  },
+  'auth.reg_err_busy': {
+    id: 'Server sedang sibuk. Coba lagi sebentar lagi.',
+    en: 'The server is busy. Try again in a moment.',
+  },
   'safety.warning': {
     id: 'Lab latihan: aplikasi ini sengaja rentan. Jangan pernah mengeksposnya ke jaringan yang tidak tepercaya.',
     en: 'Training lab: this app is deliberately vulnerable. Never expose it to an untrusted network.',
