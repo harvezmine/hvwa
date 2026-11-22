@@ -48,6 +48,32 @@ describe('POST /labs/:id/submit', () => {
     expect(wrong.text).toMatch(/data-toast-variant="error"/);
   });
 
+  it('the htmx result carries the submit-result modal payload: variant, title, message, points, and a fact only for a new best', async () => {
+    const kit = portalApp();
+    const alice = await player(kit.app, 'alice');
+    const templar = await launched(kit, alice.userId, 'r01', 'templar');
+    const solved = await submit(alice.agent, 'r01', `  ${templar}  `);
+    expect(solved.text).toMatch(/data-modal="solved"/);
+    expect(solved.text).toContain('data-modal-title="Contract sealed"');
+    expect(solved.text).toContain('data-modal-message="Templar sealed"');
+    expect(solved.text).toContain('data-modal-points="+150"');
+    expect(solved.text).toMatch(/data-modal-fact="SQL injection has appeared/);
+    const already = await submit(alice.agent, 'r01', templar!);
+    expect(already.text).toMatch(/data-modal="already"/);
+    expect(already.text).toContain('data-modal-title="Already sealed"');
+    expect(already.text).toMatch(/data-modal-fact=""/);
+    const wrong = await submit(alice.agent, 'r01', `HVWA{${'a'.repeat(26)}}`);
+    expect(wrong.text).toMatch(/data-modal="wrong"/);
+    expect(wrong.text).toContain('data-modal-title="The seal did not take"');
+    expect(wrong.text).toContain('data-modal-message="No matching mark in the ledger');
+    expect(wrong.text).toMatch(/data-modal-fact=""/);
+    const acolyte = await launched(kit, alice.userId, 'r01', 'acolyte'); // replaces the Templar instance
+    const lower = await submit(alice.agent, 'r01', acolyte!);
+    expect(lower.text).toMatch(/data-modal="lower"/);
+    expect(lower.text).toContain('data-modal-title="Seal held"');
+    expect(lower.text).toMatch(/data-modal-fact=""/);
+  });
+
   it('another user\'s flag never counts, either way; nor a flag of another lab; nor a made-up one', async () => {
     const kit = portalApp();
     const alice = await player(kit.app, 'alice');

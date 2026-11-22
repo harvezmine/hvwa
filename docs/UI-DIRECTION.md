@@ -115,13 +115,13 @@ System fonts only (offline):
 ## 7. Contract Dossier (lab page)
 
 - Breadcrumb `Contracts / <App>`.
-- Hero: eyebrow category + rank seal; the challenge title (funny/self-own) as the serif `h1`; the in-world app name as a mono subtitle; scenario; sealed stamp if solved. Long titles wrap at 375 px.
-- Two columns: main (max ~68ch) and a 20rem right rail.
-- **Mission brief** as a serif lead paragraph with no coloured rule (optionally one neutral ink hairline on the left); not a card.
-- **Tiers:** three large rows, each a selectable document line: tier name serif, meaning sans muted, points mono, state. Current tier = 5% tonal wash + a small filled ink dot or seal (no coloured rail); solved = seal. Keep the existing level links/testids.
-- **Intel (hints):** a clean accordion; locked rows show cost in mono; unlocked rows show the text; keep the cost-once behaviour.
-- **Claim bounty:** the submit form as a distinct fieldset with a mono label and one primary button; result inline (toast enhances).
-- **Right rail:** sticky. Active contract panel as an inverted or paper slip with state dot, time bar, one primary action (Launch/Open), quiet Reset/Stop. Then a compact "How it works" with mono numerals 01/02/03.
+- Hero: a mono `CONTRACT rNN · N TIERS · BOUNTY N` meta line, then the eyebrow category + rank seal; the challenge title (funny/self-own) as the serif `h1`; the in-world app name as a mono subtitle; scenario; sealed stamp if solved; the per-lab illustration on the right. Long titles wrap at 375 px.
+- **Tier ladder:** a full-width row of tier cards under the hero — one card per tier (name serif, meaning sans muted, points mono, state seal). The current tier gets a tonal wash + a small filled ink dot (no coloured rail); solved gets a seal. 2×2 on tablet, one column on mobile, one row on desktop (r05 shows a single card). Keep the existing level links / `data-testid="range-level-<level>"`.
+- Two columns below the ladder: main (max ~68ch) and a 20rem right rail.
+- **Mission brief** as a serif lead paragraph with a thin neutral ink hairline on the left (no coloured rule); not a card.
+- **Intel (hints):** a clean accordion; locked rows show cost in mono; unlocked rows show the text; keep the cost-once behaviour and `hint-<tier>` hooks.
+- **Claim bounty:** a prominent fieldset with a large mono flag input and one primary button; result inline (the solve dialog enhances).
+- **Right rail:** sticky. Active contract panel as a paper slip with state dot, time bar, one primary action (Launch/Open), quiet Reset/Stop. Then a compact "How it works" with mono numerals 01/02/03.
 - Keep the full-range message, failed/expired/idle/replaced reasons, and all data-testids.
 
 ## 8. Guild Ledger (leaderboard)
@@ -143,6 +143,8 @@ System fonts only (offline):
 - Paper slip, 1 px neutral hairline (no coloured top/left rule), a small monochrome/copper seal glyph, mono eyebrow (`BOUNTY CLAIMED`), serif message, close. Success/error/info is carried by the seal glyph and text, not by a coloured edge.
 - Bottom-right desktop / bottom-center mobile; stack max 3; auto-dismiss ~5 s; `role=status`/`aria-live=polite`; never steal focus; paused on hover/focus; reduced-motion off.
 - Data-driven from action swaps only (`data-focus-after-swap`), never from polls.
+
+**Submit-result popup (solve dialog).** Every flag submission opens an animated `<dialog>` (paper slip, `::backdrop`, scale/fade in, a stamp animation on the seal). Variants: solved/new-best — serif "Contract sealed", level + points, and a bilingual `FIELD NOTE` fact from `src/range/facts.ts` (r01–r05), plus subtle token-colour confetti; already — "Already sealed" + level/points context; wrong — "The seal did not take" + a short riddle nudge (no fact); lower — a quiet "Seal held". It is driven by `data-modal-*` on the submit-result fragment, opens from `htmx:afterSwap` (never from polls/panel swaps), focuses the Continue button, closes on Escape/backdrop/Continue, and returns focus to the flag submit button. `prefers-reduced-motion` disables the stamp/confetti motion.
 
 ## 11. Do / Don't
 
