@@ -1,6 +1,7 @@
 // labs/r03-beacon/app/diag.mjs — Beacon's connectivity probe, per level. The echoed status line makes the result
 // deterministic without CAP_NET_RAW; the ping is cosmetic (|| true). acolyte/templar run a REAL shell (busybox sh -c);
-// divine runs no shell at all.
+// inquisitor/divine run no shell at all — Inquisitor validates the host here, and the chain moves to the report
+// generator (report.mjs). This is the only host-probe shell; report.mjs is the only other shell in the lab.
 import { execFile } from 'node:child_process';
 
 // divine's strict allow-list: a dotted hostname or IPv4 address. Each label starts and ends alphanumeric (so a
@@ -12,7 +13,7 @@ const BLOCKED = /[;&|`\n\r]/;                                 // templar's naive
 /** Run the probe for `host` at `level`; resolves { output } (combined stdout+stderr) or { error }. */
 export function probe(level, host) {
   return new Promise((resolve) => {
-    if (level === 'divine') {
+    if (level === 'inquisitor' || level === 'divine') {
       if (!HOSTNAME_RE.test(host)) return resolve({ error: 'Enter a valid hostname or IP address.' });
       return execFile('ping', ['-c', '1', '-W', '1', host], { timeout: 4000 },
         (_err, stdout, stderr) => resolve({ output: `${stdout}${stderr}` || 'Probe finished.' }));
