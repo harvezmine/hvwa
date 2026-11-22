@@ -16,7 +16,10 @@ The visible app is a small handmade-card studio, not a bare demo form:
   font, price and delivery time.
 - **Preview (`POST /preview`)** — the rendered card front on a 3D flip, a static front/back toggle (CSS checkbox),
   print-only CSS, style metadata, an "Edit message" link back to the swatches, and a "Send this card" button that shows
-  a simulated confirmation. Nothing is persisted.
+  a simulated confirmation. At Inquisitor the preview does not render at all: it saves a bounded, in-memory draft and
+  returns "Draft saved for printing" with a link to the print stage.
+- **Print stage (`GET /orders/<id>/print`)** — renders a saved draft inside the card. Drafts live in process memory, at
+  most 32 at a time (oldest evicted), with random ids.
 - **Studio pages** — `/orders` (a seeded print queue), `/pricing`, `/about`, `/faq`, `/shipping`, `/contact`. A shared
   header carries a static status widget ("Studio open / press queue: 3 cards ahead / order by 2 pm for same-day").
 - **Identity** — rose and plum palette, card-stock textures, per-occasion ornaments and borders, an inline studio mark
@@ -29,9 +32,10 @@ The seed at `seed/cards.json` holds ten cards with `style`, `occasion`, `sample`
 
 ## Vulnerable feature
 
-`POST /preview` — the card renderer (`templating.render_card`). The page chrome is a constant template; only the
-message reaches Jinja as source at acolyte/templar. The studio chrome, gallery, pages and contact form escape every
-reflected value; the card message is the one value that goes through the designed renderer.
+The card renderer (`templating.render_card`). At Acolyte and Templar, `POST /preview` renders the message directly; at
+Inquisitor the preview only saves the message as a draft and `GET /orders/<id>/print` renders it — a second-order SSTI
+through the print step. The page chrome is a constant template, and the studio chrome, gallery, pages and contact form
+escape every reflected value; the card message is the one value that goes through the designed renderer at its sink.
 
 ## Levels
 
@@ -41,11 +45,17 @@ reflected value; the card message is the one value that goes through the designe
   literal Acolyte payload is caught and shown as a styled rejection card. The same file read works if every blocked
   token is composed from Jinja string escapes / `attr`-style access so the raw message never contains one. This is why
   Acolyte does not carry up.
-- **Divine.** The card is a constant `{{ message }}` template and the message is passed as a bound, autoescaped value,
-  never as template source. No flag.
+- **Inquisitor.** The preview no longer renders the message. It saves it as a bounded draft (≤32, random id) and hands
+  back a "Draft saved for printing" page carrying `data-draft="<id>"` and a `/orders/<id>/print` link. The print stage
+  renders the saved message with the normal Jinja renderer, so the Acolyte template payload works again — but only in
+  the second request. The Acolyte and Templar solves (which expect the flag in the `/preview` response) fail here.
+- **Divine.** Both the `/preview` card and the `/orders/<id>/print` proof are constant `{{ message }}` templates; the
+  message is passed as a bound, autoescaped value, never as template source. No flag.
 
 ## Reference solves
 
-`solve/acolyte.mjs` and `solve/templar.mjs` are Node HTTP clients; the reference solve contains the intended template
-input for each level. `npm run labs:test -- --lab r04` proves each works at its level and that the Acolyte input fails
-at Templar and Divine.
+`solve/acolyte.mjs`, `solve/templar.mjs` and `solve/inquisitor.mjs` are Node HTTP clients; the reference solve contains
+the intended template input for each level. `solve/inquisitor.mjs` posts the Acolyte payload to `/preview`, reads the
+draft id from `data-draft`, then requests `/orders/<id>/print` and prints only the `HVWA{...}` match.
+`npm run labs:test -- --lab r04` proves each works at its level, that lower-level solves fail at Inquisitor, and that
+Divine resists every solve.
