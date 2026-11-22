@@ -7,6 +7,8 @@ import { field } from '../core/lab.js';
 import { clampLevel, isLevel, type Level } from '../core/levels.js';
 import { MY_LAB_VIEW, sendFragment } from '../core/render.js';
 import type { LabEntry } from '../lab-registry.js';
+import { clientIp } from '../auth/client-ip.js';
+import { logActivity } from './activity.js';
 import { isHtmx, rangeView, userOf } from './catalog.js';
 import { instanceOrigin } from './hosts.js';
 import { panelFor } from './panel.js';
@@ -25,7 +27,12 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
     const lab = registry.get(req.params.id);
     if (!lab) { next(); return; }
     if (!auth.formOk(req)) { await auth.refuse(req, res, `/labs/${lab.id}`); return; }
-    const result = submitRangeFlag(db, lifecycle.store, lab, userOf(res).userId, field(req, 'submission'), ctx.now());
+    const me = userOf(res);
+    const result = submitRangeFlag(db, lifecycle.store, lab, me.userId, field(req, 'submission'), ctx.now());
+    logActivity(db, result.status === 'wrong'
+      ? { event: 'range.submit.wrong', userId: me.userId, username: me.username, labId: lab.id, ip: clientIp(req), now: ctx.now() }
+      : { event: 'range.exploit', userId: me.userId, username: me.username, labId: lab.id, level: result.level,
+          detail: `points:${result.points}`, ip: clientIp(req), now: ctx.now() });
     if (isHtmx(req)) { res.type('html').send(submitResultHtml(result, res.locals.t, lab.id, req.lang)); return; }
     res.redirect(303, `/labs/${lab.id}?r=${result.status === 'wrong' ? 'wrong' : 'solved'}`);
   });
@@ -48,7 +55,8 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
       if (!auth.formOk(req)) { await auth.refuse(req, res, `/labs/${lab.id}`); return; }
       const level = levelOf(field(req, 'level'), lab);
       if (!level) { res.status(400).type('text/plain').send('Unknown level\n'); return; }
-      const { userId } = userOf(res);
+      const me = userOf(res);
+      const userId = me.userId;
       const t: (key: string) => string = res.locals.t;
       const current = lifecycle.current(userId);
       let notice: 'full' | undefined;
@@ -62,14 +70,17 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
           toast = { kind: 'failed', variant: 'error', title: t('range.toast_failed_title'), message: t('range.toast_failed') };
         } else {
           toast = { kind: 'launched', variant: 'success', title: t('range.toast_launched_title'), message: t('range.toast_launched') };
+          logActivity(db, { event: 'range.launch', userId, username: me.username, labId: lab.id, level, ip: clientIp(req), now: ctx.now() });
         }
       } else if (current && current.labId === lab.id) { // only the instance this panel shows
         if (action === 'reset') {
           await lifecycle.reset(userId);
           toast = { kind: 'reset', variant: 'success', title: t('range.toast_reset_title'), message: t('range.toast_reset') };
+          logActivity(db, { event: 'range.reset', userId, username: me.username, labId: lab.id, level, ip: clientIp(req), now: ctx.now() });
         } else {
           await lifecycle.stop(userId, 'user');
           toast = { kind: 'stopped', variant: 'info', title: t('range.toast_stopped_title'), message: t('range.toast_stopped') };
+          logActivity(db, { event: 'range.stop', userId, username: me.username, labId: lab.id, level, ip: clientIp(req), now: ctx.now() });
         }
       }
       // An action swap moves focus to the panel and shows a toast; a poll (above) never does either.

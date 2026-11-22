@@ -1,0 +1,33 @@
+<%# Admin labs (src/range/admin.ts): one row per registry lab with its scoring mode (individual/team), a save form and
+   the last update. Team mode flips the catalog badge and the team leaderboard through the shared helpers (modes.ts,
+   teams.ts). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks
+   parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('admin.labs_title') %></h1>
+</header>
+<%- include('admin-nav') %>
+<div class="table-wrap">
+  <table class="table" data-testid="admin-labs-table">
+    <thead><tr>
+      <th scope="col"><%= t('admin.filter_lab') %></th><th scope="col"><%= t('admin.col_mode') %></th><th scope="col"><%= t('admin.col_updated') %></th>
+    </tr></thead>
+    <tbody>
+<% labs.forEach(function (lab) { -%>
+      <tr data-lab="<%= lab.id %>" data-mode="<%= lab.mode %>">
+        <th scope="row"><span class="mono"><%= lab.id %></span> <span class="muted"><%= lab.app %> · <%= lab.title %></span></th>
+        <td>
+          <form method="post" action="/admin/labs/<%= lab.id %>/mode" class="admin-mode-form" data-testid="admin-mode-form">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <select name="mode" aria-label="<%= lab.app %>">
+              <option value="individual"<% if (lab.mode === 'individual') { %> selected<% } %>><%= t('admin.mode_individual') %></option>
+              <option value="team"<% if (lab.mode === 'team') { %> selected<% } %>><%= t('admin.mode_team') %></option>
+            </select>
+            <button type="submit" class="btn btn-xs btn-secondary" data-testid="admin-mode-save"><%= t('admin.mode_save') %></button>
+          </form>
+        </td>
+        <td class="mono"><% if (lab.updatedAt) { %><%= lab.updatedAt %><% if (lab.updatedBy) { %> · <%= lab.updatedBy %><% } %><% } else { %><span class="muted"><%= t('admin.never') %></span><% } %></td>
+      </tr>
+<% }); -%>
+    </tbody>
+  </table>
+</div>

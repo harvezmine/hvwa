@@ -335,15 +335,19 @@ describe('the leaderboard and the navigation', () => {
     expect(html).toContain('class="rank-seal'); // the adventurer rank seal (letter)
   });
 
-  it('Labs and Leaderboard for everyone; no Admin link (no admin pages in the POC); no Districts or Scoreboard links', async () => {
+  it('Labs and Leaderboard for everyone; an Admin link only for admins; no Districts or Scoreboard links', async () => {
     const { app } = portalApp();
     const { agent } = await player(app, 'alice');
-    for (const html of [(await agent.get('/')).text, (await (await signInAdmin(app)).get('/')).text]) {
-      expect(html).toContain('data-testid="nav-labs"');
-      expect(html).toContain('data-testid="nav-leaderboard"');
-      expect(html).not.toContain('data-testid="nav-admin"');
-      expect(html).not.toContain('href="/scoreboard"');
-    }
+    const playerHtml = (await agent.get('/')).text;
+    expect(playerHtml).toContain('data-testid="nav-labs"');
+    expect(playerHtml).toContain('data-testid="nav-leaderboard"');
+    expect(playerHtml).not.toContain('data-testid="nav-admin"');
+    expect(playerHtml).not.toContain('href="/scoreboard"');
+    const adminHtml = (await (await signInAdmin(app)).get('/')).text;
+    expect(adminHtml).toContain('data-testid="nav-labs"');
+    expect(adminHtml).toContain('data-testid="nav-leaderboard"');
+    expect(adminHtml).toContain('data-testid="nav-admin"');
+    expect(adminHtml).not.toContain('href="/scoreboard"');
     expect((await agent.get('/')).text).toMatch(/data-testid="nav-labs"[^>]*aria-current="page"/);
     expect((await agent.get('/leaderboard')).text).toMatch(/data-testid="nav-leaderboard"[^>]*aria-current="page"/);
   });

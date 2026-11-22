@@ -1,15 +1,90 @@
-<%# Range leaderboard (src/range/catalog.ts, progress.ts leaderboard): the Guild ledger. The top three are large ledger
-   rows with mono numerals; the rest a flat table; the viewer's row is marked and pinned when outside the top three.
-   Hooks: leaderboard, data-rank, data-user. Every value goes through the escaped output tag. Never put an EJS tag inside
-   an EJS comment: it breaks parsing. %>
+<%# Range leaderboard (src/range/catalog.ts, progress.ts leaderboard, teams.ts teamLeaderboard): the Guild ledger. Two
+   tabs (plain links, no JavaScript): Individual (unchanged) and Teams. The top three are large ledger rows with mono
+   numerals; the rest a flat table; the viewer's row (or team) is marked and pinned when outside the top three.
+   Hooks: leaderboard, data-rank, data-user (individual) / data-team (teams), data-mode on lab cards. Every value goes
+   through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <header class="page-head">
   <div class="board-head">
     <svg class="icon laurel" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-laurel"></use></svg>
     <h1 class="page-title"><%= t('leaderboard.title') %></h1>
+<% if (board === 'teams') { -%>
+    <span class="board-count"><% if (teamRows.length === 1) { %><%= t('leaderboard.teams_count_one') %><% } else { %><%= t('leaderboard.teams_count').replace('{n}', teamRows.length) %><% } %></span>
+<% } else { -%>
     <span class="board-count"><% if (rows.length === 1) { %><%= t('leaderboard.count_one') %><% } else { %><%= t('leaderboard.count').replace('{n}', rows.length) %><% } %></span>
+<% } -%>
   </div>
   <p class="page-lead"><%= t('leaderboard.lead') %></p>
 </header>
+<nav class="tabs" aria-label="<%= t('leaderboard.tabs_label') %>" data-testid="leaderboard-tabs">
+  <a href="/leaderboard?board=individual" data-testid="tab-individual"<% if (board === 'individual') { %> aria-current="page"<% } %>><%= t('leaderboard.board_individual') %></a>
+  <a href="/leaderboard?board=teams" data-testid="tab-teams"<% if (board === 'teams') { %> aria-current="page"<% } %>><%= t('leaderboard.board_teams') %></a>
+</nav>
+<% if (board === 'teams') { -%>
+<% if (teamRows.length === 0) { -%>
+<div class="empty">
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-empty-scroll"></use></svg>
+  <p><%= t('leaderboard.team_empty') %></p>
+  <a class="btn btn-secondary" href="/team" data-testid="leaderboard-empty-action"><%= t('leaderboard.team_empty_action') %></a>
+</div>
+<% } else { -%>
+<ol class="ledger-podium" data-testid="team-leaderboard">
+<% teamRows.filter(function (r) { return r.rank <= 3; }).forEach(function (r) { -%>
+  <li data-rank="<%= r.rank %>" data-team="<%= r.name %>" class="leaderboard-top leaderboard-top-<%= r.rank %><% if (r.teamId === myTeamId) { %> leaderboard-me<% } %>"<% if (r.teamId === myTeamId) { %> aria-current="true"<% } %>>
+    <div class="podium-row">
+      <span class="podium-rank"><%= r.rank < 10 ? '0' + r.rank : r.rank %></span>
+      <span class="podium-name"><%= r.name %><% if (r.teamId === myTeamId) { %> <span class="you"><%= t('leaderboard.team_you') %></span><% } %></span>
+      <span class="podium-stat"><b><%= r.score %></b><%= r.solved %> <%= t('leaderboard.col_solved') %> · <%= r.members %> <%= t('leaderboard.col_members') %></span>
+    </div>
+  </li>
+<% }); -%>
+</ol>
+<% if (teamRows.some(function (r) { return r.rank > 3; })) { -%>
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col" class="num"><%= t('leaderboard.col_rank') %></th><th scope="col"><%= t('leaderboard.col_team') %></th><th scope="col" class="num"><%= t('leaderboard.col_score') %></th><th scope="col" class="num"><%= t('leaderboard.col_solved') %></th><th scope="col" class="num"><%= t('leaderboard.col_members') %></th><th scope="col"><%= t('leaderboard.col_last') %></th></tr></thead>
+    <tbody>
+<% teamRows.filter(function (r) { return r.rank > 3; }).forEach(function (r) { -%>
+      <tr data-rank="<%= r.rank %>" data-team="<%= r.name %>" class="<% if (r.teamId === myTeamId) { %>leaderboard-me<% } %>"<% if (r.teamId === myTeamId) { %> aria-current="true"<% } %>>
+        <td class="num"><span class="leaderboard-rank"><%= r.rank %></span></td>
+        <th scope="row"><%= r.name %><% if (r.teamId === myTeamId) { %> <span class="muted"><%= t('leaderboard.team_you') %></span><% } %></th>
+        <td class="num"><%= r.score %></td>
+        <td class="num"><%= r.solved %></td>
+        <td class="num"><%= r.members %></td>
+        <td class="mono"><%= r.lastLabel || '—' %></td>
+      </tr>
+<% }); -%>
+    </tbody>
+  </table>
+</div>
+<% } -%>
+<% if (typeof teamPinned !== 'undefined' && teamPinned) { -%>
+<div class="table-wrap ledger-pinned" data-testid="team-leaderboard-you">
+  <p class="ledger-pinned-label"><%= t('leaderboard.team_pinned') %></p>
+  <table class="table">
+    <caption class="sr-only"><%= t('leaderboard.team_pinned') %></caption>
+    <thead><tr>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_rank') %></th>
+      <th scope="col" class="sr-only"><%= t('leaderboard.col_team') %></th>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_score') %></th>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_solved') %></th>
+      <th scope="col" class="num sr-only"><%= t('leaderboard.col_members') %></th>
+      <th scope="col" class="sr-only"><%= t('leaderboard.col_last') %></th>
+    </tr></thead>
+    <tbody>
+      <tr data-rank="<%= teamPinned.rank %>" data-team="<%= teamPinned.name %>" class="leaderboard-me" aria-current="true">
+        <td class="num"><%= teamPinned.rank %></td>
+        <th scope="row"><%= teamPinned.name %> <span class="muted"><%= t('leaderboard.team_you') %></span></th>
+        <td class="num"><%= teamPinned.score %></td>
+        <td class="num"><%= teamPinned.solved %></td>
+        <td class="num"><%= teamPinned.members %></td>
+        <td class="mono"><%= teamPinned.lastLabel || '—' %></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<% } -%>
+<% } -%>
+<% } else { -%>
 <% if (rows.length === 0) { -%>
 <div class="empty">
   <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-empty-scroll"></use></svg>
@@ -66,5 +141,6 @@
     </tbody>
   </table>
 </div>
+<% } -%>
 <% } -%>
 <% } -%>

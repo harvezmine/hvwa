@@ -13,7 +13,7 @@ import { createInstanceStore, isActiveState, type InstanceRecord, type InstanceS
 import type { RangeLimits } from './types.js';
 
 /** Why an instance stopped (stored in `reason`); a failure stores the warden's or the health check's code instead. */
-export const STOP_REASONS = Object.freeze(['user', 'replaced', 'idle', 'expired', 'lost', 'interrupted'] as const);
+export const STOP_REASONS = Object.freeze(['user', 'admin', 'replaced', 'idle', 'expired', 'lost', 'interrupted'] as const);
 export type StopReason = (typeof STOP_REASONS)[number];
 
 export interface LifecycleDeps {

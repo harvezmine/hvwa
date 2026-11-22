@@ -76,6 +76,28 @@ the Guild Hall ledger (with a `points / next` progress bar), the account menu, a
 distinct from the numeric `#1` position, which stays mono text. There is no rank entry in the DB; the existing score is
 the only source.
 
+**Teams and team mode.** One team per member, run from the `/team` page (plain form page: create with a name and a
+generated 8-char base32 join code, join by code, leave). A lab in team mode (an admin switch, default individual) gets a
+small mono `TEAM` badge (`data-mode="team"`) on its catalog card and dossier hero; individual labs get no badge. The
+Guild ledger has two plain-link tabs — Individual (unchanged) and Teams (`/leaderboard?board=teams`) — where a team's
+bounty is the sum of the best level any member proved per team-mode lab, with rank, score, solved, members and last
+solve. The badge is neutral ink (`.team-mode-badge`), never a coloured rail.
+
+**Admin dashboard (role admin, `src/range/admin.ts`).** An `Admin` masthead tab (admin only) opens `/admin`, with a
+compact five-link sub-nav — Overview / Activity / Instances / Teams / Labs (`.tabs.admin-tabs`). Players and anonymous
+users get the ordinary 404 / login for every `/admin/*` path, and the tab is not rendered for them. Overview is ledger
+stat cards (live/capacity, users, teams, exploits in 24h) plus a mono state-count strip (queued/starting/running/stopping),
+the **live exploit feed** (`/admin/live`, an `<ol class="admin-live">` polled by htmx every 5 s, `aria-live="polite"`,
+no focus steal — never a flag, only time/user/team/lab-level/points), the latest activity and a running-instances preview.
+Activity is the full feed with an event select (groups `range.*`, `team.*`, `auth.*`, `admin.*` plus exact events), user,
+team, lab and date filters and 50 rows per page. Instances is a Portainer-like table (instance id, user, team, lab/level,
+state, started, age, expires, the warden's container state where known) with a Stop action, then recently ended rows —
+read-only diagnostics, no socket/port/secret. Teams shows the join code, members (removable), score and created, with
+create/delete (confirm via `data-confirm`). Labs is one row per registry lab with its mode select and last-updated
+by/time; flipping a lab to team mode immediately shows the TEAM badge and feeds the team leaderboard. Everything uses the
+same paper/ink ledger surfaces, hairlines and mono machine strings — no coloured rails, no inline script/style; every
+state-changing form is CSRF + Origin + Sec-Fetch-Site guarded, and every value is escaped.
+
 **Type.** `--serif`: `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif` (display
 headings, the mission brief, contract titles); `--sans`: `ui-sans-serif, system-ui, "Segoe UI", Roboto,
 "Helvetica Neue", Arial, sans-serif` (body UI, controls, forms); `--mono`: `ui-monospace, "Cascadia Code", "JetBrains

@@ -37,7 +37,11 @@
       <nav class="site-nav" aria-label="<%= t('nav.main') %>">
 <% if (typeof portalNav !== 'undefined' && portalNav) { -%>
         <a href="/" class="nav-link" data-testid="nav-labs"<% if (navActive === 'labs') { %> aria-current="page"<% } %>><%= t('nav.labs') %></a>
+        <a href="/team" class="nav-link" data-testid="nav-team"<% if (navActive === 'team') { %> aria-current="page"<% } %>><%= t('nav.team') %></a>
         <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"<% if (navActive === 'leaderboard') { %> aria-current="page"<% } %>><%= t('nav.leaderboard') %></a>
+<% if (portalNav.admin) { -%>
+        <a href="/admin" class="nav-link" data-testid="nav-admin"<% if (navActive === 'admin') { %> aria-current="page"<% } %>><%= t('nav.admin') %></a>
+<% } -%>
 <% } else { -%>
         <a href="/" class="nav-link"><%= t('nav.districts') %></a>
         <a href="/scoreboard" class="nav-link"><%= t('nav.scoreboard') %></a>

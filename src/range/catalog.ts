@@ -1,6 +1,6 @@
 // src/range/catalog.ts — the range's read pages and hints (portal mode): the catalog (/), a lab's page (/labs/:id), a
 // paid hint unlock, and the leaderboard. Everything is the signed-in user's (src/range/progress.ts).
-import type { Request, Response, Router } from 'express';
+import type { Router } from 'express';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { escapeHtml, sendPage } from '../core/render.js';
@@ -11,22 +11,17 @@ import { DIFFICULTIES, labPoints, type Difficulty, type LabEntry } from '../lab-
 import { MY_LAB_RECENT_MS, panelFor } from './panel.js';
 import { leaderboard, rangeScore, rangeSolvesOf, rangeUnlockedTiers, unlockRangeHint, type Best, type LeaderRow } from './progress.js';
 import { nextRank, pointsToNext, rankFor } from './rank.js';
+import { labMode, labModes, type LabMode } from './modes.js';
+import { teamLeaderboard, teamOfUser, type TeamLeaderRow } from './teams.js';
 import { isActiveState } from './store.js';
 import type { RangeContext } from './types.js';
+import { isHtmx, userOf, type RangeUser } from './user.js';
+
+export { isHtmx, userOf, type RangeUser };
 
 export const rangeViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
 export const rangeView = (name: string) => join(rangeViewsDir, `${name}.ejs`);
 
-export interface RangeUser { readonly userId: number; readonly username: string; readonly role: 'player' | 'admin' }
-
-/** The signed-in user (the login gate runs before every range route). */
-export function userOf(res: Response): RangeUser {
-  const a = res.locals.platformAuth;
-  if (!a?.signedIn || a.userId === undefined || a.user === undefined) throw new Error('range: no signed-in user (is the login gate mounted?)');
-  return { userId: a.userId, username: a.user, role: a.role === 'admin' ? 'admin' : 'player' };
-}
-
-export const isHtmx = (req: Request) => req.get('HX-Request') === 'true';
 const isDifficulty = (x: unknown): x is Difficulty => typeof x === 'string' && (DIFFICULTIES as readonly string[]).includes(x);
 
 /** Solved per level, counted like the standalone portal: a scored level ranked at or below the best solved one. */
@@ -41,10 +36,13 @@ const THEME_ICONS: Readonly<Record<string, string>> = Object.freeze({
 });
 const themeIcon = (themeId: string) => THEME_ICONS[themeId.replace(/^theme-/, '')] ?? 'i-flask';
 
+/** A compact UTC stamp for the team leaderboard's last-solve column (deterministic, no locale/tz). */
+const utcStamp = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
+
 /** The monochrome seal mark for a difficulty: Roman numerals, so the adventurer rank (E–S) is the only letter rank. */
 const DIFFICULTY_MARK: Readonly<Record<Difficulty, string>> = Object.freeze({ easy: 'I', medium: 'II', hard: 'III', expert: 'IV' });
 
-export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (key: string) => string) {
+export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (key: string) => string, mode: LabMode = 'individual') {
   const levels = LEVELS.filter((l) => lab.levels.includes(l));
   const scored = levels.filter((l): l is Level => FLAG_LEVELS.includes(l));
   const bounty = scored.length > 0 ? Math.max(...scored.map((l) => labPoints(lab, l))) : 0;
@@ -53,6 +51,7 @@ export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (k
     difficultyLabel: t(`range.difficulty.${lab.difficulty}`), difficultyMark: DIFFICULTY_MARK[lab.difficulty],
     scenario: lab.scenario[lang], href: `/labs/${lab.id}`,
     solved: best !== undefined, best: best?.level, themeId: lab.themeId, icon: themeIcon(lab.themeId), bounty,
+    mode,
     levels: levels.map((l) => ({ id: l, solved: levelSolved(l, best), points: labPoints(lab, l) })),
   };
 }
@@ -92,6 +91,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const { userId } = userOf(res);
     const t = res.locals.t;
     const solves = rangeSolvesOf(db, userId);
+    const modes = labModes(db);
     const categories = [...new Set(registry.labs.map((l) => l.category))].sort((a, b) => a.localeCompare(b));
     const category = typeof req.query.category === 'string' && categories.includes(req.query.category) ? req.query.category : '';
     const difficulty = isDifficulty(req.query.difficulty) ? req.query.difficulty : '';
@@ -100,7 +100,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const needle = q.toLowerCase();
     const sort = req.query.sort === 'difficulty' || req.query.sort === 'solved' ? req.query.sort : 'app';
     const byApp = (a: { app: string }, b: { app: string }) => a.app.localeCompare(b.app);
-    const cards = registry.labs.map((lab) => labCard(lab, solves.get(lab.id), req.lang, t)).filter((c) =>
+    const cards = registry.labs.map((lab) => labCard(lab, solves.get(lab.id), req.lang, t, modes.get(lab.id))).filter((c) =>
       (category === '' || c.category === category) && (difficulty === '' || c.difficulty === difficulty)
       && (show === 'all' || (show === 'done') === c.solved)
       && (needle === '' || [c.app, c.title, c.scenario, c.category].some((s) => s.toLowerCase().includes(needle))));
@@ -131,9 +131,10 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const best = rangeSolvesOf(db, userId).get(lab.id);
     const currentLevel = clampLevel(req.level, lab.levels);
     const unlocked = new Set(rangeUnlockedTiers(db, userId, lab.id));
+    const mode = labMode(db, lab.id);
     await sendPage(res, rangeView('lab'), {
       pageTitle: `${lab.app} — ${lab.title[req.lang]}`,
-      lab: { ...labCard(lab, best, req.lang, t), briefing: lab.briefing[req.lang] },
+      lab: { ...labCard(lab, best, req.lang, t, mode), briefing: lab.briefing[req.lang] },
       best, currentLevel, csrf: auth.csrfFor(req),
       flash: req.query.r === 'wrong' ? 'wrong' : req.query.r === 'solved' && best ? 'solved' : '',
       panel: panelFor(ctx, req, res, lab, currentLevel, req.query.r === 'full' ? 'full' : undefined),
@@ -170,6 +171,23 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
   router.get('/leaderboard', async (req, res) => {
     const t = res.locals.t;
     const me = userOf(res).userId;
+    const board = req.query.board === 'teams' ? 'teams' : 'individual';
+    const crumbs = [{ label: t('nav.labs'), href: '/' }, { label: t('leaderboard.title') }];
+    if (board === 'teams') {
+      const rankOf = (r: TeamLeaderRow) => ({ ...r, lastLabel: r.lastSolveAt === 0 ? '' : utcStamp(r.lastSolveAt) });
+      const rows = teamLeaderboard(db, 100).map(rankOf);
+      const myTeamId = teamOfUser(db, me)?.id;
+      const viewer = rows.find((r) => r.teamId === myTeamId);
+      // The viewer's team, even beyond the top 100: pinned below when not already in the top three.
+      const beyond = myTeamId === undefined ? undefined : teamLeaderboard(db, 100_000).find((r) => r.teamId === myTeamId);
+      const teamPinned = viewer !== undefined && viewer.rank > 3 ? viewer : (beyond === undefined ? undefined : rankOf(beyond));
+      await sendPage(res, rangeView('leaderboard'), {
+        pageTitle: t('leaderboard.title'), board, crumbs, myTeamId,
+        rows: [], me, viewer: undefined, pinned: undefined,
+        teamRows: rows, teamViewer: viewer, teamPinned,
+      });
+      return;
+    }
     const rankOf = (r: LeaderRow) => ({ ...r, rankLetter: rankFor(r.score).letter });
     const rows = leaderboard(db, 100).map(rankOf);
     // The viewer's own row, even beyond the top 100: pinned below the table when it is not already in the top three.
@@ -177,8 +195,8 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const viewer = rows.find((r) => r.userId === me) ?? (beyond === undefined ? undefined : rankOf(beyond));
     const pinned = viewer !== undefined && viewer.rank > 3 ? viewer : undefined;
     await sendPage(res, rangeView('leaderboard'), {
-      pageTitle: t('leaderboard.title'), rows, me, viewer, pinned,
-      crumbs: [{ label: t('nav.labs'), href: '/' }, { label: t('leaderboard.title') }],
+      pageTitle: t('leaderboard.title'), board, rows, me, viewer, pinned, crumbs,
+      teamRows: [], myTeamId: undefined, teamViewer: undefined, teamPinned: undefined,
     });
   });
 }

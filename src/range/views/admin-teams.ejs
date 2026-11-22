@@ -1,0 +1,60 @@
+<%# Admin teams (src/range/admin.ts): the team table with the join code visible to the admin, a create form, delete
+   (confirm) and per-member remove. Players keep the /team join/create UX. Every value goes through the escaped output
+   tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('admin.teams_title') %></h1>
+</header>
+<%- include('admin-nav') %>
+<% if (error) { -%>
+<p class="result result-bad" role="alert" data-testid="admin-teams-error"><%= error %></p>
+<% } -%>
+<section class="card" aria-labelledby="admin-team-create">
+  <h2 class="board-title" id="admin-team-create"><%= t('admin.team_create_title') %></h2>
+  <form method="post" action="/admin/teams/create" class="team-form" data-testid="admin-team-create-form">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <div class="field">
+      <label for="admin-team-name"><%= t('team.name_label') %></label>
+      <input id="admin-team-name" type="text" name="name" minlength="3" maxlength="32" required autocomplete="off" placeholder="<%= t('team.name_placeholder') %>">
+      <p class="help"><%= t('team.name_help') %></p>
+    </div>
+    <button type="submit" class="btn btn-primary" data-testid="admin-team-create-submit"><%= t('team.create_button') %></button>
+  </form>
+</section>
+<div class="table-wrap">
+  <table class="table" data-testid="admin-teams-table">
+    <thead><tr>
+      <th scope="col"><%= t('admin.col_name') %></th><th scope="col"><%= t('admin.col_join_code') %></th><th scope="col"><%= t('admin.col_members') %></th><th scope="col" class="num"><%= t('admin.col_score') %></th><th scope="col"><%= t('admin.col_created') %></th><th scope="col"><span class="sr-only"><%= t('admin.team_delete') %></span></th>
+    </tr></thead>
+    <tbody>
+<% teams.forEach(function (team) { -%>
+      <tr data-team="<%= team.name %>" data-team-id="<%= team.id %>">
+        <th scope="row"><%= team.name %></th>
+        <td class="mono" data-testid="admin-team-join-code"><%= team.joinCode %></td>
+        <td>
+          <ul class="admin-members">
+<% team.members.forEach(function (m) { -%>
+            <li><span><%= m.username %></span>
+              <form method="post" action="/admin/teams/<%= team.id %>/members/<%= m.userId %>/remove" data-confirm="<%= t('admin.team_remove_confirm') %>">
+                <input type="hidden" name="_csrf" value="<%= csrf %>">
+                <button type="submit" class="btn btn-xs btn-quiet" data-testid="admin-team-remove"><%= t('admin.team_remove') %></button>
+              </form>
+            </li>
+<% }); -%>
+          </ul>
+        </td>
+        <td class="num"><%= team.score %></td>
+        <td class="mono"><%= team.created %></td>
+        <td>
+          <form method="post" action="/admin/teams/<%= team.id %>/delete" data-confirm="<%= t('admin.team_delete_confirm') %>">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <button type="submit" class="btn btn-xs btn-danger" data-testid="admin-team-delete"><%= t('admin.team_delete') %></button>
+          </form>
+        </td>
+      </tr>
+<% }); -%>
+<% if (teams.length === 0) { -%>
+      <tr><td colspan="6" class="muted"><%= t('admin.no_teams') %></td></tr>
+<% } -%>
+    </tbody>
+  </table>
+</div>

@@ -198,4 +198,12 @@ describe('reset and stop', () => {
     expect(lc.store.get(a.id)).toMatchObject({ state: 'stopped', reason: 'expired' });
     await lc.stopInstance(a.id, 'expired'); // already stopped: nothing happens
   });
+
+  it('stopInstance accepts the admin reason (the dashboard stop)', async () => {
+    const { lc, warden } = make();
+    const a = (await lc.launch(5, 'r01', 'acolyte') as { ok: true; instance: { id: string } }).instance;
+    await lc.stopInstance(a.id, 'admin');
+    expect(lc.store.get(a.id)).toMatchObject({ state: 'stopped', reason: 'admin' });
+    expect(warden.stopped).toContain(a.id);
+  });
 });

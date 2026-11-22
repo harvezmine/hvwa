@@ -3,11 +3,11 @@
    mission brief, intel (paid hints) and claim bounty on the left; the active-contract panel and how-it-works on the
    right. Hooks: briefing, range-level-<level> (data-solved, aria-current), hint-<tier>, lab-panel, submit-result.
    Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
-<header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>">
+<header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>"<% if (lab.mode === 'team') { %> data-mode="team"<% } %>>
   <div class="lab-hero-head">
     <div class="lab-hero-copy">
       <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t('range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %></p>
-      <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="diff-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span></p>
+      <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="diff-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span><% if (lab.mode === 'team') { %><span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span><% } %></p>
       <h1 class="page-title"><%= lab.title %></h1>
       <p class="dossier-subtitle"><%= lab.app %></p>
       <p class="contract-objective"><%= lab.scenario %></p>
