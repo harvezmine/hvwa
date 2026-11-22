@@ -187,6 +187,7 @@ td .muted{color:var(--dim)}
 .history .row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font:12.5px/1.4 var(--mono)}
 .history .row:last-child{border-bottom:0}
 .history .h-host{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history .h-label{color:var(--cyan)}
 .history .h-time{color:var(--dim);font-size:11.5px}
 .empty{color:var(--dim);font:12.5px/1.5 var(--mono);padding:6px 0}
 

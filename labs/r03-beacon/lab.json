@@ -5,7 +5,7 @@
   "app": "Beacon",
   "category": "Command injection",
   "difficulty": "medium",
-  "levels": ["acolyte", "templar", "divine"],
+  "levels": ["acolyte", "templar", "inquisitor", "divine"],
   "port": 8080,
   "health": "/healthz",
   "flag": { "placement": "file:/tmp/beacon/flag.txt" },
@@ -18,6 +18,6 @@
   "hints": [
     { "id": 1, "cost": 10, "text": { "en": "The diagnostics page does something with the host you enter. What does it do with it?", "id": "Halaman diagnostik melakukan sesuatu dengan host yang Anda masukkan. Apa yang dilakukannya?" } },
     { "id": 2, "cost": 20, "text": { "en": "The probe runs in a real shell. A shell runs more than one command if you let it.", "id": "Probe berjalan di shell sungguhan. Shell menjalankan lebih dari satu perintah jika Anda membiarkannya." } },
-    { "id": 3, "cost": 30, "text": { "en": "At Templar the obvious separators are blocked. A shell can run a command without any of them.", "id": "Di Templar pemisah yang jelas diblokir. Shell bisa menjalankan perintah tanpa satu pun dari mereka." } }
+    { "id": 3, "cost": 30, "text": { "en": "Inquisitor validates the host and runs no shell, but the report generator trusts the label you saved.", "id": "Inquisitor memvalidasi host dan tidak menjalankan shell, tetapi generator laporan memercayai label yang Anda simpan." } }
   ]
 }
