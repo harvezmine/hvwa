@@ -11,11 +11,11 @@
 POC HVWA Range adalah platform latihan keamanan web di mana **setiap user mendapat container lab sendiri** untuk setiap (challenge, level). POC terdiri dari:
 
 - **4 showcase lab + 1 lab hard-only**, masing-masing showcase lab punya **4 level**: Acolyte / Templar / **Inquisitor** (dieksploitasi dan dinilai) + Divine (referensi aman, tanpa flag):
-  - **r01 Mercy Clinic** — *The Quiet Ward* — SQL injection (Easy)
-  - **r02 Courier** — *Return to Nowhere* — Broken access control (Easy)
-  - **r03 Beacon** — *Static Bloom* — OS command injection (Medium)
-  - **r04 Postcard** — *The Paper Cut* — Server-side template injection (Hard)
-  - **r05 Binanse** — *The Cold Ledger* — Stored XSS (Hard, **Inquisitor-only**: tanpa pilihan difficulty dan tanpa Divine)
+  - **r01 Mercy Clinic** — *I Trusted the Search Bar* — SQL injection (Easy)
+  - **r02 Courier** — *Oops, That Parcel Wasn't Mine* — Broken access control (Easy)
+  - **r03 Beacon** — *It's Just a Ping, Bro* — OS command injection (Medium)
+  - **r04 Postcard** — *My Greeting Card Is Possessed* — Server-side template injection (Hard)
+  - **r05 Binanse** — *I Believe My Crypto Web Is Very Secure* — Stored XSS (Hard, **Inquisitor-only**: tanpa pilihan difficulty dan tanpa Divine)
 - **Nama challenge bergaya riddle** menjadi judul utama yang dilihat pemain; nama produk in-world (Mercy Clinic, Courier, Beacon, Postcard, Binanse) tetap sebagai konteks sekunder. Setiap lab punya 3 hint riddle bilingual.
 - **Portal** dengan registrasi terbuka, login, katalog, hint berbayar, leaderboard, panel Lab, submit flag, serta satu instance aktif per user.
 - **Warden** sebagai satu-satunya komponen yang boleh membuat/menghapus container lab, melalui Docker socket proxy yang dibatasi.

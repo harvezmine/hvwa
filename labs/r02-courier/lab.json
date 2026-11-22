@@ -1,7 +1,7 @@
 {
   "id": "r02",
   "slug": "courier",
-  "title": { "en": "Return to Nowhere", "id": "Kembali ke Entah" },
+  "title": { "en": "Oops, That Parcel Wasn't Mine", "id": "Ups, Paket Itu Bukan Punya Saya" },
   "app": "Courier",
   "category": "Broken access control",
   "difficulty": "easy",

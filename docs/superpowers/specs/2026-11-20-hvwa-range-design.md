@@ -408,7 +408,7 @@ exploit. Where this section says three levels, read four.
 
 **Binanse / riddle amendment (owner, 2026-11-22).** A fifth hard-only lab **r05 Binanse** (stored XSS) joins the POC
 with a single **Inquisitor** level: no difficulty choice and no Divine reference. Challenge titles are now
-riddle-style — r01 The Quiet Ward, r02 Return to Nowhere, r03 Static Bloom, r04 The Paper Cut, r05 The Cold Ledger —
+riddle-style — r01 I Trusted the Search Bar, r02 Oops, That Parcel Wasn't Mine, r03 It's Just a Ping, Bro, r04 My Greeting Card Is Possessed, r05 I Believe My Crypto Web Is Very Secure —
 with three riddle hints each; the in-world product names (Mercy Clinic, Courier, Beacon, Postcard, Binanse) stay as
 secondary context, and the challenge title is the primary UI heading. Maximum bounty becomes **3750** (rank S at
 3750). No other POC changes.

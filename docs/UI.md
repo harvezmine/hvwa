@@ -65,7 +65,7 @@ lab bar's switcher and the dossier's tier rows. Any element with `data-level="<l
 `--lv` and `--lv-bg`. Tiers are drawn as **monochrome seals, mono text and tonal washes** — never a coloured rail or a
 solid level card. Colour is never the only signal: the tier's name is always written.
 
-**Contracts.** The challenge `title` is the player-facing riddle name and the primary heading (catalog card, lab `h1`, continue slip, My Lab chip); the in-world `app` name stays as the muted secondary line. Five labs: r01 The Quiet Ward (Mercy Clinic), r02 Return to Nowhere (Courier), r03 Static Bloom (Beacon), r04 The Paper Cut (Postcard), r05 The Cold Ledger (Binanse). r05 is hard-only, with a single Inquisitor tier and no Divine reference.
+**Contracts.** The challenge `title` is the player-facing riddle name and the primary heading (catalog card, lab `h1`, continue slip, My Lab chip); the in-world `app` name stays as the muted secondary line. Five labs: r01 I Trusted the Search Bar (Mercy Clinic), r02 Oops, That Parcel Wasn't Mine (Courier), r03 It's Just a Ping, Bro (Beacon), r04 My Greeting Card Is Possessed (Postcard), r05 I Believe My Crypto Web Is Very Secure (Binanse). r05 is hard-only, with a single Inquisitor tier and no Divine reference.
 
 **Adventurer rank (E → S).** Derived from bounty points (`src/range/rank.ts`), never stored: E 0, D 300, C 1000, B 2000,
 A 3000, S 3750. Everyone starts at E; the names are Initiate / Scout / Adept / Veteran / Elite / Legend (Pemula /

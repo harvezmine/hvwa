@@ -1,7 +1,7 @@
 {
   "id": "r05",
   "slug": "binanse",
-  "title": { "en": "The Cold Ledger", "id": "Buku Besar Dingin" },
+  "title": { "en": "I Believe My Crypto Web Is Very Secure", "id": "Saya Yakin Web Kripto Saya Sangat Aman" },
   "app": "Binanse",
   "category": "Stored XSS",
   "difficulty": "hard",
