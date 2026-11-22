@@ -97,12 +97,15 @@
   <% } -%>
   <div class="catalog-grid">
 <% cards.forEach(function (c) { -%>
-    <a class="contract-slip lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>">
+    <a class="contract-slip lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>"<% if (c.mode === 'team') { %> data-mode="team"<% } %>>
       <svg class="icon slip-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg>
       <div class="slip-head">
         <span class="category-tab"><%= c.category %></span>
         <span class="diff-seal seal seal-sm" aria-hidden="true"><%= c.difficultyMark %></span>
         <span class="difficulty-label"><%= c.difficultyLabel %></span>
+<% if (c.mode === 'team') { -%>
+        <span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span>
+<% } -%>
         <span class="pin-dot" aria-hidden="true"></span>
       </div>
       <h2 class="contract-app"><%= c.title %></h2>

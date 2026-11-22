@@ -540,6 +540,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   color: var(--text-muted); background: var(--surface-2);
 }
 .tag { font-family: var(--mono); font-weight: 500; }
+/* The team-mode mark on a lab card / dossier: neutral ink, mono caps (never a coloured rail). */
+.team-mode-badge { font-family: var(--mono); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
 .tags { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-4); padding: 0; list-style: none; }
 .badge-ok { color: var(--success); border-color: var(--success-border); background: var(--success-bg); }
 .badge-ok::before, .badge-solved::before {
