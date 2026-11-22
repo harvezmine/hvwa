@@ -14,6 +14,7 @@
       "levels": [
         "acolyte",
         "templar",
+        "inquisitor",
         "divine"
       ],
       "port": 8080,
@@ -62,13 +63,13 @@
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "At Templar the filter removes two keywords once. One pass is not enough when a keyword can hide inside itself.",
-            "id": "Di Templar filter menghapus dua kata kunci sekali. Satu lintasan tidak cukup ketika kata kunci bisa bersembunyi di dalam dirinya sendiri."
+            "en": "Inquisitor hides staff rows from the search, but the clinic keeps service tokens in the same database. Look beyond the notices table.",
+            "id": "Inquisitor menyembunyikan baris staf dari pencarian, tetapi klinik menyimpan service token di database yang sama. Lihat lebih dari tabel notices."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:8710c6952cca80bbeb9226b12f4db499d0d99f17bc2706073523fff235d0883e"
+      "image": "sha256:6d631cc102cf164fc6b71cd3d34175721979dd22178e0ec7bbd4804744943843"
     },
     {
       "id": "r02",
@@ -83,6 +84,7 @@
       "levels": [
         "acolyte",
         "templar",
+        "inquisitor",
         "divine"
       ],
       "port": 8080,
@@ -131,13 +133,13 @@
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "At Templar the detail view guards ownership. The label does the same job — does it guard it too?",
-            "id": "Di Templar tampilan detail menjaga kepemilikan. Label melakukan tugas yang sama — apakah ia juga menjaganya?"
+            "en": "Inquisitor wants an API key on every parcel route. Support may hand out a customer's key if you ask for the right customer.",
+            "id": "Inquisitor meminta API key di setiap rute paket. Bagian support mungkin memberikan key pelanggan jika Anda meminta pelanggan yang tepat."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:5a66e324701716d19ad32dd51ded509e5238830da1ed946af089eb35f41f8b96"
+      "image": "sha256:55c7408367c335c1461f48cf012dfa9f0932ec11b3c8de475cab1507e38274eb"
     },
     {
       "id": "r03",
@@ -152,6 +154,7 @@
       "levels": [
         "acolyte",
         "templar",
+        "inquisitor",
         "divine"
       ],
       "port": 8080,
@@ -200,13 +203,13 @@
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "At Templar the obvious separators are blocked. A shell can run a command without any of them.",
-            "id": "Di Templar pemisah yang jelas diblokir. Shell bisa menjalankan perintah tanpa satu pun dari mereka."
+            "en": "Inquisitor validates the host and runs no shell, but the report generator trusts the label you saved.",
+            "id": "Inquisitor memvalidasi host dan tidak menjalankan shell, tetapi generator laporan memercayai label yang Anda simpan."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:70e8d864128959d6ff879fcfd4893fcd07390d7dd269cb22599055940b359e3f"
+      "image": "sha256:d307a8ca5da44c0ab16ffbbc825854145564cc003377b291720c118d5d294bc0"
     },
     {
       "id": "r04",
@@ -221,6 +224,7 @@
       "levels": [
         "acolyte",
         "templar",
+        "inquisitor",
         "divine"
       ],
       "port": 5000,
@@ -269,13 +273,13 @@
           "id": 3,
           "cost": 45,
           "text": {
-            "en": "At Templar certain words and double underscores are refused outright. The engine can still be handed those names if they are never spelled out.",
-            "id": "Di Templar kata-kata tertentu dan garis bawah ganda ditolak langsung. Mesin tetap bisa menerima nama itu jika tidak pernah dieja."
+            "en": "Inquisitor's preview no longer renders your message; the print step still does.",
+            "id": "Pratinjau Inquisitor tidak lagi merender pesan Anda; langkah cetak masih melakukannya."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:47a4899cda6d7fa5bc0940b96e551ad5bca4778de4a49c08a656ff04a3fff9d4"
+      "image": "sha256:4920455fe052a35ceac461ce589498be0de42ba2135d105fbe0e8d5f45a637c9"
     }
   ]
 }
