@@ -40,8 +40,8 @@ const THEME_ICONS: Readonly<Record<string, string>> = Object.freeze({
 });
 const themeIcon = (themeId: string) => THEME_ICONS[themeId.replace(/^theme-/, '')] ?? 'i-flask';
 
-/** The monochrome rank-seal letter for a difficulty (E / M / H / X). */
-const DIFFICULTY_MARK: Readonly<Record<Difficulty, string>> = Object.freeze({ easy: 'E', medium: 'M', hard: 'H', expert: 'X' });
+/** The monochrome seal mark for a difficulty: Roman numerals, so the adventurer rank (E–S) is the only letter rank. */
+const DIFFICULTY_MARK: Readonly<Record<Difficulty, string>> = Object.freeze({ easy: 'I', medium: 'II', hard: 'III', expert: 'IV' });
 
 export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (key: string) => string) {
   const levels = LEVELS.filter((l) => lab.levels.includes(l));

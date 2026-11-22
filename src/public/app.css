@@ -566,6 +566,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 /* A monochrome seal: an outlined ring carrying a letter/numeral. */
 .seal {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
+  vertical-align: middle;
   width: 2.25rem; height: 2.25rem;
   border: 1.5px solid var(--border-strong); border-radius: 50%;
   font-family: var(--mono); font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.02em;
@@ -1338,8 +1339,10 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .ledger-podium > li { border-bottom: 1px solid var(--border); }
 .podium-row { display: grid; grid-template-columns: 3rem 1fr auto; gap: var(--sp-3); align-items: center; padding: var(--sp-3) 0; }
 .podium-rank { font-family: var(--mono); font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-muted); }
-.podium-name { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+.podium-name { display: inline-flex; align-items: center; gap: var(--sp-2); font-family: var(--serif); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+.podium-name .rank-seal { flex: none; }
 .podium-name .you { font-family: var(--mono); font-size: var(--fs-label); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.table th .rank-seal, .table td .rank-seal { margin-right: var(--sp-2); }
 .podium-stat { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: var(--fs-sm); }
 .podium-stat b { display: block; font-size: var(--fs-lg); color: var(--text); }
 .leaderboard-top-1 .podium-rank { color: var(--copper); }
