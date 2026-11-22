@@ -5,7 +5,7 @@
   "app": "Courier",
   "category": "Broken access control",
   "difficulty": "easy",
-  "levels": ["acolyte", "templar", "divine"],
+  "levels": ["acolyte", "templar", "inquisitor", "divine"],
   "port": 8080,
   "health": "/healthz",
   "flag": { "placement": "custom" },
@@ -18,6 +18,6 @@
   "hints": [
     { "id": 1, "cost": 10, "text": { "en": "Open the demo dashboard and watch what requests it makes for your parcels.", "id": "Buka dasbor demo dan amati permintaan apa yang dibuatnya untuk paket Anda." } },
     { "id": 2, "cost": 20, "text": { "en": "Parcel numbers are predictable. Yours begin with 2. What begins with 1?", "id": "Nomor paket dapat ditebak. Milik Anda dimulai dengan 2. Apa yang dimulai dengan 1?" } },
-    { "id": 3, "cost": 30, "text": { "en": "At Templar the detail view guards ownership. The label does the same job — does it guard it too?", "id": "Di Templar tampilan detail menjaga kepemilikan. Label melakukan tugas yang sama — apakah ia juga menjaganya?" } }
+    { "id": 3, "cost": 30, "text": { "en": "Inquisitor wants an API key on every parcel route. Support may hand out a customer's key if you ask for the right customer.", "id": "Inquisitor meminta API key di setiap rute paket. Bagian support mungkin memberikan key pelanggan jika Anda meminta pelanggan yang tepat." } }
   ]
 }
