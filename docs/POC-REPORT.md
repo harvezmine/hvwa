@@ -10,7 +10,7 @@
 
 POC HVWA Range adalah platform latihan keamanan web di mana **setiap user mendapat container lab sendiri** untuk setiap (challenge, level). POC terdiri dari:
 
-- **4 showcase lab**, masing-masing 3 level (Acolyte / Templar / Divine):
+- **4 showcase lab**, masing-masing **4 level**: Acolyte / Templar / **Inquisitor** (dieksploitasi dan dinilai) + Divine (referensi aman, tanpa flag):
   - **r01 Mercy Clinic** — SQL injection (Easy)
   - **r02 Courier** — Broken access control (Easy)
   - **r03 Beacon** — OS command injection (Medium)
@@ -26,11 +26,11 @@ Hasil verifikasi lokal terakhir:
 |---|---|
 | `npx vitest run` | **4557 test lulus** (152 file) |
 | `npm run typecheck` | exit 0 |
-| `npm run labs:test` | **80 PASS** — 4 lab × 3 level, termasuk check no-leak |
+| `npm run labs:test` | **112 PASS** — 4 lab × 4 level, termasuk check no-leak |
 | `npm run range:verify` | **16/16 PASS**, launch-to-ready 1.0–1.5 s |
 | `npm run verify:dist` (full + lite) | OK |
 | `npm run range:build` | image portal & warden dibuat |
-| `npm run poc:e2e` | **PASS 4 lab × 3 level, 119 check** |
+| `npm run poc:e2e` | **PASS 4 lab × 4 level** (angka final menyusul run E2E) |
 | UI | **Guild Ledger** light/dark, rank E–S, 8 ilustrasi custom, toast |
 | Commit attribution | **0** (`Co-Authored-By`/Claude/chatbot tidak dipakai) |
 
@@ -40,7 +40,7 @@ Hasil verifikasi lokal terakhir:
 
 Keputusan owner 2026-11-21/22 yang menjadi batas POC:
 
-- **4 lab × 3 level**, tanpa Inquisitor.
+- **4 lab × 4 level**; Inquisitor dikembalikan sebagai level **chain** (dieksploitasi & dinilai), Divine tetap referensi aman.
 - **Tanpa** victim bot, FIFO queue, Extend, ceiling, event code, admin pages.
 - **Satu container per (user, challenge, level)**; **satu instance aktif per user** (launch lain menghentikan instance sebelumnya).
 - Capacity penuh → launch ditolak `full`; idle 20 menit, lifetime maksimum 60 menit; Reset dan Stop tetap ada.
@@ -82,6 +82,7 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - Direktori **10 staf** dengan departemen, ruang, ekstensi, bio; halaman departemen.
 - Halaman `/departments`, `/appointments` (form booking simulasi), `/about`, `/contact`, `/opening-hours`.
 - Notice staf kedua yang wajar (rota) menjadi "noise" di samping notice flag saat UNION.
+- **Inquisitor (chain):** pencarian memakai DB publik terpisah (`public.db`) yang hanya berisi notices publik + `staff_tokens`; flag/staff notice tetap di DB utama. SQLi 4 kolom membocorkan **service token** 32-hex, lalu `/staff/notices?token=` membaca staff notices dari DB utama. UNION langsung ke staff notice tidak bisa karena flag tidak ada di DB pencarian; `ATTACH` tidak bisa menjembatani dua DB lewat satu statement.
 - Identitas visual teal/cream, mark/favicon SVG, 404/500 bergaya, responsive 375 px.
 
 ### r02 — Courier (Broken access control, Easy)
@@ -91,6 +92,7 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - **6 paket vault** (1001–1006); 1001 pembawa flag, sisanya note decoy yang wajar.
 - Halaman `/account`, `/support`, `/pricing`, `/faq`, `/signin`; landing menjelaskan demo mode.
 - Dashboard melakukan refresh API nyata (`POST /api/session` → `GET /api/parcels`) sehingga endpoint terlihat natural di DevTools.
+- **Inquisitor (chain):** semua rute parcel mewajibkan `X-Api-Key` milik pemilik parcel; endpoint support IDOR membocorkan API key customer `vault`; key itu dipakai bersama sesi demo untuk membaca parcel 1001. Key kosong/salah 403; Divine menolak kombinasi sesi demo + key vault.
 - Identitas orange/navy, mark/favicon, status chip, print CSS, styled 404/500, responsive.
 
 ### r03 — Beacon (Command injection, Medium)
@@ -99,7 +101,8 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - Halaman `/network` (uplink, DHCP lease, interface, firewall, client), `/wifi` (SSID/WPA3, channel, client + signal bar), `/logs` (syslog + recent probes), `/firmware`, `/system`.
 - `/status` kini human-readable, bukan dump JSON.
 - `/diagnostics`: preset target, output terminal dengan timestamp/exit code, spinner CSS, daftar recent probes (escaped, in-memory).
-- Reboot simulasi murni CSS; tidak ada sink shell baru.
+- Reboot simulasi murni CSS.
+- **Inquisitor (chain):** host divalidasi ketat dan dijalankan via `execFile` (tanpa shell), tetapi `label` disimpan; `/diagnostics/report` menjalankan shell dengan label tersimpan (second-order command injection) dan menampilkan report. Dua sink shell total: `diag.mjs` dan `report.mjs`.
 - Identitas dark/lime, LED, ilustrasi SVG, favicon, responsive.
 
 ### r04 — Postcard (SSTI, Hard)
@@ -109,6 +112,7 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - `/preview`: kartu dengan print CSS, flip front/back statis (CSS 3D), metadata gaya, "Send" simulasi, "Edit".
 - Halaman `/orders`, `/about`, `/pricing`, `/faq`, `/shipping`, `/contact`.
 - Status studio statis ("press queue: 3 cards ahead", same-day cutoff).
+- **Inquisitor (chain):** `/preview` tidak merender pesan; menyimpan draft (≤32, id acak) dan mengembalikan `data-draft`; `/orders/<id>/print` merender draft sebagai template (second-order SSTI). Divine merender draft sebagai data (escaped), jadi payload tidak dieksekusi.
 - Identitas rose/plum, tekstur card stock, SVG mark/favicon, styled rejection card, 404/500, 375 px.
 
 ### Flow portal
@@ -148,7 +152,7 @@ Perubahan keamanan 22 November 2026:
 - Lab membaca file itu saat start, **menghapusnya**, lalu menanam flag di lokasi manifest (DB/record/file). Divine tidak menunggu file dan menanam decoy.
 - Flag tidak ada di: environment proses, `/proc/self/environ`, image, container config, `docker inspect`, `docker logs`, log portal/warden, HTML biasa, URL, DB (hanya SHA-256), atau tiket gate.
 - Check otomatis:
-  - `labs:test`: 36 check no-leak (inspect + logs + image/config + file one-shot hilang) per lab/level.
+  - `labs:test`: cek no-leak di setiap level (inspect + logs + image/config + file one-shot hilang), termasuk Inquisitor.
   - `range:verify`: 16 check, termasuk log portal/warden, inspect/log instance, dan file one-shot hilang.
 - **Residual exposure (owner-only):** flag sesaat terlihat di exec store Docker (`GET /exec/{id}/json`), hanya bisa diakses lewat socket proxy tulis yang hanya dijangkau warden; proxy read-only tetap `EXEC=0`. Pemain tidak punya rute ke proxy tersebut. Ini didokumentasikan di spec dan plan.
 
@@ -193,13 +197,13 @@ Belum dikerjakan (dicatat jujur):
 
 ### 7.1 Unit/integration (`npm test`)
 
-- **4557 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S, dan UI token/contrast.
+- **4557 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3150), level Inquisitor/four-level manifest, dan UI token/contrast.
 - `npm run typecheck` exit 0.
 - Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4557/4557**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
 
 ### 7.2 Black-box lab (`npm run labs:test`)
 
-- **80 PASS**: per lab/level — health, solve referensi mendapat flag level itu, solve level bawah gagal di level atas, Divine menolak semua solve, browse tidak membocorkan flag, tidak ada egress, **inspect/log/image/config tidak mengandung `HVWA{`**, file one-shot hilang.
+- **112 PASS**: 4 lab × 4 level — health, solve referensi mendapat flag level itu (termasuk Inquisitor chain), solve level bawah gagal di level atas, Divine menolak semua solve, browse tidak membocorkan flag, tidak ada egress, **inspect/log/image/config tidak mengandung `HVWA{`**, file one-shot hilang.
 
 ### 7.3 Platform E2E (`npm run range:verify`)
 
