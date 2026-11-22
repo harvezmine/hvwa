@@ -1,0 +1,92 @@
+<%# Admin overview (src/range/admin.ts): ledger cards, the live exploit feed, the latest activity and a compact
+   running-instances preview. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS
+   comment: it breaks parsing. %>
+<header class="page-head">
+  <div class="board-head">
+    <svg class="icon laurel" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-shield"></use></svg>
+    <h1 class="page-title"><%= t('admin.title') %></h1>
+  </div>
+</header>
+<%- include('admin-nav') %>
+<div class="stat-row">
+  <div class="card stat">
+    <div class="stat-label"><%= t('admin.stat.live') %></div>
+    <div class="stat-value" data-testid="admin-live"><%= live %> <span class="stat-of"><%= t('admin.of_capacity').replace('{n}', capacity) %></span></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label"><%= t('admin.stat.users') %></div>
+    <div class="stat-value" data-testid="admin-users"><%= users %></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label"><%= t('admin.stat.teams') %></div>
+    <div class="stat-value" data-testid="admin-teams"><%= teams %></div>
+  </div>
+  <div class="card stat">
+    <div class="stat-label"><%= t('admin.stat.exploits') %></div>
+    <div class="stat-value" data-testid="admin-exploits"><%= exploits %></div>
+  </div>
+</div>
+<% if (nearCapacity) { -%>
+<p class="result result-bad" role="alert" data-testid="admin-near-capacity"><%= t('admin.capacity_warn') %></p>
+<% } -%>
+<p class="admin-states" data-testid="admin-states">
+  <span class="badge"><%= t('range.state.queued') %> <span class="mono"><%= states.queued %></span></span>
+  <span class="badge"><%= t('range.state.starting') %> <span class="mono"><%= states.starting %></span></span>
+  <span class="badge"><%= t('range.state.running') %> <span class="mono"><%= states.running %></span></span>
+  <span class="badge"><%= t('range.state.stopping') %> <span class="mono"><%= states.stopping %></span></span>
+</p>
+<section aria-labelledby="admin-live-title">
+  <div class="board-head">
+    <h2 class="board-title" id="admin-live-title"><%= t('admin.live_title') %></h2>
+  </div>
+  <%- include('admin-live') %>
+</section>
+<section aria-labelledby="admin-activity-title">
+  <div class="board-head">
+    <h2 class="board-title" id="admin-activity-title"><%= t('admin.activity_title') %></h2>
+    <a class="btn btn-secondary btn-sm" href="/admin/activity" data-testid="admin-activity-link"><%= t('admin.view_all') %></a>
+  </div>
+  <div class="table-wrap">
+    <table class="table" data-testid="admin-activity-preview">
+      <thead><tr><th scope="col"><%= t('admin.col_time') %></th><th scope="col"><%= t('admin.col_event') %></th><th scope="col"><%= t('admin.col_user') %></th><th scope="col"><%= t('admin.col_lab') %></th></tr></thead>
+      <tbody>
+<% activity.forEach(function (r) { -%>
+        <tr data-event="<%= r.event %>">
+          <td class="mono"><%= r.at %></td>
+          <td class="mono"><%= r.event %></td>
+          <td><%= r.user %></td>
+          <td class="mono"><%= r.lab %><% if (r.level) { %> · <%= r.level %><% } %></td>
+        </tr>
+<% }); -%>
+<% if (activity.length === 0) { -%>
+        <tr><td colspan="4" class="muted"><%= t('admin.empty') %></td></tr>
+<% } -%>
+      </tbody>
+    </table>
+  </div>
+</section>
+<section aria-labelledby="admin-instances-title">
+  <div class="board-head">
+    <h2 class="board-title" id="admin-instances-title"><%= t('admin.instances_title') %></h2>
+    <a class="btn btn-secondary btn-sm" href="/admin/instances" data-testid="admin-instances-link"><%= t('admin.view_all') %></a>
+  </div>
+  <div class="table-wrap">
+    <table class="table" data-testid="admin-instances-preview">
+      <thead><tr><th scope="col"><%= t('admin.col_instance') %></th><th scope="col"><%= t('admin.col_user') %></th><th scope="col"><%= t('admin.col_lab') %></th><th scope="col"><%= t('admin.col_state') %></th><th scope="col"><%= t('admin.col_age') %></th></tr></thead>
+      <tbody>
+<% instances.forEach(function (r) { -%>
+        <tr data-instance="<%= r.id %>" data-state="<%= r.state %>">
+          <td class="mono"><%= r.displayId %></td>
+          <td><%= r.user %></td>
+          <td class="mono"><%= r.lab %> · <%= r.level %></td>
+          <td><span class="badge" data-state="<%= r.state %>"><%= t('range.state.' + r.state) %></span></td>
+          <td class="mono"><%= r.age %></td>
+        </tr>
+<% }); -%>
+<% if (instances.length === 0) { -%>
+        <tr><td colspan="5" class="muted"><%= t('admin.no_instances') %></td></tr>
+<% } -%>
+      </tbody>
+    </table>
+  </div>
+</section>

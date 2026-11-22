@@ -1,0 +1,70 @@
+<%# Admin instances (src/range/admin.ts): a compact Portainer-like list. Active instances (queued/starting/running/
+   stopping) with a Stop action, then recently ended (stopped/failed) ones. Read-only diagnostics: the warden's container
+   state is shown where it is known, never a socket, port or secret. Every value goes through the escaped output tag.
+   Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('admin.instances_title') %></h1>
+  <p class="page-lead mono" data-testid="admin-live-count"><%= t('admin.live_count').replace('{n}', live).replace('{capacity}', capacity) %></p>
+</header>
+<%- include('admin-nav') %>
+<% if (nearCapacity) { -%>
+<p class="result result-bad" role="alert" data-testid="admin-near-capacity"><%= t('admin.capacity_warn') %></p>
+<% } -%>
+<% if (wardenDown) { -%>
+<p class="result" role="status" data-testid="admin-warden-down"><%= t('admin.warden_down') %></p>
+<% } -%>
+<div class="table-wrap">
+  <table class="table" data-testid="admin-instances-table">
+    <thead><tr>
+      <th scope="col"><%= t('admin.col_instance') %></th><th scope="col"><%= t('admin.col_user') %></th><th scope="col"><%= t('admin.col_team') %></th><th scope="col"><%= t('admin.col_lab') %></th><th scope="col"><%= t('admin.col_state') %></th><th scope="col"><%= t('admin.col_started') %></th><th scope="col"><%= t('admin.col_age') %></th><th scope="col"><%= t('admin.col_expires') %></th><th scope="col"><%= t('admin.col_container') %></th><th scope="col"><span class="sr-only"><%= t('admin.stop_confirm') %></span></th>
+    </tr></thead>
+    <tbody>
+<% active.forEach(function (r) { -%>
+      <tr data-instance="<%= r.id %>" data-state="<%= r.state %>">
+        <td class="mono"><%= r.id %></td>
+        <td><%= r.user %></td>
+        <td><%= r.team %></td>
+        <td class="mono"><%= r.lab %> · <%= r.level %></td>
+        <td><span class="badge" data-state="<%= r.state %>"><%= t('range.state.' + r.state) %></span></td>
+        <td class="mono"><%= r.started %></td>
+        <td class="mono"><%= r.age %></td>
+        <td class="mono"><%= r.expires || '—' %></td>
+        <td class="mono"><%= r.container || '—' %></td>
+        <td>
+<% if (r.state === 'queued' || r.state === 'starting' || r.state === 'running') { -%>
+          <form method="post" action="/admin/instances/<%= r.id %>/stop" data-confirm="<%= t('admin.stop_confirm') %>">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <button type="submit" class="btn btn-xs btn-danger" data-testid="admin-stop"><%= t('admin.team_delete') %></button>
+          </form>
+<% } -%>
+        </td>
+      </tr>
+<% }); -%>
+<% if (active.length === 0) { -%>
+      <tr><td colspan="10" class="muted"><%= t('admin.no_instances') %></td></tr>
+<% } -%>
+    </tbody>
+  </table>
+</div>
+<% if (ended.length > 0) { -%>
+<div class="board-head">
+  <h2 class="board-title"><%= t('admin.ended_title') %></h2>
+</div>
+<div class="table-wrap">
+  <table class="table" data-testid="admin-ended-table">
+    <thead><tr><th scope="col"><%= t('admin.col_instance') %></th><th scope="col"><%= t('admin.col_user') %></th><th scope="col"><%= t('admin.col_lab') %></th><th scope="col"><%= t('admin.col_state') %></th><th scope="col"><%= t('admin.col_detail') %></th><th scope="col"><%= t('admin.col_time') %></th></tr></thead>
+    <tbody>
+<% ended.forEach(function (r) { -%>
+      <tr data-instance="<%= r.id %>" data-state="<%= r.state %>">
+        <td class="mono"><%= r.id %></td>
+        <td><%= r.user %></td>
+        <td class="mono"><%= r.lab %> · <%= r.level %></td>
+        <td><span class="badge" data-state="<%= r.state %>"><%= t('range.state.' + r.state) %></span></td>
+        <td class="mono"><%= r.reason %></td>
+        <td class="mono"><%= r.stopped %></td>
+      </tr>
+<% }); -%>
+    </tbody>
+  </table>
+</div>
+<% } -%>

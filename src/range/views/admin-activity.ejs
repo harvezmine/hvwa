@@ -1,0 +1,73 @@
+<%# Admin activity (src/range/admin.ts): the full feed with filters (event select with groups, user, team, lab, date) and
+   50 rows per page. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it
+   breaks parsing. %>
+<header class="page-head">
+  <h1 class="page-title"><%= t('admin.activity_title') %></h1>
+</header>
+<%- include('admin-nav') %>
+<form method="get" action="/admin/activity" class="range-filters" data-testid="admin-activity-filters">
+  <div class="field">
+    <label for="a-event"><%= t('admin.filter_event') %></label>
+    <select id="a-event" name="event">
+<% eventOptions.forEach(function (o) { -%>
+      <option value="<%= o.value %>"<% if (filter.event === o.value) { %> selected<% } %>><%= o.label %></option>
+<% }); -%>
+    </select>
+  </div>
+  <div class="field">
+    <label for="a-user"><%= t('admin.filter_user') %></label>
+    <input id="a-user" type="search" name="user" value="<%= filter.user %>">
+  </div>
+  <div class="field">
+    <label for="a-team"><%= t('admin.filter_team') %></label>
+    <input id="a-team" type="search" name="team" value="<%= filter.team %>">
+  </div>
+  <div class="field">
+    <label for="a-lab"><%= t('admin.filter_lab') %></label>
+    <select id="a-lab" name="lab">
+      <option value=""><%= t('admin.filter_all') %></option>
+<% labIds.forEach(function (id) { -%>
+      <option value="<%= id %>"<% if (filter.lab === id) { %> selected<% } %>><%= id %></option>
+<% }); -%>
+    </select>
+  </div>
+  <div class="field">
+    <label for="a-date"><%= t('admin.filter_date') %></label>
+    <input id="a-date" type="date" name="date" value="<%= filter.date %>">
+  </div>
+  <button type="submit" class="btn btn-secondary"><%= t('admin.filter_apply') %></button>
+</form>
+<p class="admin-count mono" data-testid="admin-activity-count"><%= t('admin.count').replace('{n}', total) %></p>
+<div class="table-wrap">
+  <table class="table" data-testid="admin-activity-table">
+    <thead><tr>
+      <th scope="col"><%= t('admin.col_time') %></th><th scope="col"><%= t('admin.col_event') %></th><th scope="col"><%= t('admin.col_user') %></th><th scope="col"><%= t('admin.col_team') %></th><th scope="col"><%= t('admin.col_lab') %></th><th scope="col"><%= t('admin.col_detail') %></th><th scope="col"><%= t('admin.col_ip') %></th>
+    </tr></thead>
+    <tbody>
+<% rows.forEach(function (r) { -%>
+      <tr data-event="<%= r.event %>" data-user="<%= r.user %>">
+        <td class="mono"><time datetime="<%= r.iso %>"><%= r.at %></time></td>
+        <td class="mono"><%= r.event %></td>
+        <td><%= r.user %></td>
+        <td><%= r.team %></td>
+        <td class="mono"><%= r.lab %><% if (r.level) { %> · <%= r.level %><% } %></td>
+        <td class="mono"><%= r.detail %></td>
+        <td class="mono"><%= r.ip %></td>
+      </tr>
+<% }); -%>
+<% if (rows.length === 0) { -%>
+      <tr><td colspan="7" class="muted"><%= t('admin.empty') %></td></tr>
+<% } -%>
+    </tbody>
+  </table>
+</div>
+<% if (prevHref || nextHref) { -%>
+<nav class="admin-pager" aria-label="<%= t('admin.activity_title') %>">
+<% if (prevHref) { -%>
+  <a class="btn btn-secondary btn-sm" href="<%= prevHref %>" data-testid="admin-prev"><%= t('admin.newer') %></a>
+<% } -%>
+<% if (nextHref) { -%>
+  <a class="btn btn-secondary btn-sm" href="<%= nextHref %>" data-testid="admin-next"><%= t('admin.older') %></a>
+<% } -%>
+</nav>
+<% } -%>

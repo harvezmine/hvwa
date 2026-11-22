@@ -1,0 +1,20 @@
+<%# The live exploit feed (src/range/admin.ts): accepted range.exploit rows, newest first, polled by htmx every 5 s.
+   aria-live="polite" and no focus attribute, so it announces new solves without ever stealing focus. Served alone as the
+   /admin/live fragment and included by the overview. Every value goes through the escaped output tag. Never put an EJS
+   tag inside an EJS comment: it breaks parsing. %>
+<ol class="admin-live" data-testid="admin-live-feed" aria-live="polite" hx-get="/admin/live" hx-trigger="every 5s" hx-swap="outerHTML">
+<% feed.forEach(function (r) { -%>
+  <li class="admin-live-row" data-user="<%= r.user %>" data-lab="<%= r.lab %>">
+    <time class="mono admin-live-time" datetime="<%= r.iso %>"><%= r.at %></time>
+    <span class="admin-live-user"><%= r.user %></span>
+<% if (r.team) { -%>
+    <span class="admin-live-team muted"><%= r.team %></span>
+<% } -%>
+    <span class="mono admin-live-lab"><%= r.lab %><% if (r.level) { %> · <%= r.level %><% } %></span>
+    <span class="mono admin-live-points" data-points="<%= r.points %>">+<%= r.points %></span>
+  </li>
+<% }); -%>
+<% if (feed.length === 0) { -%>
+  <li class="admin-live-empty muted"><%= t('admin.live_empty') %></li>
+<% } -%>
+</ol>
