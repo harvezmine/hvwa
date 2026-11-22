@@ -1,22 +1,27 @@
-<%# Range lab page (src/range/catalog.ts): briefing, difficulty, the level picker with points, paid hints; the side column holds how the range works. Hooks: briefing, range-level-<level> (data-solved, aria-current), hint-<tier>. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%# Range lab page (src/range/catalog.ts): the contract dossier. Mission brief, tiers (with seals + points), intel
+   (paid hints), claim bounty, and a sticky active-contract rail. Hooks: briefing, range-level-<level> (data-solved,
+   aria-current), hint-<tier>. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS
+   comment: it breaks parsing. %>
 <header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>">
-  <p class="lab-card-meta"><span class="hero-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= lab.icon %>"></use></svg></span><span class="tag"><%= lab.category %></span><span class="badge difficulty-badge" data-difficulty="<%= lab.difficulty %>"><%= lab.difficultyLabel %></span></p>
+  <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="rank-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span></p>
   <h1 class="page-title"><span><%= lab.app %></span> <span class="muted"><%= lab.title %></span></h1>
+  <p class="contract-objective"><%= lab.scenario %></p>
 <% if (best) { -%>
-  <p class="status status-solved"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-check-circle"></use></svg><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
+  <p class="status status-solved"><span class="sealed-stamp"><%= t('range.sealed') %></span><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
 <% } -%>
 </header>
 
-<div class="player">
-  <div class="player-main">
-    <section class="card panel" aria-labelledby="briefing-title">
-      <h2 id="briefing-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-target"></use></svg><%= t('challenge.briefing') %></h2>
-      <p class="briefing-text" data-testid="briefing"><%= lab.briefing %></p>
-      <p class="lab-card-scenario"><%= lab.scenario %></p>
+<div class="dossier">
+  <div class="dossier-main">
+    <section aria-labelledby="brief-title">
+      <h2 class="section-title" id="brief-title"><%= t('range.brief') %></h2>
+      <div class="brief-block">
+        <p class="brief" data-testid="briefing"><%= lab.briefing %></p>
+      </div>
     </section>
 
-    <section class="card panel" aria-labelledby="levels-title">
-      <h2 id="levels-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-layers"></use></svg><%= t('challenge.levels') %></h2>
+    <section aria-labelledby="tiers-title">
+      <h2 class="section-title" id="tiers-title"><%= t('range.tiers') %></h2>
       <p class="panel-lead"><%= t('range.levels_lead') %></p>
       <ul class="level-tabs">
 <% levels.forEach(function (l) { -%>
@@ -30,22 +35,22 @@
       </ul>
     </section>
 
-    <section class="card panel" aria-labelledby="hints-title">
-      <h2 id="hints-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-bulb"></use></svg><%= t('challenge.hints') %></h2>
-      <p class="panel-lead"><%= hints.length ? t('challenge.hints_lead') : t('challenge.no_hints') %></p>
+    <section aria-labelledby="intel-title">
+      <h2 class="section-title" id="intel-title"><%= t('range.intel') %></h2>
+      <p class="panel-lead"><%= hints.length ? t('range.intel_lead') : t('range.no_intel') %></p>
       <ul class="hint-list">
 <% hints.forEach(function (h) { -%>
         <li id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>">
 <% if (h.unlocked) { -%>
-          <details class="accordion hint" open><summary><span class="hint-name"><%= t('challenge.hint_tier') %> <%= h.id %></span><span class="badge badge-ok"><%= t('challenge.hint_unlocked') %></span></summary><div class="accordion-body"><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div></details>
+          <details class="accordion hint" open><summary><span class="hint-name"><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge badge-ok"><%= t('range.intel_unlocked') %></span></summary><div class="accordion-body"><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div></details>
 <% } else { -%>
           <details class="accordion hint">
-            <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('challenge.hint_tier') %> <%= h.id %></span><span class="badge"><%= t('challenge.hint_cost') %>: <%= h.cost %> <%= t('challenge.points') %></span></summary>
+            <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge"><%= t('range.intel_cost') %>: <%= h.cost %> <%= t('challenge.points') %></span></summary>
             <div class="accordion-body">
               <form method="post" action="/labs/<%= lab.id %>/hint" hx-post="/labs/<%= lab.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" hx-confirm="<%= t('challenge.hint_confirm') %>">
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
                 <input type="hidden" name="tier" value="<%= h.id %>">
-                <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('challenge.hint_unlock') %> <%= h.id %> (<%= t('challenge.hint_cost') %>: <%= h.cost %>)</button>
+                <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('range.intel_unlock') %> <%= h.id %> (<%= t('range.intel_cost') %>: <%= h.cost %>)</button>
               </form>
             </div>
           </details>
@@ -55,14 +60,14 @@
       </ul>
     </section>
 
-    <section class="card panel" aria-labelledby="submit-title">
-      <h2 id="submit-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flag"></use></svg><%= t('challenge.submit_heading') %></h2>
+    <section aria-labelledby="claim-title">
+      <h2 class="section-title" id="claim-title"><%= t('range.claim') %></h2>
       <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form">
         <input type="hidden" name="_csrf" value="<%= csrf %>">
         <label class="label" for="flag-input"><%= t('challenge.submit_label') %></label>
         <div class="form-row">
           <div class="field"><input id="flag-input" class="input input-mono" type="text" name="submission" autocomplete="off" spellcheck="false" placeholder="HVWA{…}" aria-describedby="flag-help" required></div>
-          <button type="submit" class="btn btn-primary"><%= t('challenge.submit_button') %></button>
+          <button type="submit" class="btn btn-primary"><%= t('range.claim_button') %></button>
         </div>
         <p class="help" id="flag-help"><%= t('range.submit_help') %></p>
       </form>
@@ -76,10 +81,10 @@
     </section>
   </div>
 
-  <aside class="player-side">
+  <aside class="dossier-rail">
 <%- include('panel', { panel: panel }) %>
     <section class="card panel" aria-labelledby="range-howto-title">
-      <h2 id="range-howto-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-compass"></use></svg><%= t('range.howto_heading') %></h2>
+      <h2 id="range-howto-title"><%= t('range.howto_heading') %></h2>
       <ol class="howto">
         <li><span><%= t('range.howto1') %></span></li>
         <li><span><%= t('range.howto2') %></span></li>

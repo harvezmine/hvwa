@@ -39,12 +39,19 @@ const THEME_ICONS: Readonly<Record<string, string>> = Object.freeze({
 });
 const themeIcon = (themeId: string) => THEME_ICONS[themeId.replace(/^theme-/, '')] ?? 'i-flask';
 
+/** The monochrome rank-seal letter for a difficulty (E / M / H / X). */
+const DIFFICULTY_MARK: Readonly<Record<Difficulty, string>> = Object.freeze({ easy: 'E', medium: 'M', hard: 'H', expert: 'X' });
+
 export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (key: string) => string) {
+  const levels = LEVELS.filter((l) => lab.levels.includes(l));
+  const scored = levels.filter((l): l is Level => FLAG_LEVELS.includes(l));
+  const bounty = scored.length > 0 ? Math.max(...scored.map((l) => labPoints(lab, l))) : 0;
   return {
     id: lab.id, app: lab.app, title: lab.title[lang], category: lab.category, difficulty: lab.difficulty,
-    difficultyLabel: t(`range.difficulty.${lab.difficulty}`), scenario: lab.scenario[lang], href: `/labs/${lab.id}`,
-    solved: best !== undefined, best: best?.level, themeId: lab.themeId, icon: themeIcon(lab.themeId),
-    levels: LEVELS.filter((l) => lab.levels.includes(l)).map((l) => ({ id: l, solved: levelSolved(l, best) })),
+    difficultyLabel: t(`range.difficulty.${lab.difficulty}`), difficultyMark: DIFFICULTY_MARK[lab.difficulty],
+    scenario: lab.scenario[lang], href: `/labs/${lab.id}`,
+    solved: best !== undefined, best: best?.level, themeId: lab.themeId, icon: themeIcon(lab.themeId), bounty,
+    levels: levels.map((l) => ({ id: l, solved: levelSolved(l, best), points: labPoints(lab, l) })),
   };
 }
 
@@ -67,9 +74,12 @@ function continueLabFor(ctx: RangeContext, userId: number, lang: Lang, t: (key: 
   };
 }
 
-function unlockedHintHtml(tier: number, text: string, t: (key: string) => string): string {
-  return `<details class="accordion hint" open><summary><span class="hint-name">${escapeHtml(t('challenge.hint_tier'))} ${tier}</span>`
-    + `<span class="badge badge-ok">${escapeHtml(t('challenge.hint_unlocked'))}</span></summary>`
+function unlockedHintHtml(tier: number, cost: number, text: string, t: (key: string) => string): string {
+  const title = t('range.toast_intel_title');
+  const message = t('range.toast_intel').replace('{n}', String(tier)).replace('{points}', String(cost));
+  return `<details class="accordion hint" open data-toast="unlocked" data-toast-variant="success" data-toast-title="${escapeHtml(title)}" data-toast-message="${escapeHtml(message)}" data-level="${tier}" data-points="${cost}">`
+    + `<summary><span class="hint-name">${escapeHtml(t('range.intel_tier'))} ${tier}</span>`
+    + `<span class="badge badge-ok">${escapeHtml(t('range.intel_unlocked'))}</span></summary>`
     + `<div class="accordion-body"><p class="hint-text" data-tier="${tier}">${escapeHtml(text)}</p></div></details>`;
 }
 
@@ -95,10 +105,13 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     cards.sort(sort === 'difficulty'
       ? (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty) || byApp(a, b)
       : sort === 'solved' ? (a, b) => Number(b.solved) - Number(a.solved) || byApp(a, b) : byApp);
+    const board = leaderboard(db, 100_000);
+    const rankAt = board.findIndex((r) => r.userId === userId) + 1;
     await sendPage(res, rangeView('catalog'), {
       pageTitle: t('range.catalog_title'), cards, categories, difficulties: DIFFICULTIES,
       filter: { category, difficulty, show, q, sort },
       score: rangeScore(db, userId), solved: registry.labs.filter((l) => solves.has(l.id)).length, total: registry.labs.length,
+      rank: rankAt > 0 ? rankAt : undefined,
       continueLab: continueLabFor(ctx, userId, req.lang, t),
     });
   });
@@ -143,7 +156,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       res.redirect(303, `/labs/${lab.id}`);
       return;
     }
-    if (isHtmx(req)) { res.type('html').send(unlockedHintHtml(result.hint.id, result.hint.text[req.lang], res.locals.t)); return; }
+    if (isHtmx(req)) { res.type('html').send(unlockedHintHtml(result.hint.id, result.hint.cost, result.hint.text[req.lang], res.locals.t)); return; }
     res.redirect(303, `/labs/${lab.id}#hint-${result.hint.id}`);
   });
 

@@ -1,6 +1,12 @@
-<%# Range leaderboard (src/range/catalog.ts, progress.ts leaderboard): rank, player, score, labs solved; the viewer's row is marked. Hooks: leaderboard, data-rank, data-user. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%# Range leaderboard (src/range/catalog.ts, progress.ts leaderboard): the Guild ledger. The top three are large ledger
+   rows with mono numerals; the rest a flat table; the viewer's row is marked and pinned when outside the top three.
+   Hooks: leaderboard, data-rank, data-user. Every value goes through the escaped output tag. Never put an EJS tag inside
+   an EJS comment: it breaks parsing. %>
 <header class="page-head">
-  <h1 class="page-title"><%= t('leaderboard.title') %></h1>
+  <div class="board-head">
+    <h1 class="page-title"><%= t('leaderboard.title') %></h1>
+    <span class="board-count"><%= t('leaderboard.count').replace('{n}', rows.length) %></span>
+  </div>
   <p class="page-lead"><%= t('leaderboard.lead') %></p>
 </header>
 <% if (rows.length === 0) { -%>
@@ -10,12 +16,24 @@
   <a class="btn btn-secondary" href="/" data-testid="leaderboard-empty-action"><%= t('leaderboard.empty_action') %></a>
 </div>
 <% } else { -%>
+<ol class="ledger-podium" data-testid="leaderboard">
+<% rows.filter(function (r) { return r.rank <= 3; }).forEach(function (r) { -%>
+  <li data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="leaderboard-top leaderboard-top-<%= r.rank %><% if (r.userId === me) { %> leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
+    <div class="podium-row">
+      <span class="podium-rank"><%= r.rank < 10 ? '0' + r.rank : r.rank %></span>
+      <span class="podium-name"><%= r.username %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
+      <span class="podium-stat"><b><%= r.score %></b><%= r.solved %> <%= t('leaderboard.col_solved') %></span>
+    </div>
+  </li>
+<% }); -%>
+</ol>
+<% if (rows.some(function (r) { return r.rank > 3; })) { -%>
 <div class="table-wrap">
-  <table class="table" data-testid="leaderboard">
+  <table class="table">
     <thead><tr><th scope="col" class="num"><%= t('leaderboard.col_rank') %></th><th scope="col"><%= t('leaderboard.col_player') %></th><th scope="col" class="num"><%= t('leaderboard.col_score') %></th><th scope="col" class="num"><%= t('leaderboard.col_solved') %></th></tr></thead>
     <tbody>
-<% rows.forEach(function (r) { -%>
-      <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="<% if (r.rank <= 3) { %>leaderboard-top leaderboard-top-<%= r.rank %> <% } %><% if (r.userId === me) { %>leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
+<% rows.filter(function (r) { return r.rank > 3; }).forEach(function (r) { -%>
+      <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="<% if (r.userId === me) { %>leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
         <td class="num"><span class="leaderboard-rank"><%= r.rank %></span></td>
         <th scope="row"><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
         <td class="num"><%= r.score %></td>
@@ -25,9 +43,10 @@
     </tbody>
   </table>
 </div>
+<% } -%>
 <% if (typeof pinned !== 'undefined' && pinned) { -%>
-<div class="table-wrap leaderboard-pinned" data-testid="leaderboard-you">
-  <p class="leaderboard-pinned-label"><%= t('leaderboard.pinned') %></p>
+<div class="table-wrap ledger-pinned" data-testid="leaderboard-you">
+  <p class="ledger-pinned-label"><%= t('leaderboard.pinned') %></p>
   <table class="table">
     <caption class="sr-only"><%= t('leaderboard.pinned') %></caption>
     <thead><tr>

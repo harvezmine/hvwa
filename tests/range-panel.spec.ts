@@ -40,6 +40,22 @@ describe('the Lab panel', () => {
     expect(polled).not.toContain('queue-position');
   });
 
+  it('action swaps carry a toast payload (launched / stopped); polls never do', async () => {
+    const kit = portalApp();
+    const { agent } = await player(kit.app, 'alice');
+    const started = await act(agent, 'r01', 'launch');
+    expect(started.text).toMatch(/data-toast="launched"/);
+    expect(started.text).toMatch(/data-toast-variant="success"/);
+    expect(started.text).toContain('Contract started');
+    await agent.get('/labs/r01/panel?level=acolyte'); // now running
+    const polled = (await agent.get('/labs/r01/panel?level=acolyte').set('HX-Request', 'true')).text;
+    expect(polled).not.toContain('data-toast');
+    const stopped = await act(agent, 'r01', 'stop');
+    expect(stopped.text).toMatch(/data-toast="stopped"/);
+    expect(stopped.text).toMatch(/data-toast-variant="info"/);
+    expect(stopped.text).toContain('Contract closed');
+  });
+
   it('Launch needs the account CSRF token; a plain form gets a 303 to the lab page at that level', async () => {
     const kit = portalApp();
     const { agent } = await player(kit.app, 'alice');
