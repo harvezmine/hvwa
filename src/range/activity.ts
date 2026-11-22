@@ -86,3 +86,63 @@ export function liveExploitFeed(db: DatabaseSync, limit = 50): ActivityRow[] {
   const rows = db.prepare(`${SELECT} WHERE event = 'range.exploit' ORDER BY id DESC LIMIT ?`).all(limit) as Parameters<typeof toRow>[0][];
   return rows.map(toRow);
 }
+
+/** The event groups the activity filter offers (a group matches `<group>.` as a prefix). */
+export const ACTIVITY_GROUPS = Object.freeze(['range', 'team', 'auth', 'admin'] as const);
+/** Admin events written by the admin dashboard (src/range/admin.ts); `admin.login` is not written (admins sign in via
+ *  auth.login, so no separate event is invented). */
+export const ADMIN_EVENTS = Object.freeze(['admin.mode', 'admin.stop', 'admin.team.create', 'admin.team.delete'] as const);
+/** Every event the activity feed knows, newest groups last (the admin filter's select). */
+export const ACTIVITY_EVENTS = Object.freeze([
+  'team.create', 'team.join', 'team.leave',
+  'range.launch', 'range.stop', 'range.reset', 'range.submit.wrong', 'range.exploit',
+  'auth.register', 'auth.login',
+  ...ADMIN_EVENTS,
+] as const);
+
+/** The admin dashboard's full-text filter (src/range/admin.ts): event, username/team-name substrings, a lab id and a
+ *  "since" floor. Text is matched case-insensitively with `%`/`_`/`\` escaped, so a query is literal. */
+export interface ActivityQuery {
+  /** One event name, or a prefix ending in '.' (e.g. 'range.'). */
+  readonly event?: string;
+  /** Substring of username (empty = any). */
+  readonly user?: string;
+  /** Substring of team_name (empty = any). */
+  readonly team?: string;
+  readonly labId?: string;
+  /** at >= since (ms). */
+  readonly since?: number;
+  readonly offset?: number;
+  readonly limit?: number;
+}
+
+const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+
+function queryWhere(q: ActivityQuery): { where: string; args: (string | number)[] } {
+  const where: string[] = [];
+  const args: (string | number)[] = [];
+  if (q.event !== undefined) {
+    where.push(q.event.endsWith('.') ? 'event LIKE ?' : 'event = ?');
+    args.push(q.event.endsWith('.') ? `${q.event}%` : q.event);
+  }
+  if (q.user !== undefined && q.user !== '') { where.push("username LIKE ? ESCAPE '\\'"); args.push(likePattern(q.user)); }
+  if (q.team !== undefined && q.team !== '') { where.push("team_name LIKE ? ESCAPE '\\'"); args.push(likePattern(q.team)); }
+  if (q.labId !== undefined) { where.push('lab_id = ?'); args.push(q.labId); }
+  if (q.since !== undefined) { where.push('at >= ?'); args.push(q.since); }
+  return { where: where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '', args };
+}
+
+/** Newest-first activity rows with the admin dashboard's filters (text substrings, a since floor) and pagination. */
+export function queryActivity(db: DatabaseSync, q: ActivityQuery = {}): ActivityRow[] {
+  const { where, args } = queryWhere(q);
+  const sql = `${SELECT}${where} ORDER BY id DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...args, q.limit ?? 100, q.offset ?? 0) as Parameters<typeof toRow>[0][];
+  return rows.map(toRow);
+}
+
+/** How many rows match the admin dashboard's filters (the activity page's pagination total). */
+export function countActivity(db: DatabaseSync, q: ActivityQuery = {}): number {
+  const { where, args } = queryWhere(q);
+  const r = db.prepare(`SELECT COUNT(*) AS c FROM activity_log${where}`).get(...args) as { c: number };
+  return Number(r.c);
+}

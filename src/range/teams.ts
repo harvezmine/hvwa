@@ -122,6 +122,32 @@ export function teamMembers(db: DatabaseSync, teamId: number): TeamMember[] {
     .map((r) => ({ userId: Number(r.user_id), username: r.username, joinedAt: Number(r.joined_at) }));
 }
 
+/** A team by id, or undefined. */
+export function teamById(db: DatabaseSync, teamId: number): Team | undefined {
+  const row = db.prepare('SELECT id, name, join_code, created_by, created_at FROM teams WHERE id = ?').get(teamId) as TeamRow | undefined;
+  return row ? toTeam(row) : undefined;
+}
+
+/** Every team, oldest first (the admin dashboard's Teams table). */
+export function listTeams(db: DatabaseSync): Team[] {
+  const rows = db.prepare('SELECT id, name, join_code, created_by, created_at FROM teams ORDER BY created_at, id').all() as
+    { id: number; name: string; join_code: string; created_by: number; created_at: number }[];
+  return rows.map(toTeam);
+}
+
+/** Delete a team and every membership (the admin dashboard's delete); frees the name for reuse. */
+export function deleteTeam(db: DatabaseSync, teamId: number): void {
+  db.prepare('DELETE FROM team_members WHERE team_id = ?').run(teamId);
+  db.prepare('DELETE FROM teams WHERE id = ?').run(teamId);
+}
+
+/** Remove one member from a team; when that empties the team, it is deleted (the same rule as leaveTeam). */
+export function removeTeamMember(db: DatabaseSync, teamId: number, userId: number): void {
+  db.prepare('DELETE FROM team_members WHERE team_id = ? AND user_id = ?').run(teamId, userId);
+  const remaining = Number((db.prepare('SELECT COUNT(*) AS c FROM team_members WHERE team_id = ?').get(teamId) as { c: number }).c);
+  if (remaining === 0) db.prepare('DELETE FROM teams WHERE id = ?').run(teamId);
+}
+
 /**
  * TEAM SCORING RULE — for each lab in team mode only, take the best level solved by any member (max points per lab,
  * which equals the max level rank) and sum those points; a lab solved by several members still counts once. Disabled

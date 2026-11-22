@@ -27,3 +27,23 @@ export function setLabMode(db: DatabaseSync, labId: string, mode: LabMode, by: n
     ON CONFLICT (lab_id) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
     .run(labId, mode, at, by ?? null);
 }
+
+/** A lab's stored mode row plus who last changed it (undefined when the lab still has the default: no row). */
+export interface LabModeMeta {
+  readonly mode: LabMode;
+  readonly updatedAt: number;
+  readonly updatedBy: number | null;
+  readonly updatedByName: string | null;
+}
+
+/** The last-updated metadata the admin dashboard's Labs page shows (undefined = never changed). */
+export function labModeMeta(db: DatabaseSync, labId: string): LabModeMeta | undefined {
+  const r = db.prepare(`SELECT lm.mode AS mode, lm.updated_at AS updated_at, lm.updated_by AS updated_by,
+    u.username AS updated_by_name FROM lab_modes lm LEFT JOIN users u ON u.id = lm.updated_by WHERE lm.lab_id = ?`)
+    .get(labId) as { mode: string; updated_at: number; updated_by: number | null; updated_by_name: string | null } | undefined;
+  if (!r) return undefined;
+  return {
+    mode: isLabMode(r.mode) ? r.mode : 'individual', updatedAt: Number(r.updated_at),
+    updatedBy: r.updated_by === null ? null : Number(r.updated_by), updatedByName: r.updated_by_name,
+  };
+}
