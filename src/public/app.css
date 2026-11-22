@@ -1367,7 +1367,9 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .my-lab[data-state="failed"] .my-lab-dot { background: var(--danger); }
 .my-lab-label { font-family: var(--mono); font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .my-lab-meta { color: var(--text-muted); font-family: var(--mono); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem; }
-@media (max-width: 640px) { .my-lab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .my-lab-meta { max-width: 8rem; } }
+/* Narrow screens: the topbar cannot carry the contract chip without overflowing; the Continue slip and the
+   contract panel are the mobile shortcuts. */
+@media (max-width: 640px) { .my-lab { display: none; } }
 
 /* --- Toasts (stamped slips) --- */
 .toasts {
