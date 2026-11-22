@@ -76,6 +76,13 @@ the Guild Hall ledger (with a `points / next` progress bar), the account menu, a
 distinct from the numeric `#1` position, which stays mono text. There is no rank entry in the DB; the existing score is
 the only source.
 
+**Teams and team mode.** One team per member, run from the `/team` page (plain form page: create with a name and a
+generated 8-char base32 join code, join by code, leave). A lab in team mode (an admin switch, default individual) gets a
+small mono `TEAM` badge (`data-mode="team"`) on its catalog card and dossier hero; individual labs get no badge. The
+Guild ledger has two plain-link tabs — Individual (unchanged) and Teams (`/leaderboard?board=teams`) — where a team's
+bounty is the sum of the best level any member proved per team-mode lab, with rank, score, solved, members and last
+solve. The badge is neutral ink (`.team-mode-badge`), never a coloured rail.
+
 **Type.** `--serif`: `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif` (display
 headings, the mission brief, contract titles); `--sans`: `ui-sans-serif, system-ui, "Segoe UI", Roboto,
 "Helvetica Neue", Arial, sans-serif` (body UI, controls, forms); `--mono`: `ui-monospace, "Cascadia Code", "JetBrains

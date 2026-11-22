@@ -50,6 +50,11 @@ export interface AuthOptions extends AuthServiceOptions {
    * before any password check (429). In front of, not instead of, the per-account backoff. Absent: off (standalone).
    */
   signInPerIp?: { readonly max: number; readonly windowMs: number };
+  /**
+   * Portal mode only (never wired in standalone): called after a successful sign-in or registration so the range can
+   * write its activity feed (src/range/activity.ts). The username is canonical (lower-cased); never a password.
+   */
+  onActivity?: (event: { event: 'auth.login' | 'auth.register'; userId?: number; username: string; ip?: string }) => void;
 }
 
 export const authViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
@@ -173,6 +178,8 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     service.revoke(req.cookies?.[AUTH_COOKIE]); // a fresh token per sign-in; the old one dies
     noStore(res);
     res.cookie(AUTH_COOKIE, result.token, cookies.set);
+    const signed = service.session(result.token); // the canonical account (username case, id)
+    opts.onActivity?.({ event: 'auth.login', userId: signed?.userId, username: signed?.username ?? field(req, 'username'), ip: clientIp(req) });
     res.redirect(303, next);
   });
   if (opts.registration) {
@@ -180,6 +187,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
       service, options: opts.registration, view: view('register'),
       loginFormOk: (req) => formOk(req, false), refuse,
       signedIn: (req) => service.session(req.cookies?.[AUTH_COOKIE]) !== undefined,
+      onActivity: opts.onActivity,
     }));
   }
 

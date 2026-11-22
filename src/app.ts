@@ -21,6 +21,7 @@ import { mountChallenges } from './core/mount.js';
 import { portalRouter } from './portal/index.js';
 import { platformAuth, SIGN_IN_PER_IP_DEFAULTS, type AuthOptions, type AuthService } from './auth/index.js';
 import { RANGE_PASSWORD_MIN_LENGTH } from './range/config.js';
+import { logActivity } from './range/activity.js';
 import { createRangePortal, type RangePortal, type RangePortalOptions } from './range/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -204,6 +205,8 @@ function createPortalApp(opts: AppOptions): HvwaApp {
     passwordMinLength: RANGE_PASSWORD_MIN_LENGTH, secureCookies: scheme === 'https', publicScheme: scheme,
     signInPerIp: SIGN_IN_PER_IP_DEFAULTS,
     ...authOpts,
+    // The activity feed (src/range/activity.ts) also records auth.login / auth.register; nothing else (no password).
+    onActivity: (e) => logActivity(db, e),
     registration: { open: range.registrationOpen ?? true, ...authOpts.registration },
   });
   const portal = createRangePortal(db, login, range);

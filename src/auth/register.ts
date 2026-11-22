@@ -33,6 +33,8 @@ export interface RegistrationDeps {
   readonly loginFormOk: (req: Request) => boolean;
   readonly refuse: (req: Request, res: Response, back: string) => Promise<void>;
   readonly signedIn: (req: Request) => boolean;
+  /** Portal mode: called after a successful registration (src/auth/index.ts wires the range's activity feed). */
+  readonly onActivity?: (event: { event: 'auth.register'; userId?: number; username: string; ip?: string }) => void;
 }
 
 export function registrationRouter(deps: RegistrationDeps): Router {
@@ -63,7 +65,10 @@ export function registrationRouter(deps: RegistrationDeps): Router {
     const username = field(req, 'username');
     const ip = clientIp(req);
     const result = await service.register(username, field(req, 'password'), field(req, 'confirm'), () => limiter.allow(ip));
-    if (result.ok) { noStore(res); res.redirect(303, '/login?registered=1'); return; }
+    if (result.ok) {
+      deps.onActivity?.({ event: 'auth.register', userId: result.userId, username: username.trim().toLowerCase(), ip });
+      noStore(res); res.redirect(303, '/login?registered=1'); return;
+    }
     if (result.error === 'limited') {
       res.status(429).set('Retry-After', String(Math.ceil(windowMs / 1000)));
       await render(req, res, { limited: true, username });
