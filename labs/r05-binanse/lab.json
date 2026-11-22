@@ -1,0 +1,23 @@
+{
+  "id": "r05",
+  "slug": "binanse",
+  "title": { "en": "The Cold Ledger", "id": "Buku Besar Dingin" },
+  "app": "Binanse",
+  "category": "Stored XSS",
+  "difficulty": "hard",
+  "levels": ["inquisitor"],
+  "port": 8080,
+  "health": "/healthz",
+  "flag": { "placement": "custom" },
+  "resources": { "memoryMiB": 128, "pids": 64 },
+  "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
+  "needsBot": false,
+  "themeId": "binanse",
+  "scenario": { "en": "A crypto exchange where complaints are read by the people who hold the keys.", "id": "Bursa kripto tempat keluhan dibaca oleh orang-orang yang memegang kunci." },
+  "briefing": { "en": "Binanse's support queue is read by its DevOps engineer. Take a seat that is not yours, open the vault, and send the cold ledger to your own address.", "id": "Antrean dukungan Binanse dibaca oleh engineer DevOps-nya. Duduki kursi yang bukan milikmu, buka brankas, dan kirim buku besar dingin ke alamatmu sendiri." },
+  "hints": [
+    { "id": 1, "cost": 15, "text": { "en": "A complaint is a letter; letters are read by someone with keys.", "id": "Keluhan adalah surat; surat dibaca oleh seseorang yang memegang kunci." } },
+    { "id": 2, "cost": 30, "text": { "en": "The reader's hands remember what the page forgets to hide. A picture can carry a whisper.", "id": "Tangan pembaca mengingat apa yang lupa disembunyikan halaman. Sebuah gambar bisa membawa bisikan." } },
+    { "id": 3, "cost": 45, "text": { "en": "The vault opens in two turns: first the name of a stranger, then the number only the keeper knows.", "id": "Brankas terbuka dalam dua putaran: dulu nama orang asing, lalu angka yang hanya diketahui penjaga." } }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "id": "r02",
   "slug": "courier",
-  "title": { "en": "Courier parcel tracking", "id": "Pelacakan paket Courier" },
+  "title": { "en": "Return to Nowhere", "id": "Kembali ke Entah" },
   "app": "Courier",
   "category": "Broken access control",
   "difficulty": "easy",
@@ -13,11 +13,11 @@
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 8 }],
   "needsBot": false,
   "themeId": "courier",
-  "scenario": { "en": "A parcel-tracking API that checks who you are but not what is yours.", "id": "API pelacakan paket yang memeriksa siapa Anda tetapi bukan apa milik Anda." },
-  "briefing": { "en": "Courier lets each customer track their own parcels. One parcel is not yours. Read its private delivery note.", "id": "Courier membiarkan tiap pelanggan melacak paket mereka sendiri. Satu paket bukan milik Anda. Baca catatan pengiriman pribadinya." },
+  "scenario": { "en": "Parcels move; ownership is a rumour.", "id": "Paket berpindah; kepemilikan hanyalah kabar." },
+  "briefing": { "en": "A parcel in the vault is not yours. Read its private note.", "id": "Sebuah paket di brankas bukan milikmu. Baca catatan pribadinya." },
   "hints": [
-    { "id": 1, "cost": 10, "text": { "en": "Open the demo dashboard and watch what requests it makes for your parcels.", "id": "Buka dasbor demo dan amati permintaan apa yang dibuatnya untuk paket Anda." } },
-    { "id": 2, "cost": 20, "text": { "en": "Parcel numbers are predictable. Yours begin with 2. What begins with 1?", "id": "Nomor paket dapat ditebak. Milik Anda dimulai dengan 2. Apa yang dimulai dengan 1?" } },
-    { "id": 3, "cost": 30, "text": { "en": "Inquisitor wants an API key on every parcel route. Support may hand out a customer's key if you ask for the right customer.", "id": "Inquisitor meminta API key di setiap rute paket. Bagian support mungkin memberikan key pelanggan jika Anda meminta pelanggan yang tepat." } }
+    { "id": 1, "cost": 10, "text": { "en": "You carry a name, but the door asks only for a number.", "id": "Kau membawa nama, tetapi pintu hanya meminta angka." } },
+    { "id": 2, "cost": 20, "text": { "en": "The parcel is yours; the label is the road it forgets to guard.", "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga." } },
+    { "id": 3, "cost": 30, "text": { "en": "A key handed out by the wrong desk opens the wrong vault.", "id": "Kunci dari meja yang salah membuka brankas yang salah." } }
   ]
 }

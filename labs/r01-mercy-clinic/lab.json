@@ -1,7 +1,7 @@
 {
   "id": "r01",
   "slug": "mercy-clinic",
-  "title": { "en": "Mercy Clinic patient portal", "id": "Portal pasien Mercy Clinic" },
+  "title": { "en": "The Quiet Ward", "id": "Bangsal Sunyi" },
   "app": "Mercy Clinic",
   "category": "SQL injection",
   "difficulty": "easy",
@@ -13,11 +13,11 @@
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
   "themeId": "mercy-clinic",
-  "scenario": { "en": "A community clinic portal whose notice search trusts what you type.", "id": "Portal klinik komunitas yang pencarian pengumumannya memercayai masukan Anda." },
-  "briefing": { "en": "Mercy Clinic publishes notices for patients. Staff-only notices are kept out of the public lists. Read one you should not be able to read.", "id": "Mercy Clinic menerbitkan pengumuman untuk pasien. Pengumuman khusus staf disembunyikan dari daftar publik. Baca satu yang seharusnya tidak bisa Anda baca." },
+  "scenario": { "en": "A small clinic keeps more paper than it shows.", "id": "Sebuah klinik kecil menyimpan lebih banyak kertas daripada yang diperlihatkan." },
+  "briefing": { "en": "The clinic says staff notes never leave the back room. Read one anyway.", "id": "Klinik mengatakan catatan staf tidak pernah keluar dari ruang belakang. Baca satu juga." },
   "hints": [
-    { "id": 1, "cost": 10, "text": { "en": "Not everything the clinic stores is meant for patients. Where does the portal let you ask it a question?", "id": "Tidak semua yang disimpan klinik ditujukan untuk pasien. Di mana portal membiarkan Anda bertanya?" } },
-    { "id": 2, "cost": 20, "text": { "en": "The notice search builds its database query from your text. Public notices are filtered in; staff notices are filtered out.", "id": "Pencarian pengumuman menyusun kuerinya dari teks Anda. Pengumuman publik disaring masuk; pengumuman staf disaring keluar." } },
-    { "id": 3, "cost": 30, "text": { "en": "Inquisitor hides staff rows from the search, but the clinic keeps service tokens in the same database. Look beyond the notices table.", "id": "Inquisitor menyembunyikan baris staf dari pencarian, tetapi klinik menyimpan service token di database yang sama. Lihat lebih dari tabel notices." } }
+    { "id": 1, "cost": 10, "text": { "en": "Answers are easy to find when the question is allowed to speak for itself.", "id": "Jawaban mudah ditemukan bila pertanyaannya dibiarkan berbicara sendiri." } },
+    { "id": 2, "cost": 20, "text": { "en": "Two shelves share one room: the one the public sees, and the one it does not.", "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak." } },
+    { "id": 3, "cost": 30, "text": { "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo.", "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri." } }
   ]
 }
