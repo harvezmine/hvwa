@@ -16,11 +16,11 @@ const tables = (db: DatabaseSync) =>
     .map((r) => r.name);
 
 describe('db', () => {
-  it('the platform schema holds only platform state: solves, hint_unlocks, events, the login (users, auth_tokens), the range (settings, solves, hint unlocks, instances)', () => {
+  it('the platform schema holds only platform state: solves, hint_unlocks, events, the login (users, auth_tokens), the range (settings, solves, hint unlocks, instances), teams and the activity feed', () => {
     const db = openDb(':memory:');
     migrate(db);
-    expect(tables(db)).toEqual(['auth_tokens', 'events', 'hint_unlocks', 'range_hint_unlocks', 'range_instances',
-      'range_settings', 'range_solves', 'solves', 'users']);
+    expect(tables(db)).toEqual(['activity_log', 'auth_tokens', 'events', 'hint_unlocks', 'lab_modes', 'range_hint_unlocks',
+      'range_instances', 'range_settings', 'range_solves', 'solves', 'team_members', 'teams', 'users']);
     expect(columns(db, 'range_instances')).toEqual(['id', 'user_id', 'lab_id', 'level', 'state', 'reason', 'flag_hash',
       'created_at', 'started_at', 'ready_at', 'expires_at', 'last_seen_at', 'ended_at']);
     // The login keeps hashes only (src/auth): no column could hold a password or a token in plaintext.
@@ -32,6 +32,12 @@ describe('db', () => {
       expect.arrayContaining(['session_id', 'challenge_id', 'level', 'points', 'solved_at']));
     expect(columns(db, 'hint_unlocks')).toEqual(
       expect.arrayContaining(['session_id', 'challenge_id', 'tier', 'cost']));
+    // Migration 5: teams (name + join code only, no secret), one-team-per-user membership, per-lab mode, activity feed.
+    expect(columns(db, 'teams')).toEqual(['id', 'name', 'join_code', 'created_by', 'created_at']);
+    expect(columns(db, 'team_members')).toEqual(['team_id', 'user_id', 'joined_at']);
+    expect(columns(db, 'lab_modes')).toEqual(['lab_id', 'mode', 'updated_at', 'updated_by']);
+    expect(columns(db, 'activity_log')).toEqual(['id', 'at', 'user_id', 'username', 'team_id', 'team_name', 'event',
+      'lab_id', 'level', 'detail', 'ip']);
   });
 
   it('upgrades a version-2 (lite) database: the admin keeps its hash, backoff and banner state; tokens and progress stay', () => {
@@ -61,6 +67,24 @@ describe('db', () => {
     add('alice', 'player');
     expect(() => add('ALICE', 'player')).toThrow(/UNIQUE/);
     expect(() => add('bob', 'root')).toThrow(/CHECK/);
+  });
+
+  it('teams: names are unique whatever their case, join codes are unique, one team per user, mode is individual or team', () => {
+    const db = openDb(':memory:');
+    migrate(db);
+    db.prepare("INSERT INTO users (username, password_hash, role, created_at, changed_at) VALUES ('a', 'h', 'player', 1, 1)").run();
+    db.prepare("INSERT INTO users (username, password_hash, role, created_at, changed_at) VALUES ('b', 'h', 'player', 1, 1)").run();
+    db.prepare("INSERT INTO teams (name, join_code, created_by, created_at) VALUES ('Crew', 'AAAAAAAA', 1, 1)").run();
+    expect(() => db.prepare("INSERT INTO teams (name, join_code, created_by, created_at) VALUES ('crew', 'BBBBBBBB', 1, 1)").run())
+      .toThrow(/UNIQUE/);
+    expect(() => db.prepare("INSERT INTO teams (name, join_code, created_by, created_at) VALUES ('Other', 'AAAAAAAA', 1, 1)").run())
+      .toThrow(/UNIQUE/);
+    db.prepare('INSERT INTO team_members (team_id, user_id, joined_at) VALUES (1, 1, 1)').run();
+    expect(() => db.prepare('INSERT INTO team_members (team_id, user_id, joined_at) VALUES (1, 1, 1)').run()).toThrow(/UNIQUE/);
+    expect(() => db.prepare('INSERT INTO team_members (team_id, user_id, joined_at) VALUES (1, 2, 1)').run())
+      .not.toThrow(); // one team per user is on user_id, not team_id
+    db.prepare("INSERT INTO lab_modes (lab_id, mode, updated_at) VALUES ('r01', 'team', 1)").run();
+    expect(() => db.prepare("INSERT INTO lab_modes (lab_id, mode, updated_at) VALUES ('r02', 'pairs', 1)").run()).toThrow(/CHECK/);
   });
 
   it('takes a version-0 database to the latest version and records it', () => {

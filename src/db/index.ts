@@ -29,6 +29,8 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'users.sql'), 'utf8')),
   // 4: the range (portal mode): solves and hint unlocks keyed by users.id, and the instance records. src/range.
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'range.sql'), 'utf8')),
+  // 5: teams and team mode, plus the activity feed (src/range/teams.ts, modes.ts, activity.ts).
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'teams.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
