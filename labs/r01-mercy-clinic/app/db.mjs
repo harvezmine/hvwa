@@ -1,7 +1,9 @@
 // labs/r01-mercy-clinic/app/db.mjs — the clinic's SQLite store (node:sqlite, --experimental-sqlite). The DB lives in the
-// /tmp tmpfs because the rootfs is read-only. The notice search is the vulnerable feature; its three implementations are
-// chosen by HVWA_LEVEL. The flag is a staff-only notice planted by the start hook (never on a public page).
+// /tmp tmpfs because the rootfs is read-only. The notice search is the vulnerable feature; its implementations are
+// chosen by HVWA_LEVEL. The flag is a staff-only notice planted by the start hook (never on a public page). A random
+// service token in the same database gates the staff notice route at every level; only Inquisitor's search can leak it.
 import { DatabaseSync } from 'node:sqlite';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -25,7 +27,12 @@ export function openDb(path = '/tmp/clinic.db') {
                            category TEXT, author TEXT, published_at TEXT);
     CREATE TABLE appointments (id INTEGER PRIMARY KEY, patient_label TEXT, clinician TEXT, department TEXT, room TEXT,
                                starts_at TEXT, duration_min INTEGER, status TEXT);
+    CREATE TABLE staff_tokens (id INTEGER PRIMARY KEY, token TEXT, label TEXT);
   `);
+  // A fresh 128-bit service token at start, on every level. The staff route accepts only this value; Inquisitor's
+  // injectable search is the one place it can be read out of the database.
+  db.prepare('INSERT INTO staff_tokens (token, label) VALUES (?, ?)')
+    .run(randomBytes(16).toString('hex'), 'Mercy Clinic staff notices');
   const insPatient = db.prepare('INSERT INTO patients (name, role, department, room, extension, pronouns, bio) VALUES (?, ?, ?, ?, ?, ?, ?)');
   for (const p of seed('patients.json')) {
     insPatient.run(p.name, p.role, p.department ?? null, p.room ?? null, p.extension ?? null, p.pronouns ?? null, p.bio ?? null);
@@ -58,16 +65,31 @@ export const relatedPublic = (db, category, id) => db.prepare("SELECT id, title,
 export const listPatients = (db) => db.prepare('SELECT name, role, department, room, extension, pronouns, bio FROM patients ORDER BY department, name').all();
 export const listAppointments = (db) => db.prepare('SELECT clinician, department, room, starts_at, duration_min, status FROM appointments ORDER BY starts_at, clinician').all();
 
+/** The service token that unlocks the staff notices (one row per process). */
+export const staffToken = (db) => db.prepare('SELECT token FROM staff_tokens ORDER BY id LIMIT 1').get()?.token;
+/** Staff-only notices, including whatever the start hook planted. Only the token-gated route renders these. */
+export const listStaff = (db) => db.prepare("SELECT id, title, body, category, author, published_at FROM notices WHERE visibility = 'staff' ORDER BY published_at DESC, id DESC").all();
+
 /**
- * The notice search, per level. Returns rows [{ id, title, body }].
- * - acolyte: q concatenated straight into a LIKE string literal (classic SQLi).
- * - templar: the keywords union/select are stripped ONCE, then the same concatenation (a single-pass blacklist).
- * - divine:  a parameterised statement; q is bound data and the visibility filter is fixed.
+ * The notice search, per level. Acolyte/Templar return rows [{ id, title, body }]; Inquisitor adds a fourth
+ * `visibility` column so the server can drop any injected row that does not claim to be public.
+ * - acolyte:    q concatenated straight into a LIKE string literal (classic SQLi).
+ * - templar:    the keywords union/select are stripped ONCE, then the same concatenation (a single-pass blacklist).
+ * - inquisitor: the same concatenation, but the SELECT carries visibility; a UNION can reach staff_tokens.
+ * - divine:     a parameterised statement; q is bound data and the visibility filter is fixed.
  */
 export function searchNotices(db, level, q) {
   if (level === 'divine') {
     const like = `%${q}%`;
     return db.prepare("SELECT id, title, body FROM notices WHERE visibility = 'public' AND (title LIKE ? OR body LIKE ?) ORDER BY id").all(like, like);
+  }
+  if (level === 'inquisitor') {
+    const sql = "SELECT id, title, body, visibility FROM notices WHERE visibility = 'public' AND (title LIKE '%" + q + "%' OR body LIKE '%" + q + "%') ORDER BY id";
+    try {
+      return db.prepare(sql).all();
+    } catch {
+      return []; // a malformed injection just yields no rows, like a real app swallowing a query error
+    }
   }
   const term = level === 'templar' ? q.replace(/union|select/gi, '') : q;
   const sql = "SELECT id, title, body FROM notices WHERE visibility = 'public' AND (title LIKE '%" + term + "%' OR body LIKE '%" + term + "%') ORDER BY id";
