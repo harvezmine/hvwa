@@ -30,7 +30,7 @@ Hasil verifikasi lokal terakhir:
 | `npm run range:verify` | **16/16 PASS**, launch-to-ready 1.0–1.5 s |
 | `npm run verify:dist` (full + lite) | OK |
 | `npm run range:build` | image portal & warden dibuat |
-| `npm run poc:e2e` | **PASS 4 lab × 4 level** (angka final menyusul run E2E) |
+| `npm run poc:e2e` | **PASS 4 lab × 4 level, 160 check** |
 | UI | **Guild Ledger** light/dark, rank E–S, 8 ilustrasi custom, toast |
 | Commit attribution | **0** (`Co-Authored-By`/Claude/chatbot tidak dipakai) |
 
@@ -208,18 +208,18 @@ Belum dikerjakan (dicatat jujur):
 ### 7.3 Platform E2E (`npm run range:verify`)
 
 - **16/16 PASS**: portal via tunnel stand-in, tidak ada port publik, cookie host-only, limit registrasi per IP, launch-to-ready, hardening container, gate ticket/cookie/replay, tidak ada cookie portal/secret ke lab, cross-user 401, egress/DNS/portal/warden/socket/instance lain/Traefik diblokir, flag file/env/uid dan penolakan flag milik user lain, socket-proxy allowlist, capacity penuh, reaper, reconcile, stop cleanup.
-- Launch-to-ready pada run final: **1067 ms, 1454 ms, 1031 ms** (run sebelumnya 1474–1639 ms).
+- Launch-to-ready pada run final: **1508 ms, 1617 ms, 1508 ms** (run sebelumnya 1031–1639 ms; satu run sempat flake di probe isolasi dan lolos bersih saat diulang).
 
 ### 7.4 E2E lab nyata lewat portal (`npm run poc:e2e`)
 
-**119 check PASS.** Setiap lab dijalankan melalui portal: register/login (CSRF + Origin/Sec-Fetch-Site), katalog, launch, panel sampai `running`, open via gate ticket sekali pakai → cookie `hvwa_gate`, landing page lab, penolakan tanpa cookie, solve referensi di runner container pada jaringan instance, submit flag, cek no-leak di `docker inspect`/`docker logs`, lalu Stop dan cleanup. Divine menjalankan semua solve dan tidak menghasilkan flag.
+**160 check PASS.** Setiap lab dijalankan melalui portal: register/login (CSRF + Origin/Sec-Fetch-Site), katalog, launch, panel sampai `running`, open via gate ticket sekali pakai → cookie `hvwa_gate`, landing page lab, penolakan tanpa cookie, solve referensi di runner container pada jaringan instance, submit flag, cek no-leak di `docker inspect`/`docker logs`, lalu Stop dan cleanup. Divine menjalankan **acolyte, templar, dan inquisitor** dan tidak menghasilkan flag.
 
-| Lab | Acolyte | Templar | Divine |
-|---|---|---|---|
-| r01 Mercy Clinic | PASS (981 ms) | PASS (1532 ms) | PASS — resists (1321 ms) |
-| r02 Courier | PASS (1483 ms) | PASS (1509 ms) | PASS — resists (1440 ms) |
-| r03 Beacon | PASS (1005 ms) | PASS (1062 ms) | PASS — resists (1349 ms) |
-| r04 Postcard | PASS (3499 ms) | PASS (3578 ms) | PASS — resists (3432 ms) |
+| Lab | Acolyte | Templar | Inquisitor | Divine |
+|---|---|---|---|---|
+| r01 Mercy Clinic | PASS (1573 ms) | PASS (1597 ms) | PASS (1552 ms) | PASS — resists (1387 ms) |
+| r02 Courier | PASS (1501 ms) | PASS (1581 ms) | PASS (1558 ms) | PASS — resists (1439 ms) |
+| r03 Beacon | PASS (1508 ms) | PASS (1852 ms) | PASS (1513 ms) | PASS — resists (1389 ms) |
+| r04 Postcard | PASS (3639 ms) | PASS (3569 ms) | PASS (3795 ms) | PASS — resists (3457 ms) |
 
 Detail lengkap ada di [`docs/poc-e2e-results.md`](poc-e2e-results.md) dan [`docs/poc-e2e-results.json`](poc-e2e-results.json). Cleanup terverifikasi: tidak ada container `hvwa.range=1`, network `hvwa-i-*`, maupun sisa project E2E.
 
@@ -298,7 +298,7 @@ Di host POC (harvez) default compose adalah `runsc`; jangan override ke `runc` d
 
 ## 10. Galeri screenshot
 
-Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level Divine, tanpa flag) dan dari portal hidup. Semua gambar ada di [`docs/screenshots/`](screenshots/).
+Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level Divine, tanpa flag) dan dari portal hidup. Screenshot portal menampilkan **4 tier** (Acolyte/Templar/Inquisitor + Divine) dan rank E–S. Semua gambar ada di [`docs/screenshots/`](screenshots/).
 
 ### Portal — Guild Ledger
 
@@ -350,6 +350,6 @@ Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level D
 
 ## 11. Bukti commit & hygiene
 
-- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, enhancement flow portal, dan redesain UI Guild Ledger (rank E–S, ilustrasi, toast).
+- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, enhancement flow portal, redesain UI Guild Ledger (rank E–S, ilustrasi, toast), dan pengembalian **Inquisitor** sebagai level ke-4 dengan chain per lab.
 - **Tidak ada** `Co-Authored-By`, Claude, atau chatbot attribution di commit mana pun sejak `d49bf8e`.
 - `context.md` tetap untracked dan tidak disentuh.
