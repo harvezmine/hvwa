@@ -189,6 +189,16 @@ describe('My Lab in the header', () => {
     expect(stopped).toContain('stopped by you');
     expect((await agent.get('/my-lab')).headers.location).toBe('/labs/r01?level=acolyte');
   });
+
+  it('labels the tag Active contract while running, Last contract once stopped', async () => {
+    const kit = portalApp();
+    const { agent } = await player(kit.app, 'alice');
+    await act(agent, 'r01', 'launch');
+    await agent.get('/labs/r01/panel?level=acolyte');
+    expect((await agent.get('/leaderboard')).text).toContain('Active contract');
+    await act(agent, 'r01', 'stop');
+    expect((await agent.get('/leaderboard')).text).toContain('Last contract');
+  });
 });
 
 describe('instance state visibility', () => {
