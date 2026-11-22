@@ -24,13 +24,14 @@ Hasil verifikasi lokal terakhir:
 
 | Gate | Hasil |
 |---|---|
-| `npx vitest run` | **4548 test lulus** (151 file) |
+| `npx vitest run` | **4557 test lulus** (152 file) |
 | `npm run typecheck` | exit 0 |
 | `npm run labs:test` | **80 PASS** — 4 lab × 3 level, termasuk check no-leak |
 | `npm run range:verify` | **16/16 PASS**, launch-to-ready 1.0–1.5 s |
 | `npm run verify:dist` (full + lite) | OK |
 | `npm run range:build` | image portal & warden dibuat |
 | `npm run poc:e2e` | **PASS 4 lab × 3 level, 119 check** |
+| UI | **Guild Ledger** light/dark, rank E–S, 8 ilustrasi custom, toast |
 | Commit attribution | **0** (`Co-Authored-By`/Claude/chatbot tidak dipakai) |
 
 ---
@@ -121,6 +122,21 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - **Wow**: aksen/ikon per `themeId`, kartu "Continue your lab", progress solved, pencarian/sort katalog, empty-state dengan aksi, leaderboard top-3 + baris viewer dipin.
 - Aksesibilitas: `aria-current="page"`, live region countdown, fokus setelah swap htmx (polling tidak merebut fokus), konfirmasi Stop.
 
+### UI/UX — “The Range Guild — Guild Ledger”
+
+Redesain penuh dari tema navy+gold yang terasa generik menjadi sistem editorial paper-and-ink yang custom:
+
+- **Identitas:** kertas hangat + tinta (light) dan teal-ink + parchment (dark); serif untuk judul/prosa, sans untuk kontrol, mono untuk semua angka/mesin; satu aksen verdigris + copper hanya untuk seal/hardware; sudut tajam, hairline, tanpa shadow/gradient/glass.
+- **Aturan keras “no coloured rules”:** tidak ada garis warna di tepi kartu/slip/panel/row/toast. Status, rank, dan seleksi ditunjukkan oleh **seal, teks mono, dot kecil, atau wash tonal**; satu-satunya underline aksen adalah tab aktif di masthead.
+- **Guild Hall:** hero poster ( “Take a contract. Break the app.”), ilustrasi guild hall custom, ledger strip (Bounty / Contracts sealed / Adventurer rank), progress campaign, continue slip, dan **mission board** berisi 4 contract slip kertas dengan tab kategori, seal difficulty Romawi, objective, tiga tier, dan bounty.
+- **Contract dossier:** judul app serif + subtitle mono, mission brief, tier rows, intel accordion, claim bounty, rail active contract sticky (state, time bar, Open/Reset/Stop).
+- **Guild ledger:** posisi `#N` mono, seal rank E–S, baris viewer dipin, empty state berilustrasi.
+- **Login/register:** panel inverted dengan crest + ilustrasi gate/key + tiga fakta, form di kertas.
+- **Ilustrasi:** 8 simbol SVG custom (guild hall, clinic, courier, beacon, postcard, gate, key/seal, laurel, empty scroll), line-art, per-lab watermark; tanpa asset eksternal/emoji.
+- **Adventurer rank E–S:** semua mulai **E (Initiate / Pemula)**; bounty dikonversi otomatis ke rank dengan threshold **E 0 · D 200 · C 500 · B 900 · A 1300 · S 1750**, lengkap dengan progress “100 / 200 to D”. Tampil di ledger, account menu, dan leaderboard; posisi leaderboard tetap terpisah.
+- **Toast:** slip cap untuk aksi sukses/gagal (flag accepted/rejected, intel unlocked, contract started/stopped), seal glyph, auto-dismiss, tidak merebut fokus; inline result tetap ada untuk no-JS.
+- **Audit visual:** light/dark, 375 px tanpa horizontal scroll, panel starting/running, toast live, dan semua halaman (login, register, Guild Hall, dossier, ledger) sudah dicek lewat Chrome headless langsung ke server.
+
 ---
 
 ## 5. Keamanan flag (tidak bisa diambil dari env/inspect/log)
@@ -177,9 +193,9 @@ Belum dikerjakan (dicatat jujur):
 
 ### 7.1 Unit/integration (`npm test`)
 
-- **4548 test / 151 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, dan UI token/contrast.
+- **4557 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S, dan UI token/contrast.
 - `npm run typecheck` exit 0.
-- Catatan kejujuran: satu run tepat setelah merge sempat timeout pada satu test (flake timing suite lama), lalu **dua rerun penuh berikutnya 4548/4548 lulus**.
+- Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4557/4557**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
 
 ### 7.2 Black-box lab (`npm run labs:test`)
 
@@ -188,7 +204,7 @@ Belum dikerjakan (dicatat jujur):
 ### 7.3 Platform E2E (`npm run range:verify`)
 
 - **16/16 PASS**: portal via tunnel stand-in, tidak ada port publik, cookie host-only, limit registrasi per IP, launch-to-ready, hardening container, gate ticket/cookie/replay, tidak ada cookie portal/secret ke lab, cross-user 401, egress/DNS/portal/warden/socket/instance lain/Traefik diblokir, flag file/env/uid dan penolakan flag milik user lain, socket-proxy allowlist, capacity penuh, reaper, reconcile, stop cleanup.
-- Launch-to-ready pada run final: **1047 ms, 1454 ms, 1458 ms** (run sebelumnya 1474–1639 ms).
+- Launch-to-ready pada run final: **1067 ms, 1454 ms, 1031 ms** (run sebelumnya 1474–1639 ms).
 
 ### 7.4 E2E lab nyata lewat portal (`npm run poc:e2e`)
 
@@ -278,7 +294,29 @@ Di host POC (harvez) default compose adalah `runsc`; jangan override ke `runc` d
 
 ## 10. Galeri screenshot
 
-Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level Divine, tanpa flag). Semua gambar ada di [`docs/screenshots/`](screenshots/).
+Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level Divine, tanpa flag) dan dari portal hidup. Semua gambar ada di [`docs/screenshots/`](screenshots/).
+
+### Portal — Guild Ledger
+
+| Guild Hall (light) | Guild Hall (dark) |
+|---|---|
+| ![Guild Hall light](screenshots/final-catalog-light.png) | ![Guild Hall dark](screenshots/final-catalog-dark.png) |
+
+| Contract dossier | Guild ledger |
+|---|---|
+| ![Contract dossier](screenshots/final-lab-light.png) | ![Guild ledger](screenshots/final-leaderboard-light.png) |
+
+| Login | Register |
+|---|---|
+| ![Login](screenshots/final-login.png) | ![Register](screenshots/final-register.png) |
+
+| Launch (toast + starting) | Running |
+|---|---|
+| ![Launch toast](screenshots/final-panel-starting.png) | ![Running panel](screenshots/final-panel-running.png) |
+
+| Mobile 375 px |
+|---|
+| ![Mobile Guild Hall](screenshots/final-catalog-mobile-light.png) |
 
 ### r01 — Mercy Clinic
 
@@ -308,6 +346,6 @@ Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level D
 
 ## 11. Bukti commit & hygiene
 
-- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, dan enhancement flow portal.
+- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, enhancement flow portal, dan redesain UI Guild Ledger (rank E–S, ilustrasi, toast).
 - **Tidak ada** `Co-Authored-By`, Claude, atau chatbot attribution di commit mana pun sejak `d49bf8e`.
 - `context.md` tetap untracked dan tidak disentuh.
