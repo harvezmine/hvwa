@@ -6,8 +6,8 @@
   <div class="lab-hero-head">
     <div class="lab-hero-copy">
       <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="diff-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span></p>
-      <h1 class="page-title"><%= lab.app %></h1>
-      <p class="dossier-subtitle"><%= lab.title %></p>
+      <h1 class="page-title"><%= lab.title %></h1>
+      <p class="dossier-subtitle"><%= lab.app %></p>
       <p class="contract-objective"><%= lab.scenario %></p>
 <% if (best) { -%>
       <p class="status status-solved"><span class="sealed-stamp"><%= t('range.sealed') %></span><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>

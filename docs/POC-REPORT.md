@@ -10,11 +10,13 @@
 
 POC HVWA Range adalah platform latihan keamanan web di mana **setiap user mendapat container lab sendiri** untuk setiap (challenge, level). POC terdiri dari:
 
-- **4 showcase lab**, masing-masing **4 level**: Acolyte / Templar / **Inquisitor** (dieksploitasi dan dinilai) + Divine (referensi aman, tanpa flag):
-  - **r01 Mercy Clinic** — SQL injection (Easy)
-  - **r02 Courier** — Broken access control (Easy)
-  - **r03 Beacon** — OS command injection (Medium)
-  - **r04 Postcard** — Server-side template injection (Hard)
+- **4 showcase lab + 1 lab hard-only**, masing-masing showcase lab punya **4 level**: Acolyte / Templar / **Inquisitor** (dieksploitasi dan dinilai) + Divine (referensi aman, tanpa flag):
+  - **r01 Mercy Clinic** — *The Quiet Ward* — SQL injection (Easy)
+  - **r02 Courier** — *Return to Nowhere* — Broken access control (Easy)
+  - **r03 Beacon** — *Static Bloom* — OS command injection (Medium)
+  - **r04 Postcard** — *The Paper Cut* — Server-side template injection (Hard)
+  - **r05 Binanse** — *The Cold Ledger* — Stored XSS (Hard, **Inquisitor-only**: tanpa pilihan difficulty dan tanpa Divine)
+- **Nama challenge bergaya riddle** menjadi judul utama yang dilihat pemain; nama produk in-world (Mercy Clinic, Courier, Beacon, Postcard, Binanse) tetap sebagai konteks sekunder. Setiap lab punya 3 hint riddle bilingual.
 - **Portal** dengan registrasi terbuka, login, katalog, hint berbayar, leaderboard, panel Lab, submit flag, serta satu instance aktif per user.
 - **Warden** sebagai satu-satunya komponen yang boleh membuat/menghapus container lab, melalui Docker socket proxy yang dibatasi.
 - **Traefik v3 + forward-auth** di belakang Cloudflare Tunnel; setiap instance hanya punya satu container di jaringan internalnya sendiri.
@@ -40,7 +42,7 @@ Hasil verifikasi lokal terakhir:
 
 Keputusan owner 2026-11-21/22 yang menjadi batas POC:
 
-- **4 lab × 4 level**; Inquisitor dikembalikan sebagai level **chain** (dieksploitasi & dinilai), Divine tetap referensi aman.
+- **4 lab × 4 level**, ditambah **r05 Binanse** hard-only dengan satu level Inquisitor; Inquisitor adalah level **chain** (dieksploitasi & dinilai), Divine tetap referensi aman.
 - **Tanpa** victim bot, FIFO queue, Extend, ceiling, event code, admin pages.
 - **Satu container per (user, challenge, level)**; **satu instance aktif per user** (launch lain menghentikan instance sebelumnya).
 - Capacity penuh → launch ditolak `full`; idle 20 menit, lifetime maksimum 60 menit; Reset dan Stop tetap ada.
@@ -137,7 +139,7 @@ Redesain penuh dari tema navy+gold yang terasa generik menjadi sistem editorial 
 - **Guild ledger:** posisi `#N` mono, seal rank E–S, baris viewer dipin, empty state berilustrasi.
 - **Login/register:** panel inverted dengan crest + ilustrasi gate/key + tiga fakta, form di kertas.
 - **Ilustrasi:** 8 simbol SVG custom (guild hall, clinic, courier, beacon, postcard, gate, key/seal, laurel, empty scroll), line-art, per-lab watermark; tanpa asset eksternal/emoji.
-- **Adventurer rank E–S:** semua mulai **E (Initiate / Pemula)**; bounty dikonversi otomatis ke rank dengan threshold **E 0 · D 300 · C 900 · B 1600 · A 2400 · S 3150**, lengkap dengan progress “100 / 300 to D”. Tampil di ledger, account menu, dan leaderboard; posisi leaderboard tetap terpisah.
+- **Adventurer rank E–S:** semua mulai **E (Initiate / Pemula)**; bounty dikonversi otomatis ke rank dengan threshold **E 0 · D 300 · C 1000 · B 2000 · A 3000 · S 3750**, lengkap dengan progress “100 / 300 to D”. Tampil di ledger, account menu, dan leaderboard; posisi leaderboard tetap terpisah. Bounty maksimum **3750** karena r05 Binanse menambah 600 poin (Hard 300 × Inquisitor 2).
 - **Toast:** slip cap untuk aksi sukses/gagal (flag accepted/rejected, intel unlocked, contract started/stopped), seal glyph, auto-dismiss, tidak merebut fokus; inline result tetap ada untuk no-JS.
 - **Audit visual:** light/dark, 375 px tanpa horizontal scroll, panel starting/running, toast live, dan semua halaman (login, register, Guild Hall, dossier, ledger) sudah dicek lewat Chrome headless langsung ke server.
 
@@ -197,13 +199,13 @@ Belum dikerjakan (dicatat jujur):
 
 ### 7.1 Unit/integration (`npm test`)
 
-- **4557 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3150), level Inquisitor/four-level manifest, dan UI token/contrast.
+- **4557 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3750), level Inquisitor/four-level manifest plus r05 Inquisitor-only, dan UI token/contrast.
 - `npm run typecheck` exit 0.
 - Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4557/4557**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
 
 ### 7.2 Black-box lab (`npm run labs:test`)
 
-- **112 PASS**: 4 lab × 4 level — health, solve referensi mendapat flag level itu (termasuk Inquisitor chain), solve level bawah gagal di level atas, Divine menolak semua solve, browse tidak membocorkan flag, tidak ada egress, **inspect/log/image/config tidak mengandung `HVWA{`**, file one-shot hilang.
+- **112 PASS**: 4 lab × 4 level — health, solve referensi mendapat flag level itu (termasuk Inquisitor chain), solve level bawah gagal di level atas, Divine menolak semua solve, browse tidak membocorkan flag, tidak ada egress, **inspect/log/image/config tidak mengandung `HVWA{`**, file one-shot hilang. r05 Binanse menyusul satu level Inquisitor; angka final diisi ulang oleh controller setelah lab mendarat.
 
 ### 7.3 Platform E2E (`npm run range:verify`)
 

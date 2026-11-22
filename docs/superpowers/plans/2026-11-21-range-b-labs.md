@@ -16,6 +16,15 @@ The POC now has four levels per lab: Acolyte, Templar and Inquisitor are exploit
 secure reference (scored 0). Inquisitor is a chained, multi-step exploit. Each lab adds an `inquisitor` level and a
 `solve/inquisitor.mjs`; hints stay ≤ 3. Everything else in this plan stands as written.
 
+## BINANSE / RIDDLE AMENDMENT (owner, 2026-11-22) — binding
+
+A fifth hard-only lab **r05 Binanse** (stored XSS) joins the POC with a single **Inquisitor** level: no difficulty
+choice and no Divine reference; it still needs `solve/inquisitor.mjs` for the layout gate. Challenge titles are now
+riddle-style — r01 The Quiet Ward, r02 Return to Nowhere, r03 Static Bloom, r04 The Paper Cut, r05 The Cold Ledger —
+with three riddle hints each; the in-world product names (Mercy Clinic, Courier, Beacon, Postcard, Binanse) stay as
+secondary context, and the challenge title is the primary UI heading. Maximum bounty becomes **3750**. No other POC
+changes.
+
 ## Depends on (Plan A)
 
 This plan assumes Plan A's Task 6 and Task 25 are merged:

@@ -56,7 +56,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     const userId = res.locals.platformAuth?.userId;
     if (userId !== undefined) {
       // An active or recently ended instance (the chip hides itself when there is neither).
-      res.locals.myLab = myLabChip(lifecycle.store.latestForUser(userId), opts.registry, now(), res.locals.t);
+      res.locals.myLab = myLabChip(lifecycle.store.latestForUser(userId), opts.registry, now(), res.locals.t, req.lang);
       // The adventurer rank for the account menu, derived from the player's bounty (no DB state).
       const letter = rankFor(rangeScore(db, userId)).letter;
       res.locals.playerRank = { letter, name: res.locals.t(`rank.name.${letter.toLowerCase()}`) };

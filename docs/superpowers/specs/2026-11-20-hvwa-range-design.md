@@ -406,6 +406,13 @@ The owner asked for a smaller, faster POC. This section overrides the sections a
 are exploitable and scored; Divine remains the secure reference (scored 0). Inquisitor is a chained, multi-step
 exploit. Where this section says three levels, read four.
 
+**Binanse / riddle amendment (owner, 2026-11-22).** A fifth hard-only lab **r05 Binanse** (stored XSS) joins the POC
+with a single **Inquisitor** level: no difficulty choice and no Divine reference. Challenge titles are now
+riddle-style — r01 The Quiet Ward, r02 Return to Nowhere, r03 Static Bloom, r04 The Paper Cut, r05 The Cold Ledger —
+with three riddle hints each; the in-world product names (Mercy Clinic, Courier, Beacon, Postcard, Binanse) stay as
+secondary context, and the challenge title is the primary UI heading. Maximum bounty becomes **3750** (rank S at
+3750). No other POC changes.
+
 **4 labs, 3 levels each** (Acolyte, Templar, Divine), all unique apps and none needing a victim bot:
 
 | # | Category | App | Rating | Stack | Flag location type |

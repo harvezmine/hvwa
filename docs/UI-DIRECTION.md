@@ -101,11 +101,11 @@ System fonts only (offline):
 ## 6. Guild Hall (home / catalog)
 
 1. **Hero poster:** left-aligned. Eyebrow mono `THE RANGE GUILD · CONTRACTS OPEN`. Headline serif, two lines, e.g. "Take a contract. / Break the app." Lead in sans or serif. Right side: a custom crest/seal illustration (inline SVG) and a **ledger strip** (Bounty / Contracts sealed / Rank) separated by hairlines — not stat cards.
-2. **Continue strip:** if there is an active/recent contract, an inverted near-black slip with a single neutral ink hairline (no copper/coloured rule): app name, last state, "Resume contract →". One per screen.
-3. **Mission board:** section header `MISSION BOARD` with a hairline and a mono count (`4 contracts`). The four labs are **contract slips** in a 2-column board (single column < 900 px):
+2. **Continue strip:** if there is an active/recent contract, an inverted near-black slip with a single neutral ink hairline (no copper/coloured rule): challenge title (riddle) primary, the in-world app name as context, last state, "Resume contract →". One per screen.
+3. **Mission board:** section header `MISSION BOARD` with a hairline and a mono count (`5 contracts`). The five labs are **contract slips** in a 2-column board (single column < 900 px). Four have a tier row per level; r05 Binanse is hard-only and shows just its Inquisitor row.
    - Paper slip, 1 px hairline, 0 radius, subtle torn bottom edge via `clip-path` (optional, must not hurt text).
    - Top row: category tab (small square, mono), rank seal (monochrome outlined circle with the difficulty letter/numeral — no colour fill or coloured ring), and a pin dot.
-   - Contract title: app name in serif ~1.5rem; subtitle (lab title) sans muted.
+   - Contract title: challenge title (riddle) in serif ~1.5rem; subtitle: in-world app name sans muted.
    - Objective: scenario, 2–3 lines.
    - **Tier rows:** three rows Acolyte / Templar / Divine, each with a small monochrome seal/state mark and points; solved = "SEALED" stamp (rotated 6°, ink/copper text, outlined, low-opacity) or a clear check. No coloured rail on the active/solved row — use the seal or a tonal wash.
    - Footer: bounty total in mono, arrow. Hover: background steps one tone, border darkens; no lift/shadow.
@@ -115,7 +115,7 @@ System fonts only (offline):
 ## 7. Contract Dossier (lab page)
 
 - Breadcrumb `Contracts / <App>`.
-- Hero: eyebrow category + rank seal; serif title; scenario; sealed stamp if solved.
+- Hero: eyebrow category + rank seal; the challenge title (riddle) as the serif `h1`; the in-world app name as a mono subtitle; scenario; sealed stamp if solved.
 - Two columns: main (max ~68ch) and a 20rem right rail.
 - **Mission brief** as a serif lead paragraph with no coloured rule (optionally one neutral ink hairline on the left); not a card.
 - **Tiers:** three large rows, each a selectable document line: tier name serif, meaning sans muted, points mono, state. Current tier = 5% tonal wash + a small filled ink dot or seal (no coloured rail); solved = seal. Keep the existing level links/testids.
@@ -161,8 +161,8 @@ System fonts only (offline):
 ## 13. Adventurer rank (E → S)
 
 Every player starts at rank E; bounty points convert into rank progress. Pure module `src/range/rank.ts`:
-`rankFor(points)`, `nextRank(points)`, `pointsToNext(points)` over thresholds E 0 · D 300 · C 900 · B 1600 · A 2400 ·
-S 3150 (the max achievable bounty is 3150). Names: E Initiate/Pemula, D Scout/Pengintai, C Adept/Ahli, B Veteran,
+`rankFor(points)`, `nextRank(points)`, `pointsToNext(points)` over thresholds E 0 · D 300 · C 1000 · B 2000 · A 3000 ·
+S 3750 (the max achievable bounty is 3750: four showcase labs plus the hard-only r05 Binanse at Inquisitor). Names: E Initiate/Pemula, D Scout/Pengintai, C Adept/Ahli, B Veteran,
 A Elite/Elit, S Legend/Legenda. No DB state — the rank is always derived from the existing score (`rangeScore`).
 
 Display: the Guild Hall ledger shows `ADVENTURER RANK` as a copper seal letter + mono name + a `points / next` progress

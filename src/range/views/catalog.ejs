@@ -36,8 +36,8 @@
   <span class="seal" aria-hidden="true"><svg class="icon icon-sm" focusable="false"><use href="/static/icons.svg#<%= continueLab.icon %>"></use></svg></span>
   <span class="continue-body">
     <span class="continue-eyebrow"><%= t('range.continue_hero') %></span>
-    <span class="continue-app"><%= continueLab.app %></span>
-    <span class="continue-meta"><%= continueLab.title %> · <%= continueLab.stateLabel %><% if (continueLab.minutesLeft > 0) { %> · <%= t('range.time_left').replace('{n}', continueLab.minutesLeft) %><% } %></span>
+    <span class="continue-app"><%= continueLab.title %></span>
+    <span class="continue-meta"><%= continueLab.app %> · <%= continueLab.stateLabel %><% if (continueLab.minutesLeft > 0) { %> · <%= t('range.time_left').replace('{n}', continueLab.minutesLeft) %><% } %></span>
   </span>
   <span class="continue-go"><%= t('range.resume') %></span>
 </a>
@@ -105,8 +105,8 @@
         <span class="difficulty-label"><%= c.difficultyLabel %></span>
         <span class="pin-dot" aria-hidden="true"></span>
       </div>
-      <h2 class="contract-app"><%= c.app %></h2>
-      <p class="contract-title"><%= c.title %></p>
+      <h2 class="contract-app"><%= c.title %></h2>
+      <p class="contract-title"><%= c.app %></p>
       <p class="contract-objective"><%= c.scenario %></p>
       <ul class="tier-rows" aria-label="<%= t('range.tiers') %>">
 <% c.levels.forEach(function (l) { -%>
