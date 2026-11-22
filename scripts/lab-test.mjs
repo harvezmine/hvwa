@@ -1,4 +1,4 @@
-// scripts/lab-test.mjs — `npm run labs:test [-- --lab r0N]`. Black-box range-lab tests (spec §8.5, 3 levels). NOT part of
+// scripts/lab-test.mjs — `npm run labs:test [-- --lab r0N]`. Black-box range-lab tests (spec §8.5, 4 levels). NOT part of
 // `npm test`: it drives the Docker CLI. For each lab it builds hvwa-lab/<id>:test, then per level runs one hardened
 // container (scripts/lab-harness.mjs dockerRunArgs) on a per-lab INTERNAL network (no egress), and drives it with runner
 // containers on that same network (the lab has no published port and no route out — Traefik's role in production).

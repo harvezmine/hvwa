@@ -1,6 +1,7 @@
 // src/range/rank.ts — the adventurer rank (E → S). Pure: derives a letter, name key and progress from the player's
 // total bounty points (src/range/progress.ts rangeScore). Every player starts at E; the thresholds run up to the
-// maximum achievable bounty (~1750). No DB state: rank is always derived from the score.
+// maximum achievable bounty (3150: acolyte + templar + inquisitor at 2x across all four labs). No DB state: rank is
+// always derived from the score.
 import { t } from '../core/i18n.js';
 import type { Lang } from '../core/i18n.js';
 
@@ -12,11 +13,11 @@ export interface RankStep {
 /** Thresholds, ascending. A score at or above minPoints earns that letter. */
 export const RANKS: readonly RankStep[] = Object.freeze([
   Object.freeze({ letter: 'E', minPoints: 0 }),
-  Object.freeze({ letter: 'D', minPoints: 200 }),
-  Object.freeze({ letter: 'C', minPoints: 500 }),
-  Object.freeze({ letter: 'B', minPoints: 900 }),
-  Object.freeze({ letter: 'A', minPoints: 1300 }),
-  Object.freeze({ letter: 'S', minPoints: 1750 }),
+  Object.freeze({ letter: 'D', minPoints: 300 }),
+  Object.freeze({ letter: 'C', minPoints: 900 }),
+  Object.freeze({ letter: 'B', minPoints: 1600 }),
+  Object.freeze({ letter: 'A', minPoints: 2400 }),
+  Object.freeze({ letter: 'S', minPoints: 3150 }),
 ] as const);
 
 /** The current rank for a point total (never undefined: everyone starts at E). */

@@ -29,7 +29,7 @@ describe('labs/<id>-<slug> manifests', () => {
       const parsed = labManifestSchema.safeParse(m);
       expect(parsed.success, `${e.id}: ${JSON.stringify(parsed.error?.issues)}`).toBe(true);
       expect(m).toMatchObject({ id: e.id, slug: e.slug, themeId: e.slug, category: e.category, difficulty: e.difficulty, needsBot: false });
-      expect(m.levels).toEqual(['acolyte', 'templar', 'divine']);         // POC: 3 levels, no inquisitor
+      expect(m.levels).toEqual(['acolyte', 'templar', 'inquisitor', 'divine']); // POC: 4 levels; Inquisitor is scored
       expect(m.hints).toHaveLength(3);
       expect(m.levels.includes('divine')).toBe(true);
     }

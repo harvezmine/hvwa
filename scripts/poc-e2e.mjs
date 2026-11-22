@@ -1,6 +1,7 @@
 // scripts/poc-e2e.mjs — `npm run poc:e2e` (NOT part of `npm test`; needs Docker Engine 28+, the docker CLI and a free
 // loopback port 18081). The end-to-end proof that every REAL lab in labs/registry.json works through the range PORTAL:
-// for r01 Mercy Clinic, r02 Courier, r03 Beacon and r04 Postcard, at every level (acolyte, templar, divine) it drives
+// for r01 Mercy Clinic, r02 Courier, r03 Beacon and r04 Postcard, at every level (acolyte, templar, inquisitor,
+// divine) it drives
 //   register/login (CSRF + Origin/Sec-Fetch-Site like a browser) -> catalog -> launch -> panel until running ->
 //   open (single-use gate ticket -> hvwa_gate) -> the lab's landing page -> the reference solve (a node runner on the
 //   instance's own internal network) -> flag submit -> score -> stop, and proves Divine resists every exploitable solve.
@@ -275,12 +276,12 @@ async function runLevel(lab, level, record) {
     }],
     ...(level === 'divine'
       ? [['divine-resists', async () => {
-          for (const sl of ['acolyte', 'templar']) {
+          for (const sl of ['acolyte', 'templar', 'inquisitor']) {
             const r = runSolve(lab, sl, st.instanceId, lab.port);
             if (r.code !== 0) throw new Error(`the ${sl} solve did not run: ${show(r)}`);
             if (FLAG_RE.test(`${r.out}\n${r.err}`)) throw new Error(`the ${sl} solve printed a flag at Divine: ${r.out.slice(0, 80)}`);
           }
-          return 'acolyte and templar print no flag';
+          return 'acolyte, templar and inquisitor print no flag';
         }]]
       : [
           ['solve', async () => {
