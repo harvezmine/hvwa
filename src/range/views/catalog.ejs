@@ -10,7 +10,7 @@
     <p class="gh-lead"><%= t('range.catalog_lead') %></p>
   </div>
   <aside class="gh-hero-side">
-    <svg class="gh-crest" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
+    <svg class="icon gh-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-guild-hall"></use></svg>
     <dl class="ledger-strip">
       <div class="ledger-entry">
         <dt><%= t('range.your_score') %></dt>
@@ -20,11 +20,13 @@
         <dt><%= t('range.contracts_sealed') %></dt>
         <dd data-testid="range-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></dd>
       </div>
-      <div class="ledger-entry">
-        <dt><%= t('range.rank') %></dt>
-        <dd data-testid="range-rank"><% if (typeof rank !== 'undefined' && rank) { %>#<%= rank %><% } else { %>—<% } %></dd>
+      <div class="ledger-entry ledger-rank-entry">
+        <dt><%= t('rank.label') %></dt>
+        <dd data-testid="range-rank"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= rank.letter %></span><span class="rank-name"><%= rank.name %></span></dd>
       </div>
     </dl>
+    <div class="progress-label"><span><%= rank.points %> / <%= rank.nextMinPoints %></span><span><% if (rank.maxed) { %><%= t('rank.max') %><% } else { %><%= t('rank.to').replace('{rank}', rank.nextLetter) %><% } %></span></div>
+    <progress class="progress" data-testid="range-rank-progress" max="<%= rank.nextMinPoints %>" value="<%= rank.points %>"><%= rank.points %> / <%= rank.nextMinPoints %></progress>
     <div class="progress-label"><span><%= t('range.progress_label') %></span><span><%= solved %>/<%= total %></span></div>
     <progress class="progress" data-testid="range-progress" max="<%= total %>" value="<%= solved %>"><%= solved %>/<%= total %></progress>
   </aside>
@@ -96,8 +98,9 @@
   <div class="catalog-grid">
 <% cards.forEach(function (c) { -%>
     <a class="contract-slip lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>">
+      <svg class="icon slip-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg>
       <div class="slip-head">
-        <span class="category-tab"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg><%= c.category %></span>
+        <span class="category-tab"><%= c.category %></span>
         <span class="rank-seal seal seal-sm" aria-hidden="true"><%= c.difficultyMark %></span>
         <span class="difficulty-label"><%= c.difficultyLabel %></span>
         <span class="pin-dot" aria-hidden="true"></span>

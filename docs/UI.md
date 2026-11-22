@@ -65,6 +65,13 @@ lab bar's switcher and the dossier's tier rows. Any element with `data-level="<l
 `--lv` and `--lv-bg`. Tiers are drawn as **monochrome seals, mono text and tonal washes** — never a coloured rail or a
 solid level card. Colour is never the only signal: the tier's name is always written.
 
+**Adventurer rank (E → S).** Derived from bounty points (`src/range/rank.ts`), never stored: E 0, D 200, C 500, B 900,
+A 1300, S 1750. Everyone starts at E; the names are Initiate / Scout / Adept / Veteran / Elite / Legend (Pemula /
+Pengintai / Ahli / Veteran / Elit / Legenda). Shown as a copper seal letter + mono name (`.rank-seal` + `.rank-name`) in
+the Guild Hall ledger (with a `points / next` progress bar), the account menu, and every leaderboard row — always
+distinct from the numeric `#1` position, which stays mono text. There is no rank entry in the DB; the existing score is
+the only source.
+
 **Type.** `--serif`: `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif` (display
 headings, the mission brief, contract titles); `--sans`: `ui-sans-serif, system-ui, "Segoe UI", Roboto,
 "Helvetica Neue", Arial, sans-serif` (body UI, controls, forms); `--mono`: `ui-monospace, "Cascadia Code", "JetBrains
@@ -138,6 +145,13 @@ centred column (`.content-lab`, 60 rem).
 | Active-contract panel | `<section id="lab-panel" class="card panel lab-panel" data-state>` (src/range/views/panel.ejs) | State dot + label, time bar, one primary action (Launch or Open lab), quiet Reset/Stop; full/failed/stopped reasons with relaunch. htmx re-fetches the whole section (`hx-swap="outerHTML"`): every 1 s starting, 30 s running. |
 | Active contract tag | `<a class="my-lab" data-state>` (core/views/my-lab.ejs) | In the masthead on every signed-in page; state dot, app + time left; refreshes every 30 s. |
 | Toast (stamped slip) | `<div id="toasts" class="toasts">` + `.toast toast-success\|error\|info` (built by ui.js) | Paper slip, seal glyph, mono eyebrow, serif message, close, auto-dismiss ~5 s, max 3, bottom-right (bottom-centre < 640 px), `role="status"`, no focus stealing, paused on hover/focus. Driven by `data-toast-*` on action-swap fragments only, never polls. |
+
+**Illustrations.** The sprite also carries a set of flat, single-weight line illustrations (`stroke="currentColor"`,
+`aria-hidden`, no gradients, no emoji) used only on portal pages — never in the shared lab layout, so the lab page
+budget is untouched: `i-guild-hall` (Guild Hall hero), `i-ill-clinic` / `i-ill-courier` / `i-ill-beacon` /
+`i-ill-postcard` (contract-slip watermark + dossier hero, mapped from the lab's `themeId`), `i-guild-gate` and
+`i-key-seal` (login / register / password panels), `i-laurel` (leaderboard title) and `i-empty-scroll` (empty states
+and the error page). Each page uses a distinct composition.
 
 ## 5. Writing a lab view
 

@@ -157,3 +157,29 @@ System fonts only (offline):
 - Contrast ≥4.5 text / ≥3 UI in both themes; 375 px no horizontal scroll; 44 px targets; visible focus; `aria-current` semantics.
 - Keep every form field name, action, htmx attribute, message class and `data-testid`; presentation only.
 - Keep `prefers-reduced-motion` support.
+
+## 13. Adventurer rank (E → S)
+
+Every player starts at rank E; bounty points convert into rank progress. Pure module `src/range/rank.ts`:
+`rankFor(points)`, `nextRank(points)`, `pointsToNext(points)` over thresholds E 0 · D 200 · C 500 · B 900 · A 1300 ·
+S 1750 (the max achievable bounty is ~1750). Names: E Initiate/Pemula, D Scout/Pengintai, C Adept/Ahli, B Veteran,
+A Elite/Elit, S Legend/Legenda. No DB state — the rank is always derived from the existing score (`rangeScore`).
+
+Display: the Guild Hall ledger shows `ADVENTURER RANK` as a copper seal letter + mono name + a `points / next` progress
+bar; the account menu shows a small seal + letter + name next to the initials; every leaderboard row/podium shows a seal
+letter beside the name. The numeric position (`#1`, mono) stays separate and labelled, never confused with the rank
+seal. Unit tests cover thresholds and boundaries; portal tests cover rendering and the EN/ID names.
+
+## 14. Illustration set
+
+Custom inline-SVG line illustrations in `src/public/icons.svg` (portal views only; no external assets, no emoji, no
+gradients, `stroke="currentColor"`, one weight, `aria-hidden`):
+
+- `i-guild-hall` — guild facade with a compass and pinned slips (Guild Hall hero).
+- `i-ill-clinic` / `i-ill-courier` / `i-ill-beacon` / `i-ill-postcard` — one per contract, as a faint slip watermark and
+  a small dossier-hero mark (mapped from the lab's `themeId`).
+- `i-guild-gate` / `i-key-seal` — the login / register / password inverted panel.
+- `i-laurel` — leaderboard title mark.
+- `i-empty-scroll` — empty states and the error page.
+
+Distinct compositions, varied scale/orientation, quiet watermarks — never the shared lab layout (page budget).
