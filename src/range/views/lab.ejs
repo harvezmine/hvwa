@@ -6,7 +6,7 @@
 <header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>"<% if (lab.mode === 'team') { %> data-mode="team"<% } %>>
   <div class="lab-hero-head">
     <div class="lab-hero-copy">
-      <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t('range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %></p>
+      <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t(levels.length === 1 ? 'range.tier_word' : 'range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %></p>
       <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="diff-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span><% if (lab.mode === 'team') { %><span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span><% } %></p>
       <h1 class="page-title"><%= lab.title %></h1>
       <p class="dossier-subtitle"><%= lab.app %></p>
@@ -21,7 +21,7 @@
 
 <div class="dossier">
   <section class="tier-ladder" aria-labelledby="tiers-title">
-    <h2 class="section-title" id="tiers-title"><%= t('range.tiers') %></h2>
+    <h2 class="section-title" id="tiers-title"><%= t(levels.length === 1 ? 'range.tier_word' : 'range.tiers') %></h2>
     <p class="panel-lead"><%= t(levels.some(function (l) { return l.id === 'divine'; }) ? 'range.levels_lead' : 'range.levels_lead_hard_only') %></p>
     <ul class="tier-cards">
 <% levels.forEach(function (l) { -%>

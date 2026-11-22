@@ -482,6 +482,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'range.progress_label': { id: 'Kampanye', en: 'Campaign' },
   'range.brief': { id: 'Misi singkat', en: 'Mission brief' },
   'range.tiers': { id: 'Tier', en: 'Tiers' },
+  'range.tier_word': { id: 'Tingkat', en: 'Tier' },
   'range.intel': { id: 'Intelijen', en: 'Intel' },
   'range.claim': { id: 'Klaim bounty', en: 'Claim bounty' },
   'range.claim_button': { id: 'Klaim bounty', en: 'Claim bounty' },

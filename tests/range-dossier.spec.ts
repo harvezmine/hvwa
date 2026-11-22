@@ -35,7 +35,7 @@ describe('the contract dossier page', () => {
     const { app } = portalApp({ range: { registry } });
     const { agent } = await player(app, 'alice');
     const html = (await agent.get('/labs/r05')).text;
-    expect(html).toContain('Contract r05 · 1 Tiers · BOUNTY 600');
+    expect(html).toContain('Contract r05 · 1 Tier · BOUNTY 600');
     expect(html).toContain('This contract has a single hard tier. There is no secure reference in this lab.');
     expect((html.match(/data-testid="range-level-/g) ?? []).length).toBe(1);
     expect(html).toContain('data-testid="range-level-inquisitor"');

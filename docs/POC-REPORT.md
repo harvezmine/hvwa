@@ -26,14 +26,15 @@ Hasil verifikasi lokal terakhir:
 
 | Gate | Hasil |
 |---|---|
-| `npx vitest run` | **4559 test lulus** (152 file) |
+| `npx vitest run` | **4592 test lulus** (157 file) |
 | `npm run typecheck` | exit 0 |
 | `npm run labs:test` | **119 PASS** — 4 lab × 4 level + r05 Binanse (Inquisitor-only), termasuk check no-leak |
 | `npm run range:verify` | **16/16 PASS**, launch-to-ready 1.0–1.5 s |
 | `npm run verify:dist` (full + lite) | OK |
 | `npm run range:build` | image portal & warden dibuat |
 | `npm run poc:e2e` | **PASS 5 lab (4×4 level + r05 Inquisitor), 170 check** |
-| UI | **Guild Ledger** light/dark, rank E–S, 9 ilustrasi custom, toast |
+| UI | **Guild Ledger** light/dark, rank E–S, 9 ilustrasi, popup submit + fun fact, dossier workspace |
+| Teams & admin | team per user + mode team/individual, leaderboard tim, admin dashboard (activity, live exploit, instances/stop, labs, teams) |
 | Commit attribution | **0** (`Co-Authored-By`/Claude/chatbot tidak dipakai) |
 
 ---
@@ -154,6 +155,23 @@ Redesain penuh dari tema navy+gold yang terasa generik menjadi sistem editorial 
 
 ---
 
+### Teams, mode challenge, dan admin dashboard
+
+- **Teams:** satu user satu tim; buat tim (nama 3–32, join code 8 karakter), join via kode, leave; cap 20 anggota; tim kosong dihapus. Halaman `/team` dengan anggota, kode, team bounty.
+- **Mode per challenge:** admin menentukan **individual** atau **team** di `/admin/labs`; default individual. Lab tim menampilkan badge `TEAM`; skor tim hanya dari lab mode tim.
+- **Team scoring:** untuk setiap lab mode tim, ambil **best level dari anggota mana pun** (satu lab dihitung sekali), jumlahkan poin; user disabled dikecualikan; hint cost tidak mengurangi team bounty; tie-break last solve paling awal lalu nama tim.
+- **Leaderboard:** tab **Individual** dan **Teams**; baris tim (nama, skor, lab solved, anggota, last solve), tim viewer ditandai.
+- **Admin dashboard** (role admin; player 404):
+  - `/admin` overview: live instances/capacity, users, teams, exploit 24 jam, live exploit feed (htmx 5 detik), activity terbaru, running instances.
+  - `/admin/activity`: log lengkap dengan filter event/user/team/lab/date dan pagination.
+  - `/admin/instances`: tabel container/instance (user, team, lab/level, state, age, expires, container state), aksi **Stop**; log `admin.stop`.
+  - `/admin/teams`: manajemen tim/anggota dan skor.
+  - `/admin/labs`: toggle mode individual/team per lab; log `admin.mode`.
+  - Event: `auth.register/login`, `team.create/join/leave`, `range.launch/stop/reset`, `range.submit.wrong`, `range.exploit` (lab/level/points, tanpa flag), `admin.mode/stop/team.create/team.delete`.
+  - Semua form admin: CSRF + Origin + Sec-Fetch-Site; nilai escaped; tidak ada flag/token/secret/socket di halaman atau log.
+- **Popup submit:** setiap submit membuka modal animasi — solved/new-best (“Contract sealed”, level + poin, **fun fact/backstory per lab**, confetti), wrong/already dengan varian tenang; inline result tetap untuk no-JS.
+- **Fun facts** (EN/ID): SQLi/OWASP history (r01), Broken Access Control #1 2021 (r02), Shellshock/command injection (r03), James Kettle SSTI 2015 (r04), Binanse/2022 crypto-exchange DevOps session + stored XSS (r05).
+
 ## 5. Keamanan flag (tidak bisa diambil dari env/inspect/log)
 
 Perubahan keamanan 22 November 2026:
@@ -208,9 +226,9 @@ Belum dikerjakan (dicatat jujur):
 
 ### 7.1 Unit/integration (`npm test`)
 
-- **4559 test / 152 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3750), level Inquisitor/four-level manifests plus r05 Inquisitor-only, dan UI token/contrast.
+- **4592 test / 157 file lulus**, termasuk portal mode, auth/register/login, CSRF/Origin, katalog/filter, hint, submit, leaderboard individual/teams, teams/mode, admin dashboard/activity/instances, lifecycle, reaper, gate, forward-auth, warden, compose, images, fixture, rank E–S (threshold 3750), level Inquisitor/four-level manifests plus r05 Inquisitor-only, popup submit/fun facts, dan UI token/contrast.
 - `npm run typecheck` exit 0.
-- Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4559/4559**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
+- Catatan kejujuran: di mesin ini paralelisme fork default sempat OOM; run final memakai `--poolOptions.forks.maxForks=4 --poolOptions.forks.minForks=1` dan lulus **4592/4592**. Sebelumnya satu run juga sempat timeout pada satu test (flake timing suite lama), lalu dua rerun penuh lulus.
 
 ### 7.2 Black-box lab (`npm run labs:test`)
 
@@ -219,7 +237,7 @@ Belum dikerjakan (dicatat jujur):
 ### 7.3 Platform E2E (`npm run range:verify`)
 
 - **16/16 PASS**: portal via tunnel stand-in, tidak ada port publik, cookie host-only, limit registrasi per IP, launch-to-ready, hardening container, gate ticket/cookie/replay, tidak ada cookie portal/secret ke lab, cross-user 401, egress/DNS/portal/warden/socket/instance lain/Traefik diblokir, flag file/env/uid dan penolakan flag milik user lain, socket-proxy allowlist, capacity penuh, reaper, reconcile, stop cleanup.
-- Launch-to-ready pada run final: **1508 ms, 1617 ms, 1508 ms** (run sebelumnya 1031–1639 ms; satu run sempat flake di probe isolasi dan lolos bersih saat diulang).
+- Launch-to-ready pada run final: **1162 ms, 1090 ms, 1552 ms** (run sebelumnya 1031–1639 ms; satu run sempat flake di probe isolasi dan lolos bersih saat diulang).
 
 ### 7.4 E2E lab nyata lewat portal (`npm run poc:e2e`)
 
@@ -227,11 +245,11 @@ Belum dikerjakan (dicatat jujur):
 
 | Lab | Acolyte | Templar | Inquisitor | Divine |
 |---|---|---|---|---|
-| r01 Mercy Clinic | PASS (1518 ms) | PASS (1563 ms) | PASS (1503 ms) | PASS — resists (1599 ms) |
-| r02 Courier | PASS (1061 ms) | PASS (1550 ms) | PASS (1538 ms) | PASS — resists (1413 ms) |
-| r03 Beacon | PASS (1507 ms) | PASS (1088 ms) | PASS (1437 ms) | PASS — resists (1435 ms) |
-| r04 Postcard | PASS (3549 ms) | PASS (3620 ms) | PASS (3572 ms) | PASS — resists (3587 ms) |
-| r05 Binanse | — | — | PASS (1485 ms) | — (hard-only, no Divine) |
+| r01 Mercy Clinic | PASS (1590 ms) | PASS (1605 ms) | PASS (1682 ms) | PASS — resists (1520 ms) |
+| r02 Courier | PASS (1154 ms) | PASS (1599 ms) | PASS (1094 ms) | PASS — resists (1454 ms) |
+| r03 Beacon | PASS (1046 ms) | PASS (1647 ms) | PASS (1540 ms) | PASS — resists (1432 ms) |
+| r04 Postcard | PASS (3630 ms) | PASS (3574 ms) | PASS (3686 ms) | PASS — resists (3494 ms) |
+| r05 Binanse | — | — | PASS (1624 ms) | — (hard-only, no Divine) |
 
 Detail lengkap ada di [`docs/poc-e2e-results.md`](poc-e2e-results.md) dan [`docs/poc-e2e-results.json`](poc-e2e-results.json). Cleanup terverifikasi: tidak ada container `hvwa.range=1`, network `hvwa-i-*`, maupun sisa project E2E.
 
@@ -363,6 +381,28 @@ Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level D
 |---|---|
 | ![Postcard studio](screenshots/r04-home.png) | ![Postcard gallery](screenshots/r04-gallery.png) |
 
+### Admin & teams
+
+| Admin overview (live exploits + instances) | Admin activity |
+|---|---|
+| ![Admin overview](screenshots/admin-after-exploit.png) | ![Admin activity](screenshots/admin-activity-after.png) |
+
+| Admin instances | Team page |
+|---|---|
+| ![Admin instances](screenshots/admin-instances-after.png) | ![Team page](screenshots/team-page.png) |
+
+| Admin labs (team/individual) | Admin teams |
+|---|---|
+| ![Admin labs](screenshots/admin-labs.png) | ![Admin teams](screenshots/admin-teams.png) |
+
+| Team leaderboard | Solved popup + fun fact |
+|---|---|
+| ![Team leaderboard](screenshots/leaderboard-teams-after.png) | ![Solved popup](screenshots/modal-solved.png) |
+
+| Dossier workspace (new layout) |
+|---|
+| ![Dossier workspace](screenshots/dossier-new.png) |
+
 ### r05 — Binanse
 
 | Landing | Dashboard |
@@ -379,6 +419,6 @@ Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level D
 
 ## 11. Bukti commit & hygiene
 
-- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, lab **r05 Binanse** (stored XSS hard-only), enhancement flow portal, redesain UI Guild Ledger (rank E–S, ilustrasi, toast), dan pengembalian **Inquisitor** sebagai level ke-4 dengan chain per lab. Judul challenge kini funny/self-own dengan hint riddle.
+- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, lab **r05 Binanse** (stored XSS hard-only), enhancement flow portal, redesain UI Guild Ledger (rank E–S, ilustrasi, popup + fun fact, dossier workspace), pengembalian **Inquisitor** sebagai level ke-4 dengan chain per lab, serta **teams, mode team/individual, leaderboard tim, activity log, dan admin dashboard**. Judul challenge kini funny/self-own dengan hint riddle.
 - **Tidak ada** `Co-Authored-By`, Claude, atau chatbot attribution di commit mana pun sejak `d49bf8e`.
 - `context.md` tetap untracked dan tidak disentuh.
