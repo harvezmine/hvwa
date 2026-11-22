@@ -1,7 +1,7 @@
 // scripts/poc-e2e.mjs — `npm run poc:e2e` (NOT part of `npm test`; needs Docker Engine 28+, the docker CLI and a free
 // loopback port 18081). The end-to-end proof that every REAL lab in labs/registry.json works through the range PORTAL:
-// for r01 Mercy Clinic, r02 Courier, r03 Beacon and r04 Postcard, at every level (acolyte, templar, inquisitor,
-// divine) it drives
+// for r01 Mercy Clinic, r02 Courier, r03 Beacon and r04 Postcard at every level (acolyte, templar, inquisitor,
+// divine), and r05 Binanse at its single Inquisitor level, it drives
 //   register/login (CSRF + Origin/Sec-Fetch-Site like a browser) -> catalog -> launch -> panel until running ->
 //   open (single-use gate ticket -> hvwa_gate) -> the lab's landing page -> the reference solve (a node runner on the
 //   instance's own internal network) -> flag submit -> score -> stop, and proves Divine resists every exploitable solve.
@@ -37,7 +37,7 @@ const CAPACITY = '4';
 const say = (msg) => console.log(`poc:e2e ${msg}`);
 
 // Landing-page markers per lab (distinctive, flag-free). r03's <h1> is all-caps "BEACON".
-const MARKER = Object.freeze({ r01: 'Mercy Clinic', r02: 'Courier', r03: 'BEACON', r04: 'Postcard' });
+const MARKER = Object.freeze({ r01: 'Mercy Clinic', r02: 'Courier', r03: 'BEACON', r04: 'Postcard', r05: 'Binanse' });
 const FLAG_RE = /HVWA\{[a-z2-7]{26}\}/;
 
 /** Every lab in labs/registry.json (id, levels, port) plus its solve directory, in registry order. */

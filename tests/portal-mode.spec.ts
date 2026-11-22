@@ -214,10 +214,10 @@ describe('the catalog', () => {
     expect(fresh).toMatch(/data-testid="range-rank-progress" max="300" value="0"/);
     expect(fresh).toMatch(/data-testid="account-nav"[\s\S]*?class="menu-rank"[\s\S]*?Initiate/); // the account menu shows the rank
     recordRangeSolve(app.locals.db, userId, 'r01', 'templar', 150, T0);
-    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 350 → D Scout, next C at 900
+    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 350 → D Scout, next C at 1000
     const html = (await agent.get('/')).text;
     expect(html).toContain('Scout');
-    expect(html).toMatch(/data-testid="range-rank-progress" max="900" value="350"/);
+    expect(html).toMatch(/data-testid="range-rank-progress" max="1000" value="350"/);
   });
 
   it('gives each lab its own theme class and icon, and a Continue hero for an active instance', async () => {
