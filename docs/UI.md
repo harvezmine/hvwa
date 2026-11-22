@@ -151,7 +151,7 @@ centred column (`.content-lab`, 60 rem).
 **Illustrations.** The sprite also carries a set of flat, single-weight line illustrations (`stroke="currentColor"`,
 `aria-hidden`, no gradients, no emoji) used only on portal pages — never in the shared lab layout, so the lab page
 budget is untouched: `i-guild-hall` (Guild Hall hero), `i-ill-clinic` / `i-ill-courier` / `i-ill-beacon` /
-`i-ill-postcard` (contract-slip watermark + dossier hero, mapped from the lab's `themeId`), `i-guild-gate` and
+`i-ill-postcard` / `i-ill-binanse` (contract-slip watermark + dossier hero, mapped from the lab's `themeId`), `i-guild-gate` and
 `i-key-seal` (login / register / password panels), `i-laurel` (leaderboard title) and `i-empty-scroll` (empty states
 and the error page). Each page uses a distinct composition.
 

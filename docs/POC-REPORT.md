@@ -32,8 +32,8 @@ Hasil verifikasi lokal terakhir:
 | `npm run range:verify` | **16/16 PASS**, launch-to-ready 1.0–1.5 s |
 | `npm run verify:dist` (full + lite) | OK |
 | `npm run range:build` | image portal & warden dibuat |
-| `npm run poc:e2e` | **PASS 4 lab × 4 level, 160 check** |
-| UI | **Guild Ledger** light/dark, rank E–S, 8 ilustrasi custom, toast |
+| `npm run poc:e2e` | **PASS 5 lab (4×4 level + r05 Inquisitor), 170 check** |
+| UI | **Guild Ledger** light/dark, rank E–S, 9 ilustrasi custom, toast |
 | Commit attribution | **0** (`Co-Authored-By`/Claude/chatbot tidak dipakai) |
 
 ---
@@ -223,14 +223,15 @@ Belum dikerjakan (dicatat jujur):
 
 ### 7.4 E2E lab nyata lewat portal (`npm run poc:e2e`)
 
-**160 check PASS.** Setiap lab dijalankan melalui portal: register/login (CSRF + Origin/Sec-Fetch-Site), katalog, launch, panel sampai `running`, open via gate ticket sekali pakai → cookie `hvwa_gate`, landing page lab, penolakan tanpa cookie, solve referensi di runner container pada jaringan instance, submit flag, cek no-leak di `docker inspect`/`docker logs`, lalu Stop dan cleanup. Divine menjalankan **acolyte, templar, dan inquisitor** dan tidak menghasilkan flag.
+**170 check PASS.** Setiap lab dijalankan melalui portal: register/login (CSRF + Origin/Sec-Fetch-Site), katalog, launch, panel sampai `running`, open via gate ticket sekali pakai → cookie `hvwa_gate`, landing page lab, penolakan tanpa cookie, solve referensi di runner container pada jaringan instance, submit flag, cek no-leak di `docker inspect`/`docker logs`, lalu Stop dan cleanup. Divine menjalankan **acolyte, templar, dan inquisitor** dan tidak menghasilkan flag.
 
 | Lab | Acolyte | Templar | Inquisitor | Divine |
 |---|---|---|---|---|
-| r01 Mercy Clinic | PASS (1573 ms) | PASS (1597 ms) | PASS (1552 ms) | PASS — resists (1387 ms) |
-| r02 Courier | PASS (1501 ms) | PASS (1581 ms) | PASS (1558 ms) | PASS — resists (1439 ms) |
-| r03 Beacon | PASS (1508 ms) | PASS (1852 ms) | PASS (1513 ms) | PASS — resists (1389 ms) |
-| r04 Postcard | PASS (3639 ms) | PASS (3569 ms) | PASS (3795 ms) | PASS — resists (3457 ms) |
+| r01 Mercy Clinic | PASS (1518 ms) | PASS (1563 ms) | PASS (1503 ms) | PASS — resists (1599 ms) |
+| r02 Courier | PASS (1061 ms) | PASS (1550 ms) | PASS (1538 ms) | PASS — resists (1413 ms) |
+| r03 Beacon | PASS (1507 ms) | PASS (1088 ms) | PASS (1437 ms) | PASS — resists (1435 ms) |
+| r04 Postcard | PASS (3549 ms) | PASS (3620 ms) | PASS (3572 ms) | PASS — resists (3587 ms) |
+| r05 Binanse | — | — | PASS (1485 ms) | — (hard-only, no Divine) |
 
 Detail lengkap ada di [`docs/poc-e2e-results.md`](poc-e2e-results.md) dan [`docs/poc-e2e-results.json`](poc-e2e-results.json). Cleanup terverifikasi: tidak ada container `hvwa.range=1`, network `hvwa-i-*`, maupun sisa project E2E.
 
@@ -239,7 +240,7 @@ Detail lengkap ada di [`docs/poc-e2e-results.md`](poc-e2e-results.md) dan [`docs
 - `npm run verify:dist` full: OK.
 - `npm run verify:dist` dengan `HVWA_EDITION=lite`: OK.
 - `npm run range:build`: `sigmajo/hvwa:range-portal-0.1.0`, `sigmajo/hvwa:range-warden-0.1.0`.
-- `npm run labs:build`: 4 image lab di-pin ulang di `labs/registry.json`.
+- `npm run labs:build`: 5 image lab di-pin ulang di `labs/registry.json`.
 
 ### 7.6 Ukuran dan memori
 
@@ -249,6 +250,7 @@ Detail lengkap ada di [`docs/poc-e2e-results.md`](poc-e2e-results.md) dan [`docs
 | Courier | 239 MB | 15.45 MiB |
 | Beacon | 239 MB | 16.14 MiB |
 | Postcard | 77.3 MB | 24.83 MiB |
+| Binanse (r05) | 239 MB | 16.25 MiB |
 
 _(Diukur ulang 22 Nov 2026 setelah enhancement, `HVWA_LEVEL=divine`, limit 256 MiB.)_
 
@@ -317,9 +319,13 @@ Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level D
 |---|---|
 | ![Guild Hall light](screenshots/final-catalog-light.png) | ![Guild Hall dark](screenshots/final-catalog-dark.png) |
 
-| Contract dossier | Guild ledger |
+| Contract dossier (r01) | Guild ledger |
 |---|---|
 | ![Contract dossier](screenshots/final-lab-light.png) | ![Guild ledger](screenshots/final-leaderboard-light.png) |
+
+| Binanse dossier (r05) |
+|---|
+| ![Binanse dossier](screenshots/final-lab-binanse.png) |
 
 | Login | Register |
 |---|---|
@@ -357,10 +363,22 @@ Diambil dengan Chrome headless dari container lab yang sudah di-enhance (level D
 |---|---|
 | ![Postcard studio](screenshots/r04-home.png) | ![Postcard gallery](screenshots/r04-gallery.png) |
 
+### r05 — Binanse
+
+| Landing | Dashboard |
+|---|---|
+| ![Binanse landing](screenshots/r05-landing.png) | ![Binanse dashboard](screenshots/r05-dashboard.png) |
+
+| Staff console (stolen DevOps session) | Transfer receipt |
+|---|---|
+| ![Binanse staff console](screenshots/r05-staff.png) | ![Binanse receipt](screenshots/r05-receipt.png) |
+
+> Screenshot receipt memakai **dummy flag** `HVWA{aaaa…}`; flag asli dibuat per instance oleh warden.
+
 ---
 
 ## 11. Bukti commit & hygiene
 
-- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, enhancement flow portal, redesain UI Guild Ledger (rank E–S, ilustrasi, toast), dan pengembalian **Inquisitor** sebagai level ke-4 dengan chain per lab.
+- `master` berisi merge Plan A (platform), Plan B (labs), `sec-flag` (keamanan flag), enhancement lab r01–r04, lab **r05 Binanse** (stored XSS hard-only), enhancement flow portal, redesain UI Guild Ledger (rank E–S, ilustrasi, toast), dan pengembalian **Inquisitor** sebagai level ke-4 dengan chain per lab. Judul challenge kini funny/self-own dengan hint riddle.
 - **Tidak ada** `Co-Authored-By`, Claude, atau chatbot attribution di commit mana pun sejak `d49bf8e`.
 - `context.md` tetap untracked dan tidak disentuh.

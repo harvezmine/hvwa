@@ -28,7 +28,7 @@
 
     <section aria-labelledby="tiers-title">
       <h2 class="section-title" id="tiers-title"><%= t('range.tiers') %></h2>
-      <p class="panel-lead"><%= t('range.levels_lead') %></p>
+      <p class="panel-lead"><%= t(levels.some(function (l) { return l.id === 'divine'; }) ? 'range.levels_lead' : 'range.levels_lead_hard_only') %></p>
       <ul class="level-tabs">
 <% levels.forEach(function (l) { -%>
         <li data-level="<%= l.id %>">

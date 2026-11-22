@@ -502,6 +502,10 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
     id: 'Setiap level adalah instans terpisah dengan flag-nya sendiri. Divine adalah referensi aman dan tidak dinilai.',
     en: 'Each level is a separate instance with its own flag. Divine is the secure reference and is not scored.',
   },
+  'range.levels_lead_hard_only': {
+    id: 'Kontrak ini punya satu tier keras. Tidak ada referensi aman di lab ini.',
+    en: 'This contract has a single hard tier. There is no secure reference in this lab.',
+  },
   'range.howto_heading': { id: 'Cara kerja range', en: 'How the range works' },
   'range.howto1': { id: 'Pilih level, lalu jalankan lab Anda sendiri.', en: 'Pick a level, then launch your own lab.' },
   'range.howto2': { id: 'Buka lab di tab baru: hanya Anda yang dapat menjangkaunya.', en: 'Open it in a new tab: only you can reach it.' },
