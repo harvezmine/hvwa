@@ -133,7 +133,7 @@ Redesain penuh dari tema navy+gold yang terasa generik menjadi sistem editorial 
 - **Guild ledger:** posisi `#N` mono, seal rank E–S, baris viewer dipin, empty state berilustrasi.
 - **Login/register:** panel inverted dengan crest + ilustrasi gate/key + tiga fakta, form di kertas.
 - **Ilustrasi:** 8 simbol SVG custom (guild hall, clinic, courier, beacon, postcard, gate, key/seal, laurel, empty scroll), line-art, per-lab watermark; tanpa asset eksternal/emoji.
-- **Adventurer rank E–S:** semua mulai **E (Initiate / Pemula)**; bounty dikonversi otomatis ke rank dengan threshold **E 0 · D 200 · C 500 · B 900 · A 1300 · S 1750**, lengkap dengan progress “100 / 200 to D”. Tampil di ledger, account menu, dan leaderboard; posisi leaderboard tetap terpisah.
+- **Adventurer rank E–S:** semua mulai **E (Initiate / Pemula)**; bounty dikonversi otomatis ke rank dengan threshold **E 0 · D 300 · C 900 · B 1600 · A 2400 · S 3150**, lengkap dengan progress “100 / 300 to D”. Tampil di ledger, account menu, dan leaderboard; posisi leaderboard tetap terpisah.
 - **Toast:** slip cap untuk aksi sukses/gagal (flag accepted/rejected, intel unlocked, contract started/stopped), seal glyph, auto-dismiss, tidak merebut fokus; inline result tetap ada untuk no-JS.
 - **Audit visual:** light/dark, 375 px tanpa horizontal scroll, panel starting/running, toast live, dan semua halaman (login, register, Guild Hall, dossier, ledger) sudah dicek lewat Chrome headless langsung ke server.
 

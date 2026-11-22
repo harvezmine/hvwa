@@ -28,6 +28,12 @@ tasks as written. Everything not listed is built exactly as written.
 
 Labs, levels and the victim bot are out of this plan: there are 4 labs (Plan B), and Plan C is removed.
 
+## INQUISITOR AMENDMENT (owner, 2026-11-22) — binding, overrides the compact amendment where they differ
+
+The POC now shows four levels per lab. Acolyte, Templar and Inquisitor are exploitable and scored; Divine remains the
+secure reference (scored 0). Inquisitor is a chained, multi-step exploit. Everything else in the compact amendment
+stands.
+
 ## Ground rules for every task
 
 - **Run tests from the UPPERCASE drive path.** `cd C:\Users\Sahuagin\Documents\hvwa` (capital `C:`). A lowercase `c:` cwd makes the same module load twice and breaks `vi.mock` and identity checks (see `tests/tooling.spec.ts`).

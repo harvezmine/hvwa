@@ -402,6 +402,10 @@ digest. The existing `lite` tag is unchanged.
 
 The owner asked for a smaller, faster POC. This section overrides the sections above where they differ.
 
+**Inquisitor amendment (owner, 2026-11-22).** The POC now shows four levels per lab: Acolyte, Templar and Inquisitor
+are exploitable and scored; Divine remains the secure reference (scored 0). Inquisitor is a chained, multi-step
+exploit. Where this section says three levels, read four.
+
 **4 labs, 3 levels each** (Acolyte, Templar, Divine), all unique apps and none needing a victim bot:
 
 | # | Category | App | Rating | Stack | Flag location type |

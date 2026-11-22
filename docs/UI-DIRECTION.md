@@ -161,8 +161,8 @@ System fonts only (offline):
 ## 13. Adventurer rank (E → S)
 
 Every player starts at rank E; bounty points convert into rank progress. Pure module `src/range/rank.ts`:
-`rankFor(points)`, `nextRank(points)`, `pointsToNext(points)` over thresholds E 0 · D 200 · C 500 · B 900 · A 1300 ·
-S 1750 (the max achievable bounty is ~1750). Names: E Initiate/Pemula, D Scout/Pengintai, C Adept/Ahli, B Veteran,
+`rankFor(points)`, `nextRank(points)`, `pointsToNext(points)` over thresholds E 0 · D 300 · C 900 · B 1600 · A 2400 ·
+S 3150 (the max achievable bounty is 3150). Names: E Initiate/Pemula, D Scout/Pengintai, C Adept/Ahli, B Veteran,
 A Elite/Elit, S Legend/Legenda. No DB state — the rank is always derived from the existing score (`rangeScore`).
 
 Display: the Guild Hall ledger shows `ADVENTURER RANK` as a copper seal letter + mono name + a `points / next` progress
