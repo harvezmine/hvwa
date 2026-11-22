@@ -123,6 +123,16 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
     id: 'Perbaikan yang aman. Tidak ada yang bisa dieksploitasi: pelajari caranya.',
     en: 'The secure fix. Nothing to exploit: study how it is done.',
   },
+  // The adventurer rank (E → S), derived from bounty points (src/range/rank.ts).
+  'rank.label': { id: 'PANGKAT ADVENTURER', en: 'ADVENTURER RANK' },
+  'rank.name.e': { id: 'Pemula', en: 'Initiate' },
+  'rank.name.d': { id: 'Pengintai', en: 'Scout' },
+  'rank.name.c': { id: 'Ahli', en: 'Adept' },
+  'rank.name.b': { id: 'Veteran', en: 'Veteran' },
+  'rank.name.a': { id: 'Elit', en: 'Elite' },
+  'rank.name.s': { id: 'Legenda', en: 'Legend' },
+  'rank.to': { id: 'menuju {rank}', en: 'to {rank}' },
+  'rank.max': { id: 'MAKS', en: 'MAX' },
   'challenge.briefing': { id: 'Pengarahan', en: 'Briefing' },
   'challenge.levels': { id: 'Pilih level', en: 'Choose a level' },
   'challenge.levels_lead': {
@@ -551,6 +561,8 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'range.reason.unavailable': { id: 'Warden tidak dapat dihubungi.', en: 'The warden cannot be reached.' },
   'range.reason.unknown': { id: 'Lab gagal.', en: 'The lab failed.' },
   'range.my_lab': { id: 'Kontrak aktif', en: 'Active contract' },
+  'range.my_lab_active': { id: 'Kontrak aktif', en: 'Active contract' },
+  'range.my_lab_last': { id: 'Kontrak terakhir', en: 'Last contract' },
   'range.my_lab_none': { id: 'tidak ada', en: 'none' },
   // Toasts (stamped slips): rendered server-side into data attributes, shown by src/public/ui.js after action swaps.
   'range.toast_dismiss': { id: 'Tutup', en: 'Dismiss' },
@@ -583,6 +595,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'leaderboard.col_score': { id: 'Bounty', en: 'Bounty' },
   'leaderboard.col_solved': { id: 'Tersegel', en: 'Sealed' },
   'leaderboard.count': { id: '{n} anggota', en: '{n} members' },
+  'leaderboard.count_one': { id: '1 anggota', en: '1 member' },
   'leaderboard.empty': { id: 'Belum ada yang terpecahkan.', en: 'Nothing solved yet.' },
   'leaderboard.empty_action': { id: 'Jelajahi lab', en: 'Browse the labs' },
   'leaderboard.pinned': { id: 'Posisi Anda', en: 'Your position' },

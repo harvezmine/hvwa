@@ -12,6 +12,8 @@ import { instanceIdOfHost } from './hosts.js';
 import { labRoutes } from './lab-routes.js';
 import { createLifecycle, type Lifecycle } from './lifecycle.js';
 import { myLabChip } from './panel.js';
+import { rangeScore } from './progress.js';
+import { rankFor } from './rank.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
 import type { RangeContext, RangePortalOptions } from './types.js';
@@ -55,6 +57,9 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     if (userId !== undefined) {
       // An active or recently ended instance (the chip hides itself when there is neither).
       res.locals.myLab = myLabChip(lifecycle.store.latestForUser(userId), opts.registry, now(), res.locals.t);
+      // The adventurer rank for the account menu, derived from the player's bounty (no DB state).
+      const letter = rankFor(rangeScore(db, userId)).letter;
+      res.locals.playerRank = { letter, name: res.locals.t(`rank.name.${letter.toLowerCase()}`) };
     }
     next();
   };
