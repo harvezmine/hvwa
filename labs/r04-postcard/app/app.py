@@ -6,14 +6,17 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import sys
+import threading
 import time
+from collections import OrderedDict
 from urllib.parse import quote
-from flask import Flask, Response, request, render_template_string
+from flask import Flask, Response, abort, request, render_template_string
 from markupsafe import escape
 from templating import render_card
 
-LEVELS = ("acolyte", "templar", "divine")
+LEVELS = ("acolyte", "templar", "inquisitor", "divine")
 LEVEL = os.environ.get("HVWA_LEVEL") if os.environ.get("HVWA_LEVEL") in LEVELS else "acolyte"
 PORT = int(os.environ.get("HVWA_PORT", "5000"))
 HERE = pathlib.Path(__file__).resolve().parent
@@ -68,6 +71,31 @@ for _card in CARDS:
     _occ = STYLE_CLASS.get(_card["style"], "birthday")
     if all(_occ != o for o, _ in OCCASIONS):
         OCCASIONS.append((_occ, _card["style"]))
+
+# Inquisitor's print stage: POST /preview only SAVES the message, and GET /orders/<id>/print renders it. The store is
+# bounded (the studio keeps at most 32 waiting drafts, oldest evicted) and ids are random so a draft cannot be guessed.
+# This is process memory only; nothing is written to disk.
+MAX_DRAFTS = 32
+DRAFTS = OrderedDict()
+DRAFTS_LOCK = threading.Lock()
+
+
+def draft_save(style, message):
+    with DRAFTS_LOCK:
+        while True:
+            draft_id = secrets.token_hex(8)
+            if draft_id not in DRAFTS:
+                break
+        DRAFTS[draft_id] = {"style": style, "message": message}
+        while len(DRAFTS) > MAX_DRAFTS:
+            DRAFTS.popitem(last=False)
+    return draft_id
+
+
+def draft_get(draft_id):
+    with DRAFTS_LOCK:
+        draft = DRAFTS.get(draft_id)
+        return dict(draft) if draft is not None else None
 
 
 def esc(value):
@@ -556,7 +584,34 @@ def preview():
     message = request.form.get("message", "")
     occ = occ_for(style)
     info = STYLE_INFO[style]
+
+    # Inquisitor and Divine save the message for the print stage; Inquisitor renders nothing here at all. Divine keeps
+    # the safe bound preview below and lets the print stage print the same message as data.
+    draft_id = draft_save(style, message) if LEVEL in ("inquisitor", "divine") else None
+
+    if LEVEL == "inquisitor":
+        inner = (
+            '<section class="notice" data-draft="%s">'
+            '<p class="eyebrow">Print stage</p>'
+            "<h1>Draft saved for printing.</h1>"
+            "<p>Your message is set aside for the press. Nothing is proofed here; the card is "
+            "rendered when it reaches the print stage.</p>"
+            '<p class="page-note">Style: <b>%s</b> &#183; %s &#183; %s</p>'
+            '<div class="notice-actions"><a class="btn" href="/orders/%s/print">Print this card</a>'
+            '<a class="btn ghost" href="/?style=%s">Edit message</a></div></section>'
+        ) % (
+            esc(draft_id), esc(style), esc(info.get("font", "")), esc(info.get("price", "")),
+            quote(draft_id), quote(style),
+        )
+        return shell("Draft saved", inner, "orders")
+
     card = render_card(LEVEL, occ, message)
+    draft_note = ""
+    if LEVEL == "divine":
+        draft_note = (
+            '<p class="meta-note" data-draft="%s">Saved for the print stage: '
+            '<a href="/orders/%s/print">print this card</a>.</p>'
+        ) % (esc(draft_id), quote(draft_id))
     inner = (
         '<div class="preview-head"><h1 class="page-title">Your card</h1>'
         f'<p class="page-lede">A proof for a <b>{esc(style)}</b> card in {esc(info.get("palette", ""))}. '
@@ -588,12 +643,47 @@ def preview():
         f'<p class="meta-price">{esc(info.get("price", ""))}</p>'
         f'<p class="meta-line">{esc(info.get("delivery", ""))}</p>'
         '<p class="meta-note">Proof shown on 300gsm cotton stock. The real card arrives with a '
-        "matching envelope and a wax seal.</p></aside></div>"
+        "matching envelope and a wax seal.</p>" + draft_note + "</aside></div>"
         '<script>(function(){var b=document.getElementById("send-card"),'
         'n=document.getElementById("sent-note");if(b&&n){b.addEventListener("click",function(){'
         'n.hidden=false;b.textContent="Queued for the press";b.disabled=true;});}})();</script>'
     )
     return shell("Your card", inner, "home")
+
+
+@app.get("/orders/<draft_id>/print")
+def print_draft(draft_id):
+    draft = draft_get(draft_id)
+    if draft is None:
+        abort(404)
+    style = draft["style"]
+    if style not in STYLE_INFO:
+        style = DEFAULT_STYLE
+    occ = occ_for(style)
+    info = STYLE_INFO[style]
+    # The print stage is the designed second-order sink: at Inquisitor the saved message becomes template source, at
+    # Divine it is passed as a bound, autoescaped value. Lower levels never save a draft, so this route 404s for them.
+    card = render_card(LEVEL, occ, draft["message"])
+    inner = (
+        '<div class="preview-head"><p class="eyebrow">Print stage</p>'
+        '<h1 class="page-title">Print proof</h1>'
+        f'<p class="page-lede">Draft <b>{esc(draft_id)}</b>, a <b>{esc(style)}</b> card, ready for the press.</p></div>'
+        '<div class="preview-layout"><section class="preview-stage">'
+        '<div class="card-flip"><div class="face face-front">' + card + "</div></div>"
+        '<div class="preview-controls">'
+        '<button type="button" class="btn" onclick="window.print()">Print this card</button>'
+        '<a class="btn ghost" href="/">Make another card</a>'
+        "</div></section>"
+        '<aside class="preview-meta"><p class="eyebrow">Saved style</p>'
+        f'<h2>{esc(style)}</h2>'
+        f'<p class="meta-line">{esc(info.get("font", ""))}</p>'
+        f'<p class="meta-line">Palette: {esc(info.get("palette", ""))}</p>'
+        f'<p class="meta-price">{esc(info.get("price", ""))}</p>'
+        f'<p class="meta-line">{esc(info.get("delivery", ""))}</p>'
+        '<p class="meta-note">This is the print proof. Your saved message is set at the press, '
+        "not before it.</p></aside></div>"
+    )
+    return shell("Print proof", inner, "orders")
 
 
 @app.get("/gallery")

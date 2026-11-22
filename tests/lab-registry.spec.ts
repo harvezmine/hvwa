@@ -59,9 +59,9 @@ describe('parseRegistry', () => {
     expect(() => parseRegistry(reg(labEntry('r01', 'clinic'), labEntry('r02', 'clinic')))).toThrow(/duplicate slug/);
   });
 
-  it('the compact POC shape: three levels (Acolyte, Templar, Divine) and no victim bot', () => {
-    const r = parseRegistry(reg(labEntry('r01', 'clinic', { levels: ['acolyte', 'templar', 'divine'], needsBot: false })));
-    expect(r.get('r01')).toMatchObject({ levels: ['acolyte', 'templar', 'divine'], needsBot: false });
+  it('the compact POC shape: four levels (Acolyte, Templar, Inquisitor, Divine) and no victim bot', () => {
+    const r = parseRegistry(reg(labEntry('r01', 'clinic', { levels: ['acolyte', 'templar', 'inquisitor', 'divine'], needsBot: false })));
+    expect(r.get('r01')).toMatchObject({ levels: ['acolyte', 'templar', 'inquisitor', 'divine'], needsBot: false });
   });
 
   it('lab.json is the same schema without version and image', () => {

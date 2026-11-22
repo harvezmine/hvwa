@@ -10,6 +10,12 @@
 
 ---
 
+## INQUISITOR AMENDMENT (owner, 2026-11-22) — binding, supersedes the three-level convention
+
+The POC now has four levels per lab: Acolyte, Templar and Inquisitor are exploitable and scored; Divine remains the
+secure reference (scored 0). Inquisitor is a chained, multi-step exploit. Each lab adds an `inquisitor` level and a
+`solve/inquisitor.mjs`; hints stay ≤ 3. Everything else in this plan stands as written.
+
 ## Depends on (Plan A)
 
 This plan assumes Plan A's Task 6 and Task 25 are merged:

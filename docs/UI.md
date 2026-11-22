@@ -65,8 +65,8 @@ lab bar's switcher and the dossier's tier rows. Any element with `data-level="<l
 `--lv` and `--lv-bg`. Tiers are drawn as **monochrome seals, mono text and tonal washes** — never a coloured rail or a
 solid level card. Colour is never the only signal: the tier's name is always written.
 
-**Adventurer rank (E → S).** Derived from bounty points (`src/range/rank.ts`), never stored: E 0, D 200, C 500, B 900,
-A 1300, S 1750. Everyone starts at E; the names are Initiate / Scout / Adept / Veteran / Elite / Legend (Pemula /
+**Adventurer rank (E → S).** Derived from bounty points (`src/range/rank.ts`), never stored: E 0, D 300, C 900, B 1600,
+A 2400, S 3150. Everyone starts at E; the names are Initiate / Scout / Adept / Veteran / Elite / Legend (Pemula /
 Pengintai / Ahli / Veteran / Elit / Legenda). Shown as a copper seal letter + mono name (`.rank-seal` + `.rank-name`) in
 the Guild Hall ledger (with a `points / next` progress bar), the account menu, and every leaderboard row — always
 distinct from the numeric `#1` position, which stays mono text. There is no rank entry in the DB; the existing score is

@@ -1,18 +1,22 @@
 // labs/r03-beacon/app/server.mjs — Beacon, a router admin panel. Start hook: read the one-shot flag file
 // (HVWA_FLAG_FILE) once and unlink it, then write it (or a Divine decoy) to /tmp/beacon/flag.txt (spec §6).
-// The only shell in the app is the /diagnostics probe (diag.mjs); every other page is rendered from seed/device.json.
+// Shells exist in exactly two places: the /diagnostics probe (diag.mjs, Acolyte/Templar) and the /diagnostics/report
+// generator (report.mjs, Inquisitor); every other page is rendered from seed/device.json.
 // No page renders the flag file; only a shell that reads it does. Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
-import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, unlinkSync, appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { probe } from './diag.mjs';
+import { generateReport } from './report.mjs';
 import {
   page, esc, led, badge, stat, gauge, sparkline, meter, signalBars, table, deviceArt,
 } from './render.mjs';
 
-const LEVELS = ['acolyte', 'templar', 'divine'];
+const LEVELS = ['acolyte', 'templar', 'inquisitor', 'divine'];
 const level = LEVELS.includes(process.env.HVWA_LEVEL ?? '') ? process.env.HVWA_LEVEL : 'acolyte';
+// Inquisitor and Divine accept and save a free-text label. Acolyte/Templar keep their exact original behaviour.
+const WITH_LABEL = level === 'inquisitor' || level === 'divine';
 const port = Number(process.env.HVWA_PORT || 8080);
 const device = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'seed', 'device.json'), 'utf8'));
 const flagSource = process.env.HVWA_FLAG_FILE || '/tmp/.hvwa-flag';
@@ -39,12 +43,22 @@ writeFileSync('/tmp/beacon/flag.txt',
   `${level === 'divine' || !flag ? 'Divine is the secure reference: the probe runs no shell, so there is nothing to inject.' : flag}\n`,
   { mode: 0o400 });
 
-// ---- in-memory state (this process only): recent probe hosts, never probe output or the flag file ----------------
+// ---- in-memory state (this process only): recent probes, never probe output or the flag file ----------------------
+// Inquisitor/Divine also save the free-text label here. The report generator reads the most recent saved label from
+// this list; the newline-stripped copy in probes.log is an audit trail, never the report input.
 const RECENT = [];
 const RECENT_MAX = 8;
-function remember(host, ok, ms) {
-  RECENT.unshift({ host: String(host).slice(0, 200), at: new Date().toISOString(), ok, ms });
+function remember(host, ok, ms, label) {
+  const entry = { host: String(host).slice(0, 200), at: new Date().toISOString(), ok, ms };
+  if (label !== undefined) entry.label = String(label).slice(0, 200);
+  RECENT.unshift(entry);
   if (RECENT.length > RECENT_MAX) RECENT.length = RECENT_MAX;
+}
+function journalProbe(host, label) {
+  const line = (s) => String(s).replace(/[\r\n]+/g, ' ').slice(0, 200);
+  try {
+    appendFileSync('/tmp/beacon/probes.log', `${new Date().toISOString()} host=${line(host)} label=${line(label)}\n`);
+  } catch { /* the tmpfs may be unavailable; the probe still works */ }
 }
 
 const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
@@ -81,7 +95,8 @@ function probeHistory() {
   if (RECENT.length === 0) return '<p class="empty">No probes in this session yet.</p>';
   return `<div class="history">${RECENT.map((p) => `<div class="row">`
     + `<span>${p.ok ? led('lime') : led('red')}</span>`
-    + `<span class="h-host" title="${esc(p.host || '(empty)')}">${esc(p.host || '(empty)')}</span>`
+    + `<span class="h-host" title="${esc(p.host || '(empty)')}">${esc(p.host || '(empty)')}`
+    + `${p.label !== undefined ? `<span class="h-label"> · ${esc(p.label || '(empty)')}</span>` : ''}</span>`
     + `<span class="h-time">${esc(p.at.slice(11, 19))}Z · ${p.ok ? `ok ${p.ms} ms` : 'rejected'}</span>`
     + `</div>`).join('')}</div>`;
 }
@@ -451,8 +466,16 @@ function statusPage() {
 }
 
 // ---- /diagnostics : the vulnerable feature (the shell lives in diag.mjs) -----------------------------------------
-function diagPage({ host = '', result = null, at = '', ms = 0 } = {}) {
+function diagPage({ host = '', label = '', result = null, at = '', ms = 0 } = {}) {
   const ok = result && !result.error;
+  // Inquisitor/Divine accept an optional free-text label beside the host; Acolyte/Templar render the original form.
+  const labelField = WITH_LABEL
+    ? `<label class="field" for="label"><span class="prompt" aria-hidden="true">#</span>
+          <input id="label" name="label" value="${esc(label)}" placeholder="optional label saved for the report" autocomplete="off" spellcheck="false" aria-label="Probe label"></label>`
+    : '';
+  const historyNote = WITH_LABEL
+    ? 'In memory for this process, with a copy in the local probe journal.'
+    : 'In memory for this process only; never written to disk.';
   const presets = [['Gateway', '192.168.1.1'], ['DNS resolver', '1.1.1.1'], ['Public DNS', '8.8.8.8']]
     .map(([label, ip]) => `<a class="chip" href="/diagnostics?host=${ip}"><span class="dot"></span>${esc(label)} · ${esc(ip)}</a>`).join('');
 
@@ -483,12 +506,13 @@ function diagPage({ host = '', result = null, at = '', ms = 0 } = {}) {
       <form method="post" action="/diagnostics" data-probe class="probe-form">
         <label class="field" for="host"><span class="prompt" aria-hidden="true">$</span>
           <input id="host" name="host" value="${esc(host)}" placeholder="hostname or IP address" autocomplete="off" spellcheck="false" aria-label="Host to probe"></label>
+        ${labelField}
         <button class="btn" type="submit">Run probe</button>
       </form>
       <div class="presets"><span class="lbl">Presets</span>${presets}</div>
-      <p class="note" style="margin-top:14px">The probe runs on the appliance itself and returns the combined output of the diagnostic command.</p>`)}
+      <p class="note" style="margin-top:14px">The probe runs on the appliance itself and returns the combined output of the diagnostic command.${WITH_LABEL ? ' The label is saved for the report generator.' : ''}</p>`)}
 
-    ${card('Recent probes', `<p class="note" style="margin:0 0 10px">In memory for this process only; never written to disk.</p>${probeHistory()}`)}
+    ${card('Recent probes', `<p class="note" style="margin:0 0 10px">${historyNote}</p>${probeHistory()}`)}
   </div>
 
   <div class="term" id="probe-term">
@@ -503,6 +527,42 @@ function diagPage({ host = '', result = null, at = '', ms = 0 } = {}) {
   ${reject}`;
 
   return page('Diagnostics', body, { active: '/diagnostics', device });
+}
+
+// ---- /diagnostics/report : the second-order sink (the report generator shells the saved label) --------------------
+async function reportPage() {
+  // "Most recent saved label": the newest probe entry that carried one (set at Inquisitor/Divine).
+  const newest = RECENT.find((p) => p.label !== undefined);
+  const label = newest ? newest.label : '';
+  let output = '';
+  if (level === 'inquisitor') ({ output } = await generateReport(level, label)); // the only execution; Divine skips it
+
+  const heading = `
+  <div class="page-head"><div><div class="eyebrow">Tools</div><h2>Saved report</h2>
+    <p class="lede">The report generator echoes the most recent saved probe label into the appliance report file.</p></div></div>`;
+
+  if (!WITH_LABEL) {
+    const body = `${heading}
+  ${card('Report', '<p class="empty">This level has no label store or report generator.</p>')}`;
+    return page('Saved report', body, { active: '/diagnostics', device });
+  }
+
+  const labelCard = card('Saved label',
+    `<p class="note" style="margin:0 0 10px">The most recent label saved by the diagnostics page, escaped.</p>`
+    + `<pre class="term-body">${esc(label || '(none saved)')}</pre>`);
+
+  const reportInner = level === 'inquisitor'
+    ? `<p class="note" style="margin:0 0 10px">Contents of <span class="mono-inline">/tmp/beacon/report.txt</span>, escaped.</p>`
+      + `<pre class="term-body">${esc(output || '(the report is empty)')}</pre>`
+    : `<p class="note" style="margin:0 0 10px">Divine renders the saved label without executing it.</p>`
+      + `<pre class="term-body">${esc(label || '(none saved)')}</pre>`;
+
+  const body = `${heading}
+  <div class="grid two">
+    ${labelCard}
+    ${card('Report', reportInner)}
+  </div>`;
+  return page('Saved report', body, { active: '/diagnostics', device });
 }
 
 function notFoundPage(path) {
@@ -536,13 +596,18 @@ createServer(async (req, res) => {
     if (p === '/system') return html(res, 200, systemPage());
     if (p === '/status') return html(res, 200, statusPage());
     if (p === '/diagnostics') return html(res, 200, diagPage({ host: url.searchParams.get('host') ?? '' }));
+    if (p === '/diagnostics/report') return html(res, 200, await reportPage());
     if (p === '/favicon.ico' || p === '/favicon.svg') { res.writeHead(204, { 'cache-control': 'max-age=86400' }); return res.end(); }
   }
 
   if (p === '/diagnostics' && req.method === 'POST') {
     let host;
+    let label = '';
     try {
-      host = new URLSearchParams(await readBody(req)).get('host') ?? '';
+      const form = new URLSearchParams(await readBody(req));
+      host = form.get('host') ?? '';
+      // The label is stored verbatim in memory (the report generator later trusts it); Acolyte/Templar ignore it.
+      if (WITH_LABEL) label = form.get('label') ?? '';
     } catch {
       return html(res, 400, diagPage({ host: '', result: { error: 'Could not read the request body.' } }));
     }
@@ -550,8 +615,9 @@ createServer(async (req, res) => {
     const r = await probe(level, host);
     const ms = Date.now() - started;
     const at = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    remember(host, !r.error, ms);
-    return html(res, 200, diagPage({ host, result: r, at, ms }));
+    remember(host, !r.error, ms, WITH_LABEL ? label : undefined);
+    if (WITH_LABEL) journalProbe(host, label); // never the flag: only the literal host and label
+    return html(res, 200, diagPage({ host, label: WITH_LABEL ? label : '', result: r, at, ms }));
   }
 
   return html(res, 404, notFoundPage(p));
