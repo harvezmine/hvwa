@@ -1,10 +1,12 @@
-<%# Range lab page (src/range/catalog.ts): the contract dossier. Mission brief, tiers (with seals + points), intel
-   (paid hints), claim bounty, and a sticky active-contract rail. Hooks: briefing, range-level-<level> (data-solved,
-   aria-current), hint-<tier>. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS
-   comment: it breaks parsing. %>
+<%# Range lab page (src/range/catalog.ts): the contract dossier. Hero (contract-file meta, category + difficulty,
+   serif title, in-world app, scenario, sealed stamp, illustration), a full-width tier ladder, then a two-column body:
+   mission brief, intel (paid hints) and claim bounty on the left; the active-contract panel and how-it-works on the
+   right. Hooks: briefing, range-level-<level> (data-solved, aria-current), hint-<tier>, lab-panel, submit-result.
+   Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>">
   <div class="lab-hero-head">
     <div class="lab-hero-copy">
+      <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t('range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %></p>
       <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="diff-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span></p>
       <h1 class="page-title"><%= lab.title %></h1>
       <p class="dossier-subtitle"><%= lab.app %></p>
@@ -18,84 +20,86 @@
 </header>
 
 <div class="dossier">
-  <div class="dossier-main">
-    <section aria-labelledby="brief-title">
-      <h2 class="section-title" id="brief-title"><%= t('range.brief') %></h2>
-      <div class="brief-block">
-        <p class="brief" data-testid="briefing"><%= lab.briefing %></p>
-      </div>
-    </section>
-
-    <section aria-labelledby="tiers-title">
-      <h2 class="section-title" id="tiers-title"><%= t('range.tiers') %></h2>
-      <p class="panel-lead"><%= t(levels.some(function (l) { return l.id === 'divine'; }) ? 'range.levels_lead' : 'range.levels_lead_hard_only') %></p>
-      <ul class="level-tabs">
+  <section class="tier-ladder" aria-labelledby="tiers-title">
+    <h2 class="section-title" id="tiers-title"><%= t('range.tiers') %></h2>
+    <p class="panel-lead"><%= t(levels.some(function (l) { return l.id === 'divine'; }) ? 'range.levels_lead' : 'range.levels_lead_hard_only') %></p>
+    <ul class="tier-cards">
 <% levels.forEach(function (l) { -%>
-        <li data-level="<%= l.id %>">
-          <a class="level-tab" data-testid="range-level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"<% if (l.current) { %> aria-current="true"<% } %>><%= t(l.id === 'divine' ? 'challenge.divine_tab' : 'level.' + l.id) %><span class="level-tab-meaning"><%= t('level_meaning.' + l.id) %></span><span class="level-tab-meta"><span><%= l.scored ? l.points + ' ' + t('challenge.points') : t('scoreboard.not_scored') %></span></span></a>
-<% if (l.scored) { -%>
-          <span class="badge <%= l.solved ? 'badge-ok' : 'muted' %>"><%= l.solved ? t('challenge.solved') : t('challenge.unsolved') %></span>
-<% } -%>
-        </li>
+      <li class="tier-card<%= l.current ? ' is-current' : '' %><%= l.solved ? ' is-solved' : '' %>" data-level="<%= l.id %>">
+        <a class="tier-card-link" data-testid="range-level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"<% if (l.current) { %> aria-current="true"<% } %>>
+          <span class="tier-card-seal" aria-hidden="true"></span>
+          <span class="tier-card-name"><%= t(l.id === 'divine' ? 'challenge.divine_tab' : 'level.' + l.id) %></span>
+          <span class="tier-card-meaning"><%= t('level_meaning.' + l.id) %></span>
+          <span class="tier-card-points"><%= l.scored ? l.points + ' ' + t('challenge.points') : t('scoreboard.not_scored') %></span>
+        </a>
+      </li>
 <% }); -%>
-      </ul>
-    </section>
+    </ul>
+  </section>
 
-    <section aria-labelledby="intel-title">
-      <h2 class="section-title" id="intel-title"><%= t('range.intel') %></h2>
-      <p class="panel-lead"><%= hints.length ? t('range.intel_lead') : t('range.no_intel') %></p>
-      <ul class="hint-list">
-<% hints.forEach(function (h) { -%>
-        <li id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>">
-<% if (h.unlocked) { -%>
-          <details class="accordion hint" open><summary><span class="hint-name"><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge badge-ok"><%= t('range.intel_unlocked') %></span></summary><div class="accordion-body"><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div></details>
-<% } else { -%>
-          <details class="accordion hint">
-            <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge"><%= t('range.intel_cost') %>: <%= h.cost %> <%= t('challenge.points') %></span></summary>
-            <div class="accordion-body">
-              <form method="post" action="/labs/<%= lab.id %>/hint" hx-post="/labs/<%= lab.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" hx-confirm="<%= t('challenge.hint_confirm') %>">
-                <input type="hidden" name="_csrf" value="<%= csrf %>">
-                <input type="hidden" name="tier" value="<%= h.id %>">
-                <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('range.intel_unlock') %> <%= h.id %> (<%= t('range.intel_cost') %>: <%= h.cost %>)</button>
-              </form>
-            </div>
-          </details>
-<% } -%>
-        </li>
-<% }); -%>
-      </ul>
-    </section>
-
-    <section aria-labelledby="claim-title">
-      <h2 class="section-title" id="claim-title"><%= t('range.claim') %></h2>
-      <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form">
-        <input type="hidden" name="_csrf" value="<%= csrf %>">
-        <label class="label" for="flag-input"><%= t('challenge.submit_label') %></label>
-        <div class="form-row">
-          <div class="field"><input id="flag-input" class="input input-mono" type="text" name="submission" autocomplete="off" spellcheck="false" placeholder="HVWA{…}" aria-describedby="flag-help" required></div>
-          <button type="submit" class="btn btn-primary"><%= t('range.claim_button') %></button>
+  <div class="dossier-body">
+    <div class="dossier-main">
+      <section aria-labelledby="brief-title">
+        <h2 class="section-title" id="brief-title"><%= t('range.brief') %></h2>
+        <div class="brief-block">
+          <p class="brief" data-testid="briefing"><%= lab.briefing %></p>
         </div>
-        <p class="help" id="flag-help"><%= t('range.submit_help') %></p>
-      </form>
-      <div id="submit-result" aria-live="polite">
-<% if (flash === 'wrong') { -%>
-        <p class="result result-bad" data-solved="false" data-result="wrong" role="status"><%= t('challenge.result_bad') %></p>
-<% } else if (flash === 'solved') { -%>
-        <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
-<% } -%>
-      </div>
-    </section>
-  </div>
+      </section>
 
-  <aside class="dossier-rail">
+      <section aria-labelledby="intel-title">
+        <h2 class="section-title" id="intel-title"><%= t('range.intel') %></h2>
+        <p class="panel-lead"><%= hints.length ? t('range.intel_lead') : t('range.no_intel') %></p>
+        <ul class="hint-list">
+<% hints.forEach(function (h) { -%>
+          <li id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>">
+<% if (h.unlocked) { -%>
+            <details class="accordion hint" open><summary><span class="hint-name"><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge badge-ok"><%= t('range.intel_unlocked') %></span></summary><div class="accordion-body"><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div></details>
+<% } else { -%>
+            <details class="accordion hint">
+              <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge"><%= t('range.intel_cost') %>: <%= h.cost %> <%= t('challenge.points') %></span></summary>
+              <div class="accordion-body">
+                <form method="post" action="/labs/<%= lab.id %>/hint" hx-post="/labs/<%= lab.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" hx-confirm="<%= t('challenge.hint_confirm') %>">
+                  <input type="hidden" name="_csrf" value="<%= csrf %>">
+                  <input type="hidden" name="tier" value="<%= h.id %>">
+                  <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('range.intel_unlock') %> <%= h.id %> (<%= t('range.intel_cost') %>: <%= h.cost %>)</button>
+                </form>
+              </div>
+            </details>
+<% } -%>
+          </li>
+<% }); -%>
+        </ul>
+      </section>
+
+      <section aria-labelledby="claim-title">
+        <h2 class="section-title" id="claim-title"><%= t('range.claim') %></h2>
+        <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form claim-form">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <label class="label" for="flag-input"><%= t('challenge.submit_label') %></label>
+          <input id="flag-input" class="input input-mono flag-input" type="text" name="submission" autocomplete="off" spellcheck="false" placeholder="HVWA{…}" aria-describedby="flag-help" required>
+          <button id="flag-submit" type="submit" class="btn btn-primary btn-lg"><%= t('range.claim_button') %></button>
+          <p class="help" id="flag-help"><%= t('range.submit_help') %></p>
+        </form>
+        <div id="submit-result" aria-live="polite">
+<% if (flash === 'wrong') { -%>
+          <p class="result result-bad" data-solved="false" data-result="wrong" role="status"><%= t('challenge.result_bad') %></p>
+<% } else if (flash === 'solved') { -%>
+          <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
+<% } -%>
+        </div>
+      </section>
+    </div>
+
+    <aside class="dossier-rail">
 <%- include('panel', { panel: panel }) %>
-    <section class="card panel" aria-labelledby="range-howto-title">
-      <h2 id="range-howto-title"><%= t('range.howto_heading') %></h2>
-      <ol class="howto">
-        <li><span><%= t('range.howto1') %></span></li>
-        <li><span><%= t('range.howto2') %></span></li>
-        <li><span><%= t('range.howto3') %></span></li>
-      </ol>
-    </section>
-  </aside>
+      <section class="card panel" aria-labelledby="range-howto-title">
+        <h2 id="range-howto-title"><%= t('range.howto_heading') %></h2>
+        <ol class="howto">
+          <li><span><%= t('range.howto1') %></span></li>
+          <li><span><%= t('range.howto2') %></span></li>
+          <li><span><%= t('range.howto3') %></span></li>
+        </ol>
+      </section>
+    </aside>
+  </div>
 </div>

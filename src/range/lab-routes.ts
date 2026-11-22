@@ -26,7 +26,7 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
     if (!lab) { next(); return; }
     if (!auth.formOk(req)) { await auth.refuse(req, res, `/labs/${lab.id}`); return; }
     const result = submitRangeFlag(db, lifecycle.store, lab, userOf(res).userId, field(req, 'submission'), ctx.now());
-    if (isHtmx(req)) { res.type('html').send(submitResultHtml(result, res.locals.t)); return; }
+    if (isHtmx(req)) { res.type('html').send(submitResultHtml(result, res.locals.t, lab.id, req.lang)); return; }
     res.redirect(303, `/labs/${lab.id}?r=${result.status === 'wrong' ? 'wrong' : 'solved'}`);
   });
 
