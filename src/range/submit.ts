@@ -25,16 +25,19 @@ export function submitRangeFlag(db: DatabaseSync, store: InstanceStore, lab: Lab
   return { status: r.status, level, points, gained: r.gained, best: r.best };
 }
 
-/** The htmx fragment (escaped): the same wording and hooks as the standalone portal's result. */
+/** The htmx fragment (escaped): the same wording and hooks as the standalone portal's result, plus the toast payload. */
 export function submitResultHtml(r: RangeSubmitResult, t: (key: string) => string): string {
-  // tabindex="-1" + data-focus-after-swap: ui.js moves focus to this fragment after the htmx swap.
+  // tabindex="-1" + data-focus-after-swap: ui.js moves focus to this fragment after the htmx swap; data-toast-* feeds a toast.
   if (r.status === 'wrong') {
-    return `<p class="result result-bad" data-solved="false" data-result="wrong" role="status" tabindex="-1" data-focus-after-swap>${escapeHtml(t('challenge.result_bad'))}</p>`;
+    return `<p class="result result-bad" data-solved="false" data-result="wrong" role="status" tabindex="-1" data-focus-after-swap data-toast="wrong" data-toast-variant="error" data-toast-title="${escapeHtml(t('range.toast_wrong_title'))}" data-toast-message="${escapeHtml(t('range.toast_wrong'))}">${escapeHtml(t('challenge.result_bad'))}</p>`;
   }
   const key = r.status === 'new_best' ? 'new_best' : r.level === r.best.level ? 'already' : 'lower';
   const level = t(`level.${r.level}`);
   const msg = key === 'new_best'
     ? `${t('challenge.result_new_best')} ${level} (+${r.gained} ${t('challenge.points')})`
     : key === 'lower' ? `${t('challenge.result_lower')} ${t(`level.${r.best.level}`)}` : `${t('challenge.result_already')} ${level}`;
-  return `<p class="result result-ok" data-solved="true" data-result="${key}" role="status" tabindex="-1" data-focus-after-swap>${escapeHtml(msg)}</p>`;
+  const toast = key === 'new_best'
+    ? ` data-toast="solved" data-toast-variant="success" data-toast-title="${escapeHtml(t('range.toast_solved_title'))}" data-toast-message="${escapeHtml(t('range.toast_solved').replace('{level}', level).replace('{points}', String(r.gained)))}" data-level="${r.level}" data-points="${r.gained}"`
+    : ` data-toast="already" data-toast-variant="info" data-toast-title="${escapeHtml(t('range.toast_already_title'))}" data-toast-message="${escapeHtml(t('range.toast_already').replace('{level}', t(`level.${r.best.level}`)))}" data-level="${r.best.level}" data-points="0"`;
+  return `<p class="result result-ok" data-solved="true" data-result="${key}" role="status" tabindex="-1" data-focus-after-swap${toast}>${escapeHtml(msg)}</p>`;
 }

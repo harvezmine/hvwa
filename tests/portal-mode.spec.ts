@@ -215,7 +215,7 @@ describe('the catalog', () => {
     await kit.app.locals.range!.lifecycle.launch(userId, 'r01', 'templar');
     const hero = (await agent.get('/')).text;
     expect(hero).toMatch(/data-testid="continue-lab" data-state="starting"/);
-    expect(hero).toContain('Continue your lab');
+    expect(hero).toContain('Continue your contract');
     expect(hero).toContain('App clinic');
     expect(hero).toContain('href="/labs/r01?level=templar"');
   });
@@ -258,6 +258,9 @@ describe('a lab page', () => {
     const res = await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '1' });
     expect(res.status).toBe(200);
     expect(res.text).toContain('Hint one of clinic');
+    expect(res.text).toMatch(/data-toast="unlocked"/);
+    expect(res.text).toMatch(/data-toast-variant="success"/);
+    expect(res.text).toMatch(/data-toast-message="Intel 1 unlocked · 10 pts deducted"/);
     const again = await agent.post('/labs/r01/hint').type('form').send({ _csrf: csrf, tier: '1' });
     expect(again.status).toBe(303);
     expect(again.headers.location).toBe('/labs/r01#hint-1');

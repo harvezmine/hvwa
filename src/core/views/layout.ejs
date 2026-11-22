@@ -29,25 +29,26 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a href="/" class="brand">
-        <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg>
+        <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
         <span class="brand-name">HVWA</span>
-        <span class="brand-sub"><%= t('app.title').replace(/^HVWA — /, '') %></span>
+        <span class="brand-tag">RANGE GUILD</span>
       </a>
 <% if (!platformAuth || platformAuth.signedIn) { -%>
       <nav class="site-nav" aria-label="<%= t('nav.main') %>">
 <% if (typeof portalNav !== 'undefined' && portalNav) { -%>
-        <a href="/" class="nav-link" data-testid="nav-labs"<% if (navActive === 'labs') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><span><%= t('nav.labs') %></span></a>
-        <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"<% if (navActive === 'leaderboard') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.leaderboard') %></span></a>
+        <a href="/" class="nav-link" data-testid="nav-labs"<% if (navActive === 'labs') { %> aria-current="page"<% } %>><%= t('nav.labs') %></a>
+        <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"<% if (navActive === 'leaderboard') { %> aria-current="page"<% } %>><%= t('nav.leaderboard') %></a>
 <% } else { -%>
-        <a href="/" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><span><%= t('nav.districts') %></span></a>
-        <a href="/scoreboard" class="nav-link"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg><span><%= t('nav.scoreboard') %></span></a>
+        <a href="/" class="nav-link"><%= t('nav.districts') %></a>
+        <a href="/scoreboard" class="nav-link"><%= t('nav.scoreboard') %></a>
 <% } -%>
       </nav>
 <% } -%>
       <div class="topbar-tools">
-        <div class="seg seg-compact lang-switch" role="group" aria-label="<%= t('nav.language') %>">
-          <a href="?<%= keep %>lang=en" class="seg-item" hreflang="en" lang="en" aria-label="<%= t('nav.lang_en') %>"<% if (lang === 'en') { %> aria-current="true"<% } %>>EN</a>
-          <a href="?<%= keep %>lang=id" class="seg-item" hreflang="id" lang="id" aria-label="<%= t('nav.lang_id') %>"<% if (lang === 'id') { %> aria-current="true"<% } %>>ID</a>
+        <div class="lang-switch" role="group" aria-label="<%= t('nav.language') %>">
+          <a href="?<%= keep %>lang=en" hreflang="en" lang="en" aria-label="<%= t('nav.lang_en') %>"<% if (lang === 'en') { %> aria-current="true"<% } %>>EN</a>
+          <span class="lang-sep" aria-hidden="true">/</span>
+          <a href="?<%= keep %>lang=id" hreflang="id" lang="id" aria-label="<%= t('nav.lang_id') %>"<% if (lang === 'id') { %> aria-current="true"<% } %>>ID</a>
         </div>
 <% if (typeof uiTheme === 'undefined' || uiTheme !== 'light') { -%>
         <a href="?<%= keep %>theme=light" class="icon-btn theme-toggle theme-to-light" aria-label="<%= t('theme.to_light') %>" title="<%= t('theme.to_light') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sun"></use></svg></a>
@@ -61,8 +62,7 @@
 <% if (platformAuth && platformAuth.signedIn) { -%>
         <details class="menu account-menu" data-testid="account-nav">
           <summary class="menu-trigger">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-user"></use></svg>
-            <span class="sr-only"><%= t('nav.account') %>: </span><span class="menu-user"><%= platformAuth.user %></span>
+            <span class="sr-only"><%= t('nav.account') %>: </span><span class="account-chip" aria-hidden="true"><%= platformAuth.user.charAt(0).toUpperCase() %></span>
             <svg class="icon icon-sm menu-caret" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-down"></use></svg>
           </summary>
           <div class="menu-panel">
@@ -129,10 +129,11 @@
   </main>
   <footer class="site-footer">
     <div class="footer-inner">
-      <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg>HVWA</span>
+      <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>HVWA</span>
       <span><%= t(portalMode ? 'app.portal_tagline' : 'app.tagline') %></span>
       <span><%= t(portalMode ? 'app.portal_footer' : 'app.footer') %></span>
     </div>
   </footer>
+  <div id="toasts" class="toasts" data-dismiss="<%= t('range.toast_dismiss') %>"></div>
 </body>
 </html>

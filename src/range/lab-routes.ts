@@ -16,8 +16,9 @@ import type { RangeContext } from './types.js';
 export function labRoutes(router: Router, ctx: RangeContext): void {
   const { db, registry, auth, lifecycle, opts } = ctx;
   const levelOf = (raw: unknown, lab: LabEntry): Level | undefined => (isLevel(raw) && lab.levels.includes(raw) ? raw : undefined);
-  const sendPanel = async (req: Request, res: Response, lab: LabEntry, level: Level, notice?: 'full', focus = false) => {
-    await sendFragment(res, rangeView('panel'), { panel: panelFor(ctx, req, res, lab, level, notice), focus });
+  type PanelToast = { readonly kind: string; readonly variant: 'success' | 'error' | 'info'; readonly title: string; readonly message: string };
+  const sendPanel = async (req: Request, res: Response, lab: LabEntry, level: Level, notice?: 'full', focus = false, toast?: PanelToast) => {
+    await sendFragment(res, rangeView('panel'), { panel: panelFor(ctx, req, res, lab, level, notice), focus, toast });
   };
 
   router.post('/labs/:id/submit', async (req, res, next) => {
@@ -48,17 +49,31 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
       const level = levelOf(field(req, 'level'), lab);
       if (!level) { res.status(400).type('text/plain').send('Unknown level\n'); return; }
       const { userId } = userOf(res);
+      const t: (key: string) => string = res.locals.t;
       const current = lifecycle.current(userId);
       let notice: 'full' | undefined;
+      let toast: PanelToast | undefined;
       if (action === 'launch') {
         const outcome = await lifecycle.launch(userId, lab.id, level);
-        if (!outcome.ok && outcome.error === 'full') notice = 'full';
+        if (!outcome.ok && outcome.error === 'full') {
+          notice = 'full';
+          toast = { kind: 'full', variant: 'error', title: t('range.toast_full_title'), message: t('range.toast_full') };
+        } else if (!outcome.ok) {
+          toast = { kind: 'failed', variant: 'error', title: t('range.toast_failed_title'), message: t('range.toast_failed') };
+        } else {
+          toast = { kind: 'launched', variant: 'success', title: t('range.toast_launched_title'), message: t('range.toast_launched') };
+        }
       } else if (current && current.labId === lab.id) { // only the instance this panel shows
-        if (action === 'reset') await lifecycle.reset(userId);
-        else await lifecycle.stop(userId, 'user');
+        if (action === 'reset') {
+          await lifecycle.reset(userId);
+          toast = { kind: 'reset', variant: 'success', title: t('range.toast_reset_title'), message: t('range.toast_reset') };
+        } else {
+          await lifecycle.stop(userId, 'user');
+          toast = { kind: 'stopped', variant: 'info', title: t('range.toast_stopped_title'), message: t('range.toast_stopped') };
+        }
       }
-      // An action swap moves focus to the panel; a poll (above) never does.
-      if (isHtmx(req)) { await sendPanel(req, res, lab, level, notice, true); return; }
+      // An action swap moves focus to the panel and shows a toast; a poll (above) never does either.
+      if (isHtmx(req)) { await sendPanel(req, res, lab, level, notice, true, toast); return; }
       res.redirect(303, `/labs/${lab.id}?level=${level}${notice === 'full' ? '&r=full' : ''}`);
     });
   }

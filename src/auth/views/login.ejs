@@ -1,33 +1,42 @@
-<%# Platform login (src/auth). One error for every failed sign-in. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%# Platform login (src/auth). One error for every failed sign-in. Split surface: the inverted guild panel and the paper
+   form. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <div class="auth-shell">
-<section class="card auth-card" aria-labelledby="login-title">
-  <span class="auth-mark"><svg class="icon icon-lg" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-mark"></use></svg></span>
-  <h1 class="page-title" id="login-title"><%= t('auth.login_heading') %></h1>
-  <p class="auth-intro"><%= t('auth.login_intro') %></p>
+  <aside class="auth-brand">
+    <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
+    <p class="auth-statement"><%= t('auth.brand_statement') %></p>
+    <ul class="auth-facts">
+      <li><%= t('auth.fact_isolated') %></li>
+      <li><%= t('auth.fact_containers') %></li>
+      <li><%= t('auth.fact_flags') %></li>
+    </ul>
+  </aside>
+  <section class="auth-panel" aria-labelledby="login-title">
+    <h1 class="page-title" id="login-title"><%= t('auth.login_heading') %></h1>
+    <p class="auth-intro"><%= t('auth.login_intro') %></p>
 <% if (registered) { -%>
-  <p class="result result-ok" role="status" data-testid="registered"><%= t('auth.registered') %></p>
+    <p class="result result-ok" role="status" data-testid="registered"><%= t('auth.registered') %></p>
 <% } -%>
 <% if (notice) { -%>
-  <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
+    <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
 <% } -%>
 <% if (failed) { -%>
-  <p class="result result-bad" role="alert" data-testid="login-error" id="login-error"><%= t('auth.login_failed') %></p>
+    <p class="result result-bad" role="alert" data-testid="login-error" id="login-error"><%= t('auth.login_failed') %></p>
 <% } -%>
-  <form method="post" action="/login" class="auth-form">
-    <input type="hidden" name="_csrf" value="<%= csrf %>">
-    <input type="hidden" name="next" value="<%= next %>">
-    <div class="field">
-      <label for="login-username"><%= t('auth.username') %></label>
-      <input id="login-username" type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus<% if (failed) { %> aria-describedby="login-error"<% } %>>
-    </div>
-    <div class="field">
-      <label for="login-password"><%= t('auth.password') %></label>
-      <input id="login-password" type="password" name="password" autocomplete="current-password" maxlength="1024" required<% if (failed) { %> aria-describedby="login-error"<% } %>>
-    </div>
-    <button type="submit" class="btn btn-primary btn-lg btn-block"><%= t('auth.login_button') %></button>
-  </form>
+    <form method="post" action="/login" class="auth-form">
+      <input type="hidden" name="_csrf" value="<%= csrf %>">
+      <input type="hidden" name="next" value="<%= next %>">
+      <div class="field">
+        <label for="login-username"><%= t('auth.username') %></label>
+        <input id="login-username" type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus<% if (failed) { %> aria-describedby="login-error"<% } %>>
+      </div>
+      <div class="field">
+        <label for="login-password"><%= t('auth.password') %></label>
+        <input id="login-password" type="password" name="password" autocomplete="current-password" maxlength="1024" required<% if (failed) { %> aria-describedby="login-error"<% } %>>
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg btn-block"><%= t('auth.login_button') %></button>
+    </form>
 <% if (registerLink) { -%>
-  <p class="auth-switch"><a href="/register" data-testid="register-link"><%= t('auth.register_link') %></a></p>
+    <p class="auth-switch"><a href="/register" data-testid="register-link"><%= t('auth.register_link') %></a></p>
 <% } -%>
-</section>
+  </section>
 </div>

@@ -30,6 +30,24 @@ describe('POST /labs/:id/submit', () => {
     expect((await alice.agent.get('/leaderboard')).text).toContain('data-user="alice"');
   });
 
+  it('the htmx result carries the toast payload (solved / already / wrong), read by ui.js after the swap', async () => {
+    const kit = portalApp();
+    const alice = await player(kit.app, 'alice');
+    const flag = await launched(kit, alice.userId, 'r01', 'templar');
+    const solved = await submit(alice.agent, 'r01', `  ${flag}  `);
+    expect(solved.text).toMatch(/data-toast="solved"/);
+    expect(solved.text).toMatch(/data-toast-variant="success"/);
+    expect(solved.text).toMatch(/data-level="templar"/);
+    expect(solved.text).toMatch(/data-points="150"/);
+    expect(solved.text).toContain('Bounty claimed');
+    const already = await submit(alice.agent, 'r01', flag!);
+    expect(already.text).toMatch(/data-toast="already"/);
+    expect(already.text).toMatch(/data-toast-variant="info"/);
+    const wrong = await submit(alice.agent, 'r01', `HVWA{${'a'.repeat(26)}}`);
+    expect(wrong.text).toMatch(/data-toast="wrong"/);
+    expect(wrong.text).toMatch(/data-toast-variant="error"/);
+  });
+
   it('another user\'s flag never counts, either way; nor a flag of another lab; nor a made-up one', async () => {
     const kit = portalApp();
     const alice = await player(kit.app, 'alice');

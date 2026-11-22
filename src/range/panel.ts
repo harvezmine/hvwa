@@ -37,6 +37,8 @@ export interface PanelModel {
   readonly full: boolean;
   /** The idle limit, in minutes (the "stops after N minutes idle" rule). */
   readonly idleMinutes: number;
+  /** The lifetime limit, in minutes (the thin time bar's scale). */
+  readonly maxMinutes: number;
   /** 0: no polling. */
   readonly pollSeconds: number;
   readonly csrf: string;
@@ -54,7 +56,9 @@ export function panelFor(ctx: RangeContext, req: Request, res: Response, lab: La
   const label = (l: Level) => t(l === 'divine' ? 'challenge.divine_tab' : `level.${l}`);
   const base = {
     labId: lab.id, level, levelLabel: label(level), minutesLeft: 0, reason: '', full: notice === 'full',
-    idleMinutes: Math.max(1, Math.round(ctx.opts.limits.idleMs / 60_000)), pollSeconds: 0, csrf: ctx.auth.csrfFor(req),
+    idleMinutes: Math.max(1, Math.round(ctx.opts.limits.idleMs / 60_000)),
+    maxMinutes: Math.max(1, Math.round(ctx.opts.limits.maxMs / 60_000)),
+    pollSeconds: 0, csrf: ctx.auth.csrfFor(req),
   };
   if (current && current.labId === lab.id && current.level === level) {
     const state: PanelState = current.state === 'running' ? 'running' : current.state === 'starting' ? 'starting' : 'none';

@@ -1,93 +1,127 @@
-<%# Range catalog (src/range/catalog.ts): the player's score and solved progress, an active/recent "Continue" hero, search, sort and filters (a GET form, no JavaScript), one card per lab with its own theme accent. Hooks: range-score, range-solved, range-progress, continue-lab (data-state), lab-card (data-lab, data-difficulty, data-solved, data-theme). Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
-<header class="page-head">
-  <h1 class="page-title"><%= t('range.catalog_title') %></h1>
-  <p class="page-lead"><%= t('range.catalog_lead') %></p>
-</header>
-<% if (continueLab) { -%>
-<a class="card hero-card lab-theme-<%= continueLab.themeId %>" href="<%= continueLab.href %>" data-testid="continue-lab" data-state="<%= continueLab.state %>">
-  <span class="hero-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= continueLab.icon %>"></use></svg></span>
-  <span class="hero-body">
-    <span class="hero-eyebrow"><%= t('range.continue_hero') %></span>
-    <span class="hero-app"><%= continueLab.app %></span>
-    <span class="hero-meta"><%= continueLab.title %> · <%= continueLab.stateLabel %><% if (continueLab.minutesLeft > 0) { %> · <%= t('range.time_left').replace('{n}', continueLab.minutesLeft) %><% } %></span>
-  </span>
-  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg>
-</a>
-<% } -%>
-<div class="stat-row">
-  <div class="card stat">
-    <div class="stat-label"><%= t('range.your_score') %></div>
-    <div class="stat-value accent" data-testid="range-score"><%= score %></div>
+<%# Range catalog (src/range/catalog.ts): the Guild Hall. A typographic hero with a guild crest and a ruled ledger strip
+   (Bounty earned / Contracts sealed / Rank), a "Continue your contract" inverted slip, and a mission board of contract
+   slips. Hooks: range-score, range-solved, range-rank, range-progress, continue-lab (data-state), lab-card (data-lab,
+   data-difficulty, data-solved, data-theme). Every value goes through the escaped output tag. Never put an EJS tag
+   inside an EJS comment: it breaks parsing. %>
+<header class="gh-hero">
+  <div class="gh-hero-main">
+    <p class="eyebrow"><%= t('range.eyebrow') %></p>
+    <h1 class="gh-display"><%= t('range.hero_title') %></h1>
+    <p class="gh-lead"><%= t('range.catalog_lead') %></p>
   </div>
-  <div class="card stat">
-    <div class="stat-label"><%= t('home.stat_solved') %></div>
-    <div class="stat-value" data-testid="range-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></div>
-  </div>
-  <div class="card stat stat-progress">
+  <aside class="gh-hero-side">
+    <svg class="gh-crest" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
+    <dl class="ledger-strip">
+      <div class="ledger-entry">
+        <dt><%= t('range.your_score') %></dt>
+        <dd data-testid="range-score"><%= score %></dd>
+      </div>
+      <div class="ledger-entry">
+        <dt><%= t('range.contracts_sealed') %></dt>
+        <dd data-testid="range-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></dd>
+      </div>
+      <div class="ledger-entry">
+        <dt><%= t('range.rank') %></dt>
+        <dd data-testid="range-rank"><% if (typeof rank !== 'undefined' && rank) { %>#<%= rank %><% } else { %>—<% } %></dd>
+      </div>
+    </dl>
     <div class="progress-label"><span><%= t('range.progress_label') %></span><span><%= solved %>/<%= total %></span></div>
     <progress class="progress" data-testid="range-progress" max="<%= total %>" value="<%= solved %>"><%= solved %>/<%= total %></progress>
-  </div>
-</div>
-<form method="get" action="/" class="range-filters" data-testid="range-filters">
-  <div class="field">
-    <label for="f-q"><%= t('range.search') %></label>
-    <input id="f-q" type="search" name="q" value="<%= filter.q %>" placeholder="<%= t('range.search_placeholder') %>">
-  </div>
-  <div class="field">
-    <label for="f-category"><%= t('range.filter_category') %></label>
-    <select id="f-category" name="category">
-      <option value=""><%= t('range.filter_all') %></option>
-<% categories.forEach(function (c) { -%>
-      <option value="<%= c %>"<% if (c === filter.category) { %> selected<% } %>><%= c %></option>
-<% }); -%>
-    </select>
-  </div>
-  <div class="field">
-    <label for="f-difficulty"><%= t('range.filter_difficulty') %></label>
-    <select id="f-difficulty" name="difficulty">
-      <option value=""><%= t('range.filter_all') %></option>
-<% difficulties.forEach(function (d) { -%>
-      <option value="<%= d %>"<% if (d === filter.difficulty) { %> selected<% } %>><%= t('range.difficulty.' + d) %></option>
-<% }); -%>
-    </select>
-  </div>
-  <div class="field">
-    <label for="f-show"><%= t('range.filter_show') %></label>
-    <select id="f-show" name="show">
-      <option value="all"><%= t('range.filter_all') %></option>
-      <option value="todo"<% if (filter.show === 'todo') { %> selected<% } %>><%= t('range.show_todo') %></option>
-      <option value="done"<% if (filter.show === 'done') { %> selected<% } %>><%= t('range.show_done') %></option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="f-sort"><%= t('range.sort') %></label>
-    <select id="f-sort" name="sort">
-      <option value="app"<% if (filter.sort === 'app') { %> selected<% } %>><%= t('range.sort_app') %></option>
-      <option value="difficulty"<% if (filter.sort === 'difficulty') { %> selected<% } %>><%= t('range.sort_difficulty') %></option>
-      <option value="solved"<% if (filter.sort === 'solved') { %> selected<% } %>><%= t('range.sort_solved') %></option>
-    </select>
-  </div>
-  <button type="submit" class="btn btn-secondary"><%= t('range.filter_apply') %></button>
-</form>
-<% if (cards.length === 0) { -%>
-<div class="empty">
-  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg>
-  <p><%= t('range.empty') %></p>
-  <a class="btn btn-secondary" href="/" data-testid="empty-clear"><%= t('range.empty_action') %></a>
-</div>
+  </aside>
+</header>
+<% if (continueLab) { -%>
+<a class="continue-slip" href="<%= continueLab.href %>" data-testid="continue-lab" data-state="<%= continueLab.state %>">
+  <span class="seal" aria-hidden="true"><svg class="icon icon-sm" focusable="false"><use href="/static/icons.svg#<%= continueLab.icon %>"></use></svg></span>
+  <span class="continue-body">
+    <span class="continue-eyebrow"><%= t('range.continue_hero') %></span>
+    <span class="continue-app"><%= continueLab.app %></span>
+    <span class="continue-meta"><%= continueLab.title %> · <%= continueLab.stateLabel %><% if (continueLab.minutesLeft > 0) { %> · <%= t('range.time_left').replace('{n}', continueLab.minutesLeft) %><% } %></span>
+  </span>
+  <span class="continue-go"><%= t('range.resume') %></span>
+</a>
 <% } -%>
-<div class="catalog-grid">
+<section aria-labelledby="board-title">
+  <div class="board-head">
+    <h2 class="board-title" id="board-title"><%= t('range.mission_board') %></h2>
+    <span class="board-count"><%= t('range.mission_count').replace('{n}', total) %></span>
+  </div>
+  <form method="get" action="/" class="range-filters" data-testid="range-filters">
+    <div class="field">
+      <label for="f-q"><%= t('range.search') %></label>
+      <input id="f-q" type="search" name="q" value="<%= filter.q %>" placeholder="<%= t('range.search_placeholder') %>">
+    </div>
+    <div class="field">
+      <label for="f-category"><%= t('range.filter_category') %></label>
+      <select id="f-category" name="category">
+        <option value=""><%= t('range.filter_all') %></option>
+<% categories.forEach(function (c) { -%>
+        <option value="<%= c %>"<% if (c === filter.category) { %> selected<% } %>><%= c %></option>
+<% }); -%>
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-difficulty"><%= t('range.filter_difficulty') %></label>
+      <select id="f-difficulty" name="difficulty">
+        <option value=""><%= t('range.filter_all') %></option>
+<% difficulties.forEach(function (d) { -%>
+        <option value="<%= d %>"<% if (d === filter.difficulty) { %> selected<% } %>><%= t('range.difficulty.' + d) %></option>
+<% }); -%>
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-show"><%= t('range.filter_show') %></label>
+      <select id="f-show" name="show">
+        <option value="all"><%= t('range.filter_all') %></option>
+        <option value="todo"<% if (filter.show === 'todo') { %> selected<% } %>><%= t('range.show_todo') %></option>
+        <option value="done"<% if (filter.show === 'done') { %> selected<% } %>><%= t('range.show_done') %></option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-sort"><%= t('range.sort') %></label>
+      <select id="f-sort" name="sort">
+        <option value="app"<% if (filter.sort === 'app') { %> selected<% } %>><%= t('range.sort_app') %></option>
+        <option value="difficulty"<% if (filter.sort === 'difficulty') { %> selected<% } %>><%= t('range.sort_difficulty') %></option>
+        <option value="solved"<% if (filter.sort === 'solved') { %> selected<% } %>><%= t('range.sort_solved') %></option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-secondary"><%= t('range.filter_apply') %></button>
+  </form>
+  <% if (cards.length === 0) { -%>
+  <div class="empty">
+    <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg>
+    <p><%= t('range.empty') %></p>
+    <a class="btn btn-secondary" href="/" data-testid="empty-clear"><%= t('range.empty_action') %></a>
+  </div>
+  <% } -%>
+  <div class="catalog-grid">
 <% cards.forEach(function (c) { -%>
-  <a class="card lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>">
-    <p class="lab-card-meta"><span class="tag"><svg class="icon icon-sm lab-card-icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg><%= c.category %></span><span class="badge difficulty-badge" data-difficulty="<%= c.difficulty %>"><%= c.difficultyLabel %></span></p>
-    <h2 class="lab-card-app"><%= c.app %></h2>
-    <p class="lab-card-title"><%= c.title %></p>
-    <p class="lab-card-scenario"><%= c.scenario %></p>
-    <ul class="level-chips" aria-label="<%= t('challenge.levels') %>">
+    <a class="contract-slip lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>">
+      <div class="slip-head">
+        <span class="category-tab"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg><%= c.category %></span>
+        <span class="rank-seal seal seal-sm" aria-hidden="true"><%= c.difficultyMark %></span>
+        <span class="difficulty-label"><%= c.difficultyLabel %></span>
+        <span class="pin-dot" aria-hidden="true"></span>
+      </div>
+      <h2 class="contract-app"><%= c.app %></h2>
+      <p class="contract-title"><%= c.title %></p>
+      <p class="contract-objective"><%= c.scenario %></p>
+      <ul class="tier-rows" aria-label="<%= t('range.tiers') %>">
 <% c.levels.forEach(function (l) { -%>
-      <li class="level-chip level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>"><%= t('level.' + l.id) %><% if (l.solved) { %><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-check"></use></svg><span class="sr-only"> <%= t('challenge.solved') %></span><% } %></li>
+        <li class="tier-row level-<%= l.id %><%= l.solved ? ' is-solved' : '' %>" aria-label="<%= t('level.' + l.id) %>: <%= l.points %> <%= t('challenge.points') %>">
+          <span class="tier-seal" aria-hidden="true"></span>
+          <span class="tier-name"><%= t('level.' + l.id) %></span>
+<% if (l.solved) { -%>
+          <span class="sealed-stamp"><%= t('range.sealed') %></span>
+<% } -%>
+          <span class="tier-points"><%= l.points %></span>
+        </li>
 <% }); -%>
-    </ul>
-  </a>
+      </ul>
+      <div class="slip-foot">
+        <span class="bounty"><%= t('range.bounty') %><span class="bounty-figure"><%= c.bounty %></span></span>
+        <span class="slip-arrow" aria-hidden="true">→</span>
+      </div>
+    </a>
 <% }); -%>
-</div>
+  </div>
+</section>
