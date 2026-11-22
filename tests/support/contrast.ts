@@ -58,5 +58,8 @@ export const PAIRS: [string, string, number][] = [
   // Non-text UI boundaries (WCAG 1.4.11): 3:1.
   ['--border-input', '--sunken', 3], ['--border-input', '--surface', 3], ['--border-input', '--surface-2', 3],
   ['--focus', '--bg', 3], ['--focus', '--surface', 3], ['--focus', '--surface-2', 3],
+  // The Guild Ledger additions: text on the inverted slip, and the copper seal/hardware on paper.
+  ['--on-inverted', '--inverted', 4.5],
+  ['--copper', '--surface', 3], ['--copper', '--surface-2', 3], ['--copper', '--bg', 3],
 ];
 

@@ -1,13 +1,18 @@
-# HVWA UI style guide ("Sanctum")
+# HVWA UI style guide ("The Range Guild — Guild Ledger")
 
 How HVWA looks and how to keep it that way. Everything here is enforced in code or tests where it can be:
 `src/public/app.css` (all styles), `src/public/icons.svg` (icons), `src/public/ui.js` (optional enhancements),
 `src/core/views/layout.ejs` (the shell), `tests/ui-contrast.spec.ts` (colour pairs) and `tests/ui-shell.spec.ts`
 (theme, language, district page, no inline script / handler / style, icon coverage).
 
-**Identity.** A professional security-training platform with a quiet citadel theme: ink-navy surfaces, one sacred-gold
-accent, pointed-arch shapes (the brand mark, district icons, the hero) and small diamond markers. Readable first; the
-theme never gets in the way of a lab.
+**Identity.** A quiet guild hall for security contracts. The guild is a *visual metaphor* (contracts, seals, ledger,
+intel, bounty) — not faux-medieval body copy. Warm parchment + ink, hairline rules, a serif spine for headings and
+prose, mono for machine strings, one verdigris accent and copper for seals/hardware. No gradients, no shadows, no
+rounded card grids, no coloured rules on cards/panels/rows.
+
+**Vocabulary.** Labs = Contracts; levels = Tiers (Acolyte / Templar / Divine); hints = Intel; submit = Claim bounty;
+leaderboard = Guild ledger; score = Bounty; solved = Sealed. Indonesian: Kontrak, Tier, Intelijen, Klaim bounty,
+Ledger, Bounty, Tersegel.
 
 **Hard constraints** (the lab depends on them, so they are not style choices):
 
@@ -34,45 +39,58 @@ Colours are custom properties on `:root`. Components use the semantic names belo
 declared twice, identically: `:root[data-theme="light"]` (explicit choice) and inside
 `@media (prefers-color-scheme: light)` for `:root:not([data-theme="dark"])` (system choice).
 
-| Token | Use | Dark | Light |
+| Token | Use | Dark (Scriptorium) | Light (Manuscript) |
 |---|---|---|---|
-| `--bg` | page | `#0b0f19` | `#f5f3ee` |
-| `--surface` / `--surface-2` / `--surface-3` | card, raised panel, hover/selected | `#111827` / `#172034` / `#1f2a42` | `#ffffff` / `#fbfaf7` / `#efece4` |
-| `--sunken` | inputs, segmented-control track | `#080b13` | `#f1efe8` |
-| `--border` / `--border-strong` / `--border-input` | dividers / emphasised / form controls (3:1) | `#253149` / `#3a4865` / `#66789c` | `#ddd8cc` / `#c5bfb0` / `#868173` |
-| `--text` / `--text-muted` / `--text-faint` | body / secondary / line numbers | `#e8ecf4` / `#a3aec2` / `#7d89a1` | `#151a26` / `#4a5365` / `#5f6678` |
-| `--primary` + `--on-primary` | brand gold, primary buttons | `#e5b94e` + `#1a1406` | same |
-| `--primary-text` | gold used as text (ids, eyebrows) | `#e9c264` | `#835c00` |
-| `--link` / `--focus` | azure links / focus ring | `#6aa6ff` / `#7fb2ff` | `#1a5bd6` / `#1a5bd6` |
-| `--success`, `--danger`, `--warning`, `--info` (+ `-bg`, `-border`) | status | emerald, crimson, amber, sky | darker tones |
-| `--lv-acolyte` / `--lv-templar` / `--lv-inquisitor` / `--lv-divine` (+ `-bg`) | the four levels, everywhere | teal / azure / amber / violet | darker tones |
-| `--on-level` | text on a solid level fill | `#0b0f19` | `#ffffff` |
-| `--code-bg`, `--code-text`, `--diff-del-bg`, `--diff-add-bg` | code and diff | | |
+| `--bg` | page field | `#0e242c` | `#f5f1e8` |
+| `--surface` / `--surface-2` / `--surface-3` | paper / hover / selected | `#14313b` / `#193a45` / `#204652` | `#faf7f0` / `#f1ecdf` / `#e8e2d2` |
+| `--sunken` | inputs, tracks | `#0a1d24` | `#ece7da` |
+| `--border` / `--border-strong` / `--border-input` | hairline / rule / form control (3:1) | `#2a4d57` / `#3d6873` / `#7f9aa0` | `#d8d0bd` / `#bdb39b` / `#7c7462` |
+| `--text` / `--text-muted` / `--text-faint` | ink / secondary / mono labels | `#e8d9b8` / `#b9ae94` / `#9a917b` | `#1a1612` / `#5b5548` / `#6d6658` |
+| `--primary` + `--on-primary` | verdigris action, buttons | `#7dd3c0` + `#0b1e24` | `#2f6a5f` + `#fbf7ec` |
+| `--primary-text` | accent text (eyebrows, ids) | `#8ddcc9` | `#2f6a5f` |
+| `--link` / `--focus` | links / focus ring | `#8ddcc9` | `#2f6a5f` |
+| `--copper` | seal/hardware, never state | `#d49872` | `#a9682f` |
+| `--inverted` + `--on-inverted` | the near-black emphasis slip | `#e8d9b8` + `#0e242c` | `#1a1612` + `#f5f1e8` |
+| `--success`, `--danger`, `--warning`, `--info` (+ `-bg`, `-border`) | status | verdigris, oxblood, copper, azure | darker tones |
+| `--lv-acolyte` / `--lv-templar` / `--lv-inquisitor` / `--lv-divine` (+ `-bg`) | the four tiers | teal / azure / copper-amber / violet | darker tones |
+| `--on-level` | text on a solid level fill | `#0b1e24` | `#faf7f0` |
+| `--code-bg`, `--code-text`, `--diff-del-bg`, `--diff-add-bg`, `--banner-*` | code, diff, banner | | |
 
-**Contrast.** Every text pair is at least 4.5:1 and every UI boundary (input border, focus ring) at least 3:1 in both
-themes; the lowest text pairs are 5.48:1 (dark) and 4.80:1 (light). The full list of pairs lives in
-`tests/support/contrast.ts`; add a pair there when a component puts a token on a new background.
+**Contrast.** Every text pair is at least 4.5:1 and every UI boundary (input border, focus ring, seal ring) at least
+3:1 in both themes. The full list of pairs lives in `tests/support/contrast.ts`; add a pair there when a component puts
+a token on a new background.
 
-**Levels.** One colour per level, used for badges (`.level-badge[data-level]`), chips (`.level-chip.level-<l>`), the
-lab bar's segmented control and the challenge page's level picker. Divine adds a gold edge. Any element with
-`data-level="<level>"` (or class `level-<level>`) gets `--lv` and `--lv-bg`. Colour is never the only signal: the
-level's name is always written.
+**Levels.** One colour per tier, used for badges (`.level-badge[data-level]`), chips (`.level-chip.level-<l>`), the
+lab bar's switcher and the dossier's tier rows. Any element with `data-level="<level>"` (or class `level-<level>`) gets
+`--lv` and `--lv-bg`. Tiers are drawn as **monochrome seals, mono text and tonal washes** — never a coloured rail or a
+solid level card. Colour is never the only signal: the tier's name is always written.
 
-**Type.** `--sans`: `ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-`--mono`: `ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace`. Scale `--fs-xs` 12, `--fs-sm` 14,
-`--fs-md` 16 (body), `--fs-lg` 18, `--fs-xl` 24, `--fs-2xl` 32 px; line height 1.55.
+**Type.** `--serif`: `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif` (display
+headings, the mission brief, contract titles); `--sans`: `ui-sans-serif, system-ui, "Segoe UI", Roboto,
+"Helvetica Neue", Arial, sans-serif` (body UI, controls, forms); `--mono`: `ui-monospace, "Cascadia Code", "JetBrains
+Mono", Consolas, monospace` (machine strings, ids, counts, timers, labels, bounty figures). Human prose may be serif;
+controls are sans; machine strings are mono. Display: serif 600, `clamp(2.4rem, 4.2vw, 3.8rem)`, line-height 1.05,
+`-0.02em`. Eyebrow/label: mono uppercase 11 px (`--fs-label`), `0.08em` tracking, 60% ink. Numbers: tabular mono.
 
-**Space, shape, motion.** `--sp-1`..`--sp-7` = 4, 8, 12, 16, 24, 32, 48 px. Radii `--radius-sm` 6, `--radius` 10,
-`--radius-lg` 14. Touch targets `--tap` 44 px. Transitions 180 ms (`--dur`, `--ease`) on `transform` and `opacity`
-only; `prefers-reduced-motion: reduce` turns them off. Z-index: `--z-header` 20, `--z-menu` 30, `--z-skip` 100.
+**Space, shape, motion.** `--sp-1`..`--sp-7` = 4, 8, 12, 16, 24, 32, 48 px. 0 px on editorial surfaces (contract slips,
+panels, tables); 4 px on buttons/inputs (`--radius-sm`); no pill CTAs. **No box-shadows**; depth = 1 px neutral ink
+hairline + a 2–6% tonal wash. Touch targets `--tap` 44 px. Transitions 160 ms (`--dur`, `--ease`) on
+background/transform/opacity only; `prefers-reduced-motion: reduce` turns them off. Z-index: `--z-header` 20,
+`--z-menu` 30, `--z-skip` 100.
 
-**Breakpoints.** Mobile first; 480, 640, 768, 1024, 1440 px. No page scrolls horizontally at 375 px; tables, `pre`
+**No coloured rules (hard rule).** Never put a coloured line, rail, top border or left border on a card, contract
+slip, panel, toast, table row or form. Every surface uses one neutral ink hairline. State (current tier, solved,
+error, success, rank) is shown by a seal/monogram, mono text, a small dot, or a tonal background wash. A single accent
+underline is allowed on the active masthead tab only.
+
+**Breakpoints.** Mobile first; 480, 640, 768, 900, 1024, 1440 px. No page scrolls horizontally at 375 px; tables, `pre`
 and the diff scroll inside their own box.
 
 ## 2. Theme and language
 
 - **Language:** English by default. `?lang=id|en` sets the `hvwa_lang` cookie (`core/i18n.ts`); the EN/ID switch in
-  the top bar is two links. Platform strings live in `core/i18n.ts` (both languages); lab-internal text is English.
+  the masthead is two plain mono text links separated by a `/`. Platform strings live in `core/i18n.ts` (both
+  languages); lab-internal text is English.
 - **Theme:** `?theme=dark|light|system` sets `hvwa_theme` (`core/theme.ts`, same cookie policy as the others). The
   server renders `data-theme` on `<html>` for an explicit choice; with none, CSS follows `prefers-color-scheme`. The
   toggle is a link to the theme you are not on (CSS hides the other one), so it works without JavaScript and never
@@ -80,37 +98,46 @@ and the diff scroll inside their own box.
 
 ## 3. The shell (`core/views/layout.ejs`)
 
-Skip link, the slim safety line, the default-password row (login on, default password in use), the sticky top bar
-(brand, Districts, Scoreboard, EN/ID, theme, account menu), breadcrumbs (`crumbs` data on portal pages), the lab bar
-on lab pages, the view, the victim panel, the footer. Portal pages pass `pageTitle` and `crumbs`
-(`[{ label, href? }]`); a lab view passes neither (the lab bar owns both).
+Skip link, the thin safety strip, the default-password row (login on, default password in use), the sticky masthead
+(brand, Contracts/Ledger tabs, EN/ID, theme, Active contract tag, account initials + caret menu), breadcrumbs
+(`crumbs` data on portal pages), the lab bar on lab pages, the view, the victim panel, the footer, and the `#toasts`
+slip layer. Portal pages pass `pageTitle` and `crumbs` (`[{ label, href? }]`); a lab view passes neither (the lab bar
+owns both).
+
+**Masthead, not a dashboard bar:** 64 px, hairline bottom, sparse. Left: the guild crest (inline SVG) + `HVWA`
+wordmark + a tiny mono `RANGE GUILD` tag. Nav: `Contracts` / `Ledger` text tabs, active = 2 px verdigris underline.
+Right: mono `EN / ID` text swap, one theme icon button, the **Active contract** tag (state dot + app + time), the
+account initials square + caret menu.
 
 **Lab bar** (every `/d/<district>/<slug>` page, automatic): breadcrumb Home › District › ID › Lab, Restart lab (when
-the challenge has a reset hook) and Back to challenge, the id/title/level badge, the summary, the level switcher as a
-segmented control in level colours, and "You are on <level>: <meaning>". Lab pages use one centred column
-(`.content-lab`, 60 rem).
+the challenge has a reset hook) and Back to challenge, the id/title/level badge, the summary, the level switcher
+(document tabs; the current one is a tonal wash + level dot), and "You are on <level>: <meaning>". Lab pages use one
+centred column (`.content-lab`, 60 rem).
 
 ## 4. Components
 
 | Component | Markup | Notes |
 |---|---|---|
-| Button | `<button class="btn btn-primary">` / `btn-secondary` / `btn-ghost` / `btn-danger`; sizes `btn-sm`, `btn-xs`, `btn-lg`, `btn-block` | One primary per screen. `btn-xs` keeps a 44 px hit area. |
+| Button | `<button class="btn btn-primary">` / `btn-secondary` / `btn-ghost` / `btn-quiet` / `btn-danger`; sizes `btn-sm`, `btn-xs`, `btn-lg`, `btn-block` | Flat, 4 px, one primary per screen. `btn-quiet` is an underlined text action (Reset/Stop). |
 | Icon button | `<a class="icon-btn" aria-label="…">` + icon | Always an `aria-label`. |
-| Icon | `<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg>` | Lucide style, 24 px grid, stroke 2; `icon-sm`, `icon-lg`. Add symbols to `icons.svg`; `ui-shell.spec.ts` checks every used id exists. Never emoji. |
-| Card / panel | `<section class="card panel">` + `<h2>` (icon optional) + `.panel-lead` | |
-| Badge, tag | `.badge`, `.badge-ok`, `.badge-solved`, `.level-badge[data-level]`, `.tag` (mono: OWASP / CWE ids) | |
-| Alert | `<div class="alert alert-success|error|warning|info">` + icon + `<p>` | Icon and text, never colour alone. Text-only hooks (`.result`, `.lab-message`) get a CSS glyph instead. |
+| Icon | `<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-…"></use></svg>` | Lucide style, 24 px grid, stroke 2; `icon-sm`, `icon-lg`. Add symbols to `icons.svg`; `ui-shell.spec.ts` checks every used id exists. Never emoji. |
+| Surface / panel | `<section class="card panel">` + `<h2>` + `.panel-lead` | Paper slip, 1 px hairline, 0 radius, no shadow. |
+| Seal | `<span class="seal">` (`.seal-sm`, `.seal-copper`) | Monochrome outlined ring with a letter/numeral. |
+| Badge, tag | `.badge`, `.badge-ok`, `.badge-solved`, `.level-badge[data-level]`, `.tag` (mono) | Square, never pill; level colour in text + a dot, on a tonal wash. |
+| Alert / result | `.alert alert-*`, `.result result-ok\|result-bad`, `[data-error][role="alert"]` | Icon/glyph + text, tonal wash, never colour alone. |
 | Field | `<div class="field"><label for="x">…</label><input id="x"><p class="help">…</p><p class="field-error result result-bad" role="alert">…</p></div>` | Labels always visible; errors under their field; `aria-invalid` + `aria-describedby`. |
-| Table | `<div class="table-wrap"><table class="table">` | `.num` right-aligns figures. |
-| Tabs / filters | `<nav class="seg">` of `<a class="seg-item" aria-current="page">` | Links, no JS. |
-| Accordion | `<details class="accordion"><summary>…</summary><div class="accordion-body">…</div></details>` | Hints use it (progressive). |
+| Table | `<div class="table-wrap"><table class="table">` | Flat hairline rows, `.num` right-aligns mono figures. |
+| Tabs / filters | `<nav class="tabs">` of `<a aria-current="page">` | Links, no JS. |
+| Accordion | `<details class="accordion"><summary>…</summary><div class="accordion-body">…</div></details>` | Intel uses it (progressive). |
 | Menu | `<details class="menu">` + `.menu-panel` + `.menu-item` | `ui.js` closes it on Escape / outside click. |
 | Progress | `<progress class="progress" max value>` | No inline width needed. |
 | Empty state | `<div class="empty">` icon + text + action | |
 | Loading | `.skeleton`; htmx forms get a spinner on the submit button while `.htmx-request` | |
 | Code | `<pre>`, `.source-view`, `.diff-wrap > .diff-view` | Scroll inside the block. |
-| Lab panel (portal mode) | `<section id="lab-panel" class="card panel lab-panel" data-state>` (src/range/views/panel.ejs) | State badge, level badge, one primary action (Launch or Open lab), Reset, danger Stop; a full range shows its message and Launch again. htmx re-fetches the whole section (`hx-swap="outerHTML"`): every 1 s starting, 30 s running. Open lab is a plain form with `target="_blank"`. |
-| My Lab chip (portal mode) | `<a class="my-lab" data-state>` (core/views/my-lab.ejs) | In the top bar on every signed-in page; the app and the minutes left in text; refreshes itself every 30 s. |
+| Contract slip | `<a class="contract-slip lab-card lab-theme-…" data-testid="lab-card" data-lab data-difficulty data-solved data-theme>` (src/range/views/catalog.ejs) | Paper dossier: category tab, monochrome rank seal, pin dot, serif app name, objective, tier rows with seals + points, mono bounty, arrow. |
+| Active-contract panel | `<section id="lab-panel" class="card panel lab-panel" data-state>` (src/range/views/panel.ejs) | State dot + label, time bar, one primary action (Launch or Open lab), quiet Reset/Stop; full/failed/stopped reasons with relaunch. htmx re-fetches the whole section (`hx-swap="outerHTML"`): every 1 s starting, 30 s running. |
+| Active contract tag | `<a class="my-lab" data-state>` (core/views/my-lab.ejs) | In the masthead on every signed-in page; state dot, app + time left; refreshes every 30 s. |
+| Toast (stamped slip) | `<div id="toasts" class="toasts">` + `.toast toast-success\|error\|info` (built by ui.js) | Paper slip, seal glyph, mono eyebrow, serif message, close, auto-dismiss ~5 s, max 3, bottom-right (bottom-centre < 640 px), `role="status"`, no focus stealing, paused on hover/focus. Driven by `data-toast-*` on action-swap fragments only, never polls. |
 
 ## 5. Writing a lab view
 
@@ -145,8 +172,10 @@ Lab views stay plain, semantic HTML; the stylesheet does the rest (`.lab` and it
 ## 6. Do and don't
 
 - Do use tokens and existing components; add a token (both themes) and a contrast pair before a new colour.
-- Do write the meaning in text next to every colour (levels, statuses).
+- Do write the meaning in text next to every colour (tiers, statuses).
 - Do keep focus visible (the global `:focus-visible` ring); never remove an outline.
-- Don't animate layout properties; don't add hover-only affordances; don't use emoji as icons.
+- Do prefer hairlines and tonal washes over borders and shadows; one accent per view.
+- Don't animate layout properties; don't add hover-only affordances; don't use emoji as icons; don't use gradients,
+  glass or drop shadows; don't put a coloured rule on a card, slip, panel, toast, row or form.
 - Don't rely on JavaScript: `ui.js` may enhance, never enable.
 - Check a change in both themes at 390 and 1440 px (headless Chrome screenshots), and run `npm test`.
