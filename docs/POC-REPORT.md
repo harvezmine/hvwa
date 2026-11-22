@@ -16,7 +16,7 @@ POC HVWA Range adalah platform latihan keamanan web di mana **setiap user mendap
   - **r03 Beacon** — *It's Just a Ping, Bro* — OS command injection (Medium)
   - **r04 Postcard** — *My Greeting Card Is Possessed* — Server-side template injection (Hard)
   - **r05 Binanse** — *I Believe My Crypto Web Is Very Secure* — Stored XSS (Hard, **Inquisitor-only**: tanpa pilihan difficulty dan tanpa Divine)
-- **Nama challenge bergaya riddle** menjadi judul utama yang dilihat pemain; nama produk in-world (Mercy Clinic, Courier, Beacon, Postcard, Binanse) tetap sebagai konteks sekunder. Setiap lab punya 3 hint riddle bilingual.
+- **Nama challenge bergaya funny/self-own** menjadi judul utama yang dilihat pemain; nama produk in-world (Mercy Clinic, Courier, Beacon, Postcard, Binanse) tetap sebagai konteks sekunder. Setiap lab punya 3 hint riddle bilingual.
 - **Portal** dengan registrasi terbuka, login, katalog, hint berbayar, leaderboard, panel Lab, submit flag, serta satu instance aktif per user.
 - **Warden** sebagai satu-satunya komponen yang boleh membuat/menghapus container lab, melalui Docker socket proxy yang dibatasi.
 - **Traefik v3 + forward-auth** di belakang Cloudflare Tunnel; setiap instance hanya punya satu container di jaringan internalnya sendiri.

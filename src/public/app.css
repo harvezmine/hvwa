@@ -715,7 +715,7 @@ form.htmx-request button[type="submit"]::before {
    ========================================================================== */
 .page-head { margin: 0 0 var(--sp-5); }
 .page-lead + .diff-legend { margin-top: var(--sp-3); }
-.page-title { font-family: var(--serif); font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--sp-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3); }
+.page-title { font-family: var(--serif); font-size: var(--fs-xl); font-weight: 600; margin: 0 0 var(--sp-2); display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-3); min-width: 0; overflow-wrap: anywhere; }
 .page-lead { color: var(--text-muted); max-width: 70ch; margin: 0; }
 .challenge-id { font-family: var(--mono); color: var(--primary-text); font-weight: 700; letter-spacing: 0.02em; }
 .section-title {
@@ -1244,7 +1244,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .continue-slip .seal { border-color: var(--on-inverted); color: var(--on-inverted); }
 .continue-body { display: grid; gap: 0.15rem; flex: 1 1 16rem; min-width: 0; }
 .continue-eyebrow { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-inverted); opacity: 0.75; }
-.continue-app { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; line-height: 1.15; }
+.continue-app { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
 .continue-meta { font-family: var(--mono); font-size: var(--fs-xs); color: var(--on-inverted); opacity: 0.8; }
 .continue-go { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
 .continue-go::after { content: " →"; }
@@ -1284,7 +1284,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 }
 .difficulty-label { font-family: var(--mono); font-size: var(--fs-label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
 .pin-dot { margin-left: auto; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--copper); flex: none; }
-.contract-app { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; margin: 0; }
+.contract-app { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .contract-title { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
 .contract-objective { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); max-width: 60ch; }
 
@@ -1358,7 +1358,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
   min-height: var(--tap); padding: 0 var(--sp-3);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   color: var(--text); text-decoration: none; font-size: var(--fs-sm);
-  background: var(--surface);
+  background: var(--surface); max-width: 100%; min-width: 0;
 }
 .my-lab:hover { border-color: var(--border-strong); }
 .my-lab-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--text-muted); flex: none; }
@@ -1366,10 +1366,14 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .my-lab[data-state="starting"] .my-lab-dot { background: var(--info); }
 .my-lab[data-state="failed"] .my-lab-dot { background: var(--danger); }
 .my-lab-label { font-family: var(--mono); font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.my-lab-meta { color: var(--text-muted); font-family: var(--mono); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem; }
-/* Narrow screens: the topbar cannot carry the contract chip without overflowing; the Continue slip and the
-   contract panel are the mobile shortcuts. */
-@media (max-width: 640px) { .my-lab { display: none; } }
+.my-lab-meta { color: var(--text-muted); font-family: var(--mono); font-size: var(--fs-xs); white-space: normal; overflow-wrap: anywhere; max-width: 14rem; min-width: 0; }
+/* Narrow screens: keep the chip, but let its long challenge title wrap; the label is redundant there (the dot
+   carries the state) and the Continue slip remains the larger shortcut. */
+@media (max-width: 640px) {
+  .my-lab { max-width: 100%; }
+  .my-lab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .my-lab-meta { max-width: 10rem; }
+}
 
 /* --- Toasts (stamped slips) --- */
 .toasts {
@@ -1434,7 +1438,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .slip-ill { position: absolute; top: 50%; right: var(--sp-4); transform: translateY(-50%); width: 7rem; height: 7rem; stroke-width: 1; color: var(--text); opacity: 0.06; pointer-events: none; }
 .laurel { width: 1.5rem; height: 1.5rem; color: var(--copper); flex: none; }
 
-/* Contract dossier hero: app name as the serif headline, the lab title as a small mono subtitle. */
+/* Contract dossier hero: the challenge title is the serif headline, the in-world app name a small mono subtitle. */
 .lab-hero-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); }
 .lab-hero-copy { min-width: 0; }
 .dossier-subtitle { margin: 0 0 var(--sp-2); font-family: var(--mono); font-size: var(--fs-sm); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
