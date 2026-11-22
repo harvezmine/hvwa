@@ -1,10 +1,12 @@
 // labs/r01-mercy-clinic/app/server.mjs — Mercy Clinic. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and
-// unlink it, then open the SQLite DB in /tmp, seed it and plant the flag as a staff-only notice (spec §6). The notice
-// search at /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). Listens on 0.0.0.0:$HVWA_PORT.
+// unlink it, then open the main SQLite DB in /tmp, seed it and plant the flag as a staff-only notice (spec §6). The
+// notice search at /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). At Inquisitor the
+// search runs against a separate public DB (public notices + service token) so the flag stays out of its reach.
+// Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { openDb, plantFlag, listPublic, getPublic, relatedPublic, listPatients, listAppointments, searchNotices, staffToken, listStaff } from './db.mjs';
+import { openDb, openPublicDb, plantFlag, listPublic, getPublic, relatedPublic, listPatients, listAppointments, searchNotices, staffToken, listStaff } from './db.mjs';
 import {
   page, noticeCard, esc, searchForm, badge, staffCard, stat, sectionHead,
   formatDate, formatDayDate, formatTime, favicon, notFoundPage, errorPage,
@@ -33,6 +35,7 @@ async function readFlag() {
 
 const flag = level === 'divine' ? undefined : await readFlag();
 const db = openDb('/tmp/clinic.db');
+const publicDb = openPublicDb('/tmp/public.db');
 plantFlag(db, level, flag);
 
 const send = (res, status, type, body) => {
@@ -188,7 +191,9 @@ function noticesPage(url) {
 
 function searchPage(url) {
   const q = url.searchParams.get('q') ?? '';
-  const found = q.trim() === '' ? [] : searchNotices(db, level, q);
+  // Inquisitor searches only the public DB, so even a direct UNION over notices cannot surface the staff flag.
+  const searchDb = level === 'inquisitor' ? publicDb : db;
+  const found = q.trim() === '' ? [] : searchNotices(searchDb, level, q);
   // Inquisitor's SELECT carries visibility; only genuine public rows (or injected rows that claim it) may render.
   const rows = level === 'inquisitor' ? found.filter((r) => r.visibility === 'public') : found;
   const metaById = new Map(listPublic(db).map((n) => [n.id, n]));
@@ -462,7 +467,8 @@ createServer(async (req, res) => {
     // that token; at Divine the search is parameterised, so this route stays 401 to anyone without it.
     if (p === '/staff/notices') {
       const presented = (url.searchParams.get('token') || '').trim();
-      const expected = staffToken(db);
+      // The token lives in the public DB (which Inquisitor can leak); the staff notices come from the main clinic DB.
+      const expected = staffToken(publicDb);
       if (!presented || !expected || presented !== expected) {
         return html(res, 401, page('Staff sign-in', staffDeniedPage(), { active: '' }));
       }

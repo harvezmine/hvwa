@@ -1,7 +1,8 @@
-// labs/r01-mercy-clinic/app/db.mjs — the clinic's SQLite store (node:sqlite, --experimental-sqlite). The DB lives in the
-// /tmp tmpfs because the rootfs is read-only. The notice search is the vulnerable feature; its implementations are
-// chosen by HVWA_LEVEL. The flag is a staff-only notice planted by the start hook (never on a public page). A random
-// service token in the same database gates the staff notice route at every level; only Inquisitor's search can leak it.
+// labs/r01-mercy-clinic/app/db.mjs — the clinic's SQLite stores (node:sqlite, --experimental-sqlite). The DBs live in
+// the /tmp tmpfs because the rootfs is read-only. The main clinic DB holds patients, notices and the planted staff flag.
+// Inquisitor's injectable search runs against a SEPARATE public DB that holds only the public notices and the service
+// token, so a direct UNION cannot reach the flag — the token is the only useful leak. The flag is a staff-only notice
+// planted by the start hook (never on a public page). The implementations are chosen by HVWA_LEVEL.
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -27,12 +28,7 @@ export function openDb(path = '/tmp/clinic.db') {
                            category TEXT, author TEXT, published_at TEXT);
     CREATE TABLE appointments (id INTEGER PRIMARY KEY, patient_label TEXT, clinician TEXT, department TEXT, room TEXT,
                                starts_at TEXT, duration_min INTEGER, status TEXT);
-    CREATE TABLE staff_tokens (id INTEGER PRIMARY KEY, token TEXT, label TEXT);
   `);
-  // A fresh 128-bit service token at start, on every level. The staff route accepts only this value; Inquisitor's
-  // injectable search is the one place it can be read out of the database.
-  db.prepare('INSERT INTO staff_tokens (token, label) VALUES (?, ?)')
-    .run(randomBytes(16).toString('hex'), 'Mercy Clinic staff notices');
   const insPatient = db.prepare('INSERT INTO patients (name, role, department, room, extension, pronouns, bio) VALUES (?, ?, ?, ?, ?, ?, ?)');
   for (const p of seed('patients.json')) {
     insPatient.run(p.name, p.role, p.department ?? null, p.room ?? null, p.extension ?? null, p.pronouns ?? null, p.bio ?? null);
@@ -46,6 +42,30 @@ export function openDb(path = '/tmp/clinic.db') {
     insAppointment.run(a.patient_label ?? null, a.clinician, a.department, a.room ?? null,
       startsAt(a.day_offset ?? 0, a.time), a.duration_min ?? 15, a.status ?? 'booked');
   }
+  return db;
+}
+
+/**
+ * The public search DB: only the public notices and the service token. Inquisitor's injectable search runs here, so
+ * even a direct UNION over `notices` cannot reach a staff notice or the flag — the token is the only secret in this
+ * file. A trailing `ATTACH DATABASE '/tmp/clinic.db' …` in an injection cannot bridge the two either: node:sqlite's
+ * prepare compiles and runs only the first statement, so the public connection never gains the main DB's schema.
+ */
+export function openPublicDb(path = '/tmp/public.db') {
+  const db = new DatabaseSync(path);
+  db.exec(`
+    CREATE TABLE notices (id INTEGER PRIMARY KEY, title TEXT, body TEXT, visibility TEXT NOT NULL DEFAULT 'public',
+                           category TEXT, author TEXT, published_at TEXT);
+    CREATE TABLE staff_tokens (id INTEGER PRIMARY KEY, token TEXT, label TEXT);
+  `);
+  const insNotice = db.prepare('INSERT INTO notices (title, body, visibility, category, author, published_at) VALUES (?, ?, ?, ?, ?, ?)');
+  for (const n of seed('notices.json')) {
+    if ((n.visibility ?? 'public') !== 'public') continue; // staff rows and the planted flag never enter this DB
+    insNotice.run(n.title, n.body, 'public', n.category ?? null, n.author ?? null, n.published_at ?? null);
+  }
+  // A fresh 128-bit service token at start, on every level. This is the only thing Inquisitor's search can usefully leak.
+  db.prepare('INSERT INTO staff_tokens (token, label) VALUES (?, ?)')
+    .run(randomBytes(16).toString('hex'), 'Mercy Clinic staff notices');
   return db;
 }
 
@@ -65,17 +85,18 @@ export const relatedPublic = (db, category, id) => db.prepare("SELECT id, title,
 export const listPatients = (db) => db.prepare('SELECT name, role, department, room, extension, pronouns, bio FROM patients ORDER BY department, name').all();
 export const listAppointments = (db) => db.prepare('SELECT clinician, department, room, starts_at, duration_min, status FROM appointments ORDER BY starts_at, clinician').all();
 
-/** The service token that unlocks the staff notices (one row per process). */
+/** The service token that unlocks the staff notices (one row per process, in the public search DB). */
 export const staffToken = (db) => db.prepare('SELECT token FROM staff_tokens ORDER BY id LIMIT 1').get()?.token;
-/** Staff-only notices, including whatever the start hook planted. Only the token-gated route renders these. */
+/** Staff-only notices from the main clinic DB, including whatever the start hook planted. Only the token-gated route renders these. */
 export const listStaff = (db) => db.prepare("SELECT id, title, body, category, author, published_at FROM notices WHERE visibility = 'staff' ORDER BY published_at DESC, id DESC").all();
 
 /**
  * The notice search, per level. Acolyte/Templar return rows [{ id, title, body }]; Inquisitor adds a fourth
  * `visibility` column so the server can drop any injected row that does not claim to be public.
- * - acolyte:    q concatenated straight into a LIKE string literal (classic SQLi).
- * - templar:    the keywords union/select are stripped ONCE, then the same concatenation (a single-pass blacklist).
- * - inquisitor: the same concatenation, but the SELECT carries visibility; a UNION can reach staff_tokens.
+ * - acolyte:    q concatenated straight into a LIKE string literal (classic SQLi) against the main clinic DB.
+ * - templar:    the keywords union/select are stripped ONCE, then the same concatenation against the main clinic DB.
+ * - inquisitor: the same concatenation against the public search DB only; a UNION can reach staff_tokens there, but
+ *               that DB has no staff notices or flag to read directly.
  * - divine:     a parameterised statement; q is bound data and the visibility filter is fixed.
  */
 export function searchNotices(db, level, q) {
