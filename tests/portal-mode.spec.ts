@@ -205,13 +205,27 @@ describe('the catalog', () => {
     expect(html).not.toContain('data-testid="empty-clear"');
   });
 
+  it('shows the adventurer rank (seal letter + name + progress) derived from bounty points', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'alice');
+    const fresh = (await agent.get('/')).text;
+    expect(fresh).toContain('data-testid="range-rank"');
+    expect(fresh).toContain('Initiate'); // 0 points → E Initiate
+    expect(fresh).toMatch(/data-testid="range-rank-progress" max="200" value="0"/);
+    recordRangeSolve(app.locals.db, userId, 'r01', 'templar', 150, T0);
+    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 350 → D Scout, next C at 500
+    const html = (await agent.get('/')).text;
+    expect(html).toContain('Scout');
+    expect(html).toMatch(/data-testid="range-rank-progress" max="500" value="350"/);
+  });
+
   it('gives each lab its own theme class and icon, and a Continue hero for an active instance', async () => {
     const kit = portalApp();
     const { agent, userId } = await player(kit.app, 'alice');
     const html = (await agent.get('/')).text;
     expect(html).toContain('lab-card lab-theme-theme-clinic');
     expect(html).toContain('data-theme="theme-clinic"');
-    expect(html).toContain('/static/icons.svg#i-bag'); // courier's identity icon
+    expect(html).toContain('/static/icons.svg#i-ill-courier'); // courier's identity illustration
     await kit.app.locals.range!.lifecycle.launch(userId, 'r01', 'templar');
     const hero = (await agent.get('/')).text;
     expect(hero).toMatch(/data-testid="continue-lab" data-state="starting"/);
@@ -306,6 +320,18 @@ describe('the leaderboard and the navigation', () => {
     expect(html).toContain('data-testid="leaderboard-you"');
     expect(html).toMatch(/data-testid="leaderboard-you"[\s\S]*?data-rank="4" data-user="alice"/);
     expect(html).toContain('Your position');
+  });
+
+  it('counts one member in the singular and keeps the position separate from the rank seal', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'alice');
+    recordRangeSolve(app.locals.db, userId, 'r01', 'acolyte', 100, T0);
+    const html = (await agent.get('/leaderboard')).text;
+    expect(html).toContain('1 member');
+    expect(html).not.toContain('1 members');
+    expect(html).toMatch(/data-rank="1" data-user="alice"/);
+    expect(html).toContain('class="podium-rank"'); // the numeric position
+    expect(html).toContain('class="rank-seal'); // the adventurer rank seal (letter)
   });
 
   it('Labs and Leaderboard for everyone; no Admin link (no admin pages in the POC); no Districts or Scoreboard links', async () => {

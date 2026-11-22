@@ -29,7 +29,7 @@ function htmlPage(status: number, res: Response): string {
     + `<title>${status} ${escapeHtml(label)}</title><link rel="stylesheet" href="/static/app.css"></head><body>`
     + `<header class="topbar"><div class="topbar-inner"><a href="/" class="brand">${mark}<span class="brand-name">HVWA</span></a></div></header>`
     + '<main class="content" id="main"><section class="error-page" data-status="' + status + '"><div>'
-    + '<span class="error-arch" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" focusable="false"><use href="/static/icons.svg#i-compass"></use></svg></span>'
+    + '<span class="error-seal" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" focusable="false"><use href="/static/icons.svg#i-empty-scroll"></use></svg></span>'
     + `<p class="error-code">${status} — ${escapeHtml(label)}</p>`
     + `<h1>${escapeHtml(t(`error.${kind}_title`, lang))}</h1>`
     + `<p>${escapeHtml(t(`error.${kind}_lead`, lang))}</p>`

@@ -4,14 +4,15 @@
    an EJS comment: it breaks parsing. %>
 <header class="page-head">
   <div class="board-head">
+    <svg class="icon laurel" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-laurel"></use></svg>
     <h1 class="page-title"><%= t('leaderboard.title') %></h1>
-    <span class="board-count"><%= t('leaderboard.count').replace('{n}', rows.length) %></span>
+    <span class="board-count"><% if (rows.length === 1) { %><%= t('leaderboard.count_one') %><% } else { %><%= t('leaderboard.count').replace('{n}', rows.length) %><% } %></span>
   </div>
   <p class="page-lead"><%= t('leaderboard.lead') %></p>
 </header>
 <% if (rows.length === 0) { -%>
 <div class="empty">
-  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-trophy"></use></svg>
+  <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-empty-scroll"></use></svg>
   <p><%= t('leaderboard.empty') %></p>
   <a class="btn btn-secondary" href="/" data-testid="leaderboard-empty-action"><%= t('leaderboard.empty_action') %></a>
 </div>
@@ -21,7 +22,7 @@
   <li data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="leaderboard-top leaderboard-top-<%= r.rank %><% if (r.userId === me) { %> leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
     <div class="podium-row">
       <span class="podium-rank"><%= r.rank < 10 ? '0' + r.rank : r.rank %></span>
-      <span class="podium-name"><%= r.username %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
+      <span class="podium-name"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
       <span class="podium-stat"><b><%= r.score %></b><%= r.solved %> <%= t('leaderboard.col_solved') %></span>
     </div>
   </li>
@@ -35,7 +36,7 @@
 <% rows.filter(function (r) { return r.rank > 3; }).forEach(function (r) { -%>
       <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="<% if (r.userId === me) { %>leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
         <td class="num"><span class="leaderboard-rank"><%= r.rank %></span></td>
-        <th scope="row"><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
+        <th scope="row"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
         <td class="num"><%= r.score %></td>
         <td class="num"><%= r.solved %></td>
       </tr>
@@ -58,7 +59,7 @@
     <tbody>
       <tr data-rank="<%= pinned.rank %>" data-user="<%= pinned.username %>" class="leaderboard-me" aria-current="true">
         <td class="num"><%= pinned.rank %></td>
-        <th scope="row"><%= pinned.username %> <span class="muted"><%= t('leaderboard.you') %></span></th>
+        <th scope="row"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= pinned.rankLetter %></span><%= pinned.username %> <span class="muted"><%= t('leaderboard.you') %></span></th>
         <td class="num"><%= pinned.score %></td>
         <td class="num"><%= pinned.solved %></td>
       </tr>

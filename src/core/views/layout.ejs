@@ -66,7 +66,7 @@
             <svg class="icon icon-sm menu-caret" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-down"></use></svg>
           </summary>
           <div class="menu-panel">
-            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong></p>
+            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <span class="menu-rank"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></span><% } %></p>
             <a class="menu-item" href="/account/password"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg><%= t('auth.change_password') %></a>
             <form method="post" action="/logout" class="logout-form"><input type="hidden" name="_csrf" value="<%= platformAuth.csrf %>"><button type="submit" class="menu-item menu-item-danger" data-testid="logout"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-log-out"></use></svg><%= t('auth.logout') %></button></form>
           </div>

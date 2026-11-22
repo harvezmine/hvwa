@@ -88,7 +88,7 @@ export function panelFor(ctx: RangeContext, req: Request, res: Response, lab: La
   return { ...base, state: 'none' };
 }
 
-export interface MyLabChip { readonly href: string; readonly state: string; readonly text: string }
+export interface MyLabChip { readonly href: string; readonly state: string; readonly label: string; readonly text: string }
 
 /**
  * The header's My Lab chip (res.locals.myLab). `latest` is the user's newest instance of any state. The chip is HIDDEN
@@ -104,17 +104,18 @@ export function myLabChip(
   if (!active && !recent) return undefined;
   const app = registry.get(latest.labId)?.app ?? latest.labId;
   const href = `/labs/${latest.labId}?level=${latest.level}`;
+  const label = active ? t('range.my_lab_active') : t('range.my_lab_last');
   if (latest.state === 'running') {
-    return { href, state: 'running', text: `${app} · ${t('range.time_left').replace('{n}', String(minutesUntil(latest.expiresAt, now)))}` };
+    return { href, state: 'running', label, text: `${app} · ${t('range.time_left').replace('{n}', String(minutesUntil(latest.expiresAt, now)))}` };
   }
   if (latest.state === 'failed') {
-    return { href, state: 'failed', text: `${app} · ${t('range.state.failed')}` };
+    return { href, state: 'failed', label, text: `${app} · ${t('range.state.failed')}` };
   }
   if (latest.state === 'stopped') {
     const key = `range.stopped.${latest.reason ?? ''}`;
     const text = t(key) === key ? t('range.state.stopped') : t(key);
-    return { href, state: 'stopped', text: `${app} · ${text}` };
+    return { href, state: 'stopped', label, text: `${app} · ${text}` };
   }
   // starting (or queued, which the POC does not use)
-  return { href, state: latest.state, text: `${app} · ${t(`range.state.${latest.state}`)}` };
+  return { href, state: latest.state, label, text: `${app} · ${t(`range.state.${latest.state}`)}` };
 }
