@@ -1,0 +1,9 @@
+<%# Admin sub-navigation (included by every admin page): five plain links, the active one marked with aria-current.
+   Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<nav class="tabs admin-tabs" aria-label="<%= t('admin.nav_label') %>" data-testid="admin-tabs">
+  <a href="/admin"<% if (adminActive === 'overview') { %> aria-current="page"<% } %>><%= t('admin.nav.overview') %></a>
+  <a href="/admin/activity"<% if (adminActive === 'activity') { %> aria-current="page"<% } %>><%= t('admin.nav.activity') %></a>
+  <a href="/admin/instances"<% if (adminActive === 'instances') { %> aria-current="page"<% } %>><%= t('admin.nav.instances') %></a>
+  <a href="/admin/teams"<% if (adminActive === 'teams') { %> aria-current="page"<% } %>><%= t('admin.nav.teams') %></a>
+  <a href="/admin/labs"<% if (adminActive === 'labs') { %> aria-current="page"<% } %>><%= t('admin.nav.labs') %></a>
+</nav>

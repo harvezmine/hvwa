@@ -6,6 +6,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { PlatformAuth } from '../auth/index.js';
 import { SCOPED_PAGE_CSP } from '../core/page-csp.js';
 import { portalFramePolicy } from '../portal/frame-policy.js';
+import { adminRoutes } from './admin.js';
 import { catalogRoutes } from './catalog.js';
 import { edgeHandler } from './gate.js';
 import { instanceIdOfHost } from './hosts.js';
@@ -53,6 +54,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const locals: RequestHandler = (req, res, next) => {
     const active = req.path === '/leaderboard' ? 'leaderboard'
       : req.path === '/team' ? 'team'
+      : req.path === '/admin' || req.path.startsWith('/admin/') ? 'admin'
       : req.path === '/' || req.path.startsWith('/labs/') ? 'labs' : undefined;
     res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin', active };
     const userId = res.locals.platformAuth?.userId;
@@ -80,6 +82,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   catalogRoutes(router, ctx);
   labRoutes(router, ctx);
   teamRoutes(router, ctx);
+  adminRoutes(router, ctx);
   const log = opts.log ?? ((line: string) => console.warn(line));
   const start = (): Reaper => {
     reconcile(lifecycle, opts.warden, now).catch((err: unknown) => {

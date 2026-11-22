@@ -43,7 +43,7 @@ export const PAIRS: [string, string, number][] = [
   ...SURFACES.map((bg): [string, string, number] => ['--link', bg, 4.5]),
   ...SURFACES.map((bg): [string, string, number] => ['--primary-text', bg, 4.5]),
   ['--on-primary', '--primary', 4.5], ['--on-primary', '--primary-hover', 4.5],
-  ['--success', '--success-bg', 4.5], ['--success', '--surface', 4.5], ['--success', '--surface-2', 4.5],
+  ['--success', '--success-bg', 4.5], ['--success', '--surface', 4.5], ['--success', '--surface-2', 4.5], ['--success', '--bg', 4.5],
   ['--danger', '--danger-bg', 4.5], ['--danger', '--surface', 4.5], ['--danger', '--surface-2', 4.5],
   ['--warning', '--warning-bg', 4.5], ['--text', '--warning-bg', 4.5],
   ['--info', '--info-bg', 4.5], ['--text', '--info-bg', 4.5],
