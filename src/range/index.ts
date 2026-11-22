@@ -15,6 +15,7 @@ import { myLabChip } from './panel.js';
 import { rangeScore } from './progress.js';
 import { rankFor } from './rank.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
+import { teamRoutes } from './teams.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
 import type { RangeContext, RangePortalOptions } from './types.js';
 
@@ -51,6 +52,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
 
   const locals: RequestHandler = (req, res, next) => {
     const active = req.path === '/leaderboard' ? 'leaderboard'
+      : req.path === '/team' ? 'team'
       : req.path === '/' || req.path.startsWith('/labs/') ? 'labs' : undefined;
     res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin', active };
     const userId = res.locals.platformAuth?.userId;
@@ -77,6 +79,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   router.use(portalFramePolicy());
   catalogRoutes(router, ctx);
   labRoutes(router, ctx);
+  teamRoutes(router, ctx);
   const log = opts.log ?? ((line: string) => console.warn(line));
   const start = (): Reaper => {
     reconcile(lifecycle, opts.warden, now).catch((err: unknown) => {

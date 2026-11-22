@@ -49,7 +49,7 @@ declare global {
       /** standalone or portal (createApp): the layout switches the safety/footer copy on it. */
       mode?: 'standalone' | 'portal';
       /** Portal mode (src/range/index.ts): the range's navigation instead of Districts / Scoreboard. */
-      portalNav?: { readonly admin: boolean; readonly active?: 'labs' | 'leaderboard' };
+      portalNav?: { readonly admin: boolean; readonly active?: 'labs' | 'team' | 'leaderboard' };
       /** Portal mode: the My Lab chip in the header (src/range/panel.ts myLabChip). */
       myLab?: { readonly href: string; readonly state: string; readonly text: string };
     }
