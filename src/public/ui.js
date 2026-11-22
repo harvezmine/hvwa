@@ -90,12 +90,73 @@
     arm();
   }
 
+  // The submit-result popup (solve-dialog): built from the data-modal-* attributes the server puts on the submit-result
+  // fragment. Only the submit fragment carries them, so a poll or a panel swap never opens it. The inline .result stays
+  // for no-JS; the popup is pure enhancement.
+  var solveDialog = (function () {
+    var dialog = document.getElementById('solve-dialog');
+    var lastTrigger = null;
+    var MODAL_ATTRS = ['data-modal', 'data-modal-title', 'data-modal-message', 'data-modal-points', 'data-modal-fact'];
+    function setText(id, value) {
+      var node = document.getElementById(id);
+      if (node) node.textContent = value;
+    }
+    function open(carrier) {
+      if (!dialog || typeof dialog.showModal !== 'function') {
+        MODAL_ATTRS.forEach(function (a) { carrier.removeAttribute(a); });
+        return;
+      }
+      var variant = carrier.getAttribute('data-modal') || '';
+      setText('solve-title', carrier.getAttribute('data-modal-title') || '');
+      setText('solve-message', carrier.getAttribute('data-modal-message') || '');
+      var points = carrier.getAttribute('data-modal-points') || '';
+      var pointsEl = dialog.querySelector('.solve-points');
+      if (pointsEl) {
+        var figure = pointsEl.querySelector('.solve-points-figure');
+        if (figure) figure.textContent = points;
+        pointsEl.hidden = points === '';
+      }
+      var fact = carrier.getAttribute('data-modal-fact') || '';
+      var factEl = dialog.querySelector('.solve-fact');
+      if (factEl) {
+        var factText = factEl.querySelector('.solve-fact-text');
+        if (factText) factText.textContent = fact;
+        factEl.hidden = fact === '';
+      }
+      // Drop the payload so a later swap never re-opens it, and so the toast pass below skips this slip.
+      MODAL_ATTRS.forEach(function (a) { carrier.removeAttribute(a); });
+      ['data-toast', 'data-toast-variant', 'data-toast-title', 'data-toast-message'].forEach(function (a) { carrier.removeAttribute(a); });
+      dialog.setAttribute('data-variant', variant);
+      if (!dialog.open) dialog.showModal();
+      var closeBtn = dialog.querySelector('.solve-continue');
+      if (closeBtn) { try { closeBtn.focus(); } catch (e) { /* not focusable */ } }
+      lastTrigger = document.getElementById('flag-submit');
+    }
+    function close() {
+      if (dialog && dialog.open) dialog.close();
+    }
+    if (dialog) {
+      var closeBtn = dialog.querySelector('.solve-continue');
+      if (closeBtn) closeBtn.addEventListener('click', close);
+      dialog.addEventListener('click', function (e) { if (e.target === dialog) close(); });
+      dialog.addEventListener('close', function () {
+        if (lastTrigger && lastTrigger.focus) { try { lastTrigger.focus(); } catch (e) { /* not focusable */ } }
+      });
+    }
+    return { open: open };
+  })();
+
   // After an ACTION swap (not a poll), move focus to the swapped panel so keyboard and screen-reader users land on the
   // new state, and show any toast the fragment carries. The server marks those responses data-focus-after-swap;
-  // poll responses never carry it, and never carry data-toast either.
+  // poll responses never carry it, and never carry data-toast either. A submit-result fragment opens the popup instead.
   document.addEventListener('htmx:afterSwap', function () {
     var el = document.querySelector('[data-focus-after-swap]');
-    if (el) {
+    var modalCarrier = document.querySelector('[data-modal]');
+    if (modalCarrier) {
+      // The popup owns focus now: don't move it to the fragment sitting behind the dialog.
+      if (el) el.removeAttribute('data-focus-after-swap');
+      solveDialog.open(modalCarrier);
+    } else if (el) {
       el.removeAttribute('data-focus-after-swap');
       window.requestAnimationFrame(function () { try { el.focus(); } catch (e) { /* not focusable */ } });
     }

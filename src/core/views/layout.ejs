@@ -135,5 +135,22 @@
     </div>
   </footer>
   <div id="toasts" class="toasts" data-dismiss="<%= t('range.toast_dismiss') %>"></div>
+<%# The submit-result popup (htmx enhancement). It starts closed: no `open` attribute, so it is not on screen until
+     ui.js opens it from the data-modal-* attributes on a submit-result fragment. Values are filled by ui.js (textContent),
+     so the markup itself stays inert and CSP-clean. %>
+  <dialog id="solve-dialog" class="solve-dialog" data-variant="" aria-labelledby="solve-title" aria-describedby="solve-message">
+    <div class="solve-slip">
+      <div class="solve-confetti" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <span class="solve-seal" aria-hidden="true"></span>
+      <h2 id="solve-title" class="solve-title"></h2>
+      <p id="solve-message" class="solve-message"></p>
+      <p class="solve-points" hidden><span class="solve-points-figure"></span><span class="solve-points-unit"><%= t('range.modal_points') %></span></p>
+      <div class="solve-fact" hidden>
+        <span class="solve-fact-label"><%= t('range.modal_field_note') %></span>
+        <p class="solve-fact-text"></p>
+      </div>
+      <button type="button" class="btn btn-primary solve-continue"><%= t('range.modal_continue') %></button>
+    </div>
+  </dialog>
 </body>
 </html>

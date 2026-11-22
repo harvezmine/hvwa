@@ -588,6 +588,25 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'range.toast_reset': { id: 'Instans baru telah dibuat.', en: 'A new instance was created.' },
   'range.toast_stopped_title': { id: 'Kontrak ditutup', en: 'Contract closed' },
   'range.toast_stopped': { id: 'Anda bisa memulainya lagi nanti.', en: 'You can start it again later.' },
+  // The contract dossier hero (src/range/views/lab.ejs): the mono "contract file" line.
+  'range.contract_word': { id: 'Kontrak', en: 'Contract' },
+  'range.tiers_word': { id: 'Tier', en: 'Tiers' },
+  // The submit-result modal (src/range/submit.ts, src/core/views/layout.ejs): variant titles, messages, points unit,
+  // the FIELD NOTE label and the Continue action. The fact text itself lives in src/range/facts.ts.
+  'range.modal_solved_title': { id: 'Kontrak tersegel', en: 'Contract sealed' },
+  'range.modal_solved_message': { id: '{level} tersegel', en: '{level} sealed' },
+  'range.modal_already_title': { id: 'Sudah tersegel', en: 'Already sealed' },
+  'range.modal_already_message': { id: '{level} dipegang · {points} poin', en: '{level} held · {points} pts' },
+  'range.modal_lower_title': { id: 'Segel dipertahankan', en: 'Seal held' },
+  'range.modal_lower_message': { id: 'Level terbaik tetap {level} · {points} poin', en: 'Best remains {level} · {points} pts' },
+  'range.modal_wrong_title': { id: 'Segel tidak menempel', en: 'The seal did not take' },
+  'range.modal_wrong_message': {
+    id: 'Tidak ada tanda yang cocok di ledger. Segel hanya mengering pada flag yang diterbitkan untuk instans Anda sendiri, dalam batas harinya.',
+    en: 'No matching mark in the ledger. A seal only dries on a flag issued to your own instance, within its day.',
+  },
+  'range.modal_field_note': { id: 'CATATAN LAPANGAN', en: 'FIELD NOTE' },
+  'range.modal_continue': { id: 'Lanjutkan', en: 'Continue' },
+  'range.modal_points': { id: 'poin', en: 'pts' },
   // The leaderboard.
   'leaderboard.title': { id: 'Ledger Gilda', en: 'Guild ledger' },
   'leaderboard.lead': {
