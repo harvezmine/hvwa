@@ -1,16 +1,18 @@
 // labs/r01-mercy-clinic/app/server.mjs — Mercy Clinic. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and
-// unlink it, then open the SQLite DB in /tmp, seed it and plant the flag as a staff-only notice (spec §6). The notice
-// search at /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). Listens on 0.0.0.0:$HVWA_PORT.
+// unlink it, then open the main SQLite DB in /tmp, seed it and plant the flag as a staff-only notice (spec §6). The
+// notice search at /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). At Inquisitor the
+// search runs against a separate public DB (public notices + service token) so the flag stays out of its reach.
+// Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { openDb, plantFlag, listPublic, getPublic, relatedPublic, listPatients, listAppointments, searchNotices } from './db.mjs';
+import { openDb, openPublicDb, plantFlag, listPublic, getPublic, relatedPublic, listPatients, listAppointments, searchNotices, staffToken, listStaff } from './db.mjs';
 import {
   page, noticeCard, esc, searchForm, badge, staffCard, stat, sectionHead,
   formatDate, formatDayDate, formatTime, favicon, notFoundPage, errorPage,
 } from './render.mjs';
 
-const LEVELS = ['acolyte', 'templar', 'divine'];
+const LEVELS = ['acolyte', 'templar', 'inquisitor', 'divine'];
 const level = LEVELS.includes(process.env.HVWA_LEVEL ?? '') ? process.env.HVWA_LEVEL : 'acolyte';
 const port = Number(process.env.HVWA_PORT || 8080);
 const flagSource = process.env.HVWA_FLAG_FILE || '/tmp/.hvwa-flag';
@@ -33,6 +35,7 @@ async function readFlag() {
 
 const flag = level === 'divine' ? undefined : await readFlag();
 const db = openDb('/tmp/clinic.db');
+const publicDb = openPublicDb('/tmp/public.db');
 plantFlag(db, level, flag);
 
 const send = (res, status, type, body) => {
@@ -188,7 +191,11 @@ function noticesPage(url) {
 
 function searchPage(url) {
   const q = url.searchParams.get('q') ?? '';
-  const rows = q.trim() === '' ? [] : searchNotices(db, level, q);
+  // Inquisitor searches only the public DB, so even a direct UNION over notices cannot surface the staff flag.
+  const searchDb = level === 'inquisitor' ? publicDb : db;
+  const found = q.trim() === '' ? [] : searchNotices(searchDb, level, q);
+  // Inquisitor's SELECT carries visibility; only genuine public rows (or injected rows that claim it) may render.
+  const rows = level === 'inquisitor' ? found.filter((r) => r.visibility === 'public') : found;
   const metaById = new Map(listPublic(db).map((n) => [n.id, n]));
   const cards = rows.map((r) => {
     const meta = metaById.get(r.id);
@@ -210,6 +217,28 @@ function searchPage(url) {
   }
   return `<h1>Search notices</h1><p class="lede">Search patient notices by title or content.</p>`
     + searchForm(q, 'q-search') + result;
+}
+
+/** The token-gated staff notices. Every value is escaped; the token itself is never rendered. */
+function staffNoticesPage(notices) {
+  const cards = notices.map((n) => {
+    const when = formatDate(n.published_at);
+    return `<article class="notice-card"><div class="notice-hit">`
+      + `<span class="notice-top">${badge(n.category)}${when ? `<time datetime="${esc(n.published_at)}">${esc(when)}</time>` : ''}</span>`
+      + `<h3>${esc(n.title)}</h3><p class="notice-body">${esc(n.body)}</p>`
+      + `<span class="notice-foot"><span class="byline">${n.author ? esc(n.author) : 'Mercy Clinic'}</span><span class="more">Staff only</span></span>`
+      + `</div></article>`;
+  }).join('');
+  return `<h1>Staff notices</h1><p class="lede">Internal notices for Mercy Clinic staff. Do not share outside the practice.</p>`
+    + (notices.length
+      ? `<div class="notice-grid">${cards}</div>`
+      : `<div class="no-results"><p><strong>No staff notices.</strong></p></div>`);
+}
+
+function staffDeniedPage() {
+  return `<div class="not-found"><p class="big">401</p><h1>Staff sign-in required</h1>`
+    + `<p class="lede">This area is for Mercy Clinic staff. A valid service token is required.</p>`
+    + `<p><a class="btn btn-secondary" href="/">Return to the home page</a></p></div>`;
 }
 
 function noticePage(notice) {
@@ -433,6 +462,18 @@ createServer(async (req, res) => {
     if (p === '/') return html(res, 200, page('Home', homePage(), { active: 'home' }));
 
     if (p === '/search') return html(res, 200, page('Search', searchPage(url), { active: 'notices' }));
+
+    // Staff notices exist at every level but are reachable only with the service token. Only Inquisitor's search leaks
+    // that token; at Divine the search is parameterised, so this route stays 401 to anyone without it.
+    if (p === '/staff/notices') {
+      const presented = (url.searchParams.get('token') || '').trim();
+      // The token lives in the public DB (which Inquisitor can leak); the staff notices come from the main clinic DB.
+      const expected = staffToken(publicDb);
+      if (!presented || !expected || presented !== expected) {
+        return html(res, 401, page('Staff sign-in', staffDeniedPage(), { active: '' }));
+      }
+      return html(res, 200, page('Staff notices', staffNoticesPage(listStaff(db)), { active: '' }));
+    }
 
     if (p === '/notices') return html(res, 200, page('Patient notices', noticesPage(url), { active: 'notices' }));
 
