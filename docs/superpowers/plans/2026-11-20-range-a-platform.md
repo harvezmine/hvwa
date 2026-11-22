@@ -34,6 +34,14 @@ The POC now shows four levels per lab. Acolyte, Templar and Inquisitor are explo
 secure reference (scored 0). Inquisitor is a chained, multi-step exploit. Everything else in the compact amendment
 stands.
 
+## BINANSE / RIDDLE AMENDMENT (owner, 2026-11-22) — binding
+
+A fifth hard-only lab **r05 Binanse** (stored XSS) joins the POC with a single **Inquisitor** level: no difficulty
+choice and no Divine reference. Challenge titles are now funny/self-own — r01 I Trusted the Search Bar, r02 Oops, That Parcel Wasn't Mine,
+r03 It's Just a Ping, Bro, r04 My Greeting Card Is Possessed, r05 I Believe My Crypto Web Is Very Secure — with three riddle hints each; the in-world product names
+(Mercy Clinic, Courier, Beacon, Postcard, Binanse) stay as secondary context, and the challenge title is the primary
+UI heading. Maximum bounty becomes **3750** (rank S at 3750). No other POC changes.
+
 ## Ground rules for every task
 
 - **Run tests from the UPPERCASE drive path.** `cd C:\Users\Sahuagin\Documents\hvwa` (capital `C:`). A lowercase `c:` cwd makes the same module load twice and breaks `vi.mock` and identity checks (see `tests/tooling.spec.ts`).

@@ -5,8 +5,8 @@
       "id": "r01",
       "slug": "mercy-clinic",
       "title": {
-        "en": "Mercy Clinic patient portal",
-        "id": "Portal pasien Mercy Clinic"
+        "en": "I Trusted the Search Bar",
+        "id": "Saya Percaya Kolom Pencarian"
       },
       "app": "Mercy Clinic",
       "category": "SQL injection",
@@ -35,48 +35,48 @@
       "needsBot": false,
       "themeId": "mercy-clinic",
       "scenario": {
-        "en": "A community clinic portal whose notice search trusts what you type.",
-        "id": "Portal klinik komunitas yang pencarian pengumumannya memercayai masukan Anda."
+        "en": "A small clinic keeps more paper than it shows.",
+        "id": "Sebuah klinik kecil menyimpan lebih banyak kertas daripada yang diperlihatkan."
       },
       "briefing": {
-        "en": "Mercy Clinic publishes notices for patients. Staff-only notices are kept out of the public lists. Read one you should not be able to read.",
-        "id": "Mercy Clinic menerbitkan pengumuman untuk pasien. Pengumuman khusus staf disembunyikan dari daftar publik. Baca satu yang seharusnya tidak bisa Anda baca."
+        "en": "The clinic says staff notes never leave the back room. Read one anyway.",
+        "id": "Klinik mengatakan catatan staf tidak pernah keluar dari ruang belakang. Baca satu juga."
       },
       "hints": [
         {
           "id": 1,
           "cost": 10,
           "text": {
-            "en": "Not everything the clinic stores is meant for patients. Where does the portal let you ask it a question?",
-            "id": "Tidak semua yang disimpan klinik ditujukan untuk pasien. Di mana portal membiarkan Anda bertanya?"
+            "en": "Answers are easy to find when the question is allowed to speak for itself.",
+            "id": "Jawaban mudah ditemukan bila pertanyaannya dibiarkan berbicara sendiri."
           }
         },
         {
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "The notice search builds its database query from your text. Public notices are filtered in; staff notices are filtered out.",
-            "id": "Pencarian pengumuman menyusun kuerinya dari teks Anda. Pengumuman publik disaring masuk; pengumuman staf disaring keluar."
+            "en": "Two shelves share one room: the one the public sees, and the one it does not.",
+            "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "Inquisitor hides staff rows from the search, but the clinic keeps service tokens in the same database. Look beyond the notices table.",
-            "id": "Inquisitor menyembunyikan baris staf dari pencarian, tetapi klinik menyimpan service token di database yang sama. Lihat lebih dari tabel notices."
+            "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo.",
+            "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:6d631cc102cf164fc6b71cd3d34175721979dd22178e0ec7bbd4804744943843"
+      "image": "sha256:747ca8175e50d5e47183a0d4da1627c661e7e99dacc61f27e94a03c2b20e3b55"
     },
     {
       "id": "r02",
       "slug": "courier",
       "title": {
-        "en": "Courier parcel tracking",
-        "id": "Pelacakan paket Courier"
+        "en": "Oops, That Parcel Wasn't Mine",
+        "id": "Ups, Paket Itu Bukan Punya Saya"
       },
       "app": "Courier",
       "category": "Broken access control",
@@ -105,48 +105,48 @@
       "needsBot": false,
       "themeId": "courier",
       "scenario": {
-        "en": "A parcel-tracking API that checks who you are but not what is yours.",
-        "id": "API pelacakan paket yang memeriksa siapa Anda tetapi bukan apa milik Anda."
+        "en": "Parcels move; ownership is a rumour.",
+        "id": "Paket berpindah; kepemilikan hanyalah kabar."
       },
       "briefing": {
-        "en": "Courier lets each customer track their own parcels. One parcel is not yours. Read its private delivery note.",
-        "id": "Courier membiarkan tiap pelanggan melacak paket mereka sendiri. Satu paket bukan milik Anda. Baca catatan pengiriman pribadinya."
+        "en": "A parcel in the vault is not yours. Read its private note.",
+        "id": "Sebuah paket di brankas bukan milikmu. Baca catatan pribadinya."
       },
       "hints": [
         {
           "id": 1,
           "cost": 10,
           "text": {
-            "en": "Open the demo dashboard and watch what requests it makes for your parcels.",
-            "id": "Buka dasbor demo dan amati permintaan apa yang dibuatnya untuk paket Anda."
+            "en": "You carry a name, but the door asks only for a number.",
+            "id": "Kau membawa nama, tetapi pintu hanya meminta angka."
           }
         },
         {
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "Parcel numbers are predictable. Yours begin with 2. What begins with 1?",
-            "id": "Nomor paket dapat ditebak. Milik Anda dimulai dengan 2. Apa yang dimulai dengan 1?"
+            "en": "The parcel is yours; the label is the road it forgets to guard.",
+            "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "Inquisitor wants an API key on every parcel route. Support may hand out a customer's key if you ask for the right customer.",
-            "id": "Inquisitor meminta API key di setiap rute paket. Bagian support mungkin memberikan key pelanggan jika Anda meminta pelanggan yang tepat."
+            "en": "A key handed out by the wrong desk opens the wrong vault.",
+            "id": "Kunci dari meja yang salah membuka brankas yang salah."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:55c7408367c335c1461f48cf012dfa9f0932ec11b3c8de475cab1507e38274eb"
+      "image": "sha256:a077bed5e775f58d356392144d5bd918782fac9add1b178dc61fb69bdcd11b22"
     },
     {
       "id": "r03",
       "slug": "beacon",
       "title": {
-        "en": "Beacon router admin",
-        "id": "Admin router Beacon"
+        "en": "It's Just a Ping, Bro",
+        "id": "Cuma Ping, Bro"
       },
       "app": "Beacon",
       "category": "Command injection",
@@ -164,7 +164,7 @@
       },
       "resources": {
         "memoryMiB": 128,
-        "pids": 96
+        "pids": 64
       },
       "tmpfs": [
         {
@@ -175,48 +175,48 @@
       "needsBot": false,
       "themeId": "beacon",
       "scenario": {
-        "en": "A router admin panel whose diagnostics tool runs a real shell on what you type.",
-        "id": "Panel admin router yang alat diagnostiknya menjalankan shell sungguhan atas masukan Anda."
+        "en": "A router with a voice.",
+        "id": "Sebuah router yang punya suara."
       },
       "briefing": {
-        "en": "Beacon's diagnostics let an operator probe a host. The router stores an operator secret in a file. Read it.",
-        "id": "Diagnostik Beacon membiarkan operator memeriksa sebuah host. Router menyimpan rahasia operator dalam sebuah berkas. Baca berkas itu."
+        "en": "The appliance will run a diagnostic for anyone. Make it say more than it means to.",
+        "id": "Perangkat itu mau menjalankan diagnostik untuk siapa saja. Buat ia berkata lebih dari yang seharusnya."
       },
       "hints": [
         {
           "id": 1,
           "cost": 10,
           "text": {
-            "en": "The diagnostics page does something with the host you enter. What does it do with it?",
-            "id": "Halaman diagnostik melakukan sesuatu dengan host yang Anda masukkan. Apa yang dilakukannya?"
+            "en": "The machine listens for a name and hears a sentence.",
+            "id": "Mesin mendengar sebuah nama, lalu mendengar sebuah kalimat."
           }
         },
         {
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "The probe runs in a real shell. A shell runs more than one command if you let it.",
-            "id": "Probe berjalan di shell sungguhan. Shell menjalankan lebih dari satu perintah jika Anda membiarkannya."
+            "en": "Some letters are forbidden, but a whisper can wear a disguise.",
+            "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "Inquisitor validates the host and runs no shell, but the report generator trusts the label you saved.",
-            "id": "Inquisitor memvalidasi host dan tidak menjalankan shell, tetapi generator laporan memercayai label yang Anda simpan."
+            "en": "The probe is watched; the note it leaves behind is not.",
+            "id": "Probe diawasi; catatan yang ditinggalkannya tidak."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:d307a8ca5da44c0ab16ffbbc825854145564cc003377b291720c118d5d294bc0"
+      "image": "sha256:3a817b84de7a97ec79b54dc7b239d9a83b0f857e5e2b9a5b634ea279625d63b5"
     },
     {
       "id": "r04",
       "slug": "postcard",
       "title": {
-        "en": "Postcard greeting-card maker",
-        "id": "Pembuat kartu ucapan Postcard"
+        "en": "My Greeting Card Is Possessed",
+        "id": "Kartu Ucapan Saya Kerasukan"
       },
       "app": "Postcard",
       "category": "Template injection",
@@ -233,8 +233,8 @@
         "placement": "file:/tmp/postcard/flag.txt"
       },
       "resources": {
-        "memoryMiB": 192,
-        "pids": 96
+        "memoryMiB": 128,
+        "pids": 64
       },
       "tmpfs": [
         {
@@ -245,41 +245,108 @@
       "needsBot": false,
       "themeId": "postcard",
       "scenario": {
-        "en": "A greeting-card maker that renders your message as a template.",
-        "id": "Pembuat kartu ucapan yang merender pesan Anda sebagai templat."
+        "en": "A studio that prints what it is told.",
+        "id": "Sebuah studio yang mencetak apa yang diperintahkan."
       },
       "briefing": {
-        "en": "Postcard turns your message into a printed card. The press keeps a studio secret in a file. Make the card print it.",
-        "id": "Postcard mengubah pesan Anda menjadi kartu cetak. Percetakan menyimpan rahasia studio dalam sebuah berkas. Buat kartu mencetaknya."
+        "en": "The press renders every message. Ask it to read a file it should not.",
+        "id": "Mesin cetak merender setiap pesan. Minta ia membaca berkas yang seharusnya tidak."
       },
       "hints": [
         {
           "id": 1,
           "cost": 15,
           "text": {
-            "en": "Preview a card and look closely at how your exact message comes back.",
-            "id": "Pratinjau sebuah kartu dan perhatikan baik-baik bagaimana pesan Anda kembali."
+            "en": "A card is a mirror: what you write may be read as a spell.",
+            "id": "Kartu adalah cermin: yang kau tulis bisa dibaca sebagai mantra."
           }
         },
         {
           "id": 2,
           "cost": 30,
           "text": {
-            "en": "The press renders your message with a template engine. What does the engine do with its own syntax?",
-            "id": "Percetakan merender pesan Anda dengan mesin templat. Apa yang dilakukan mesin dengan sintaksnya sendiri?"
+            "en": "A list of forbidden words is a fence with a gap; spell around it.",
+            "id": "Daftar kata terlarang adalah pagar bercelah; eja di sekitarnya."
           }
         },
         {
           "id": 3,
           "cost": 45,
           "text": {
-            "en": "Inquisitor's preview no longer renders your message; the print step still does.",
-            "id": "Pratinjau Inquisitor tidak lagi merender pesan Anda; langkah cetak masih melakukannya."
+            "en": "The curtain is closed in the studio, but the press still prints what it is given.",
+            "id": "Tirai ditutup di studio, tetapi mesin cetak tetap mencetak yang diberikan."
           }
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:4920455fe052a35ceac461ce589498be0de42ba2135d105fbe0e8d5f45a637c9"
+      "image": "sha256:58cc8e12376f7abbfa07b810bfd97ac6e55bad8e97fd573cc0cdeb75d4407e1c"
+    },
+    {
+      "id": "r05",
+      "slug": "binanse",
+      "title": {
+        "en": "I Believe My Crypto Web Is Very Secure",
+        "id": "Saya Yakin Web Kripto Saya Sangat Aman"
+      },
+      "app": "Binanse",
+      "category": "Stored XSS",
+      "difficulty": "hard",
+      "levels": [
+        "inquisitor"
+      ],
+      "port": 8080,
+      "health": "/healthz",
+      "flag": {
+        "placement": "custom"
+      },
+      "resources": {
+        "memoryMiB": 128,
+        "pids": 64
+      },
+      "tmpfs": [
+        {
+          "path": "/tmp",
+          "sizeMiB": 16
+        }
+      ],
+      "needsBot": false,
+      "themeId": "binanse",
+      "scenario": {
+        "en": "A crypto exchange where complaints are read by the people who hold the keys.",
+        "id": "Bursa kripto tempat keluhan dibaca oleh orang-orang yang memegang kunci."
+      },
+      "briefing": {
+        "en": "Binanse's support queue is read by its DevOps engineer. Take a seat that is not yours, open the vault, and send the cold ledger to your own address.",
+        "id": "Antrean dukungan Binanse dibaca oleh engineer DevOps-nya. Duduki kursi yang bukan milikmu, buka brankas, dan kirim buku besar dingin ke alamatmu sendiri."
+      },
+      "hints": [
+        {
+          "id": 1,
+          "cost": 15,
+          "text": {
+            "en": "A complaint is a letter; letters are read by someone with keys.",
+            "id": "Keluhan adalah surat; surat dibaca oleh seseorang yang memegang kunci."
+          }
+        },
+        {
+          "id": 2,
+          "cost": 30,
+          "text": {
+            "en": "The reader's hands remember what the page forgets to hide. A picture can carry a whisper.",
+            "id": "Tangan pembaca mengingat apa yang lupa disembunyikan halaman. Sebuah gambar bisa membawa bisikan."
+          }
+        },
+        {
+          "id": 3,
+          "cost": 45,
+          "text": {
+            "en": "The vault opens in two turns: first the name of a stranger, then the number only the keeper knows.",
+            "id": "Brankas terbuka dalam dua putaran: dulu nama orang asing, lalu angka yang hanya diketahui penjaga."
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "image": "sha256:d613c15b481b0e85a6f99a0506502d0d789d3ce2c32273092726bc88fe9ecc9f"
     }
   ]
 }

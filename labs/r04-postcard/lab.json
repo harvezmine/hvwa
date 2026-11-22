@@ -1,7 +1,7 @@
 {
   "id": "r04",
   "slug": "postcard",
-  "title": { "en": "Postcard greeting-card maker", "id": "Pembuat kartu ucapan Postcard" },
+  "title": { "en": "My Greeting Card Is Possessed", "id": "Kartu Ucapan Saya Kerasukan" },
   "app": "Postcard",
   "category": "Template injection",
   "difficulty": "hard",
@@ -9,15 +9,15 @@
   "port": 5000,
   "health": "/healthz",
   "flag": { "placement": "file:/tmp/postcard/flag.txt" },
-  "resources": { "memoryMiB": 192, "pids": 96 },
+  "resources": { "memoryMiB": 128, "pids": 64 },
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
   "themeId": "postcard",
-  "scenario": { "en": "A greeting-card maker that renders your message as a template.", "id": "Pembuat kartu ucapan yang merender pesan Anda sebagai templat." },
-  "briefing": { "en": "Postcard turns your message into a printed card. The press keeps a studio secret in a file. Make the card print it.", "id": "Postcard mengubah pesan Anda menjadi kartu cetak. Percetakan menyimpan rahasia studio dalam sebuah berkas. Buat kartu mencetaknya." },
+  "scenario": { "en": "A studio that prints what it is told.", "id": "Sebuah studio yang mencetak apa yang diperintahkan." },
+  "briefing": { "en": "The press renders every message. Ask it to read a file it should not.", "id": "Mesin cetak merender setiap pesan. Minta ia membaca berkas yang seharusnya tidak." },
   "hints": [
-    { "id": 1, "cost": 15, "text": { "en": "Preview a card and look closely at how your exact message comes back.", "id": "Pratinjau sebuah kartu dan perhatikan baik-baik bagaimana pesan Anda kembali." } },
-    { "id": 2, "cost": 30, "text": { "en": "The press renders your message with a template engine. What does the engine do with its own syntax?", "id": "Percetakan merender pesan Anda dengan mesin templat. Apa yang dilakukan mesin dengan sintaksnya sendiri?" } },
-    { "id": 3, "cost": 45, "text": { "en": "Inquisitor's preview no longer renders your message; the print step still does.", "id": "Pratinjau Inquisitor tidak lagi merender pesan Anda; langkah cetak masih melakukannya." } }
+    { "id": 1, "cost": 15, "text": { "en": "A card is a mirror: what you write may be read as a spell.", "id": "Kartu adalah cermin: yang kau tulis bisa dibaca sebagai mantra." } },
+    { "id": 2, "cost": 30, "text": { "en": "A list of forbidden words is a fence with a gap; spell around it.", "id": "Daftar kata terlarang adalah pagar bercelah; eja di sekitarnya." } },
+    { "id": 3, "cost": 45, "text": { "en": "The curtain is closed in the studio, but the press still prints what it is given.", "id": "Tirai ditutup di studio, tetapi mesin cetak tetap mencetak yang diberikan." } }
   ]
 }

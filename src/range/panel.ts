@@ -96,26 +96,29 @@ export interface MyLabChip { readonly href: string; readonly state: string; read
  * instance so the player can relaunch it from the lab page.
  */
 export function myLabChip(
-  latest: InstanceRecord | undefined, registry: LabRegistry, now: number, t: (key: string) => string,
+  latest: InstanceRecord | undefined, registry: LabRegistry, now: number, t: (key: string) => string, lang: 'en' | 'id' = 'en',
 ): MyLabChip | undefined {
   if (!latest) return undefined;
   const active = isActiveState(latest.state);
   const recent = latest.endedAt !== null && now - latest.endedAt < MY_LAB_RECENT_MS;
   if (!active && !recent) return undefined;
-  const app = registry.get(latest.labId)?.app ?? latest.labId;
+  const lab = registry.get(latest.labId);
+  // The challenge title is the primary label; the in-world app stays as context, then the state.
+  const title = lab?.title[lang] ?? lab?.app ?? latest.labId;
+  const app = lab?.app ?? latest.labId;
   const href = `/labs/${latest.labId}?level=${latest.level}`;
   const label = active ? t('range.my_lab_active') : t('range.my_lab_last');
   if (latest.state === 'running') {
-    return { href, state: 'running', label, text: `${app} · ${t('range.time_left').replace('{n}', String(minutesUntil(latest.expiresAt, now)))}` };
+    return { href, state: 'running', label, text: `${title} · ${app} · ${t('range.time_left').replace('{n}', String(minutesUntil(latest.expiresAt, now)))}` };
   }
   if (latest.state === 'failed') {
-    return { href, state: 'failed', label, text: `${app} · ${t('range.state.failed')}` };
+    return { href, state: 'failed', label, text: `${title} · ${app} · ${t('range.state.failed')}` };
   }
   if (latest.state === 'stopped') {
     const key = `range.stopped.${latest.reason ?? ''}`;
     const text = t(key) === key ? t('range.state.stopped') : t(key);
-    return { href, state: 'stopped', label, text: `${app} · ${text}` };
+    return { href, state: 'stopped', label, text: `${title} · ${app} · ${text}` };
   }
   // starting (or queued, which the POC does not use)
-  return { href, state: latest.state, label, text: `${app} · ${t(`range.state.${latest.state}`)}` };
+  return { href, state: latest.state, label, text: `${title} · ${app} · ${t(`range.state.${latest.state}`)}` };
 }
