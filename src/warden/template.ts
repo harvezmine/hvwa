@@ -25,7 +25,28 @@ const MIB = 1024 * 1024;
 /** The container and its network share one name. */
 export const instanceResourceName = (instanceId: string) => `hvwa-i-${instanceId}`;
 
-export function networkSpec(instanceId: string) {
+/**
+ * The instance subnet pool: 10.42.1.0/24 … 10.42.249.0/24 (10.42.250.0/24 … 10.42.253.0/24 are the compose stack's four
+ * internal networks). Docker's own default pool is only 15 /16 networks, which a host that already runs other stacks
+ * exhausts; every instance network therefore carries its own explicit /24.
+ */
+export const INSTANCE_SUBNET_FIRST = 1;
+export const INSTANCE_SUBNET_LAST = 249;
+const INSTANCE_SUBNET_SPAN = INSTANCE_SUBNET_LAST - INSTANCE_SUBNET_FIRST + 1;
+
+/** A stable bucket for an instance id (FNV-1a), then linear probing for a retry after a subnet overlap. */
+export function instanceSubnetBucket(instanceId: string, attempt = 0): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < instanceId.length; i += 1) {
+    hash ^= instanceId.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return INSTANCE_SUBNET_FIRST + ((hash + attempt) % INSTANCE_SUBNET_SPAN);
+}
+
+export const instanceSubnet = (bucket: number): string => `10.42.${bucket}.0/24`;
+
+export function networkSpec(instanceId: string, attempt = 0) {
   return {
     Name: instanceResourceName(instanceId),
     Driver: 'bridge',
@@ -33,6 +54,7 @@ export function networkSpec(instanceId: string) {
     Attachable: false,
     EnableIPv6: false,
     Options: { 'com.docker.network.bridge.gateway_mode_ipv4': 'isolated' },
+    IPAM: { Driver: 'default', Config: [{ Subnet: instanceSubnet(instanceSubnetBucket(instanceId, attempt)) }] },
     Labels: { [RANGE_LABEL]: '1', 'hvwa.instance': instanceId },
   };
 }

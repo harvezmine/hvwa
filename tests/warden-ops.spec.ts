@@ -55,6 +55,25 @@ describe('launch', () => {
     expect((exec.config.Cmd as string[]).at(-1)).toBe(FLAG); // the flag is argv[1] of the shell, never in the container Env
   });
 
+  it('retries the next instance subnet when Docker reports an address-pool overlap', async () => {
+    const { stub, warden } = await setup();
+    stub.failNext('POST', new RegExp(`^${DOCKER_API}/networks/create$`), 403, 'Pool overlaps with other one on this address space');
+    await warden.launch(req());
+    const creates = stub.calls.filter((c) => c.method === 'POST' && c.path === `${DOCKER_API}/networks/create`);
+    expect(creates).toHaveLength(2);
+    expect(creates[0].body).toEqual(networkSpec(ID));
+    expect(creates[1].body).toEqual(networkSpec(ID, 1));
+    expect(stub.network(`hvwa-i-${ID}`)?.body).toEqual(networkSpec(ID, 1));
+  });
+
+  it('does not retry a network name that already exists', async () => {
+    const { stub, warden } = await setup();
+    stub.failNext('POST', new RegExp(`^${DOCKER_API}/networks/create$`), 409, `network with name hvwa-i-${ID} already exists`);
+    await expect(warden.launch(req())).rejects.toBeInstanceOf(WardenError);
+    const creates = stub.calls.filter((c) => c.method === 'POST' && c.path === `${DOCKER_API}/networks/create`);
+    expect(creates).toHaveLength(1);
+  });
+
   it('Divine runs no flag exec: the launch is network, container, connect, start only', async () => {
     const { stub, warden } = await setup();
     await warden.launch(req({ level: 'divine', flag: undefined }));

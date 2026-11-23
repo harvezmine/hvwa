@@ -36,8 +36,8 @@ export interface DockerStub {
   execs(): StubExec[];
   setHealth(name: string, health: StubHealth | undefined): void;
   exit(name: string, code: number, oom?: boolean): void;
-  /** The next request matching `method` and the path regex answers `status` (once). */
-  failNext(method: string, path: RegExp, status: number): void;
+  /** The next request matching `method` and the path regex answers `status` (once), with the Engine's message. */
+  failNext(method: string, path: RegExp, status: number, message?: string): void;
   /** A container that exists without the warden (Traefik, an orphan). */
   addContainer(name: string, labels?: Record<string, string>, status?: 'running' | 'exited'): void;
   close(): Promise<void>;
@@ -50,7 +50,7 @@ export async function startDockerStub(): Promise<DockerStub> {
   const containers = new Map<string, StubContainer>();
   const networks = new Map<string, StubNetwork>();
   const execs = new Map<string, StubExec>();
-  const failures: { method: string; path: RegExp; status: number }[] = [];
+  const failures: { method: string; path: RegExp; status: number; message?: string }[] = [];
   let seq = 0;
   const newId = () => (++seq).toString(16).padStart(64, '0');
   const findC = (k: string) => containers.get(k) ?? [...containers.values()].find((c) => c.id === k);
@@ -174,7 +174,7 @@ export async function startDockerStub(): Promise<DockerStub> {
       let out: [number, unknown] | undefined;
       if (f >= 0) {
         const [fail] = failures.splice(f, 1);
-        out = [fail.status, { message: `stub failure ${fail.status}` }];
+        out = [fail.status, { message: fail.message ?? `stub failure ${fail.status}` }];
       } else {
         out = handle(call.method, url, body, raw);
       }
@@ -195,7 +195,7 @@ export async function startDockerStub(): Promise<DockerStub> {
     execs: () => [...execs.values()],
     setHealth(name, health) { const c = findC(name); if (c) c.health = health; },
     exit(name, code, oom = false) { const c = findC(name); if (c) { c.status = 'exited'; c.exitCode = code; c.oom = oom; c.health = undefined; } },
-    failNext(method, path, status) { failures.push({ method, path, status }); },
+    failNext(method, path, status, message) { failures.push({ method, path, status, message }); },
     addContainer,
     close: () => new Promise<void>((resolve) => { server.closeAllConnections(); server.close(() => resolve()); }),
   };

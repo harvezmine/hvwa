@@ -288,20 +288,34 @@ networks:
   hvwa-edge:
     external: true
     name: ${HVWA_EDGE_NETWORK:-hvwa-edge}
+  # Explicit /24s: the host's Docker default pool (172.17–172.31) may already be spent by other stacks, and every lab
+  # instance also takes a network from the range's own 10.42.1.0/24 … 10.42.249.0/24 pool (src/warden/template.ts).
   edge:
     internal: true
+    ipam:
+      config:
+        - subnet: 10.42.250.0/24
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
   control:
     internal: true
+    ipam:
+      config:
+        - subnet: 10.42.251.0/24
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
   docker:
     internal: true
+    ipam:
+      config:
+        - subnet: 10.42.252.0/24
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
   traefik-ro:
     internal: true
+    ipam:
+      config:
+        - subnet: 10.42.253.0/24
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
 

@@ -2,7 +2,9 @@
 // a change here is a security change. And the instance's own network: internal, isolated gateway, labelled.
 import { describe, it, expect } from 'vitest';
 import { parseRegistry } from '../src/lab-registry.js';
-import { containerSpec, LAB_USER, networkSpec } from '../src/warden/template.js';
+import {
+  containerSpec, INSTANCE_SUBNET_FIRST, INSTANCE_SUBNET_LAST, instanceSubnet, instanceSubnetBucket, LAB_USER, networkSpec,
+} from '../src/warden/template.js';
 import { labEntry, testRegistry } from './support/range.js';
 
 const ID = 'abcdefghijklmnopqrstuvwxyz';
@@ -88,11 +90,27 @@ describe('containerSpec', () => {
 });
 
 describe('networkSpec', () => {
-  it('one internal bridge per instance, no host address on it, labelled for reconcile', () => {
+  it('one internal bridge per instance, no host address on it, an explicit /24, labelled for reconcile', () => {
     expect(networkSpec(ID)).toEqual({
       Name: `hvwa-i-${ID}`, Driver: 'bridge', Internal: true, Attachable: false, EnableIPv6: false,
       Options: { 'com.docker.network.bridge.gateway_mode_ipv4': 'isolated' },
+      IPAM: { Driver: 'default', Config: [{ Subnet: instanceSubnet(instanceSubnetBucket(ID)) }] },
       Labels: { 'hvwa.range': '1', 'hvwa.instance': ID },
     });
+  });
+
+  it('keeps every bucket inside the instance pool (the compose stack owns 250–253)', () => {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const bucket = instanceSubnetBucket(ID, attempt);
+      expect(bucket).toBeGreaterThanOrEqual(INSTANCE_SUBNET_FIRST);
+      expect(bucket).toBeLessThanOrEqual(INSTANCE_SUBNET_LAST);
+      expect(instanceSubnet(bucket)).toMatch(/^10\.42\.(?:[1-9]|[1-9]\d|1\d\d|2[0-4]\d)\.0\/24$/);
+    }
+  });
+
+  it('is stable per id and moves by one bucket per retry', () => {
+    expect(instanceSubnetBucket(ID)).toBe(instanceSubnetBucket(ID));
+    expect(instanceSubnetBucket(ID, 1)).not.toBe(instanceSubnetBucket(ID));
+    expect(networkSpec(ID, 1).IPAM.Config[0].Subnet).not.toBe(networkSpec(ID).IPAM.Config[0].Subnet);
   });
 });

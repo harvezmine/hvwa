@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { containerSpec } from '../src/warden/template.js';
+import { containerSpec, INSTANCE_SUBNET_LAST } from '../src/warden/template.js';
 import { testRegistry } from './support/range.js';
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8').replace(/\r\n/g, '\n');
@@ -54,8 +54,11 @@ describe('docker-compose.range.yml', () => {
     expect(service('router').join('\n')).toContain('    networks:\n      hvwa-edge:\n        aliases: [traefik]\n      edge: {}\n      traefik-ro: {}');
     const nets = yml.slice(yml.indexOf('\nnetworks:\n'));
     expect(nets).toContain('  hvwa-edge:\n    external: true\n    name: ${HVWA_EDGE_NETWORK:-hvwa-edge}');
-    for (const n of ['edge', 'control', 'docker', 'traefik-ro']) {
-      expect(nets).toContain(`  ${n}:\n    internal: true\n    driver_opts:\n      com.docker.network.bridge.gateway_mode_ipv4: isolated`);
+    const subnets: Record<string, string> = { edge: '10.42.250.0/24', control: '10.42.251.0/24', docker: '10.42.252.0/24', 'traefik-ro': '10.42.253.0/24' };
+    for (const [n, subnet] of Object.entries(subnets)) {
+      expect(nets).toContain(`  ${n}:\n    internal: true\n    ipam:\n      config:\n        - subnet: ${subnet}\n    driver_opts:\n      com.docker.network.bridge.gateway_mode_ipv4: isolated`);
+      // The stack's own networks sit above the instance pool (10.42.1–249), so they never collide with a lab.
+      expect(Number(subnet.split('.')[2])).toBeGreaterThan(INSTANCE_SUBNET_LAST);
     }
     expect(service('portal')).toContain('    networks: [edge, control]');
     expect(service('warden')).toContain('    networks: [control, docker]');

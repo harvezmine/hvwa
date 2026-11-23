@@ -5,7 +5,9 @@ import { INSTANCE_ID_RE } from '../range/ids.js';
 import type { LabRegistry } from '../lab-registry.js';
 import { DockerError, type ContainerInspect, type ContainerSummary, type DockerClient } from './docker.js';
 import { launchRequestSchema, WardenError, type InstanceHealth, type LaunchRequest, type ListedInstance, type WardenApi } from './protocol.js';
-import { containerSpec, instanceResourceName, networkSpec, RANGE_LABEL, type TemplateSettings } from './template.js';
+import {
+  containerSpec, INSTANCE_SUBNET_FIRST, INSTANCE_SUBNET_LAST, instanceResourceName, networkSpec, RANGE_LABEL, type TemplateSettings,
+} from './template.js';
 
 export interface WardenSettings extends TemplateSettings {
   /** The Traefik container the warden connects to every instance network (compose: container_name). */
@@ -23,6 +25,26 @@ export interface WardenDeps {
 export function createWarden(deps: WardenDeps): WardenApi {
   const { docker, registry, settings } = deps;
   const log = deps.log ?? (() => {});
+
+  /**
+   * Create the instance network on the first free /24 of the pool. Two launches (or another stack on this engine) can
+   * race for the same bucket, so an overlap advances to the next one; a network name that already exists is a real
+   * error and is not retried.
+   */
+  async function createInstanceNetwork(instanceId: string): Promise<void> {
+    const tries = INSTANCE_SUBNET_LAST - INSTANCE_SUBNET_FIRST + 1;
+    for (let attempt = 0; attempt < tries; attempt += 1) {
+      try {
+        await docker.createNetwork(networkSpec(instanceId, attempt));
+        return;
+      } catch (err) {
+        if (!(err instanceof DockerError)) throw err;
+        if (err.status === 409 && /already exists/i.test(err.message)) throw err;
+        if (!/overlap|address space|pool/i.test(err.message)) throw err;
+      }
+    }
+    throw new DockerError(409, '/networks/create', 'no free instance subnet');
+  }
 
   /** Container, then Traefik's endpoint, then the network (Docker refuses to remove a network with endpoints). */
   async function cleanup(instanceId: string): Promise<void> {
@@ -57,7 +79,7 @@ export function createWarden(deps: WardenDeps): WardenApi {
         try {
           if (await docker.inspectContainer(name)) throw new WardenError('exists', 409);
           const spec = containerSpec({ lab, level: r.level, instanceId: r.instanceId, userId: r.userId, expiresAt: r.expiresAt }, settings);
-          await docker.createNetwork(networkSpec(r.instanceId));
+          await createInstanceNetwork(r.instanceId);
           await docker.createContainer(spec.name, spec.body);
           await docker.connectNetwork(name, settings.traefikContainer);
           await docker.startContainer(name);
