@@ -100,6 +100,18 @@ if [ "$(hash_of "$STACK_DIR"/docker/range/traefik/*.yml)" != "$traefik_before" ]
   compose restart router
 fi
 compose up -d --wait --wait-timeout 300
+# A compose change can recreate the router: the new Traefik has none of the instance-network endpoints the old one had,
+# so a lab that was running during the deploy loses its route. Reattach every running lab (its container and network
+# share the name); connecting an already-connected one fails harmlessly.
+traefik_container="$(sed -n 's/^HVWA_TRAEFIK_CONTAINER=//p' "$STACK_DIR/.env" | tail -n1)"
+traefik_container="${traefik_container:-hvwa-range-traefik}"
+running_labs="$(docker ps --filter label=hvwa.range=1 --format '{{.Names}}' || true)"
+if [ -n "$running_labs" ]; then
+  log "reattach running labs to the router"
+  for lab in $running_labs; do
+    docker network connect "$lab" "$traefik_container" >/dev/null 2>&1 || true
+  done
+fi
 compose ps
 
 host="$(sed -n 's/^HVWA_PORTAL_HOST=//p' "$STACK_DIR/.env" | tail -n1)"
