@@ -1,7 +1,7 @@
 {
   "id": "r03",
   "slug": "beacon",
-  "title": { "en": "Whisper to the Watchtower", "id": "Bisikan ke Menara Suar" },
+  "title": { "en": "Which Lighthouse Obeys Every Whisper?", "id": "Mercusuar Mana yang Menuruti Setiap Bisikan?" },
   "app": "Beacon",
   "category": "Command injection",
   "difficulty": "medium",
@@ -13,11 +13,11 @@
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
   "themeId": "beacon",
-  "scenario": { "en": "A router with a voice.", "id": "Sebuah router yang punya suara." },
-  "briefing": { "en": "The appliance will run a diagnostic for anyone. Make it say more than it means to.", "id": "Perangkat itu mau menjalankan diagnostik untuk siapa saja. Buat ia berkata lebih dari yang seharusnya." },
+  "scenario": { "en": "Beacon is a network box that pings any host you name, and happily runs whatever you sneak in after the name.", "id": "Beacon adalah kotak jaringan yang mem-ping host apa pun yang kamu sebut, dan dengan senang hati menjalankan apa saja yang kamu selipkan setelahnya." },
+  "briefing": { "en": "The diagnostics page hands your host straight to a shell. Smuggle in a command of your own and make the appliance read its secret file out loud.", "id": "Halaman diagnostik menyerahkan host-mu langsung ke shell. Selundupkan perintahmu sendiri dan buat perangkat itu membacakan file rahasianya." },
   "hints": [
-    { "id": 1, "cost": 10, "text": { "en": "The machine listens for a name and hears a sentence.", "id": "Mesin mendengar sebuah nama, lalu mendengar sebuah kalimat." } },
-    { "id": 2, "cost": 20, "text": { "en": "Some letters are forbidden, but a whisper can wear a disguise. The old note is gone; the spool keeps its pieces, and not every piece belongs to the same letter.", "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar. Catatan lama telah pergi; gelendong menyimpan potongannya, dan tidak setiap potongan berasal dari surat yang sama." } },
-    { "id": 3, "cost": 30, "text": { "en": "The probe is watched; the note it leaves behind is not. Do not knock at the old door — the audit folder files its pages in a deeper room.", "id": "Probe diawasi; catatan yang ditinggalkannya tidak. Jangan ketuk pintu lama — folder audit menyimpan halamannya di ruang yang lebih dalam." } }
+    { "id": 1, "cost": 10, "text": { "en": "This is command injection. The host field is placed into a shell command such as ping -c 1 <host>. Characters a shell treats specially (; & | and $( )) let you start a second command after the ping.", "id": "Ini command injection. Isi kolom host dimasukkan ke perintah shell seperti ping -c 1 <host>. Karakter yang spesial bagi shell (; & | dan $( )) memungkinkanmu menjalankan perintah kedua setelah ping." } },
+    { "id": 2, "cost": 20, "text": { "en": "Common: host=; cat /tmp/beacon/flag.txt # (the # hides the rest of the line). Dangerous: ; & | and backticks are blocked, but $( ) still works. Use $(ls /tmp/beacon/spool) to list the files, then $(cat <file1> <file2>) to read them. The flag is split into a part-1 and a part-2 file; only one pair forms a real flag.", "id": "Common: host=; cat /tmp/beacon/flag.txt # (tanda # menyembunyikan sisa baris). Dangerous: ; & | dan backtick diblokir, tapi $( ) masih bisa. Pakai $(ls /tmp/beacon/spool) untuk melihat file, lalu $(cat <file1> <file2>) untuk membacanya. Flag dipecah jadi file part-1 dan part-2; hanya satu pasang yang membentuk flag asli." } },
+    { "id": 3, "cost": 30, "text": { "en": "Deadly: the host is now checked strictly, but the free-text label is saved and later pasted into a shell by GET /diagnostics/report. That is second-order injection. Save label=$(ls -R /tmp/beacon/audit) with a valid host, open the report, then save a label that cats the two parts and open the report again.", "id": "Deadly: host sekarang dicek ketat, tapi label teks bebas disimpan lalu nanti ditempel ke shell oleh GET /diagnostics/report. Ini second-order injection. Simpan label=$(ls -R /tmp/beacon/audit) dengan host yang valid, buka report-nya, lalu simpan label yang meng-cat kedua bagian dan buka report lagi." } }
   ]
 }

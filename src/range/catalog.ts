@@ -14,6 +14,8 @@ import { nextRank, pointsToNext, rankFor } from './rank.js';
 import { labMode, labModes, type LabMode } from './modes.js';
 import { teamLeaderboard, teamOfUser, type TeamLeaderRow } from './teams.js';
 import { isActiveState } from './store.js';
+import { avatarOf, avatarsByUser, DEFAULT_AVATAR } from './avatar.js';
+import { counselRoute, scrollBag, scrollFor } from './shop.js';
 import type { RangeContext } from './types.js';
 import { isHtmx, userOf, type RangeUser } from './user.js';
 
@@ -88,13 +90,17 @@ function continueLabFor(ctx: RangeContext, userId: number, lang: Lang, t: (key: 
   };
 }
 
-function unlockedHintHtml(tier: number, cost: number, text: string, t: (key: string) => string): string {
-  const title = t('range.toast_intel_title');
-  const message = t('range.toast_intel').replace('{n}', String(tier)).replace('{points}', String(cost));
-  return `<details class="accordion hint" open data-toast="unlocked" data-toast-variant="success" data-toast-title="${escapeHtml(title)}" data-toast-message="${escapeHtml(message)}" data-level="${tier}" data-points="${cost}">`
-    + `<summary><span class="hint-name">${escapeHtml(t('range.intel_tier'))} ${tier}</span>`
-    + `<span class="badge badge-ok">${escapeHtml(t('range.intel_unlocked'))}</span></summary>`
-    + `<div class="accordion-body"><p class="hint-text" data-tier="${tier}">${escapeHtml(text)}</p></div></details>`;
+/** The Guildmaster's counsel once heard (an htmx swap into #hint-<tier>); it carries the toast and the line he speaks. */
+function counselHtml(tier: number, text: string, t: (key: string) => string): string {
+  const scroll = scrollFor(tier);
+  const kind = scroll?.kind ?? '';
+  const scrollName = scroll ? t(`scroll.${scroll.kind}.name`) : '';
+  const title = t('gm.toast_title');
+  const message = t('gm.toast').replace('{scroll}', scrollName);
+  return `<div class="counsel-heard" data-kind="${kind}" data-counsel-say data-toast="unlocked" data-toast-variant="success" data-toast-title="${escapeHtml(title)}" data-toast-message="${escapeHtml(message)}" data-level="${tier}">`
+    + `<span class="scroll-icon is-open" data-kind="${kind}" aria-hidden="true"></span>`
+    + `<p class="counsel-tier">${escapeHtml(t('gm.counsel').replace('{n}', String(tier)))} · ${escapeHtml(scrollName)} <span class="badge badge-ok">${escapeHtml(t('gm.heard'))}</span></p>`
+    + `<p class="hint-text" data-tier="${tier}">${escapeHtml(text)}</p></div>`;
 }
 
 export function catalogRoutes(router: Router, ctx: RangeContext): void {
@@ -135,6 +141,9 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       score, solved: registry.labs.filter((l) => solves.has(l.id)).length, total: registry.labs.length,
       rank: rankView(score, t), username: res.locals.platformAuth?.user ?? '',
       continueLab: continueLabFor(ctx, userId, req.lang, t),
+      // No adventurer yet: Mira invites the player to make one (or skip and keep the default).
+      avatar: avatarOf(db, userId) ?? DEFAULT_AVATAR, needsAvatar: avatarOf(db, userId) === undefined && userOf(res).role === 'player',
+      madeAvatar: req.query.made === '1', csrf: auth.csrfFor(req),
     });
   });
 
@@ -147,6 +156,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const currentLevel = clampLevel(req.level, lab.levels);
     const unlocked = new Set(rangeUnlockedTiers(db, userId, lab.id));
     const mode = labMode(db, lab.id);
+    const bag = scrollBag(db, userId);
     await sendPage(res, rangeView('lab'), {
       pageTitle: `${lab.app} — ${lab.title[req.lang]}`,
       lab: { ...labCard(lab, best, req.lang, t, mode), briefing: lab.briefing[req.lang] },
@@ -157,31 +167,16 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
         id: l, label: tierLabel(t, l, true), scored: FLAG_LEVELS.includes(l), points: labPoints(lab, l), solved: levelSolved(l, best),
         current: l === currentLevel, href: `/labs/${lab.id}?level=${l}`,
       })),
-      // A locked hint's text never reaches the view: only what was paid for is rendered.
-      hints: [...lab.hints].sort((a, b) => a.id - b.id)
-        .map((h) => ({ id: h.id, cost: h.cost, unlocked: unlocked.has(h.id), text: unlocked.has(h.id) ? h.text[req.lang] : '' })),
+      // A locked counsel's text never reaches the view: only what a scroll paid for is rendered.
+      hints: [...lab.hints].sort((a, b) => a.id - b.id).map((h) => {
+        const scroll = scrollFor(h.id)!;
+        return { id: h.id, kind: scroll.kind, have: bag[scroll.kind], unlocked: unlocked.has(h.id), text: unlocked.has(h.id) ? h.text[req.lang] : '' };
+      }),
       crumbs: [{ label: t('nav.labs'), href: '/' }, { label: lab.app }],
     });
   });
 
-  router.post('/labs/:id/hint', async (req, res, next) => {
-    const lab = registry.get(req.params.id);
-    if (!lab) { next(); return; }
-    if (!auth.formOk(req)) { await auth.refuse(req, res, `/labs/${lab.id}`); return; }
-    const tier = parseTier(req.body?.tier);
-    const result = tier === undefined ? undefined : unlockRangeHint(db, userOf(res).userId, lab, tier, ctx.now());
-    if (!result?.ok) {
-      if (isHtmx(req)) {
-        res.status(400).type('html')
-          .send(`<p class="result result-bad" role="alert" data-error="tier">${escapeHtml(res.locals.t('challenge.err_unknown_tier'))}</p>`);
-        return;
-      }
-      res.redirect(303, `/labs/${lab.id}`);
-      return;
-    }
-    if (isHtmx(req)) { res.type('html').send(unlockedHintHtml(result.hint.id, result.hint.cost, result.hint.text[req.lang], res.locals.t)); return; }
-    res.redirect(303, `/labs/${lab.id}#hint-${result.hint.id}`);
-  });
+  counselRoute(router, ctx, counselHtml);
 
   router.get('/leaderboard', async (req, res) => {
     const t = res.locals.t;
@@ -203,7 +198,8 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       });
       return;
     }
-    const rankOf = (r: LeaderRow) => ({ ...r, rankLetter: rankFor(r.score).letter });
+    const avatars = avatarsByUser(db);
+    const rankOf = (r: LeaderRow) => ({ ...r, rankLetter: rankFor(r.score).letter, avatar: avatars.get(r.userId) ?? DEFAULT_AVATAR });
     const rows = leaderboard(db, 100).map(rankOf);
     // The viewer's own row, even beyond the top 100: pinned below the table when it is not already in the top three.
     const everyone = leaderboard(db, 100_000);

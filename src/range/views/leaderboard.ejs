@@ -95,13 +95,21 @@
   <a class="btn btn-secondary" href="/" data-testid="leaderboard-empty-action"><%= t('leaderboard.empty_action') %></a>
 </div>
 <% } else { -%>
-<ol class="ledger-podium" data-testid="leaderboard">
+<ol class="ledger-podium hero-podium" data-testid="leaderboard">
 <% rows.filter(function (r) { return r.rank <= 3; }).forEach(function (r) { -%>
   <li data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="leaderboard-top leaderboard-top-<%= r.rank %><% if (r.userId === me) { %> leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
-    <div class="podium-row">
-      <span class="podium-rank"><%= r.rank < 10 ? '0' + r.rank : r.rank %></span>
-      <span class="podium-name"><span class="rank-seal seal seal-sm" data-plate="<%= r.rankLetter.toLowerCase() %>" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
-      <span class="podium-stat"><b><%= r.score %></b><%= r.solved %> <%= t('leaderboard.col_solved') %></span>
+    <div class="podium-hero" data-color="<%= r.avatar.color %>" aria-hidden="true">
+      <span class="podium-figure" data-hero="<%= r.avatar.hero %>">
+<% if (r.rank === 1) { -%>
+        <svg class="podium-crown" focusable="false"><use href="/static/icons.svg#i-crown"></use></svg>
+<% } -%>
+        <img class="podium-art" src="/static/art/heroes/<%= r.avatar.hero %>.webp" alt="" loading="lazy" decoding="async">
+      </span>
+    </div>
+    <div class="podium-plinth">
+      <span class="podium-rank"><%= r.rank %></span>
+      <span class="podium-name"><%- include('nameplate', { name: r.username, letter: r.rankLetter, size: 'lg' }) %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
+      <span class="podium-stat"><span class="podium-gold"><span class="coin" aria-hidden="true"></span><b><%= r.score %></b> G</span><span class="podium-done"><%= r.solved %> <%= t('leaderboard.col_solved') %></span></span>
     </div>
   </li>
 <% }); -%>
@@ -114,7 +122,7 @@
 <% rows.filter(function (r) { return r.rank > 3; }).forEach(function (r) { -%>
       <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="<% if (r.userId === me) { %>leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
         <td class="num"><span class="leaderboard-rank"><%= r.rank %></span></td>
-        <th scope="row"><span class="rank-seal seal seal-sm" data-plate="<%= r.rankLetter.toLowerCase() %>" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
+        <th scope="row"><span class="ledger-who"><%- include('../../core/views/avatar', { a: r.avatar, size: 'md' }) %><%- include('nameplate', { name: r.username, letter: r.rankLetter }) %></span><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
         <td class="num"><%= r.score %></td>
         <td class="num"><%= r.solved %></td>
       </tr>
@@ -137,7 +145,7 @@
     <tbody>
       <tr data-rank="<%= pinned.rank %>" data-user="<%= pinned.username %>" class="leaderboard-me" aria-current="true">
         <td class="num"><%= pinned.rank %></td>
-        <th scope="row"><span class="rank-seal seal seal-sm" data-plate="<%= pinned.rankLetter.toLowerCase() %>" aria-hidden="true"><%= pinned.rankLetter %></span><%= pinned.username %> <span class="muted"><%= t('leaderboard.you') %></span></th>
+        <th scope="row"><span class="ledger-who"><%- include('../../core/views/avatar', { a: pinned.avatar, size: 'md' }) %><%- include('nameplate', { name: pinned.username, letter: pinned.rankLetter }) %></span> <span class="muted"><%= t('leaderboard.you') %></span></th>
         <td class="num"><%= pinned.score %></td>
         <td class="num"><%= pinned.solved %></td>
       </tr>

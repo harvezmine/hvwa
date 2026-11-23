@@ -1,11 +1,11 @@
 // The contract dossier page (src/range/views/lab.ejs): the relayout keeps every hook (range-level-<level>, briefing,
-// hint-<tier>, submit-result, flag-submit) and adds the mono contract-file meta line and the tier-card ladder.
+// hint-<tier>, submit-result, flag-submit) and adds the mono contract-file meta line and the gate portals.
 import { describe, it, expect } from 'vitest';
 import { parseRegistry } from '../src/lab-registry.js';
 import { labEntry, player, portalApp } from './support/range.js';
 
 describe('the contract dossier page', () => {
-  it('renders the contract-file meta, a tier card per level (name, meaning, points, state) and the flag form', async () => {
+  it('renders the contract-file meta, a gate per level (name, meaning, points, state) and the flag form', async () => {
     const { app } = portalApp();
     const { agent } = await player(app, 'alice');
     const html = (await agent.get('/labs/r01?level=templar')).text;
@@ -15,8 +15,8 @@ describe('the contract dossier page', () => {
     }
     expect(html).toMatch(/data-testid="range-level-templar"[^>]*aria-current="true"/);
     expect(html).toMatch(/data-testid="range-level-templar"[^>]*data-solved="false"/);
-    expect(html).toMatch(/class="tier-card is-current" data-level="templar"/);
-    expect(html).toContain('class="tier-card-seal"');
+    expect(html).toMatch(/class="gate is-current" data-level="templar"/);
+    expect(html).toContain('class="gate-portal"');
     expect(html).toContain('data-testid="briefing"');
     expect(html).toContain('id="flag-submit"');
     expect(html).toContain('class="submit-form claim-form"');
@@ -25,7 +25,7 @@ describe('the contract dossier page', () => {
     expect(html).toContain('hx-target="#hint-1"');
   });
 
-  it('uses the hard-only lead for a single-tier lab (the r05 Binanse shape) and renders one tier card', async () => {
+  it('uses the hard-only lead for a single-tier lab (the r05 Binanse shape) and renders one gate', async () => {
     const registry = parseRegistry({
       schema: 1,
       labs: [labEntry('r05', 'binanse', {

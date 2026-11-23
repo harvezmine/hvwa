@@ -1,10 +1,6 @@
-<%# Range lab page (src/range/catalog.ts): the bounty taken off the board and laid on the guild desk. A parchment poster
-   hero (bounty file line, client, title, the client's scenario, tags, threat marks, wax seal when done, illustration),
-   the threat-level ladder, then a two-column body: the client's request, tavern whispers (paid hints) and the claim desk
-   on the left; the active-quest panel and how-it-works on the right. Hooks: briefing, range-level-<level> (data-solved,
-   aria-current), hint-<tier>, lab-panel, submit-result. Every value goes through the escaped output tag. Never put an
-   EJS tag inside an EJS comment: it breaks parsing. %>
-<header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>"<% if (lab.mode === 'team') { %> data-mode="team"<% } %>>
+<%# Range lab page (src/range/catalog.ts): one quest, laid out as a scene. Section 1 is the quest poster (bounty file line, client, title, scenario, tags, threat marks, wax seal when done); a quest with a single threat level carries its one gate right on the poster as a sealed plaque, a quest with several gets the gates: one stone portal per level. Below, the camp: the Guildmaster's corner (ask him about the quest and he explains the client's request; ask for a hint and he asks which magic scroll you brought, src/range/shop.ts) beside the expedition desk (the active-quest panel, then Mira's claim desk for the flag). Without JavaScript every part is shown at once; static/ui.js turns the corner into a conversation. Hooks: briefing, range-level-<level> (data-solved, aria-current), hint-<tier>, lab-panel, flag-input, flag-submit, submit-result. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<% var single = levels.length === 1; var only = single ? levels[0] : null; -%>
+<header class="page-head lab-hero quest-hero lab-theme-<%= lab.themeId %><%= single ? ' is-single' : '' %>" data-theme="<%= lab.themeId %>"<% if (lab.mode === 'team') { %> data-mode="team"<% } %>>
   <div class="lab-hero-head">
     <div class="lab-hero-copy">
       <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t(levels.length === 1 ? 'range.tier_word' : 'range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %> <%= t('range.gold') %></p>
@@ -16,96 +12,143 @@
       <p class="status status-solved"><span class="sealed-stamp"><%= t('range.sealed') %></span><%= t('challenge.solved_at').replace('{level}', lab.bestLabel) %></p>
 <% } -%>
     </div>
+<% if (single) { -%>
+    <a class="lone-gate" data-level="<%= only.id %>" data-testid="range-level-<%= only.id %>" data-solved="<%= only.solved ? 'true' : 'false' %>" href="<%= only.href %>" aria-current="true">
+      <span class="lone-sigil" aria-hidden="true"><svg class="icon" focusable="false"><use href="/static/icons.svg#<%= lab.icon %>"></use></svg></span>
+      <span class="lone-kicker"><%= t('range.lone_kicker') %></span>
+      <span class="lone-name"><%= only.label %></span>
+      <span class="lone-meaning"><%= t('level_meaning.' + only.id) %></span>
+      <span class="lone-reward"><span class="coin" aria-hidden="true"></span><%= only.scored ? only.points + ' ' + t('range.gold') : t('scoreboard.not_scored') %></span>
+      <span class="lone-note"><%= t('range.levels_lead_hard_only') %></span>
+    </a>
+<% } else { -%>
     <svg class="icon hero-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= lab.icon %>"></use></svg>
+<% } -%>
   </div>
 <% if (best) { -%>
   <span class="wax-seal wax-seal-lg" aria-hidden="true"><span><%= t('range.sealed') %></span></span>
 <% } -%>
 </header>
 
-<div class="dossier">
-  <section class="tier-ladder" aria-labelledby="tiers-title">
-    <h2 class="section-title" id="tiers-title"><%= t(levels.length === 1 ? 'range.tier_word' : 'range.tiers') %></h2>
+<% if (!single) { -%>
+<section class="tier-ladder gates" aria-labelledby="tiers-title">
+  <div class="gates-head">
+    <h2 class="section-title" id="tiers-title"><%= t('range.gates') %></h2>
     <p class="panel-lead"><%= t(levels.some(function (l) { return l.id === 'divine'; }) ? 'range.levels_lead' : 'range.levels_lead_hard_only') %></p>
-    <ul class="tier-cards">
+  </div>
+  <ul class="gate-row" data-count="<%= levels.length %>">
 <% levels.forEach(function (l) { -%>
-      <li class="tier-card<%= l.current ? ' is-current' : '' %><%= l.solved ? ' is-solved' : '' %>" data-level="<%= l.id %>">
-        <a class="tier-card-link" data-testid="range-level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"<% if (l.current) { %> aria-current="true"<% } %>>
-          <span class="tier-card-seal" aria-hidden="true"></span>
-          <span class="tier-card-name"><%= l.label %></span>
-          <span class="tier-card-meaning"><%= t('level_meaning.' + l.id) %></span>
-          <span class="tier-card-points"><%= l.scored ? l.points + ' ' + t('range.gold') : t('scoreboard.not_scored') %></span>
-        </a>
-      </li>
-<% }); -%>
-    </ul>
-  </section>
-
-  <div class="dossier-body">
-    <div class="dossier-main">
-      <section aria-labelledby="brief-title">
-        <h2 class="section-title" id="brief-title"><%= t('range.brief') %></h2>
-        <div class="brief-block">
-          <p class="brief" data-testid="briefing"><%= lab.briefing %></p>
-        </div>
-      </section>
-
-      <section aria-labelledby="intel-title">
-        <h2 class="section-title" id="intel-title"><%= t('range.intel') %></h2>
-        <p class="panel-lead"><%= hints.length ? t('range.intel_lead') : t('range.no_intel') %></p>
-        <ul class="hint-list">
-<% hints.forEach(function (h) { -%>
-          <li id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>">
-<% if (h.unlocked) { -%>
-            <details class="accordion hint" open><summary><span class="hint-name"><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge badge-ok"><%= t('range.intel_unlocked') %></span></summary><div class="accordion-body"><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div></details>
-<% } else { -%>
-            <details class="accordion hint">
-              <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge"><%= t('range.intel_cost') %>: <%= h.cost %> <%= t('range.gold') %></span></summary>
-              <div class="accordion-body">
-                <form method="post" action="/labs/<%= lab.id %>/hint" hx-post="/labs/<%= lab.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" hx-confirm="<%= t('challenge.hint_confirm') %>">
-                  <input type="hidden" name="_csrf" value="<%= csrf %>">
-                  <input type="hidden" name="tier" value="<%= h.id %>">
-                  <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('range.intel_unlock') %> <%= h.id %> (<%= t('range.intel_cost') %>: <%= h.cost %> <%= t('range.gold') %>)</button>
-                </form>
-              </div>
-            </details>
+    <li class="gate<%= l.current ? ' is-current' : '' %><%= l.solved ? ' is-solved' : '' %>" data-level="<%= l.id %>">
+      <a class="gate-link" data-testid="range-level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"<% if (l.current) { %> aria-current="true"<% } %>>
+        <span class="gate-arch" aria-hidden="true"><span class="gate-portal"><span class="gate-swirl"></span><span class="gate-core"></span><span class="gate-motes"></span></span><span class="gate-keystone"></span></span>
+        <span class="gate-name"><%= l.label %></span>
+        <span class="gate-meaning"><%= t('level_meaning.' + l.id) %></span>
+        <span class="gate-reward"><span class="coin" aria-hidden="true"></span><%= l.scored ? l.points + ' ' + t('range.gold') : t('scoreboard.not_scored') %></span>
+<% if (l.current) { -%>
+        <span class="gate-chosen"><%= t('range.gate_open') %></span>
 <% } -%>
-          </li>
-<% }); -%>
-        </ul>
-      </section>
-
-      <section class="claim-desk" aria-labelledby="claim-title">
-        <h2 class="section-title" id="claim-title"><%= t('range.claim') %></h2>
-        <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form claim-form">
-          <input type="hidden" name="_csrf" value="<%= csrf %>">
-          <label class="label" for="flag-input"><%= t('challenge.submit_label') %></label>
-          <input id="flag-input" class="input input-mono flag-input" type="text" name="submission" autocomplete="off" spellcheck="false" placeholder="HVWA{…}" aria-describedby="flag-help" required>
-          <button id="flag-submit" type="submit" class="btn btn-primary btn-lg"><%= t('range.claim_button') %></button>
-          <p class="help" id="flag-help"><%= t('range.submit_help') %></p>
-        </form>
-        <div id="submit-result" aria-live="polite">
-<% if (flash === 'wrong') { -%>
-          <p class="result result-bad" data-solved="false" data-result="wrong" role="status"><%= t('challenge.result_bad') %></p>
-<% } else if (flash === 'decoy') { -%>
-          <p class="result result-bad" data-solved="false" data-result="decoy" role="status"><%= t('range.result_decoy') %></p>
-<% } else if (flash === 'solved') { -%>
-          <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', lab.bestLabel) %></p>
+<% if (l.solved) { -%>
+        <span class="wax-seal gate-seal" aria-hidden="true"><span><%= t('range.sealed') %></span></span>
 <% } -%>
+      </a>
+    </li>
+<% }); -%>
+  </ul>
+</section>
+<% } -%>
+
+<div class="quest-camp">
+  <section class="counsel" aria-labelledby="intel-title" data-counsel data-brief-lead="<%= t('gm.brief_lead') %>" data-ask-scroll="<%= hints.length ? t('gm.ask_scroll') : t('gm.none') %>">
+    <h2 class="section-title" id="intel-title"><%= t('gm.title') %></h2>
+    <div class="npc-scene counsel-scene">
+      <div class="npc-talk">
+        <div class="dialogue npc-box">
+          <p class="dialogue-name"><span class="dialogue-speaker"><%= t('gm.name') %></span><span class="dialogue-role"><%= t('gm.role') %></span></p>
+          <p class="dialogue-text" data-npc-text aria-live="polite"><%= t('gm.greet') %></p>
+          <span class="dialogue-more" aria-hidden="true"></span>
         </div>
-      </section>
+        <div class="vn-choices gm-choices" data-gm-choices hidden>
+          <button type="button" class="vn-choice is-main" data-gm-ask="brief"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-book"></use></svg><%= t('gm.ask_quest') %></button>
+          <button type="button" class="vn-choice" data-gm-ask="hint"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-bulb"></use></svg><%= t('gm.ask_hint') %></button>
+        </div>
+      </div>
+      <span class="npc-art" aria-hidden="true"><img class="mira-art" data-npc-art data-pose-talk="/static/art/guildmaster.webp" data-pose-nod="/static/art/guildmaster-nod.webp" data-pose-read="/static/art/guildmaster-read.webp" src="/static/art/guildmaster.webp" alt="" width="560" height="582" decoding="async"></span>
     </div>
 
-    <aside class="dossier-rail">
+    <div class="gm-panel gm-brief" data-gm-panel="brief">
+      <p class="gm-panel-title"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-book"></use></svg><%= t('range.brief') %></p>
+      <p class="brief" data-testid="briefing"><%= lab.briefing %></p>
+      <span class="brief-seal" aria-hidden="true"></span>
+    </div>
+
+    <div class="gm-panel gm-scrolls" data-gm-panel="hint">
+      <p class="gm-panel-title"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-bulb"></use></svg><%= t('gm.pick_scroll') %></p>
+<% if (hints.length) { -%>
+      <ol class="counsel-list">
+<% hints.forEach(function (h) { var sname = t('scroll.' + h.kind + '.name'); -%>
+        <li class="counsel-item" id="hint-<%= h.id %>" data-testid="hint-<%= h.id %>" data-kind="<%= h.kind %>">
+<% if (h.unlocked) { -%>
+          <div class="counsel-heard" data-kind="<%= h.kind %>"><span class="scroll-icon is-open" data-kind="<%= h.kind %>" aria-hidden="true"></span><p class="counsel-tier"><%= t('gm.counsel').replace('{n}', h.id) %> · <%= sname %> <span class="badge badge-ok"><%= t('gm.heard') %></span></p><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div>
+<% } else { -%>
+          <form method="post" action="/labs/<%= lab.id %>/hint" hx-post="/labs/<%= lab.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" class="counsel-form<%= h.have ? '' : ' is-empty' %>">
+            <input type="hidden" name="_csrf" value="<%= csrf %>">
+            <input type="hidden" name="tier" value="<%= h.id %>">
+            <button type="submit" class="scroll-offer"<% if (!h.have) { %> disabled<% } %>>
+              <span class="scroll-icon scroll-icon-md" data-kind="<%= h.kind %>" aria-hidden="true"></span>
+              <span class="offer-body">
+                <span class="offer-name"><%= sname %></span>
+                <span class="offer-what"><%= t('gm.counsel').replace('{n}', h.id) %> · <%= t('scroll.' + h.kind + '.what') %></span>
+              </span>
+              <span class="offer-count"><%= t('gm.have').replace('{n}', h.have) %></span>
+            </button>
+<% if (!h.have) { -%>
+            <a class="offer-buy" href="/shop?need=<%= h.kind %>&amp;from=<%= lab.id %>"><%= t('gm.buy') %></a>
+<% } -%>
+          </form>
+<% } -%>
+        </li>
+<% }); -%>
+      </ol>
+<% } else { -%>
+      <p class="gm-none"><%= t('gm.none') %></p>
+<% } -%>
+    </div>
+  </section>
+
+  <aside class="quest-desk">
 <%- include('panel', { panel: panel }) %>
-      <section class="card panel" aria-labelledby="range-howto-title">
-        <h2 id="range-howto-title"><%= t('range.howto_heading') %></h2>
-        <ol class="howto">
-          <li><span><%= t('range.howto1') %></span></li>
-          <li><span><%= t('range.howto2') %></span></li>
-          <li><span><%= t('range.howto3') %></span></li>
-        </ol>
-      </section>
-    </aside>
-  </div>
+    <section class="claim-desk" aria-labelledby="claim-title">
+      <div class="desk-talk">
+        <div class="desk-say">
+          <p class="desk-say-name"><%= t('mira.name') %></p>
+          <p class="desk-say-text" data-desk-say data-ok="<%= t('desk.ok') %>" data-bad="<%= t('desk.bad') %>"><%= best ? t('desk.again') : t('desk.hello') %></p>
+        </div>
+        <span class="desk-mira" aria-hidden="true"><img class="mira-art" data-desk-mira src="/static/art/mira-smile.webp" alt="" width="560" height="687" decoding="async" loading="lazy"></span>
+      </div>
+      <h2 class="desk-title" id="claim-title"><%= t('range.claim') %></h2>
+      <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form claim-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <label class="label" for="flag-input"><%= t('challenge.submit_label') %></label>
+        <input id="flag-input" class="input input-mono flag-input" type="text" name="submission" autocomplete="off" spellcheck="false" placeholder="HVWA{…}" aria-describedby="flag-help" required>
+        <button id="flag-submit" type="submit" class="btn btn-primary btn-lg btn-block"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key-seal"></use></svg><%= t('range.claim_button') %></button>
+        <p class="help" id="flag-help"><%= t('range.submit_help') %></p>
+      </form>
+      <div id="submit-result" aria-live="polite">
+<% if (flash === 'wrong') { -%>
+        <p class="result result-bad" data-solved="false" data-result="wrong" role="status"><%= t('challenge.result_bad') %></p>
+<% } else if (flash === 'decoy') { -%>
+        <p class="result result-bad" data-solved="false" data-result="decoy" role="status"><%= t('range.result_decoy') %></p>
+<% } else if (flash === 'solved') { -%>
+        <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', lab.bestLabel) %></p>
+<% } -%>
+      </div>
+    </section>
+  </aside>
 </div>
+<template id="tour-steps" data-tour="quest">
+  <p data-pose="point" data-target=".lab-hero"><%= t('tour.l1') %></p>
+  <p data-pose="smile" data-target="<%= single ? '.lone-gate' : '.gates' %>"><%= t('tour.l2') %></p>
+  <p data-pose="point" data-target="#lab-panel"><%= t('tour.l3') %></p>
+  <p data-pose="think" data-target="section[aria-labelledby=intel-title]"><%= t('tour.l4') %></p>
+  <p data-pose="cheer" data-target=".claim-desk"><%= t('tour.l5') %></p>
+</template>

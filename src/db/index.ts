@@ -31,6 +31,10 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'range.sql'), 'utf8')),
   // 5: teams and team mode, plus the activity feed (src/range/teams.ts, modes.ts, activity.ts).
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'teams.sql'), 'utf8')),
+  // 6: the adventurer each player made in character creation (src/range/avatar.ts).
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'avatars.sql'), 'utf8')),
+  // 7: the merchant's magic scrolls, handed to the Guildmaster for a quest's counsel (src/range/shop.ts).
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'shop.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

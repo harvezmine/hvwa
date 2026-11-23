@@ -62,15 +62,22 @@
     var music = null;
     var fade = 0;
     var lastSave = 0;
+    var SFX_GAIN = 3.2;
 
     function audio() {
       var C = window.AudioContext || window.webkitAudioContext;
       if (!C) return null;
       if (!ctx) {
         ctx = new C();
+        // Effects are loud enough to hear over the music on laptop speakers; a compressor keeps the peaks clean.
+        var limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = -10;
+        limiter.knee.value = 6;
+        limiter.ratio.value = 8;
+        limiter.connect(ctx.destination);
         master = ctx.createGain();
-        master.gain.value = 0.9;
-        master.connect(ctx.destination);
+        master.gain.value = 1;
+        master.connect(limiter);
         noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
         var d = noise.getChannelData(0);
         for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -81,7 +88,7 @@
     function env(c, at, peak, attack, decay) {
       var g = c.createGain();
       g.gain.setValueAtTime(0.0001, at);
-      g.gain.exponentialRampToValueAtTime(peak, at + attack);
+      g.gain.exponentialRampToValueAtTime(Math.min(0.95, peak * SFX_GAIN), at + attack);
       g.gain.exponentialRampToValueAtTime(0.0001, at + attack + decay);
       g.connect(master);
       return g;
@@ -110,7 +117,7 @@
     }
     var SFX = {
       tick: function (c, t) { hiss(c, t, 0.03, 0.02, 4200, 0, 4); },
-      click: function (c, t) { tone(c, 190, t, 0.22, 0.07, 'triangle', 120); hiss(c, t, 0.12, 0.04, 2200, 0, 2.5); },
+      click: function (c, t) { tone(c, 420, t, 0.2, 0.09, 'triangle', 220); tone(c, 190, t, 0.16, 0.08, 'triangle', 120); hiss(c, t, 0.16, 0.06, 2400, 0, 2.5); },
       page: function (c, t) { hiss(c, t, 0.08, 0.07, 1800, 4200, 1.2); hiss(c, t + 0.06, 0.06, 0.06, 2600, 5200, 1.2); },
       open: function (c, t) { hiss(c, t, 0.09, 0.16, 2600, 4200, 0.9); tone(c, 330, t, 0.05, 0.08, 'triangle'); },
       close: function (c, t) { hiss(c, t, 0.07, 0.09, 3800, 2000, 1); },
@@ -127,6 +134,8 @@
       slide: function (c, t) { hiss(c, t, 0.14, 0.32, 380, 1500, 0.8); tone(c, 150, t + 0.26, 0.18, 0.12, 'triangle', 95); },
       seal: function (c, t) { tone(c, 95, t, 0.32, 0.22, 'sine', 55); hiss(c, t, 0.14, 0.08, 900, 0, 1); tone(c, 880, t + 0.12, 0.09, 0.9); tone(c, 1320, t + 0.12, 0.05, 0.7); },
       coin: function (c, t) { tone(c, 1568, t, 0.08, 0.18); tone(c, 2093, t + 0.08, 0.07, 0.3); },
+      blip: function (c, t) { tone(c, 620 + Math.random() * 160, t, 0.035, 0.045, 'triangle'); },
+      pop: function (c, t) { tone(c, 520, t, 0.06, 0.07, 'sine', 880); hiss(c, t, 0.03, 0.04, 3200, 0, 3); },
       error: function (c, t) { tone(c, 233, t, 0.12, 0.16, 'triangle'); tone(c, 175, t + 0.14, 0.12, 0.22, 'triangle'); },
     };
     function play(name) {
@@ -219,7 +228,7 @@
 
     // Every interaction has its sound. Clicks: paper for navigation and bounties, brass for the main action, a creak for
     // leaving, a candle for the theme, a wooden knock for the rest; board links play their slide from the carousel.
-    var SKIP = '[data-board-link], [data-board-prev], [data-board-next], [data-sound-toggle], summary';
+    var SKIP = '[data-board-link], [data-board-prev], [data-board-next], [data-sound-toggle], summary, .pick-button, [data-dialogue-next], [data-mira-poke], [data-tour-next], [data-tour-back], [data-tour-skip], [data-tour-start], [data-rank-open], [data-ladder-close]';
     function clickSound(el) {
       if (el.matches('.nav-link, .lang-switch a, .crumbs a, .tabs a, .admin-nav a, .letter-foot a, .board-step')) return 'page';
       if (el.matches('.poster, .lab-card, .continue-slip, .tier-card-link, .my-lab')) return 'paper';
@@ -348,6 +357,17 @@
       // Drop the payload so a later swap never re-opens it, and so the toast pass below skips this slip.
       MODAL_ATTRS.forEach(function (a) { carrier.removeAttribute(a); });
       ['data-toast', 'data-toast-variant', 'data-toast-title', 'data-toast-message'].forEach(function (a) { carrier.removeAttribute(a); });
+      // Mira reacts: cheering for a sealed contract, thinking hard for a wrong flag.
+      var miss = variant === 'wrong' || variant === 'decoy';
+      var mira = dialog.querySelector('[data-solve-mira]');
+      if (mira) mira.setAttribute('src', '/static/art/mira-' + (variant === 'solved' ? 'cheer' : miss ? 'think' : 'smile') + '.webp');
+      var say = dialog.querySelector('[data-solve-say]');
+      if (say) {
+        var line = variant === 'solved' ? say.getAttribute('data-solved') : miss ? say.getAttribute('data-wrong') : '';
+        var sayText = say.querySelector('[data-solve-say-text]');
+        if (sayText) sayText.textContent = line || '';
+        say.hidden = !line;
+      }
       dialog.setAttribute('data-variant', variant);
       if (!dialog.open) dialog.showModal();
       if (variant === 'solved') { sound.play('seal'); window.setTimeout(function () { sound.play('coin'); }, 380); }
@@ -504,11 +524,628 @@
     window.addEventListener('pageshow', function (e) { if (e.persisted) letter.classList.remove('is-sealing'); });
   });
 
-  // A plain (non-htmx) submit of a form with data-confirm asks first. htmx forms use hx-confirm instead, so skip them
-  // here to avoid asking twice.
+  // The guild's own confirm popup (#confirm-dialog in layout.ejs) replaces the browser's confirm(): htmx forms ask
+  // through hx-confirm (the htmx:confirm event), plain forms through data-confirm. A form may name the popup's title,
+  // button and look with data-confirm-title / data-confirm-ok / data-confirm-kind (e.g. "coin" for a paid whisper).
+  var confirmDialog = (function () {
+    var d = document.getElementById('confirm-dialog');
+    if (!d || typeof d.showModal !== 'function') return null;
+    var title = d.querySelector('.confirm-title');
+    var msg = d.querySelector('.confirm-message');
+    var ok = d.querySelector('[data-confirm-ok]');
+    var cancel = d.querySelector('[data-confirm-cancel]');
+    var pending = null;
+    var back = null;
+    function ask(opts, onYes) {
+      title.textContent = opts.title || d.getAttribute('data-title') || '';
+      msg.textContent = opts.message || '';
+      ok.textContent = opts.ok || d.getAttribute('data-ok') || 'OK';
+      d.setAttribute('data-kind', opts.kind || '');
+      pending = onYes;
+      back = document.activeElement;
+      d.showModal();
+      sound.play('scroll');
+      cancel.focus();
+    }
+    ok.addEventListener('click', function () { var go = pending; pending = null; d.close(); if (go) go(); });
+    cancel.addEventListener('click', function () { d.close(); });
+    d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+    d.addEventListener('close', function () {
+      if (pending) sound.play('close');
+      pending = null;
+      if (back && back.focus) { try { back.focus(); } catch (e) { /* gone */ } }
+    });
+    return { ask: ask };
+  })();
+  function confirmOpts(el, message) {
+    return { title: el.getAttribute('data-confirm-title'), message: message, ok: el.getAttribute('data-confirm-ok'), kind: el.getAttribute('data-confirm-kind') };
+  }
+  document.addEventListener('htmx:confirm', function (e) {
+    if (!e.detail.question || !confirmDialog) return; // only requests with hx-confirm carry a question
+    e.preventDefault();
+    confirmDialog.ask(confirmOpts(e.detail.elt, e.detail.question), function () { e.detail.issueRequest(true); });
+  });
+  // A plain (non-htmx) form with data-confirm asks first; htmx forms already asked through hx-confirm.
   document.addEventListener('submit', function (e) {
     var f = e.target;
-    if (!f || !f.getAttribute || !f.hasAttribute('data-confirm') || f.hasAttribute('hx-post')) return;
-    if (!window.confirm(f.getAttribute('data-confirm'))) e.preventDefault();
+    if (!f || !f.hasAttribute || !f.hasAttribute('data-confirm') || f.hasAttribute('hx-post')) return;
+    if (f.hasAttribute('data-confirmed')) { f.removeAttribute('data-confirmed'); return; }
+    e.preventDefault();
+    var go = function () { f.setAttribute('data-confirmed', ''); if (f.requestSubmit) f.requestSubmit(); else f.submit(); };
+    if (confirmDialog) confirmDialog.ask(confirmOpts(f, f.getAttribute('data-confirm')), go);
+    else if (window.confirm(f.getAttribute('data-confirm'))) go(); // shortcut: native confirm only where <dialog> is missing
   }, true);
+
+  // Form checks in the guild's ink instead of the browser's bubbles: the message goes under the field, the first
+  // invalid field takes focus, and the note clears once the adventurer types again.
+  var lastInvalid = 0;
+  document.addEventListener('invalid', function (e) {
+    var el = e.target;
+    if (!el.closest || el.closest('.lab')) return;
+    e.preventDefault();
+    var field = el.closest('.field') || el.parentNode;
+    var note = field.querySelector('.ink-warning');
+    if (!note) { note = document.createElement('p'); note.className = 'ink-warning'; note.setAttribute('role', 'alert'); field.appendChild(note); }
+    note.textContent = el.validationMessage;
+    el.setAttribute('aria-invalid', 'true');
+    var now = Date.now();
+    if (now - lastInvalid > 400) { try { el.focus(); } catch (err) { /* not focusable */ } sound.play('error'); }
+    lastInvalid = now;
+    el.addEventListener('input', function clear() {
+      if (note.parentNode) note.parentNode.removeChild(note);
+      el.removeAttribute('aria-invalid');
+      el.removeEventListener('input', clear);
+    });
+  }, true);
+
+  // Guild dropdowns: every single <select> outside a lab becomes a button and a listbox in the guild's style. The
+  // native select stays in the form (hidden) and receives every choice, so forms post exactly as before; without JS
+  // the native select is used.
+  document.querySelectorAll('select:not([multiple])').forEach(function (sel, n) {
+    if (sel.closest('.lab, [data-native]')) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'pick';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+    sel.classList.add('pick-native');
+    sel.tabIndex = -1;
+    sel.setAttribute('aria-hidden', 'true');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pick-button';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    var label = sel.id ? document.querySelector('label[for="' + sel.id + '"]') : null;
+    var value = document.createElement('span');
+    value.className = 'pick-value';
+    value.id = 'pick-value-' + n;
+    btn.appendChild(value);
+    if (label) {
+      if (!label.id) label.id = 'pick-label-' + n;
+      btn.setAttribute('aria-labelledby', label.id + ' ' + value.id);
+      label.addEventListener('click', function (e) { e.preventDefault(); btn.focus(); });
+    }
+    var list = document.createElement('ul');
+    list.className = 'pick-list';
+    list.id = 'pick-list-' + n;
+    list.setAttribute('role', 'listbox');
+    list.tabIndex = -1;
+    list.hidden = true;
+    if (label) list.setAttribute('aria-labelledby', label.id);
+    btn.setAttribute('aria-controls', list.id);
+    var items = Array.prototype.map.call(sel.options, function (o, i) {
+      var li = document.createElement('li');
+      li.id = list.id + '-' + i;
+      li.setAttribute('role', 'option');
+      li.textContent = o.textContent;
+      if (o.disabled) li.setAttribute('aria-disabled', 'true');
+      li.addEventListener('click', function () { if (!o.disabled) { choose(i); } });
+      li.addEventListener('pointermove', function () { mark(i); });
+      list.appendChild(li);
+      return li;
+    });
+    wrap.appendChild(btn);
+    wrap.appendChild(list);
+    var active = sel.selectedIndex;
+    function sync() {
+      value.textContent = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].textContent : '';
+      items.forEach(function (li, i) { li.setAttribute('aria-selected', i === sel.selectedIndex ? 'true' : 'false'); });
+    }
+    function mark(i) {
+      active = Math.max(0, Math.min(items.length - 1, i));
+      items.forEach(function (li, k) { li.classList.toggle('is-active', k === active); });
+      list.setAttribute('aria-activedescendant', items[active].id);
+      var li = items[active];
+      if (li.offsetTop < list.scrollTop) list.scrollTop = li.offsetTop;
+      else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight;
+    }
+    function open() {
+      if (!list.hidden) return;
+      document.querySelectorAll('.pick.is-open').forEach(function (p) { if (p !== wrap && p.closePick) p.closePick(false); });
+      list.hidden = false;
+      wrap.classList.add('is-open');
+      btn.setAttribute('aria-expanded', 'true');
+      mark(sel.selectedIndex < 0 ? 0 : sel.selectedIndex);
+      list.focus();
+      sound.play('open');
+    }
+    function close(refocus) {
+      if (list.hidden) return;
+      list.hidden = true;
+      wrap.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+      if (refocus) btn.focus();
+    }
+    wrap.closePick = close;
+    function choose(i) {
+      if (i !== sel.selectedIndex) {
+        sel.selectedIndex = i;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      sync();
+      close(true);
+    }
+    btn.addEventListener('click', function () { if (list.hidden) open(); else close(true); });
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); open(); }
+    });
+    var typed = '';
+    var typedAt = 0;
+    list.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); mark(active + 1); sound.play('tick'); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mark(active - 1); sound.play('tick'); }
+      else if (e.key === 'Home') { e.preventDefault(); mark(0); }
+      else if (e.key === 'End') { e.preventDefault(); mark(items.length - 1); }
+      else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(active); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(true); }
+      else if (e.key === 'Tab') close(false);
+      else if (e.key.length === 1) {
+        var now = Date.now();
+        typed = (now - typedAt > 700 ? '' : typed) + e.key.toLowerCase();
+        typedAt = now;
+        var hit = items.findIndex(function (li) { return li.textContent.toLowerCase().indexOf(typed) === 0; });
+        if (hit >= 0) mark(hit);
+      }
+    });
+    document.addEventListener('pointerdown', function (e) { if (!wrap.contains(e.target)) close(false); });
+    sel.addEventListener('change', sync);
+    sync();
+  });
+  // Mira, the guild receptionist (static/art/mira-*.webp). She talks like an RPG character: her lines type out with a
+  // soft voice blip, she bobs while talking, pops into a new pose per line, and a click finishes the line at once.
+  // With reduced motion the line appears whole and she stands still.
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function setPose(img, pose) {
+    if (!img || !pose) return;
+    var src = '/static/art/mira-' + pose + '.webp';
+    if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+    img.classList.remove('is-pop');
+    void img.offsetWidth; // restart the pop animation
+    img.classList.add('is-pop');
+  }
+  // The RPG text box: the whole line is laid out first (hidden, so lines never jump), then its letters pop in one by
+  // one with a voice blip, pausing after punctuation. Screen readers get the line at once (a visually hidden copy).
+  // It runs even with reduced motion (text appears, nothing moves); a click or Enter finishes the line at once.
+  function typewriter(el, speaker) {
+    var timer = 0;
+    var full = '';
+    var busy = false;
+    var then = null;
+    var chars = [];
+    var at = 0;
+    function finish() {
+      window.clearTimeout(timer);
+      chars.forEach(function (c) { c.classList.add('on'); });
+      at = chars.length;
+      busy = false;
+      el.classList.remove('is-typing');
+      if (speaker) speaker.classList.remove('is-talking');
+      var cb = then;
+      then = null;
+      if (cb) cb();
+    }
+    function build(text) {
+      el.textContent = '';
+      var sr = document.createElement('span');
+      sr.className = 'sr-only';
+      sr.textContent = text;
+      var shown = document.createElement('span');
+      shown.setAttribute('aria-hidden', 'true');
+      chars = [];
+      text.split(/(\s+)/).forEach(function (part) {
+        if (!part) return;
+        if (/^\s+$/.test(part)) { shown.appendChild(document.createTextNode(part)); return; }
+        var word = document.createElement('span');
+        word.className = 'tw-word';
+        Array.prototype.forEach.call(part, function (ch) {
+          var c = document.createElement('span');
+          c.className = 'tw-ch';
+          c.textContent = ch;
+          word.appendChild(c);
+          chars.push(c);
+        });
+        shown.appendChild(word);
+      });
+      el.appendChild(sr);
+      el.appendChild(shown);
+    }
+    function step() {
+      if (at >= chars.length) { finish(); return; }
+      var c = chars[at];
+      c.classList.add('on');
+      at += 1;
+      if (at % 2 === 1) sound.play('blip');
+      var ch = c.textContent;
+      var pause = /[.!?]/.test(ch) ? 260 : /[,;:]/.test(ch) ? 140 : 26;
+      timer = window.setTimeout(step, pause);
+    }
+    function say(text, done) {
+      window.clearTimeout(timer);
+      full = text;
+      then = done || null;
+      build(full);
+      at = 0;
+      busy = true;
+      el.classList.add('is-typing');
+      if (speaker) speaker.classList.add('is-talking');
+      timer = window.setTimeout(step, 60);
+    }
+    return { say: say, finish: finish, busy: function () { return busy; } };
+  }
+
+
+  // The reception counter in the guild hall: "Tell me more" (or a poke at Mira) moves to her next line.
+  document.querySelectorAll('[data-reception]').forEach(function (desk) {
+    var lines = Array.prototype.map.call(desk.querySelectorAll('[data-dialogue-lines] li'), function (li) {
+      return { pose: li.getAttribute('data-pose'), text: li.textContent };
+    });
+    var textEl = desk.querySelector('[data-dialogue-text]');
+    var art = desk.querySelector('[data-mira-art]');
+    var actions = desk.querySelector('[data-dialogue-actions]');
+    if (!lines.length || !textEl) return;
+    if (actions) actions.hidden = false;
+    var tw = typewriter(textEl, art);
+    var at = 0;
+    function next() {
+      if (tw.busy()) { tw.finish(); return; }
+      at = (at + 1) % lines.length;
+      setPose(art, lines[at].pose);
+      tw.say(lines[at].text);
+      sound.play('pop');
+    }
+    var nextBtn = desk.querySelector('[data-dialogue-next]');
+    if (nextBtn) nextBtn.addEventListener('click', next);
+    var poke = desk.querySelector('[data-mira-poke]');
+    if (poke) poke.addEventListener('click', next);
+    textEl.addEventListener('click', function () { if (tw.busy()) tw.finish(); });
+    // Her first line types out once she has stepped up to the counter.
+    var first = lines[0].text;
+    window.setTimeout(function () { tw.say(first); }, reduceMotion ? 300 : document.documentElement.classList.contains('splash-done') ? 900 : 2600);
+  });
+
+  // The guild tour: Mira walks a first-time adventurer through the page. Steps come from <template id="tour-steps">
+  // (each <p> has a pose, an optional target selector and her line); a spotlight follows the target and her dialogue
+  // box moves out of its way. It starts on its own once per browser (remembered in localStorage), and again from the
+  // counter's "Guild tour" button or a #tour link. Escape or "Skip tour" ends it.
+  (function () {
+    var tpl = document.getElementById('tour-steps');
+    var d = document.getElementById('tour');
+    if (!tpl || !d || typeof d.showModal !== 'function') return;
+    var key = 'hvwa-tour-' + (tpl.getAttribute('data-tour') || 'page');
+    var steps = Array.prototype.map.call(tpl.content.querySelectorAll('[data-pose]'), function (p) {
+      return { pose: p.getAttribute('data-pose'), target: p.getAttribute('data-target'), text: p.textContent.trim() };
+    });
+    if (!steps.length) return;
+    var spot = d.querySelector('[data-tour-spot]');
+    var box = d.querySelector('[data-tour-box]');
+    var art = d.querySelector('[data-tour-art]');
+    var textEl = d.querySelector('[data-tour-text]');
+    var count = d.querySelector('[data-tour-count]');
+    var back = d.querySelector('[data-tour-back]');
+    var next = d.querySelector('[data-tour-next]');
+    var skip = d.querySelector('[data-tour-skip]');
+    var tw = typewriter(textEl, art);
+    var at = 0;
+    var target = null;
+    var placeTimer = 0;
+    function remember() { try { window.localStorage.setItem(key, 'done'); } catch (e) { /* storage blocked */ } }
+    function seen() { try { return window.localStorage.getItem(key) === 'done'; } catch (e) { return true; } }
+    function visible(el) {
+      var r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.right > 0 && r.left < window.innerWidth;
+    }
+    function find(sel) {
+      if (!sel) return null;
+      var all = Array.prototype.slice.call(document.querySelectorAll(sel)).filter(visible);
+      return all[0] || null;
+    }
+    function place() {
+      if (!target) { d.classList.add('is-open-floor'); d.classList.remove('box-top'); return; }
+      d.classList.remove('is-open-floor');
+      var r = target.getBoundingClientRect();
+      var pad = 8;
+      var x = Math.max(4, r.left - pad);
+      var y = Math.max(4, r.top - pad);
+      var w = Math.min(window.innerWidth - 8, r.right + pad) - x;
+      var h = Math.min(window.innerHeight - 8, r.bottom + pad) - y;
+      spot.style.setProperty('--spot-x', x + 'px');
+      spot.style.setProperty('--spot-y', y + 'px');
+      spot.style.setProperty('--spot-w', Math.max(0, w) + 'px');
+      spot.style.setProperty('--spot-h', Math.max(0, h) + 'px');
+      // The box sits at the bottom unless the spotlight is down there.
+      d.classList.toggle('box-top', r.top + r.height / 2 > window.innerHeight * 0.55);
+    }
+    function show(i) {
+      at = i;
+      var s = steps[i];
+      target = find(s.target); // a target this screen does not show: Mira talks without a spotlight
+      if (target) target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+      place();
+      window.clearTimeout(placeTimer);
+      placeTimer = window.setTimeout(place, reduceMotion ? 0 : 420);
+      setPose(art, s.pose);
+      count.textContent = (d.getAttribute('data-step-label') || '{n} / {total}').replace('{n}', i + 1).replace('{total}', steps.length);
+      back.hidden = i === 0;
+      var last = i === steps.length - 1;
+      next.textContent = last ? d.getAttribute('data-done') : d.getAttribute('data-next');
+      skip.hidden = last;
+      box.classList.remove('is-step');
+      void box.offsetWidth;
+      box.classList.add('is-step');
+      tw.say(s.text);
+      try { next.focus(); } catch (e) { /* not focusable */ }
+    }
+    function start() {
+      if (d.open) return;
+      d.showModal();
+      document.documentElement.classList.add('touring');
+      sound.play('scroll');
+      show(0);
+    }
+    function end(done) {
+      remember();
+      tw.finish();
+      if (d.open) d.close();
+      document.documentElement.classList.remove('touring');
+      sound.play(done ? 'fanfare' : 'close');
+    }
+    function forward() {
+      if (tw.busy()) { tw.finish(); return; }
+      if (at >= steps.length - 1) { end(true); return; }
+      sound.play('page');
+      var n = at + 1;
+      while (n < steps.length - 1 && steps[n].target && !find(steps[n].target)) n += 1;
+      show(n);
+    }
+    function backward() {
+      if (at === 0) return;
+      sound.play('page');
+      var n = at - 1;
+      while (n > 0 && steps[n].target && !find(steps[n].target)) n -= 1;
+      show(n);
+    }
+    next.addEventListener('click', forward);
+    back.addEventListener('click', backward);
+    skip.addEventListener('click', function () { end(false); });
+    textEl.addEventListener('click', function () { if (tw.busy()) tw.finish(); });
+    d.addEventListener('cancel', function (e) { e.preventDefault(); end(false); });
+    d.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') { e.preventDefault(); forward(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); backward(); }
+    });
+    window.addEventListener('resize', function () { if (d.open) place(); });
+    window.addEventListener('scroll', function () { if (d.open) place(); }, { passive: true });
+    document.querySelectorAll('[data-tour-start]').forEach(function (b) { b.addEventListener('click', start); });
+    // A player still to make their adventurer meets Mira's preboarding popup first; the tour waits for the next visit.
+    if (window.location.hash === '#tour' || (!seen() && !document.querySelector('[data-preboard]'))) {
+      // After the splash and the opening gate, so she does not talk over them.
+      var wait = 1100;
+      if (!document.documentElement.classList.contains('splash-done')) wait += 2200;
+      if (document.querySelector('.welcome-gate')) wait += 2000;
+      window.setTimeout(start, wait);
+    }
+  })();
+  // Preboarding: a player with no adventurer yet meets Mira in a visual-novel scene: she steps in from the right, her
+  // line types out in the dialogue box, then an RPG choice menu offers character creation or a skip that keeps the
+  // default. Arrow keys move between the choices. Without JavaScript the same two choices sit at the reception counter.
+  (function () {
+    var d = document.querySelector('[data-preboard]');
+    if (!d || typeof d.showModal !== 'function') return;
+    var textEl = d.querySelector('[data-preboard-text]');
+    var tw = typewriter(textEl, d.querySelector('[data-preboard-art]'));
+    var choices = Array.prototype.slice.call(d.querySelectorAll('.vn-choice'));
+    var line = textEl.textContent;
+    function ready() {
+      d.classList.add('is-ready');
+      sound.play('open');
+      if (choices[0]) { try { choices[0].focus(); } catch (e) { /* not focusable */ } }
+    }
+    var wait = 900;
+    if (!document.documentElement.classList.contains('splash-done')) wait += 2200;
+    if (document.querySelector('.welcome-gate')) wait += 2000;
+    window.setTimeout(function () {
+      document.documentElement.classList.add('preboarding');
+      d.showModal();
+      sound.play('chime');
+      window.setTimeout(function () { tw.say(line, ready); }, reduceMotion ? 0 : 650);
+    }, wait);
+    // A click on the box finishes the line; the choices then take the focus.
+    d.querySelector('.vn-box').addEventListener('click', function () { if (tw.busy()) tw.finish(); });
+    d.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && tw.busy()) { e.preventDefault(); tw.finish(); return; }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      var i = choices.indexOf(document.activeElement);
+      e.preventDefault();
+      var n = (i + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
+      try { choices[n].focus(); } catch (err) { /* not focusable */ }
+      sound.play('tick');
+    });
+    choices.forEach(function (c) { c.addEventListener('pointerenter', function () { try { c.focus(); } catch (e) { /* not focusable */ } }); });
+    d.addEventListener('close', function () { document.documentElement.classList.remove('preboarding'); });
+  })();
+
+  // Choose your avatar: the stage shows whichever hero is picked (art, name, class, what they are good at), Mira
+  // comments on the pick, and "Surprise me" picks one at random.
+  document.querySelectorAll('[data-creator]').forEach(function (root) {
+    var form = root.querySelector('form.creator-form');
+    var stage = root.querySelector('[data-preview]');
+    var img = root.querySelector('[data-preview-img]');
+    var nameEl = root.querySelector('[data-preview-name]');
+    var clsEl = root.querySelector('[data-preview-class]');
+    var descEl = root.querySelector('[data-preview-desc]');
+    var textEl = root.querySelector('[data-dialogue-text]');
+    var art = root.querySelector('[data-mira-art]');
+    var tw = textEl ? typewriter(textEl, art) : null;
+    var poses = ['cheer', 'smile', 'point', 'think'];
+    var said = 0;
+    if (!form || !stage) return;
+    function show(card, line) {
+      if (!card) return;
+      if (img) {
+        img.setAttribute('src', card.getAttribute('data-art'));
+        img.classList.remove('is-pop');
+        void img.offsetWidth;
+        img.classList.add('is-pop');
+      }
+      stage.setAttribute('data-color', card.getAttribute('data-color'));
+      if (nameEl) nameEl.textContent = card.getAttribute('data-name');
+      if (clsEl) clsEl.textContent = card.getAttribute('data-cls');
+      if (descEl) descEl.textContent = card.getAttribute('data-desc');
+      if (tw) {
+        setPose(art, poses[said % poses.length]);
+        said += 1;
+        tw.say(line || (root.getAttribute('data-pick-line') || '{name}').replace('{name}', card.getAttribute('data-name')).replace('{desc}', card.getAttribute('data-desc')));
+      }
+    }
+    form.addEventListener('change', function (e) {
+      if (!e.target || e.target.name !== 'hero') return;
+      show(e.target.closest('.hero-card'));
+      sound.play('pop');
+    });
+    var roll = root.querySelector('[data-avatar-random]');
+    if (roll) {
+      roll.hidden = false;
+      roll.addEventListener('click', function () {
+        var all = Array.prototype.slice.call(form.querySelectorAll('input[name="hero"]'));
+        var others = all.filter(function (r) { return !r.checked; });
+        var pick = others[Math.floor(Math.random() * others.length)] || all[0];
+        pick.checked = true;
+        var card = pick.closest('.hero-card');
+        show(card, root.getAttribute('data-random-line'));
+        card.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+        sound.play('coin');
+      });
+    }
+    if (textEl) textEl.addEventListener('click', function () { if (tw && tw.busy()) tw.finish(); });
+    form.addEventListener('submit', function () { sound.play('seal'); });
+  });
+
+  // The rank ladder: any rank plate or seal opens every rank from E to S, the player's own name on each plate.
+  (function () {
+    var d = document.getElementById('rank-ladder');
+    if (!d || typeof d.showModal !== 'function') return;
+    document.addEventListener('click', function (e) {
+      var opener = e.target.closest ? e.target.closest('[data-rank-open]') : null;
+      if (!opener) return;
+      e.preventDefault();
+      var menu = opener.closest('details.menu');
+      if (menu) menu.removeAttribute('open');
+      d.showModal();
+      sound.play('unroll');
+      var here = d.querySelector('[aria-current="step"]');
+      if (here) here.scrollIntoView({ block: 'center' });
+    });
+    var close = d.querySelector('[data-ladder-close]');
+    if (close) close.addEventListener('click', function () { d.close(); });
+    d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+    d.addEventListener('close', function () { sound.play('close'); });
+  })();
+
+  // The merchant and the Guildmaster talk like Mira: their opening line types out. When the Guildmaster reads a scroll
+  // (an htmx swap carrying data-counsel-say), he speaks the counsel in his own box.
+  document.querySelectorAll('[data-npc-text]').forEach(function (textEl) {
+    var scene = textEl.closest('.npc-scene');
+    var art = scene ? scene.querySelector('[data-npc-art]') : null;
+    var tw = typewriter(textEl, art);
+    var section = textEl.closest('[data-counsel]');
+    if (section) section.hvwaSay = tw;
+    var line = textEl.textContent;
+    window.setTimeout(function () { tw.say(line); }, reduceMotion ? 200 : 650);
+    textEl.addEventListener('click', function () { if (tw.busy()) tw.finish(); });
+  });
+  document.addEventListener('htmx:afterSwap', function (e) {
+    var target = e.detail && e.detail.target;
+    var said = target && target.querySelector ? target.querySelector('[data-counsel-say]') : null;
+    if (!said) return;
+    said.removeAttribute('data-counsel-say');
+    var section = said.closest('[data-counsel]');
+    var text = said.querySelector('.hint-text');
+    if (section && section.hvwaSay && text) {
+      var box = section.querySelector('.npc-scene');
+      if (box) box.scrollIntoView({ block: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+      if (section.hvwaPose) section.hvwaPose('read');
+      section.hvwaSay.say(text.textContent);
+    }
+    sound.play('unroll');
+  });
+
+  // The Guildmaster's corner as a conversation: two choices. "Tell me about this quest" and he tells the client's
+  // request; "I need a hint" and he nods, asks which scroll you brought, and the scrolls are laid out to choose from.
+  document.querySelectorAll('[data-counsel]').forEach(function (sec) {
+    var art = sec.querySelector('[data-npc-art]');
+    var choices = sec.querySelector('[data-gm-choices]');
+    var panels = {};
+    sec.querySelectorAll('[data-gm-panel]').forEach(function (p) { panels[p.getAttribute('data-gm-panel')] = p; });
+    sec.hvwaPose = function (name) {
+      var src = art ? art.getAttribute('data-pose-' + name) : null;
+      if (!src || art.getAttribute('src') === src) return;
+      art.setAttribute('src', src);
+      art.classList.remove('is-pop');
+      void art.offsetWidth;
+      art.classList.add('is-pop');
+    };
+    if (!choices) return;
+    choices.hidden = false;
+    var openHint = /^#(hint-\d+|intel-title)$/.test(window.location.hash);
+    Object.keys(panels).forEach(function (k) { if (!(k === 'hint' && openHint)) panels[k].hidden = true; });
+    function show(k) {
+      Object.keys(panels).forEach(function (n) { panels[n].hidden = n !== k; });
+      var p = panels[k];
+      if (p) { p.classList.remove('is-shown'); void p.offsetWidth; p.classList.add('is-shown'); }
+    }
+    choices.addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-gm-ask]') : null;
+      if (!b) return;
+      choices.querySelectorAll('[data-gm-ask]').forEach(function (x) { x.classList.toggle('is-chosen', x === b); });
+      if (b.getAttribute('data-gm-ask') === 'brief') {
+        sec.hvwaPose('talk');
+        var brief = panels.brief ? panels.brief.querySelector('.brief') : null;
+        if (sec.hvwaSay && brief) sec.hvwaSay.say(((sec.getAttribute('data-brief-lead') || '') + ' ' + brief.textContent.trim()).trim());
+        show('brief');
+        sound.play('unroll');
+      } else {
+        sec.hvwaPose('nod');
+        if (sec.hvwaSay) sec.hvwaSay.say(sec.getAttribute('data-ask-scroll') || '');
+        show('hint');
+        sound.play('open');
+      }
+    });
+  });
+
+  // Mira at the claim desk reacts to the flag: a cheer for a sealed contract, a think for a miss.
+  (function () {
+    var say = document.querySelector('[data-desk-say]');
+    var mira = document.querySelector('[data-desk-mira]');
+    if (!say) return;
+    var tw = typewriter(say, mira);
+    document.addEventListener('htmx:afterSwap', function (e) {
+      var target = e.detail && e.detail.target;
+      if (!target || target.id !== 'submit-result') return;
+      var ok = target.querySelector('.result-ok');
+      var bad = target.querySelector('.result-bad');
+      if (!ok && !bad) return;
+      setPose(mira, ok ? 'cheer' : 'think');
+      tw.say(say.getAttribute(ok ? 'data-ok' : 'data-bad') || '');
+    });
+  })();
 })();

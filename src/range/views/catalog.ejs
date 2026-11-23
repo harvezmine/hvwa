@@ -1,40 +1,91 @@
-<%# Range catalog (src/range/catalog.ts): the Guild Hall. A hall heading beside the adventurer's guild card (rank plate,
-   gold, bounties done, progress), the "quest in hand" note, then the bounty boards: one wooden board per guild track,
+<%# Range catalog (src/range/catalog.ts): the Guild Hall. A torch-lit hall wall with the greeting on a hanging tapestry
+   beside the Adventurer's Licence (portrait, rank plate, gold, bounties done, experience and board bars), the "quest in hand" note, then the bounty boards: one wooden board per guild track,
    laid out as a horizontal scroll-snap carousel. The hanging signs and each board's prev/next links are plain anchors
    (#board-<track>), so the boards switch without JavaScript; static/ui.js only smooths the slide and tracks the active
    sign. Hooks: range-score, range-solved, range-rank, range-progress, range-rank-progress, continue-lab (data-state),
    range-filters, board-sign-<track>, board-<track>, lab-card (data-lab, data-difficulty, data-solved, data-theme).
    Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
-<header class="hall-head">
-  <div class="hall-intro">
-    <p class="eyebrow"><%= t('range.eyebrow') %></p>
-    <h1 class="gh-display"><%= t('range.hero_title') %></h1>
-    <p class="gh-lead"><%= t('range.catalog_lead') %></p>
+<header class="hall-stage">
+  <span class="torch torch-left" aria-hidden="true"><span class="torch-flame"></span></span>
+  <span class="torch torch-right" aria-hidden="true"><span class="torch-flame"></span></span>
+  <div class="hall-banner">
+    <span class="banner-rod" aria-hidden="true"></span>
+    <div class="banner-cloth">
+      <svg class="banner-crest" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
+      <p class="eyebrow banner-eyebrow"><%= t('range.eyebrow') %></p>
+      <h1 class="gh-display"><%= t('range.hero_title') %></h1>
+      <p class="gh-lead"><%= t('range.catalog_lead') %></p>
+    </div>
   </div>
-  <aside class="guild-card" aria-labelledby="guild-card-name">
+  <aside class="guild-card licence" aria-labelledby="guild-card-name">
+    <div class="licence-head"><span><%= t('range.licence') %></span><span class="licence-no"><%= t('range.licence_no') %> <%= typeof platformAuth !== 'undefined' && platformAuth ? String(platformAuth.userId).padStart(4, '0') : '0000' %></span></div>
     <div class="guild-card-top">
-      <span class="rank-plate" data-plate="<%= rank.letter.toLowerCase() %>" aria-hidden="true"><span class="plate-letter"><%= rank.letter %></span><span class="plate-metal"><%= rank.plate %></span></span>
+      <a class="licence-avatar" href="/adventurer" title="<%= t('nav.my_adventurer') %>" data-testid="licence-avatar"><span class="sr-only"><%= t('nav.my_adventurer') %></span><%- include('../../core/views/avatar', { a: avatar, size: 'lg' }) %></a>
       <div class="guild-card-id">
         <span class="guild-card-label"><%= t('rank.label') %></span>
-        <span class="guild-card-name" id="guild-card-name"><%= username %></span>
+        <%- include('nameplate', { name: username, letter: rank.letter, size: 'lg', nameId: 'guild-card-name' }) %>
         <span class="guild-card-title" data-testid="range-rank"><span class="rank-name"><%= rank.name %></span><span class="sr-only"> · <%= rank.letter %></span> · <%= rank.plate %></span>
       </div>
+      <button type="button" class="rank-plate rank-plate-btn" data-plate="<%= rank.letter.toLowerCase() %>" data-rank-open aria-haspopup="dialog" title="<%= t('rank.ladder_open') %>" data-testid="rank-open"><span class="sr-only"><%= t('rank.ladder_open') %></span><span class="plate-letter" aria-hidden="true"><%= rank.letter %></span><span class="plate-metal" aria-hidden="true"><%= rank.plate %></span></button>
     </div>
-    <dl class="ledger-strip">
-      <div class="ledger-entry">
+    <dl class="licence-stats">
+      <div class="licence-stat">
         <dt><%= t('range.your_score') %></dt>
-        <dd><span data-testid="range-score"><%= score %></span> <span class="stat-of"><%= t('range.gold') %></span></dd>
+        <dd><span class="coin" aria-hidden="true"></span><span data-testid="range-score"><%= score %></span> <span class="stat-of"><%= t('range.gold') %></span></dd>
       </div>
-      <div class="ledger-entry">
+      <div class="licence-stat">
         <dt><%= t('range.contracts_sealed') %></dt>
         <dd data-testid="range-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></dd>
       </div>
     </dl>
-    <div class="progress-label"><span><%= rank.points %> / <%= rank.nextMinPoints %> <%= t('range.gold') %></span><span><% if (rank.maxed) { %><%= t('rank.max') %><% } else { %><%= t('rank.to').replace('{rank}', rank.nextLetter + ' · ' + rank.nextName) %><% } %></span></div>
-    <progress class="progress progress-gold" data-testid="range-rank-progress" max="<%= rank.nextMinPoints %>" value="<%= rank.points %>"><%= rank.points %> / <%= rank.nextMinPoints %></progress>
-    <div class="progress-label"><span><%= t('range.progress_label') %></span><span><%= solved %>/<%= total %></span></div>
-    <progress class="progress" data-testid="range-progress" max="<%= total %>" value="<%= solved %>"><%= solved %>/<%= total %></progress>
+    <div class="licence-bar">
+      <div class="progress-label"><span><%= t('range.exp') %> · <%= rank.points %> / <%= rank.nextMinPoints %> <%= t('range.gold') %></span><span><% if (rank.maxed) { %><%= t('rank.max') %><% } else { %><%= t('rank.to').replace('{rank}', rank.nextLetter + ' · ' + rank.nextName) %><% } %></span></div>
+      <progress class="progress progress-gold" data-testid="range-rank-progress" max="<%= rank.nextMinPoints %>" value="<%= rank.points %>"><%= rank.points %> / <%= rank.nextMinPoints %></progress>
+    </div>
+    <div class="licence-bar">
+      <div class="progress-label"><span><%= t('range.progress_label') %></span><span><%= solved %>/<%= total %></span></div>
+      <progress class="progress progress-board" data-testid="range-progress" max="<%= total %>" value="<%= solved %>"><%= solved %>/<%= total %></progress>
+    </div>
+    <p class="licence-foot"><span class="licence-seal" aria-hidden="true"></span><%= t('range.licence_seal') %></p>
   </aside>
+<%
+  var miraLines = [];
+  var nameFn = function () { return username; };
+  if (needsAvatar) miraLines.push({ pose: 'point', text: t('avatar.invite').replace('{name}', nameFn) });
+  if (madeAvatar) miraLines.push({ pose: 'cheer', text: t('avatar.made').replace('{class}', function () { return t('hero.' + avatar.hero + '.name'); }) });
+  if (!needsAvatar && !madeAvatar) miraLines.push({ pose: 'smile', text: (solved === 0 && score === 0 ? t('mira.hello_new') : t('mira.hello')).replace('{name}', nameFn) });
+  if (continueLab) miraLines.push({ pose: 'point', text: t('mira.continue').replace('{title}', function () { return continueLab.title; }) });
+  if (solved === 0) miraLines.push({ pose: 'point', text: t('mira.first') });
+  else if (solved < total) miraLines.push({ pose: 'cheer', text: t('mira.progress').replace('{n}', solved).replace('{left}', total - solved) });
+  else miraLines.push({ pose: 'cheer', text: t('mira.done') });
+  if (!rank.maxed) miraLines.push({ pose: 'cheer', text: t('mira.rank').replace('{gold}', Math.max(0, rank.nextMinPoints - rank.points)).replace('{rank}', function () { return rank.nextLetter + ' · ' + rank.nextName; }) });
+  miraLines.push({ pose: 'think', text: t('mira.whisper') });
+  miraLines.push({ pose: 'point', text: t('mira.briefing') });
+  miraLines.push({ pose: 'cheer', text: t('mira.cheer').replace('{name}', nameFn) });
+-%>
+  <div class="reception" data-reception>
+    <button type="button" class="mira-stand" data-mira-poke tabindex="-1" aria-hidden="true">
+      <img class="mira-art" data-mira-art src="/static/art/mira-<%= miraLines[0].pose %>.webp" alt="" width="560" height="690" decoding="async">
+    </button>
+    <div class="dialogue" data-dialogue>
+      <p class="dialogue-name"><span class="dialogue-speaker"><%= t('mira.name') %></span><span class="dialogue-role"><%= t('mira.role') %></span></p>
+      <p class="dialogue-text" data-dialogue-text aria-live="polite"><%= miraLines[0].text %></p>
+      <ol class="dialogue-lines" data-dialogue-lines hidden>
+<% miraLines.forEach(function (l) { -%>
+        <li data-pose="<%= l.pose %>"><%= l.text %></li>
+<% }); -%>
+      </ol>
+      <span class="dialogue-more" aria-hidden="true"></span>
+      <div class="dialogue-actions" data-dialogue-actions hidden>
+<% if (needsAvatar) { -%>
+        <a class="btn btn-primary btn-sm" href="/adventurer" data-testid="reception-create"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-quill"></use></svg><%= t('avatar.invite_go') %></a>
+<% } -%>
+        <button type="button" class="btn btn-secondary btn-sm" data-dialogue-next><%= t('mira.next') %><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-right"></use></svg></button>
+        <button type="button" class="btn btn-primary btn-sm" data-tour-start><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-map"></use></svg><%= t('mira.tour') %></button>
+      </div>
+    </div>
+    <span class="counter" aria-hidden="true"></span>
+  </div>
 </header>
 <% if (continueLab) { -%>
 <a class="continue-slip" href="<%= continueLab.href %>" data-testid="continue-lab" data-state="<%= continueLab.state %>">
@@ -158,3 +209,31 @@
     <button type="button" class="board-nav board-nav-next" data-board-next hidden aria-label="<%= t('range.board_next') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg></button>
   </div>
 </section>
+<% if (needsAvatar) { -%>
+<dialog class="preboard vn" data-preboard aria-labelledby="preboard-title" aria-describedby="preboard-text" data-testid="preboard">
+  <span class="vn-mira" aria-hidden="true"><img class="mira-art" data-preboard-art src="/static/art/mira-point.webp" alt="" width="560" height="628" decoding="async"></span>
+  <div class="vn-stack">
+    <ul class="vn-choices" data-vn-choices aria-label="<%= t('avatar.invite_title') %>">
+      <li><a class="vn-choice is-main" href="/adventurer" data-testid="preboard-go"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-quill"></use></svg><%= t('avatar.invite_go') %></a></li>
+      <li><form method="post" action="/adventurer/skip"><input type="hidden" name="_csrf" value="<%= csrf %>"><button type="submit" class="vn-choice" data-testid="preboard-skip"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg><%= t('avatar.skip') %></button></form></li>
+    </ul>
+    <div class="dialogue vn-box">
+      <p class="dialogue-name"><span class="dialogue-speaker"><%= t('mira.name') %></span><span class="dialogue-role"><%= t('mira.role') %></span></p>
+      <h2 class="sr-only" id="preboard-title"><%= t('avatar.invite_title') %></h2>
+      <p class="dialogue-text" id="preboard-text" data-preboard-text><%= t('avatar.invite').replace('{name}', function () { return username; }) %></p>
+      <span class="dialogue-more" aria-hidden="true"></span>
+    </div>
+  </div>
+</dialog>
+<% } -%>
+<template id="tour-steps" data-tour="hall">
+  <p data-pose="smile"><%= t('tour.c1').replace('{name}', function () { return username; }) %></p>
+  <p data-pose="point" data-target=".licence"><%= t('tour.c2') %></p>
+  <p data-pose="point" data-target=".board-signs"><%= t('tour.c3') %></p>
+  <p data-pose="smile" data-target=".lab-card"><%= t('tour.c4') %></p>
+  <p data-pose="think" data-target=".range-filters"><%= t('tour.c5') %></p>
+  <p data-pose="point" data-target="[data-testid=nav-leaderboard]"><%= t('tour.c6') %></p>
+  <p data-pose="point" data-target="[data-testid=nav-shop]"><%= t('tour.c9') %></p>
+  <p data-pose="smile" data-target="[data-sound-toggle]"><%= t('tour.c7') %></p>
+  <p data-pose="cheer" data-target=".reception"><%= t('tour.c8') %></p>
+</template>

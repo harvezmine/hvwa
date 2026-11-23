@@ -40,7 +40,10 @@
   </div>
 <% } -%>
   <a class="skip-link" href="#main"><%= t('nav.skip') %></a>
-  <div class="safety-banner" role="note" data-mode="<%= portalMode ? 'portal' : 'standalone' %>"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t(portalMode ? 'safety.portal' : 'safety.warning') %></span></div>
+<%# Portal mode shows no safety strip (the guild hall speaks for itself); the standalone build keeps its warning. %>
+<% if (!portalMode) { -%>
+  <div class="safety-banner" role="note" data-mode="standalone"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t('safety.warning') %></span></div>
+<% } -%>
 <% if (platformAuth && platformAuth.defaultPassword) { -%>
   <div class="default-password-banner" role="alert" data-testid="default-password-banner">
     <div class="banner-inner">
@@ -65,6 +68,7 @@
         <a href="/" class="nav-link" data-testid="nav-labs"<% if (navActive === 'labs') { %> aria-current="page"<% } %>><%= t('nav.labs') %></a>
         <a href="/team" class="nav-link" data-testid="nav-team"<% if (navActive === 'team') { %> aria-current="page"<% } %>><%= t('nav.team') %></a>
         <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"<% if (navActive === 'leaderboard') { %> aria-current="page"<% } %>><%= t('nav.leaderboard') %></a>
+        <a href="/shop" class="nav-link" data-testid="nav-shop"<% if (navActive === 'shop') { %> aria-current="page"<% } %>><%= t('nav.shop') %></a>
 <% } else { -%>
         <a href="/" class="nav-link"><%= t('nav.districts') %></a>
         <a href="/scoreboard" class="nav-link"><%= t('nav.scoreboard') %></a>
@@ -97,11 +101,14 @@
 <% if (platformAuth && platformAuth.signedIn) { -%>
         <details class="menu account-menu" data-testid="account-nav">
           <summary class="menu-trigger">
-            <span class="sr-only"><%= t('nav.account') %>: </span><span class="account-chip" aria-hidden="true"><%= platformAuth.user.charAt(0).toUpperCase() %></span>
+            <span class="sr-only"><%= t('nav.account') %>: </span><% if (typeof avatar !== 'undefined' && avatar) { %><%- include('avatar', { a: avatar, size: 'sm' }) %><% } else { %><span class="account-chip" aria-hidden="true"><%= platformAuth.user.charAt(0).toUpperCase() %></span><% } %>
             <svg class="icon icon-sm menu-caret" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-down"></use></svg>
           </summary>
           <div class="menu-panel">
-            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <span class="menu-rank"><span class="rank-seal seal seal-sm" data-plate="<%= playerRank.letter.toLowerCase() %>" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></span><% } %></p>
+            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <button type="button" class="menu-rank" data-rank-open aria-haspopup="dialog" title="<%= t('rank.ladder_open') %>"><span class="rank-seal seal seal-sm" data-plate="<%= playerRank.letter.toLowerCase() %>" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></button><% } %></p>
+<% if (typeof avatar !== 'undefined' && avatar) { -%>
+            <a class="menu-item" href="/adventurer" data-testid="nav-adventurer"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-user"></use></svg><%= t('nav.my_adventurer') %></a>
+<% } -%>
             <a class="menu-item" href="/account/password"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg><%= t('auth.change_password') %></a>
             <form method="post" action="/logout" class="logout-form"><input type="hidden" name="_csrf" value="<%= platformAuth.csrf %>"><button type="submit" class="menu-item menu-item-danger" data-testid="logout"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-log-out"></use></svg><%= t('auth.logout') %></button></form>
           </div>
@@ -176,10 +183,19 @@
 <%# The submit-result popup (htmx enhancement). It starts closed: no `open` attribute, so it is not on screen until
      ui.js opens it from the data-modal-* attributes on a submit-result fragment. Values are filled by ui.js (textContent),
      so the markup itself stays inert and CSP-clean. %>
+  <dialog id="confirm-dialog" class="confirm-dialog" data-kind="" data-title="<%= t('confirm.title') %>" data-ok="<%= t('confirm.ok') %>" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="confirm-slip">
+      <span class="confirm-seal" aria-hidden="true"></span>
+      <h2 id="confirm-title" class="confirm-title"></h2>
+      <p id="confirm-message" class="confirm-message"></p>
+      <div class="confirm-actions"><button type="button" class="btn btn-secondary" data-confirm-cancel><%= t('confirm.cancel') %></button><button type="button" class="btn btn-primary" data-confirm-ok></button></div>
+    </div>
+  </dialog>
   <dialog id="solve-dialog" class="solve-dialog" data-variant="" aria-labelledby="solve-title" aria-describedby="solve-message">
     <div class="solve-slip">
       <div class="solve-confetti" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
       <span class="solve-seal" aria-hidden="true"></span>
+      <% if (portalMode) { %><div class="mira-line solve-mira-line"><img class="mira-cameo" data-solve-mira src="/static/art/mira-cheer.webp" alt="" width="560" height="616" loading="lazy" decoding="async"><p class="mira-say solve-say" data-solve-say data-solved="<%= t('solve.mira_solved') %>" data-wrong="<%= t('solve.mira_wrong') %>" hidden><span class="mira-say-name"><%= t('mira.name') %></span><span data-solve-say-text></span></p></div><% } %>
       <h2 id="solve-title" class="solve-title"></h2>
       <p id="solve-message" class="solve-message"></p>
       <p class="solve-points" hidden><span class="solve-points-figure"></span><span class="solve-points-unit"><%= t('range.modal_points') %></span></p>
@@ -190,5 +206,65 @@
       <button type="button" class="btn btn-primary solve-continue"><%= t('range.modal_continue') %></button>
     </div>
   </dialog>
+<% if (typeof rankLadder !== 'undefined' && rankLadder && !office) { -%>
+  <dialog id="rank-ladder" class="rank-ladder" aria-labelledby="rank-ladder-title" data-testid="rank-ladder">
+<% var ladderHere = rankLadder.filter(function (r) { return r.state === 'here'; })[0]; var ladderNext = rankLadder.filter(function (r) { return r.state === 'ahead'; })[0]; var ladderPoints = ladderNext ? ladderNext.min - ladderNext.need : (ladderHere ? ladderHere.min : 0); -%>
+    <div class="ladder-scroll">
+      <button type="button" class="icon-btn ladder-close" data-ladder-close aria-label="<%= t('rank.ladder_close') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-x"></use></svg></button>
+      <header class="ladder-head">
+        <p class="ladder-eyebrow"><%= t('rank.ladder_eyebrow') %></p>
+        <h2 class="ladder-title" id="rank-ladder-title"><%= t('rank.ladder_title') %></h2>
+        <p class="ladder-lead"><%= t('rank.ladder_lead') %></p>
+<% if (ladderHere) { -%>
+        <div class="ladder-progress">
+          <span class="ladder-progress-now"><span class="rank-seal seal seal-sm" data-plate="<%= ladderHere.letter.toLowerCase() %>" aria-hidden="true"><%= ladderHere.letter %></span><%= ladderHere.name %> · <%= ladderPoints %> G</span>
+<% if (ladderNext) { -%>
+          <progress class="progress progress-gold ladder-bar" max="<%= ladderNext.min - ladderHere.min %>" value="<%= ladderPoints - ladderHere.min %>"><%= ladderPoints %> / <%= ladderNext.min %></progress>
+          <span class="ladder-progress-next"><%= t('rank.ladder_next').replace('{rank}', function () { return ladderNext.letter + ' · ' + ladderNext.name; }).replace('{n}', ladderNext.need) %></span>
+<% } else { -%>
+          <span class="ladder-progress-next"><%= t('rank.max') %></span>
+<% } -%>
+        </div>
+<% } -%>
+      </header>
+      <ol class="ladder">
+<% rankLadder.slice().reverse().forEach(function (r) { -%>
+        <li class="ladder-rung" data-state="<%= r.state %>" data-rank="<%= r.letter %>"<% if (r.state === 'here') { %> aria-current="step"<% } %>>
+          <div class="rung-card">
+<% if (r.state === 'here') { -%>
+            <span class="rung-you"><%= t('rank.ladder_here') %></span>
+<% } -%>
+            <span class="rank-plate ladder-plate" data-plate="<%= r.letter.toLowerCase() %>" aria-hidden="true"><span class="plate-letter"><%= r.letter %></span><span class="plate-metal"><%= r.plate %></span></span>
+            <p class="ladder-rank-name"><%= r.name %></p>
+            <p class="ladder-min"><span class="coin" aria-hidden="true"></span><%= r.min %> G</p>
+            <%- include('../../range/views/nameplate', { name: platformAuth.user, letter: r.letter }) %>
+            <p class="ladder-perk"><%= t('rank.perk.' + r.letter.toLowerCase()) %></p>
+            <span class="ladder-state"><% if (r.state === 'here') { %><%= t('rank.ladder_here') %><% } else if (r.state === 'done') { %><%= t('rank.ladder_done') %><% } else { %><%= t('rank.ladder_need').replace('{n}', r.need) %><% } %></span>
+          </div>
+          <span class="rung-pillar" aria-hidden="true"></span>
+        </li>
+<% }); -%>
+      </ol>
+    </div>
+  </dialog>
+<% } -%>
+<% if (portalMode && platformAuth && platformAuth.signedIn && !office) { -%>
+  <dialog id="tour" class="tour" aria-label="<%= t('tour.label') %>" data-step-label="<%= t('tour.step') %>" data-next="<%= t('tour.next') %>" data-done="<%= t('tour.done') %>">
+    <div class="tour-spot" data-tour-spot aria-hidden="true"></div>
+    <div class="tour-box" data-tour-box>
+      <div class="tour-mira" aria-hidden="true"><img class="mira-art" data-tour-art src="/static/art/mira-smile.webp" alt="" width="560" height="690" decoding="async"></div>
+      <div class="dialogue tour-dialogue">
+        <p class="dialogue-name"><span class="dialogue-speaker"><%= t('mira.name') %></span><span class="dialogue-role"><%= t('mira.role') %></span><span class="tour-count" data-tour-count></span></p>
+        <p class="dialogue-text" data-tour-text aria-live="polite"></p>
+        <span class="dialogue-more" aria-hidden="true"></span>
+        <div class="dialogue-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-tour-skip><%= t('tour.skip') %></button>
+          <button type="button" class="btn btn-secondary btn-sm" data-tour-back><%= t('tour.back') %></button>
+          <button type="button" class="btn btn-primary btn-sm" data-tour-next><%= t('tour.next') %></button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+<% } -%>
 </body>
 </html>

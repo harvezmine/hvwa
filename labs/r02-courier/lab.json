@@ -1,7 +1,7 @@
 {
   "id": "r02",
   "slug": "courier",
-  "title": { "en": "The Courier Never Asks", "id": "Kurir yang Tak Pernah Bertanya" },
+  "title": { "en": "Whose Parcel Is It, Anyway?", "id": "Ini Paket Siapa Sih?" },
   "app": "Courier",
   "category": "Broken access control",
   "difficulty": "easy",
@@ -13,11 +13,11 @@
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 8 }],
   "needsBot": false,
   "themeId": "courier",
-  "scenario": { "en": "Parcels move; ownership is a rumour.", "id": "Paket berpindah; kepemilikan hanyalah kabar." },
-  "briefing": { "en": "A parcel in the vault is not yours. Read its private note.", "id": "Sebuah paket di brankas bukan milikmu. Baca catatan pribadinya." },
+  "scenario": { "en": "A courier portal that checks your ticket at the door, then lets you wander through every warehouse.", "id": "Portal kurir yang memeriksa tiketmu di pintu, lalu membiarkanmu keliling ke semua gudang." },
+  "briefing": { "en": "Your parcels are numbered 2xxx. The vault's parcels are 1xxx, and they carry private notes. The courier never asks whose parcel you are opening, so open one that is not yours and read what it says.", "id": "Paket milikmu bernomor 2xxx. Paket brankas bernomor 1xxx dan berisi catatan pribadi. Kurirnya tidak pernah bertanya paket siapa yang kamu buka, jadi buka paket yang bukan milikmu dan baca isinya." },
   "hints": [
-    { "id": 1, "cost": 10, "text": { "en": "You carry a name, but the door asks only for a number.", "id": "Kau membawa nama, tetapi pintu hanya meminta angka." } },
-    { "id": 2, "cost": 20, "text": { "en": "The parcel is yours; the label is the road it forgets to guard. The old note has moved; the label keeps its own copy.", "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga. Catatan lama telah pindah; label menyimpan salinannya sendiri." } },
-    { "id": 3, "cost": 30, "text": { "en": "A key handed out by the wrong desk opens the wrong vault. Inside, the manifest is the page the vault forgot to hide.", "id": "Kunci dari meja yang salah membuka brankas yang salah. Di dalam, manifes adalah halaman yang lupa disembunyikan brankas." } }
+    { "id": 1, "cost": 10, "text": { "en": "This is broken access control (an IDOR). Get a demo session with POST /api/session, then call the parcel API with the header Authorization: Bearer <token>. Notice the parcel is chosen only by the number in the URL.", "id": "Ini broken access control (IDOR). Ambil sesi demo dengan POST /api/session, lalu panggil API paket dengan header Authorization: Bearer <token>. Perhatikan paket dipilih hanya dari angka di URL." } },
+    { "id": 2, "cost": 20, "text": { "en": "Change the number to someone else's parcel: the vault uses 1000 to 1010. Common: GET /api/parcels/<id> shows the private note. Dangerous: the detail route now checks the owner, but the printable label route GET /api/parcels/<id>/label was forgotten.", "id": "Ganti angkanya ke paket orang lain: brankas memakai 1000 sampai 1010. Common: GET /api/parcels/<id> menampilkan catatan pribadinya. Dangerous: rute detail sekarang mengecek pemilik, tapi rute label cetak GET /api/parcels/<id>/label terlupakan." } },
+    { "id": 3, "cost": 30, "text": { "en": "Deadly: the support desk talks too much. GET /api/support/customers/vault returns the vault customer's API key and parcel list. Call GET /api/parcels/<id> with your Bearer token plus the header x-api-key: <key>. The flag is in the manifest field, not in the note.", "id": "Deadly: meja support terlalu banyak bicara. GET /api/support/customers/vault mengembalikan API key dan daftar paket pelanggan brankas. Panggil GET /api/parcels/<id> dengan token Bearer-mu ditambah header x-api-key: <key>. Flag ada di field manifest, bukan di note." } }
   ]
 }

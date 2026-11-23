@@ -19,8 +19,8 @@ describe('db', () => {
   it('the platform schema holds only platform state: solves, hint_unlocks, events, the login (users, auth_tokens), the range (settings, solves, hint unlocks, instances), teams and the activity feed', () => {
     const db = openDb(':memory:');
     migrate(db);
-    expect(tables(db)).toEqual(['activity_log', 'auth_tokens', 'events', 'hint_unlocks', 'lab_modes', 'range_hint_unlocks',
-      'range_instances', 'range_settings', 'range_solves', 'solves', 'team_members', 'teams', 'users']);
+    expect(tables(db)).toEqual(['activity_log', 'auth_tokens', 'avatars', 'events', 'hint_unlocks', 'lab_modes', 'range_hint_unlocks',
+      'range_instances', 'range_scrolls', 'range_settings', 'range_solves', 'solves', 'team_members', 'teams', 'users']);
     expect(columns(db, 'range_instances')).toEqual(['id', 'user_id', 'lab_id', 'level', 'state', 'reason', 'flag_hash',
       'created_at', 'started_at', 'ready_at', 'expires_at', 'last_seen_at', 'ended_at']);
     // The login keeps hashes only (src/auth): no column could hold a password or a token in plaintext.

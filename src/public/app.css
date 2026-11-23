@@ -108,6 +108,21 @@
   --on-metal: #1b130b;
   --on-metal-dark: #f6efff;
   --shade: rgba(0, 0, 0, 0.38);
+  --scrim: rgba(12, 7, 3, 0.74);
+  /* adventurer banner colours (character creation) */
+  --av-crimson: #8f2a24;
+  --av-crimson-hi: #d0574b;
+  --av-azure: #2b5a94;
+  --av-azure-hi: #6c9fd8;
+  --av-emerald: #276b45;
+  --av-emerald-hi: #5fb683;
+  --av-amethyst: #5c3784;
+  --av-amethyst-hi: #9f78cc;
+  --av-amber: #9a6417;
+  --av-amber-hi: #e0a94a;
+  --av-onyx: #24232a;
+  --av-onyx-hi: #5d5b68;
+  --on-av: #fdf1dc;
   --sheen: rgba(255, 244, 214, 0.14);
   --glint: rgba(255, 250, 235, 0.65);
   --shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
@@ -242,6 +257,21 @@
   --on-metal: #1b130b;
   --on-metal-dark: #f6efff;
   --shade: rgba(30, 16, 6, 0.26);
+  /* theme-independent: the scrim and the adventurer banner colours */
+  --scrim: rgba(12, 7, 3, 0.74);
+  --av-crimson: #8f2a24;
+  --av-crimson-hi: #d0574b;
+  --av-azure: #2b5a94;
+  --av-azure-hi: #6c9fd8;
+  --av-emerald: #276b45;
+  --av-emerald-hi: #5fb683;
+  --av-amethyst: #5c3784;
+  --av-amethyst-hi: #9f78cc;
+  --av-amber: #9a6417;
+  --av-amber-hi: #e0a94a;
+  --av-onyx: #24232a;
+  --av-onyx-hi: #5d5b68;
+  --on-av: #fdf1dc;
   --sheen: rgba(255, 248, 225, 0.32);
   --glint: rgba(255, 250, 235, 0.65);
   --shadow: 0 10px 24px rgba(58, 36, 16, 0.22);
@@ -336,6 +366,21 @@
     --on-metal: #1b130b;
     --on-metal-dark: #f6efff;
     --shade: rgba(30, 16, 6, 0.26);
+    /* theme-independent: the scrim and the adventurer banner colours */
+    --scrim: rgba(12, 7, 3, 0.74);
+    --av-crimson: #8f2a24;
+    --av-crimson-hi: #d0574b;
+    --av-azure: #2b5a94;
+    --av-azure-hi: #6c9fd8;
+    --av-emerald: #276b45;
+    --av-emerald-hi: #5fb683;
+    --av-amethyst: #5c3784;
+    --av-amethyst-hi: #9f78cc;
+    --av-amber: #9a6417;
+    --av-amber-hi: #e0a94a;
+    --av-onyx: #24232a;
+    --av-onyx-hi: #5d5b68;
+    --on-av: #fdf1dc;
     --sheen: rgba(255, 248, 225, 0.32);
     --glint: rgba(255, 250, 235, 0.65);
     --shadow: 0 10px 24px rgba(58, 36, 16, 0.22);
@@ -1339,7 +1384,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 }
 /* Parchment: the bounty/guild-paper surface. Inside it the text tokens are re-pointed at ink, so shared components
    (ledger entries, progress, badges, results) read correctly on paper in both themes. */
-.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .toast, .standing, .poster, .letter-sheet {
+.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .toast, .standing, .poster, .letter-sheet, .confirm-dialog, .dialogue, .ware, .counsel-item, .gm-panel, .desk-say {
   --text: var(--ink); --text-muted: var(--ink-muted); --text-faint: var(--ink-muted);
   --primary-text: var(--wax-dark); --link: var(--wax-dark); --link-hover: var(--wax); --focus: var(--wax-dark);
   --surface: var(--parch); --surface-2: var(--parch); --surface-3: var(--parch-2);
@@ -1348,7 +1393,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
   --success-bg: transparent; --danger-bg: transparent; --success-border: var(--ink-ok); --danger-border: var(--wax-dark);
   color: var(--ink);
 }
-.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .toast, .standing, .letter-sheet {
+.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .toast, .standing, .letter-sheet, .dialogue, .ware, .counsel-item, .gm-panel, .desk-say {
   background-color: var(--parch);
   background-image: radial-gradient(ellipse at 50% 45%, transparent 55%, var(--parch-2) 135%), var(--tex-parch);
 }
@@ -1396,31 +1441,114 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .menu-rank .rank-name { font-size: var(--fs-label); color: var(--text-muted); }
 .menu-meta .rank-seal { width: 1.35rem; height: 1.35rem; font-size: 0.62rem; border-width: 1px; }
 
-/* --- Guild hall: heading + guild card --- */
-.hall-head { display: grid; gap: var(--sp-5); align-items: center; margin: 0 0 var(--sp-6); }
-.hall-intro { min-width: 0; }
-.gh-display { font-family: var(--serif); font-weight: 600; font-size: var(--fs-display); line-height: 1.02; letter-spacing: -0.01em; margin: 0 0 var(--sp-3); max-width: 15ch; text-wrap: balance; overflow-wrap: break-word; }
-.gh-lead { color: var(--text-muted); font-size: var(--fs-lg); max-width: 50ch; margin: 0; }
-.guild-card {
-  position: relative; display: grid; gap: var(--sp-3); padding: var(--sp-5) var(--sp-5) var(--sp-4);
-  border-radius: var(--radius); box-shadow: var(--shadow); rotate: 0.6deg;
+/* --- Guild hall arrival: a torch-lit wooden wall, the greeting on a hanging tapestry, the Adventurer's Licence --- */
+.hall-stage {
+  position: relative; isolation: isolate; display: grid; gap: var(--sp-6); align-items: start;
+  margin: 0 0 var(--sp-6); padding: var(--sp-6) var(--sp-5) var(--sp-6);
+  border-radius: var(--radius-lg); overflow: hidden;
+  background-color: var(--wood-2);
+  background-image:
+    radial-gradient(ellipse 28% 60% at 4% 38%, var(--splash-glow), transparent 70%),
+    radial-gradient(ellipse 28% 60% at 96% 38%, var(--splash-glow), transparent 70%),
+    repeating-linear-gradient(90deg, transparent 0 7rem, var(--shade) 7rem calc(7rem + 3px)),
+    var(--tex-wood);
+  box-shadow: inset 0 0 0 8px var(--wood), inset 0 0 60px var(--shade), var(--shadow);
 }
-.guild-card-top { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; }
-.guild-card-id { display: grid; gap: 0.1rem; min-width: 0; }
+/* Torches on the wall: an iron bracket and a flickering flame. */
+.torch { position: absolute; z-index: 1; top: 3.2rem; width: 0.7rem; height: 3.8rem; border-radius: 2px; background: linear-gradient(90deg, var(--wood-2), var(--wood-3), var(--wood-2)); box-shadow: 0 0 0 2px var(--m-iron); pointer-events: none; }
+.torch-left { left: 1.3rem; }
+.torch-right { right: 1.3rem; }
+.torch::after { content: ""; position: absolute; left: -0.45rem; right: -0.45rem; top: -0.35rem; height: 0.6rem; border-radius: 3px; background: var(--m-iron); }
+.torch-flame {
+  position: absolute; left: 50%; bottom: calc(100% + 0.1rem); width: 1.6rem; height: 2.6rem; translate: -50% 0;
+  border-radius: 50% 50% 45% 45% / 62% 62% 38% 38%;
+  background: radial-gradient(ellipse at 50% 75%, var(--m-gold-hi) 0%, var(--primary) 38%, var(--wax-hi) 62%, transparent 72%);
+  filter: drop-shadow(0 0 10px var(--primary)); transform-origin: 50% 90%;
+}
+/* The tapestry: a cloth banner hung from a wooden rod, swallow-tailed, gold-trimmed; the greeting sits on it. */
+.hall-banner { position: relative; z-index: 2; min-width: 0; justify-self: center; width: min(100%, 34rem); padding-top: 0.6rem; transform-origin: 50% 0; }
+.banner-rod {
+  position: absolute; z-index: 2; top: 0; left: -1rem; right: -1rem; height: 1.2rem; border-radius: 999px;
+  background: linear-gradient(180deg, var(--wood-3), var(--wood) 50%, var(--wood-2)); box-shadow: 0 3px 6px var(--shade);
+}
+.banner-rod::before, .banner-rod::after { content: ""; position: absolute; top: 50%; width: 1.5rem; height: 1.5rem; border-radius: 50%; translate: 0 -50%; background: radial-gradient(circle at 35% 30%, var(--m-gold-hi), var(--m-gold) 55%, var(--wood-2)); }
+.banner-rod::before { left: -0.7rem; }
+.banner-rod::after { right: -0.7rem; }
+.banner-cloth {
+  position: relative; display: grid; justify-items: center; gap: var(--sp-2); text-align: center;
+  padding: var(--sp-6) var(--sp-5) 4.2rem;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 2.6rem), 0 100%);
+  background:
+    linear-gradient(90deg, var(--shade), transparent 12%, transparent 88%, var(--shade)),
+    repeating-linear-gradient(0deg, transparent 0 3px, var(--sheen) 3px 4px),
+    linear-gradient(180deg, var(--wax) 0%, var(--wax-dark) 100%);
+  box-shadow: inset 0 0 0 6px var(--wax-dark), inset 0 0 0 8px var(--m-gold), inset 0 0 0 9px var(--wax-dark);
+  color: var(--on-wax);
+}
+.banner-crest { width: 3.4rem; height: 3.4rem; fill: none; stroke: var(--m-gold-hi); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 3px var(--shade)); }
+.banner-eyebrow { margin: 0; color: var(--m-gold-hi); }
+.banner-eyebrow::before, .banner-eyebrow::after { content: "\25C6"; margin: 0 var(--sp-2); font-size: 0.55rem; vertical-align: 0.1em; }
+.hall-banner .gh-display {
+  margin: 0; font-family: var(--poster); font-weight: 400; font-size: clamp(2.4rem, 5vw, 3.7rem); line-height: 1.02; letter-spacing: 0.01em;
+  color: var(--on-wax); text-shadow: 0 3px 0 var(--wax-dark), 0 6px 14px var(--shade); text-wrap: balance; overflow-wrap: break-word;
+}
+.hall-banner .gh-lead { margin: 0; max-width: 32ch; color: var(--on-wax); font-style: italic; font-size: var(--fs-lg); }
+/* The Adventurer's Licence: a parchment card with a leather band, portrait, rank plate, stats and experience bars. */
+.guild-card {
+  position: relative; z-index: 2; display: grid; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5) var(--sp-4);
+  border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--parch-2), var(--shadow); rotate: 0.8deg; min-width: 0;
+}
+.licence-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-5) * -1) 0; padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background-color: var(--wood-2); background-image: var(--tex-wood); color: var(--on-wood);
+  font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.16em; text-transform: uppercase;
+}
+.licence-no { font-family: var(--hand); font-size: 1.25rem; letter-spacing: 0.02em; text-transform: none; color: var(--on-wood-muted); }
+.guild-card-top { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; padding-top: var(--sp-2); }
+.guild-card-top .rank-plate { margin-left: auto; width: 4.2rem; height: 4.9rem; }
+.guild-card-top .rank-plate .plate-letter { font-size: 1.7rem; }
+.licence-portrait {
+  display: grid; place-items: center; flex: none; width: 4.6rem; height: 4.6rem; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--mh), var(--m) 70%);
+  box-shadow: 0 0 0 3px var(--m-gold), 0 0 0 6px var(--wood-2), 0 6px 12px var(--shade);
+  color: var(--on-m); font-family: var(--poster); font-size: 2.4rem; line-height: 1;
+}
+.guild-card-id { display: grid; gap: 0.05rem; min-width: 0; }
 .guild-card-label { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.16em; color: var(--ink-muted); }
-.guild-card-name { font-family: var(--serif); font-weight: 600; font-size: 1.6rem; line-height: 1.1; overflow-wrap: anywhere; }
+.guild-card-name { font-family: var(--hand); font-weight: 600; font-size: 2.1rem; line-height: 1; color: var(--ink-hand); overflow-wrap: anywhere; }
 .guild-card-title { font-family: var(--serif); font-style: italic; color: var(--ink-muted); }
 .guild-card-title .rank-name { font-style: normal; color: var(--wax-dark); margin-right: 0.2rem; }
-.ledger-strip { margin: 0; padding: 0; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
-.ledger-entry { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-1); }
-.ledger-entry + .ledger-entry { border-top: 1px dashed var(--border); }
-.ledger-entry dt { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
-.ledger-entry dd { margin: 0; font-family: var(--serif); font-variant-numeric: tabular-nums lining-nums; font-size: 1.5rem; font-weight: 600; color: var(--text); }
-.ledger-entry dd .stat-of { color: var(--text-muted); font-size: var(--fs-sm); font-weight: 400; }
+.licence-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin: 0; }
+.licence-stat { padding: var(--sp-2) var(--sp-3); border: 1px dashed var(--parch-2); border-radius: var(--radius); }
+.licence-stat dt { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-muted); }
+.licence-stat dd { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-family: var(--display); font-weight: 700; font-variant-numeric: tabular-nums lining-nums; font-size: 1.6rem; color: var(--ink); }
+.licence-stat .stat-of { color: var(--ink-muted); font-family: var(--serif); font-size: var(--fs-sm); font-weight: 400; }
+.coin { width: 1.2rem; height: 1.2rem; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, var(--m-gold-hi), var(--m-gold) 60%, var(--wood-2)); box-shadow: 0 0 0 2px var(--m-gold), 0 2px 3px var(--shade); }
+.licence-bar { display: grid; gap: 0.2rem; }
+.licence-bar .progress-label { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); }
+.guild-card .progress { height: 0.7rem; background: var(--parch-2); box-shadow: inset 0 1px 2px var(--shade); }
+.guild-card .progress::-webkit-progress-bar { background: var(--parch-2); }
 .progress-gold::-webkit-progress-value { background: linear-gradient(90deg, var(--m-gold), var(--m-gold-hi)); }
 .progress-gold::-moz-progress-bar { background: linear-gradient(90deg, var(--m-gold), var(--m-gold-hi)); }
-.guild-card .progress { background: var(--parch-2); }
-.guild-card .progress::-webkit-progress-bar { background: var(--parch-2); }
+.progress-board::-webkit-progress-value { background: linear-gradient(90deg, var(--wax-dark), var(--wax-hi)); }
+.progress-board::-moz-progress-bar { background: linear-gradient(90deg, var(--wax-dark), var(--wax-hi)); }
+.licence-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); margin: 0; font-family: var(--hand); font-size: 1.15rem; color: var(--ink-hand); }
+.licence-seal { width: 1.6rem; height: 1.6rem; border-radius: 47% 53% 50% 50% / 52% 46% 54% 48%; background: radial-gradient(circle at 36% 30%, var(--wax-hi), var(--wax) 55%, var(--wax-dark)); box-shadow: 0 0 0 2px var(--wax); rotate: -12deg; }
+@media (prefers-reduced-motion: no-preference) {
+  .hall-banner { animation: banner-sway 6s ease-in-out infinite alternate; }
+  .torch-flame { animation: torch-flicker 1.3s ease-in-out infinite alternate; }
+  .torch-right .torch-flame { animation-duration: 1.1s; animation-delay: -0.4s; }
+}
+@keyframes banner-sway { from { rotate: -0.6deg; } to { rotate: 0.6deg; } }
+@keyframes torch-flicker { 0% { scale: 1 1; opacity: 0.95; } 35% { scale: 0.92 1.08; opacity: 1; } 70% { scale: 1.06 0.94; opacity: 0.85; } 100% { scale: 0.96 1.04; opacity: 1; } }
+@media (max-width: 640px) {
+  .hall-stage { padding: var(--sp-5) var(--sp-4); margin-inline: calc(var(--sp-4) * -1); border-radius: 0; }
+  .torch { display: none; }
+  .hall-banner { width: calc(100% - 1.6rem); }
+  .guild-card { rotate: none; }
+}
 
 /* Quest in hand: a pinned note. */
 .continue-slip {
@@ -1836,7 +1964,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
   .brand-tag { display: none; }
 }
 @media (min-width: 900px) {
-  .hall-head { grid-template-columns: minmax(0, 1.25fr) minmax(19rem, 1fr); gap: var(--sp-7); }
+  .hall-stage { grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 1fr); gap: var(--sp-6); padding-inline: 4rem; }
 }
 @media (min-width: 1024px) {
   .dossier-body { grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--sp-6); }
@@ -2110,6 +2238,1018 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
   .welcome-gate { display: none; }
   .letter, .letter * { animation-delay: 0s !important; }
 }
+
+/* --- Guild controls in place of the browser's own (static/ui.js builds them; without JS the native ones stay) --- */
+/* Dropdowns: a plaque button and a parchment list. The native select stays in the form, hidden. */
+.pick { position: relative; min-width: 0; }
+.pick-native { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pick-button {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); width: 100%;
+  min-height: var(--tap); padding: 0 var(--sp-3); cursor: pointer; text-align: left;
+  font: inherit; color: var(--text); background-color: var(--sunken); background-image: var(--tex-paper);
+  border: 1px solid var(--border-input); border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 2px var(--shade);
+  transition: border-color var(--dur) var(--ease);
+}
+.pick-button:hover { border-color: var(--primary); }
+.pick-button::after {
+  content: ""; flex: none; width: 0.55rem; height: 0.55rem; margin-top: -0.25rem;
+  border-right: 2px solid var(--primary-text); border-bottom: 2px solid var(--primary-text); rotate: 45deg;
+  transition: rotate var(--dur) var(--ease), margin var(--dur) var(--ease);
+}
+.pick.is-open .pick-button::after { rotate: -135deg; margin-top: 0.25rem; }
+.pick-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pick-list {
+  --text: var(--ink); --text-muted: var(--ink-muted); --focus: var(--wax-dark);
+  position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); left: 0; min-width: 100%; max-height: 16rem; overflow-y: auto;
+  margin: 0; padding: var(--sp-1); list-style: none;
+  background-color: var(--parch); background-image: var(--tex-parch); color: var(--ink);
+  border: 1px solid var(--parch-2); border-radius: var(--radius); box-shadow: 0 0 0 3px var(--wood-2), var(--shadow);
+  transform-origin: 50% 0;
+}
+.pick-list:focus { outline: none; }
+.pick-list:focus-visible { box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--wax-dark), var(--shadow); }
+.pick-list [role="option"] {
+  display: flex; align-items: center; gap: var(--sp-2); min-height: 2.5rem; padding: 0 var(--sp-3) 0 var(--sp-5);
+  border-radius: var(--radius-sm); cursor: pointer; position: relative; white-space: nowrap;
+}
+.pick-list [role="option"].is-active { background: var(--parch-2); }
+.pick-list [role="option"][aria-selected="true"] { font-weight: 600; color: var(--wax-dark); }
+.pick-list [role="option"][aria-selected="true"]::before {
+  content: ""; position: absolute; left: var(--sp-2); top: 50%; width: 0.55rem; height: 0.55rem; translate: 0 -50%;
+  border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--wax-hi), var(--wax) 60%, var(--wax-dark));
+}
+.pick-list [aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+@media (prefers-reduced-motion: no-preference) {
+  .pick-list:not([hidden]) { animation: pick-drop 160ms var(--ease-swing); }
+}
+@keyframes pick-drop { from { opacity: 0; scale: 1 0.85; } }
+
+/* The guild's confirm popup: a parchment note with a seal; "coin" adds a gold coin for a paid whisper. */
+.confirm-dialog {
+  --text: var(--ink); --text-muted: var(--ink-muted); --focus: var(--wax-dark);
+  padding: 0; border: 0; border-radius: var(--radius); width: min(26rem, calc(100vw - 2rem));
+  background-color: var(--parch); background-image: radial-gradient(ellipse at 50% 40%, transparent 50%, var(--parch-2) 135%), var(--tex-parch);
+  color: var(--ink); box-shadow: 0 0 0 4px var(--wood-2), var(--shadow);
+}
+.confirm-dialog::backdrop { background: var(--shade); }
+.confirm-dialog[open] { animation: solve-in 240ms var(--ease-swing); }
+.confirm-slip { display: grid; justify-items: center; gap: var(--sp-3); padding: var(--sp-6) var(--sp-5) var(--sp-5); text-align: center; }
+.confirm-seal {
+  width: 3.4rem; height: 3.4rem; border-radius: 47% 53% 50% 50% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 36% 30%, var(--wax-hi), var(--wax) 52%, var(--wax-dark));
+  box-shadow: 0 0 0 4px var(--wax), 1px 3px 0 4px var(--wax-dark), var(--shadow-sm);
+}
+.confirm-dialog[data-kind="coin"] .confirm-seal {
+  border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--m-gold-hi), var(--m-gold) 60%, var(--wood-2));
+  box-shadow: 0 0 0 3px var(--m-gold), 0 4px 8px var(--shade);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .confirm-dialog[data-kind="coin"][open] .confirm-seal { animation: coin-spin 900ms ease-in-out; }
+}
+@keyframes coin-spin { 0% { scale: 0.2 1; } 30% { scale: 1 1; } 55% { scale: 0.15 1; } 100% { scale: 1 1; } }
+.confirm-title { margin: 0; font-family: var(--display); font-weight: 700; font-size: 1.25rem; letter-spacing: 0.04em; }
+.confirm-message { margin: 0; font-style: italic; color: var(--ink-muted); }
+.confirm-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); width: 100%; margin-top: var(--sp-2); }
+.confirm-actions .btn { flex: 1 1 9rem; }
+
+/* Form checks written in the guild's ink, under the field. */
+.ink-warning {
+  display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-1) 0 0;
+  color: var(--danger); font-style: italic; font-size: var(--fs-sm);
+}
+.ink-warning::before { content: "!"; display: inline-grid; place-items: center; flex: none; width: 1.2rem; height: 1.2rem; border-radius: 50%; border: 1.5px solid currentColor; font-style: normal; font-weight: 800; font-size: 0.75rem; }
+
+/* Scrollbars in wood. */
+html { scrollbar-color: var(--wood-3) var(--bg); }
+
+/* --- The Hall of Fame podium (leaderboard.ejs .hero-podium): each of the top three heroes stands on a metal plinth,
+   the champion tallest, under a laurel. --- */
+.hero-podium { gap: var(--sp-4); }
+.hero-podium > li { display: grid; justify-items: center; background: none; box-shadow: none; border-radius: 0; color: var(--on-metal); }
+.podium-hero {
+  position: relative; display: flex; justify-content: center; align-items: flex-end; width: 100%; height: 15rem; overflow: hidden;
+  background: radial-gradient(ellipse 55% 60% at 50% 88%, var(--av-hi), transparent 72%);
+}
+.leaderboard-top-1 .podium-hero { height: 20rem; padding-top: 3.2rem; }
+.podium-art { display: block; height: 100%; width: auto; max-width: 100%; object-fit: contain; object-position: 50% 100%; filter: drop-shadow(0 6px 10px var(--shade)); }
+/* The champion's crown sits on their head: each hero's head centre, measured on their portrait. */
+.podium-figure { position: relative; display: block; height: 100%; }
+.podium-crown {
+  position: absolute; z-index: 1; top: -2.3rem; left: var(--head-x, 50%); width: 3.4rem; height: 3.4rem; translate: -50% 0; rotate: -6deg;
+  fill: var(--m-gold-hi); stroke: var(--m-gold); stroke-width: 1; stroke-linejoin: round;
+  filter: drop-shadow(0 2px 2px var(--shade)) drop-shadow(0 0 10px var(--m-gold));
+}
+.podium-figure[data-hero="kael"] { --head-x: 49.8%; }
+.podium-figure[data-hero="seraphine"] { --head-x: 45.5%; }
+.podium-figure[data-hero="morrigan"] { --head-x: 53.4%; }
+.podium-figure[data-hero="vesper"] { --head-x: 52.5%; }
+.podium-figure[data-hero="lyra"] { --head-x: 48.9%; }
+.podium-figure[data-hero="faelan"] { --head-x: 43.8%; }
+.podium-figure[data-hero="rook"] { --head-x: 44.5%; }
+.podium-figure[data-hero="aeris"] { --head-x: 51.5%; }
+.podium-figure[data-hero="corin"] { --head-x: 42.5%; }
+.podium-figure[data-hero="elise"] { --head-x: 41.7%; }
+.podium-figure[data-hero="theo"] { --head-x: 46.1%; }
+.podium-figure[data-hero="roland"] { --head-x: 40%; }
+.podium-plinth {
+  position: relative; display: grid; justify-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-6) var(--sp-3) var(--sp-4);
+  border-radius: 10px 10px 4px 4px; text-align: center;
+  background: linear-gradient(170deg, var(--mh) 0%, var(--m) 45%, var(--m) 70%, var(--mh) 100%);
+  box-shadow: inset 0 2px 0 var(--sheen), inset 0 -4px 0 var(--shade), var(--shadow);
+}
+.leaderboard-top-1 .podium-plinth { padding-bottom: var(--sp-7); }
+.leaderboard-top-2 .podium-plinth { padding-bottom: var(--sp-6); }
+.hero-podium .podium-rank {
+  position: absolute; top: 0; left: 50%; translate: -50% -50%; display: grid; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: 50%;
+  font-size: 1.35rem; background: radial-gradient(circle at 35% 30%, var(--mh), var(--m) 60%, var(--wood-2) 140%);
+  box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--mh), 0 4px 8px var(--shade);
+}
+.hero-podium .podium-name { justify-content: center; font-size: 1.1rem; }
+.hero-podium .podium-stat { display: grid; justify-items: center; gap: 0.1rem; text-align: center; }
+.podium-gold { display: inline-flex; align-items: center; gap: var(--sp-1); font-family: var(--display); font-weight: 700; }
+.podium-gold b { display: inline; font-size: 1.5rem; }
+.podium-done { font-size: var(--fs-sm); }
+.leaderboard-me .podium-plinth { box-shadow: inset 0 2px 0 var(--sheen), inset 0 -4px 0 var(--shade), 0 0 0 3px var(--wax), var(--shadow); }
+.hero-podium .leaderboard-me .podium-name { text-decoration: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .podium-figure { animation: hero-idle 4.5s ease-in-out infinite alternate; }
+  .leaderboard-top-2 .podium-figure { animation-delay: -1.5s; }
+  .leaderboard-top-3 .podium-figure { animation-delay: -3s; }
+  .podium-crown { animation: crown-bob 2.4s ease-in-out infinite alternate; }
+}
+@media (max-width: 639px) {
+  .podium-hero { height: 12rem; }
+  .leaderboard-top-1 .podium-hero { height: 14rem; }
+}
+.table .ledger-who .avatar { --av-size: 2.6rem; }
+
+/* --- Adventurer portraits (core/views/avatar.ejs): the hero's face in a gold-rimmed medallion of their banner colour.
+   xl shows the whole hero. --- */
+[data-color="crimson"] { --av: var(--av-crimson); --av-hi: var(--av-crimson-hi); }
+[data-color="azure"] { --av: var(--av-azure); --av-hi: var(--av-azure-hi); }
+[data-color="emerald"] { --av: var(--av-emerald); --av-hi: var(--av-emerald-hi); }
+[data-color="amethyst"] { --av: var(--av-amethyst); --av-hi: var(--av-amethyst-hi); }
+[data-color="amber"] { --av: var(--av-amber); --av-hi: var(--av-amber-hi); }
+[data-color="onyx"] { --av: var(--av-onyx); --av-hi: var(--av-onyx-hi); }
+.avatar {
+  --av-size: 3rem;
+  position: relative; display: inline-block; flex: none; vertical-align: middle; overflow: hidden;
+  width: var(--av-size); height: var(--av-size); border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, var(--av-hi), var(--av) 60%, var(--wood-2) 130%);
+  box-shadow: 0 0 0 2px var(--m-gold), 0 0 0 3.5px var(--wood-2), 0 3px 6px var(--shade);
+}
+.av-face { display: block; width: 100%; height: 100%; object-fit: cover; }
+.av-sm { --av-size: 2rem; box-shadow: 0 0 0 1.5px var(--m-gold), 0 0 0 3px var(--wood-2); }
+.av-md { --av-size: 3rem; }
+.av-lg { --av-size: 4.8rem; box-shadow: 0 0 0 3px var(--m-gold), 0 0 0 5px var(--wood-2), 0 6px 12px var(--shade); }
+.av-xl { --av-size: 12rem; overflow: visible; border-radius: 0; background: none; box-shadow: none; height: auto; }
+.av-full { display: block; width: 100%; height: auto; }
+@media (prefers-reduced-motion: no-preference) {
+  .avatar.is-pop { animation: mira-pop 360ms var(--ease-swing); }
+}
+.account-menu .avatar { margin: -0.2rem 0; }
+.licence-avatar { flex: none; display: inline-flex; border-radius: 50%; transition: translate var(--dur) var(--ease); }
+.licence-avatar:hover { translate: 0 -2px; }
+.licence-avatar:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.ledger-who { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; vertical-align: middle; }
+
+/* --- Choose your avatar (range/views/adventurer.ejs): Mira, the chosen hero on a lit stage, and the roster. --- */
+.creator { display: grid; gap: var(--sp-6); margin-top: var(--sp-6); }
+.creator-stage { display: grid; gap: var(--sp-5); align-content: start; }
+.creator-mira { display: grid; grid-template-columns: minmax(0, 1fr) 8.5rem; align-items: end; gap: var(--sp-4); }
+.creator-mira .creator-mira-art { grid-column: 2; grid-row: 1; margin: 0; cursor: default; }
+.creator-mira .dialogue { grid-column: 1; grid-row: 1; margin-bottom: var(--sp-2); }
+.creator-mira .dialogue-text { min-height: calc(4 * 1.5em); font-size: var(--fs-md); }
+.hero-stage {
+  position: relative; isolation: isolate; display: grid; justify-items: center; margin: 0; padding: var(--sp-5) var(--sp-4) var(--sp-4);
+  min-height: 30rem; overflow: hidden; border-radius: var(--radius-lg);
+  background:
+    radial-gradient(ellipse 60% 55% at 50% 42%, var(--av-hi), transparent 70%),
+    radial-gradient(ellipse 80% 30% at 50% 100%, var(--shade), transparent 70%),
+    linear-gradient(180deg, var(--wood-2), var(--bg));
+  box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--m-gold), 0 0 0 8px var(--wood-2), var(--shadow);
+}
+.hero-stage-glow {
+  position: absolute; z-index: -1; left: 50%; bottom: 7rem; width: 70%; height: 2.4rem; translate: -50% 0; border-radius: 50%;
+  background: radial-gradient(ellipse, var(--av-hi), transparent 70%); opacity: 0.8;
+}
+.hero-stage-art { display: block; height: 24rem; width: auto; max-width: 100%; object-fit: contain; filter: drop-shadow(0 10px 14px var(--shade)); }
+.hero-stage-card {
+  --text: var(--ink);
+  position: relative; display: grid; justify-items: center; gap: var(--sp-1); width: min(100%, 26rem); margin-top: calc(var(--sp-6) * -1);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3); border-radius: var(--radius); text-align: center; color: var(--ink);
+  background-color: var(--parch); background-image: radial-gradient(ellipse at 50% 40%, transparent 50%, var(--parch-2) 140%), var(--tex-parch);
+  box-shadow: 0 0 0 2px var(--m-gold), var(--shadow);
+}
+.hero-stage-class { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--wax-dark); }
+.hero-stage-name { font-family: var(--poster); font-size: 2.2rem; line-height: 1; color: var(--ink); }
+.hero-stage-desc { max-width: 36ch; font-style: italic; color: var(--ink-muted); }
+.creator-form { display: grid; gap: var(--sp-5); min-width: 0; }
+.creator-step { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; gap: var(--sp-3); }
+.creator-step legend { display: flex; align-items: center; gap: var(--sp-3); padding: 0; margin-bottom: var(--sp-3); font-family: var(--display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: 0.04em; color: var(--text); }
+.creator-step .help { margin: 0; }
+.step-no {
+  display: inline-grid; place-items: center; flex: none; width: 2rem; height: 2rem; border-radius: 47% 53% 50% 50% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 36% 30%, var(--wax-hi), var(--wax) 55%, var(--wax-dark)); color: var(--on-wax);
+  font-family: var(--display); font-size: 0.8rem; box-shadow: 0 0 0 2px var(--wax);
+}
+.choice-input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; pointer-events: none; }
+.roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: var(--sp-3); }
+.hero-card { position: relative; display: block; cursor: pointer; min-width: 0; }
+.hero-face-card {
+  position: relative; display: grid; justify-items: center; gap: 0.1rem; padding: 0 0 var(--sp-3); overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius); text-align: center;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface));
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), translate var(--dur) var(--ease);
+}
+.hero-card-art {
+  display: block; width: 100%; height: 10.5rem; margin-bottom: var(--sp-2); overflow: hidden;
+  background: radial-gradient(ellipse at 50% 45%, var(--av-hi), var(--av) 55%, var(--wood-2) 120%);
+}
+.hero-card-art img { display: block; width: 100%; height: 160%; object-fit: cover; object-position: 50% 0; transition: scale 300ms var(--ease); transform-origin: 50% 20%; }
+.hero-card-name { font-family: var(--poster); font-size: 1.3rem; line-height: 1; color: var(--text); }
+.hero-card-class { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+.hero-card:hover .hero-face-card { translate: 0 -3px; border-color: var(--primary); }
+.hero-card:hover .hero-card-art img { scale: 1.06; }
+.choice-input:checked + .hero-face-card { border-color: var(--m-gold); box-shadow: 0 0 0 2px var(--m-gold), 0 0 22px var(--splash-glow); }
+.choice-input:checked + .hero-face-card .hero-card-name { color: var(--primary-text); }
+.choice-input:focus-visible + .hero-face-card { outline: 2px solid var(--focus); outline-offset: 3px; }
+.creator-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px dashed var(--border); }
+.creator-actions .btn { gap: var(--sp-2); }
+.creator-actions [hidden] { display: none; }
+.creator-skip { display: flex; justify-content: flex-end; margin-top: calc(var(--sp-4) * -1); }
+@media (prefers-reduced-motion: no-preference) {
+  .creator-mira .mira-stand { animation: mira-rise 700ms var(--ease-swing) 0.2s backwards; }
+  .creator-mira .dialogue { animation: dialogue-in 420ms var(--ease-swing) 0.55s backwards; }
+  .hero-stage-art { animation: hero-idle 4s ease-in-out infinite alternate; }
+  .hero-stage-art.is-pop { animation: hero-enter 420ms var(--ease-swing), hero-idle 4s ease-in-out 420ms infinite alternate; }
+  .hero-stage-glow { animation: gate-pulse 2.6s ease-in-out infinite alternate; }
+}
+@keyframes hero-idle { from { translate: 0 0; } to { translate: 0 -6px; } }
+@keyframes hero-enter { from { opacity: 0; translate: 24px 0; scale: 0.96; } }
+@media (min-width: 900px) {
+  .creator { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: start; }
+  .creator-stage { position: sticky; top: 5.5rem; }
+  .creator-skip { grid-column: 2; }
+}
+@media (max-width: 640px) {
+  .creator-mira { grid-template-columns: minmax(0, 1fr) 6rem; gap: var(--sp-2); }
+  .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-stage { min-height: 0; }
+  .hero-stage-art { height: 18rem; }
+  .creator-actions .btn { flex: 1 1 auto; }
+}
+
+/* --- Preboarding: a visual-novel scene. Mira stands at the right edge of the screen (she faces left, towards her
+   words), the dialogue box runs along the bottom over her waist, and the RPG choice menu appears once she has spoken. */
+.vn {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0;
+  border: 0; background: transparent; overflow: hidden; color: var(--text);
+}
+.vn::backdrop { background: linear-gradient(180deg, var(--shade), var(--scrim) 70%); }
+.vn-mira {
+  position: absolute; z-index: 1; bottom: 0; right: max(1rem, calc((100vw - 64rem) / 2));
+  height: min(82vh, 44rem); aspect-ratio: 560 / 628; pointer-events: none;
+}
+.vn-stack {
+  position: absolute; z-index: 2; left: 50%; bottom: var(--sp-5); translate: -50% 0;
+  width: min(64rem, calc(100vw - 2rem)); display: grid; gap: var(--sp-3);
+}
+.vn-box { min-height: 9.5rem; padding: var(--sp-6) var(--sp-6) var(--sp-5); }
+.vn-box .dialogue-text { font-size: 1.3rem; line-height: 1.55; min-height: calc(2 * 1.55em); cursor: pointer; }
+/* The choice menu: wooden plaques with a pointing marker, like an RPG's "what will you do?". */
+.vn-choices {
+  justify-self: start; display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-2) var(--sp-5); padding: 0; list-style: none;
+  transition: opacity 260ms var(--ease), translate 260ms var(--ease), visibility 0s linear 0s;
+}
+.vn:not(.is-ready) .vn-choices { opacity: 0; translate: 0 10px; visibility: hidden; transition: none; }
+.vn-choices form { margin: 0; }
+.vn-choice {
+  position: relative; display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-width: min(22rem, calc(100vw - 4rem));
+  min-height: var(--tap); padding: var(--sp-2) var(--sp-5) var(--sp-2) 2.6rem; cursor: pointer; text-align: left; text-decoration: none;
+  border: 1px solid var(--wood-3); border-radius: var(--radius-sm);
+  background-color: var(--wood-2); background-image: linear-gradient(90deg, var(--overlay-strong), transparent 70%), var(--tex-wood);
+  color: var(--on-wood); font-family: var(--display); font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.06em; text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px var(--shade), 0 4px 10px var(--shade);
+  transition: translate var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.vn-choice .icon { width: 1.1rem; height: 1.1rem; color: var(--m-gold-hi); }
+.vn-choice::before {
+  content: ""; position: absolute; left: 0.95rem; top: 50%; translate: 0 -50%; opacity: 0;
+  border-top: 0.42rem solid transparent; border-bottom: 0.42rem solid transparent; border-left: 0.6rem solid var(--m-gold-hi);
+  transition: opacity var(--dur) var(--ease), left var(--dur) var(--ease);
+}
+.vn-choice:hover, .vn-choice:focus-visible { translate: 6px 0; border-color: var(--m-gold); color: var(--m-gold-hi); outline: none; }
+.vn-choice:hover::before, .vn-choice:focus-visible::before { opacity: 1; }
+.vn-choice:focus-visible { box-shadow: 0 0 0 2px var(--m-gold-hi), 0 4px 10px var(--shade); }
+.vn-choice.is-main { border-color: var(--m-gold); }
+.preboarding .reception .mira-stand, .touring .reception .mira-stand { visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .vn[open] .vn-mira { animation: vn-enter 620ms var(--ease-swing) 80ms backwards; }
+  .vn[open] .vn-box { animation: dialogue-in 420ms var(--ease-swing) 380ms backwards; }
+  .vn[open]::backdrop { animation: tour-fade 360ms var(--ease); }
+  .vn-choice:hover::before, .vn-choice:focus-visible::before { animation: choice-nudge 0.7s ease-in-out infinite alternate; }
+}
+@keyframes vn-enter { from { opacity: 0; translate: 18% 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes choice-nudge { from { left: 0.95rem; } to { left: 1.25rem; } }
+@media (max-width: 640px) {
+  .vn-mira { right: -1.5rem; height: min(62vh, 30rem); }
+  .vn-stack { bottom: var(--sp-3); }
+  .vn-box { padding: var(--sp-5) var(--sp-4) var(--sp-4); }
+  .vn-box .dialogue-text { font-size: var(--fs-md); }
+  .vn-choices { justify-self: stretch; margin-left: 0; }
+  .vn-choice { min-width: 0; }
+}
+
+.rank-plate[data-plate="s"] .plate-metal, .rank-plate[data-plate="a"] .plate-metal { font-size: 0.46rem; letter-spacing: 0.04em; }
+/* --- The rank ladder (layout.ejs #rank-ladder): every rank from S down to E, the player's own name on each plate,
+   what they earned, where they stand and how far the next rungs are. Opened from any rank plate or seal. --- */
+.rank-plate-btn { padding: 0; font: inherit; cursor: pointer; transition: translate var(--dur) var(--ease), filter var(--dur) var(--ease); }
+.rank-plate-btn:hover { translate: 0 -3px; filter: brightness(1.1); }
+.rank-plate-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.rank-plate-btn::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(115deg, transparent 35%, var(--glint) 50%, transparent 65%) -150% 0 / 250% 100% no-repeat;
+}
+button.menu-rank { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+button.menu-rank:hover .rank-name { color: var(--primary-text); text-decoration: underline; }
+.rank-ladder {
+  padding: 0; border: 0; background: transparent; width: min(80rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem);
+  overflow: visible; color: var(--ink);
+}
+.rank-ladder::backdrop { background: var(--scrim); }
+/* A dusk sky over the guild's stairway; the steps rise from E on the left to S on the right. */
+.ladder-scroll {
+  position: relative; max-height: calc(100dvh - 2rem); overflow-y: auto; padding: var(--sp-6) var(--sp-6) 0;
+  border-radius: var(--radius-lg); color: var(--on-wood);
+  background:
+    radial-gradient(ellipse 45% 55% at 88% 18%, var(--m-adam-hi), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 15% 100%, var(--splash-glow), transparent 70%),
+    linear-gradient(180deg, var(--wood-2), var(--bg) 70%);
+  box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--m-gold), 0 0 0 8px var(--wood-2), var(--shadow);
+}
+.ladder-scroll::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.6;
+  background:
+    radial-gradient(circle, var(--glint) 0 1px, transparent 1.6px) 12% 14% / 9rem 7rem,
+    radial-gradient(circle, var(--glint) 0 1px, transparent 1.6px) 60% 30% / 13rem 9rem;
+}
+.ladder-close { position: absolute; z-index: 2; top: var(--sp-3); right: var(--sp-3); color: var(--on-wood-muted); }
+.ladder-head { position: relative; display: grid; justify-items: center; gap: var(--sp-1); text-align: center; }
+.ladder-eyebrow { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.2em; text-transform: uppercase; color: var(--m-gold-hi); }
+.ladder-title { margin: 0; font-family: var(--poster); font-weight: 400; font-size: clamp(2rem, 4vw, 3rem); line-height: 1.05; color: var(--on-wood); text-shadow: 0 0 18px var(--splash-glow), 0 3px 0 var(--wood-2); }
+.ladder-lead { margin: 0; max-width: 52ch; font-style: italic; color: var(--on-wood-muted); }
+.ladder-progress {
+  display: grid; grid-template-columns: auto minmax(8rem, 22rem) auto; align-items: center; gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-4); border-radius: 999px; background: var(--shade); box-shadow: inset 0 0 0 1px var(--wood-3);
+}
+.ladder-progress-now { display: inline-flex; align-items: center; gap: var(--sp-2); font-family: var(--display); font-weight: 700; color: var(--on-wood); }
+.ladder-progress-next { font-family: var(--display); font-size: var(--fs-sm); color: var(--m-gold-hi); }
+.ladder-bar { height: 0.6rem; }
+/* The stairway: one column per rank, each on a stone pillar a step taller than the last. */
+.ladder { position: relative; display: flex; flex-direction: row-reverse; align-items: flex-end; gap: var(--sp-3); margin: var(--sp-5) 0 0; padding: 0; list-style: none; }
+.ladder-rung { --h: 1; position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
+.ladder-rung[data-rank="D"] { --h: 2; }
+.ladder-rung[data-rank="C"] { --h: 3; }
+.ladder-rung[data-rank="B"] { --h: 4; }
+.ladder-rung[data-rank="A"] { --h: 5; }
+.ladder-rung[data-rank="S"] { --h: 6; }
+.rung-card {
+  --text: var(--ink); --text-muted: var(--ink-muted);
+  position: relative; display: grid; justify-items: center; gap: var(--sp-1); padding: var(--sp-4) var(--sp-2) var(--sp-3);
+  border-radius: var(--radius) var(--radius) 0 0; text-align: center; color: var(--ink);
+  background-color: var(--parch); background-image: radial-gradient(ellipse at 50% 30%, transparent 40%, var(--parch-2) 140%), var(--tex-parch);
+  box-shadow: 0 -2px 12px var(--shade);
+}
+.ladder-plate { width: 3.6rem; height: 4.2rem; }
+.ladder-plate .plate-letter { font-size: 1.6rem; }
+.ladder-rank-name { margin: var(--sp-1) 0 0; font-family: var(--poster); font-size: 1.35rem; line-height: 1; color: var(--ink); }
+.ladder-min { display: inline-flex; align-items: center; gap: var(--sp-1); margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-sm); color: var(--ink-muted); }
+.ladder-min .coin { width: 0.85rem; height: 0.85rem; }
+.rung-card .nameplate { max-width: 100%; font-size: 0.8rem; }
+.ladder-perk { margin: 0; font-style: italic; font-size: var(--fs-xs); line-height: 1.35; color: var(--ink-muted); }
+.ladder-state {
+  margin-top: var(--sp-1); padding: 0.2rem 0.6rem; border-radius: 999px; white-space: nowrap;
+  font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.08em; text-transform: uppercase;
+}
+.rung-pillar {
+  display: block; height: calc(var(--h) * 2.3rem); border-radius: 0 0 2px 2px;
+  background-color: var(--m-iron);
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 1.15rem, var(--shade) 1.15rem calc(1.15rem + 2px)),
+    repeating-linear-gradient(90deg, transparent 0 2.2rem, var(--shade) 2.2rem calc(2.2rem + 2px)),
+    linear-gradient(90deg, var(--shade), transparent 30%, transparent 70%, var(--shade)),
+    linear-gradient(180deg, var(--m-iron-hi), var(--m-iron) 30%, var(--wood-2));
+  box-shadow: inset 0 3px 0 var(--m), 0 0 18px var(--shade);
+}
+.ladder-rung[data-rank] .rung-pillar { --m: var(--m-iron-hi); }
+.ladder-rung[data-state="done"] .rung-pillar, .ladder-rung[data-state="here"] .rung-pillar { box-shadow: inset 0 3px 0 var(--m-gold-hi), 0 -6px 18px var(--splash-glow); }
+.ladder-rung[data-state="done"] .ladder-state { color: var(--ink-ok); border: 1px solid var(--ink-ok); }
+.ladder-rung[data-state="here"] .ladder-state { display: none; }
+.ladder-rung[data-state="here"] .rung-card { box-shadow: 0 0 0 3px var(--m-gold), 0 0 30px var(--splash-glow); }
+.ladder-rung[data-state="ahead"] .rung-card { filter: saturate(0.75); }
+.ladder-rung[data-state="ahead"] .ladder-plate { filter: saturate(0.6) brightness(0.92); }
+.ladder-rung[data-state="ahead"] .ladder-state { color: var(--ink-muted); border: 1px dashed var(--ink-muted); }
+.rung-you {
+  position: absolute; z-index: 2; left: 50%; top: -1.1rem; translate: -50% 0; padding: 0.25rem 0.8rem; border-radius: 999px; white-space: nowrap;
+  background: var(--wax); color: var(--on-wax); box-shadow: 0 0 0 2px var(--wax-dark), 0 4px 10px var(--shade);
+  font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.12em; text-transform: uppercase;
+}
+.rung-you::after { content: ""; position: absolute; left: 50%; bottom: -0.45rem; translate: -50% 0; border-left: 0.45rem solid transparent; border-right: 0.45rem solid transparent; border-top: 0.5rem solid var(--wax); }
+/* S: the summit, crowned in light. */
+.ladder-rung[data-rank="S"] .rung-card { background-image: radial-gradient(ellipse at 50% 10%, var(--m-adam-hi) -40%, transparent 60%), radial-gradient(ellipse at 50% 30%, transparent 40%, var(--parch-2) 140%), var(--tex-parch); box-shadow: 0 0 0 2px var(--m-adam-hi), 0 0 34px var(--m-adam-hi); }
+.ladder-rung[data-rank="S"] .ladder-rank-name { color: var(--m-adam); }
+.ladder-rung[data-rank="S"]::before {
+  content: ""; position: absolute; left: 15%; right: 15%; bottom: 100%; height: 3.5rem; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 100%, var(--m-gold-hi), transparent 70%); opacity: 0.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rank-plate-btn::after { animation: np-sheen-solo 4.5s ease-in-out infinite; }
+  .rank-ladder[open] .ladder-scroll { animation: dialogue-in 380ms var(--ease-swing); }
+  .rank-ladder[open] .ladder-rung { animation: rung-rise 560ms var(--ease-swing) backwards; animation-delay: calc(var(--h) * 70ms); }
+  .rung-you { animation: you-bob 1.1s ease-in-out infinite alternate; }
+  .ladder-rung[data-rank="S"]::before { animation: crown-glow 2.4s ease-in-out infinite alternate; }
+}
+@keyframes np-sheen-solo { 0%, 60% { background-position: -150% 0; } 100% { background-position: 250% 0; } }
+@keyframes crown-bob { from { translate: -50% 0; } to { translate: -50% -4px; } }
+@keyframes rung-rise { from { opacity: 0; translate: 0 40px; } }
+@keyframes you-bob { from { translate: -50% 0; } to { translate: -50% -5px; } }
+@keyframes crown-glow { from { opacity: 0.3; } to { opacity: 0.8; } }
+/* Phones: the stairway stands upright, S at the top. */
+@media (max-width: 760px) {
+  .ladder-scroll { padding: var(--sp-6) var(--sp-3) var(--sp-4); }
+  .ladder-progress { grid-template-columns: 1fr; border-radius: var(--radius); justify-items: center; }
+  .ladder { flex-direction: column; align-items: stretch; gap: var(--sp-4); }
+  .rung-pillar { display: none; }
+  .rung-card { border-radius: var(--radius); grid-template-columns: auto minmax(0, 1fr); justify-items: start; text-align: left; column-gap: var(--sp-3); }
+  .rung-card .ladder-plate { grid-row: span 5; align-self: center; }
+  .ladder-rung[data-rank="S"]::before { display: none; }
+  .rung-you { left: auto; right: var(--sp-3); translate: none; }
+  @media (prefers-reduced-motion: no-preference) { .rung-you { animation: none; } }
+}
+
+/* --- Nameplates (range/views/nameplate.ejs): the adventurer's name on a metal plate that grows grander with rank.
+   E copper and D iron are plain plates; C silver catches the light; B gold glows; A mithril pulses with a cool aura
+   and sparkles; S adamantite turns a ring of runes around itself and sheds embers. Motion only without reduced motion. */
+@property --np-spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.nameplate {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 0.45rem; vertical-align: middle;
+  min-width: 0; max-width: 100%; padding: 0.18rem 0.95rem 0.18rem 0.22rem;
+  border-radius: 999px 0.45rem 0.45rem 999px;
+  background: linear-gradient(180deg, var(--mh) -70%, var(--m) 40%, var(--m) 70%, var(--wood-2) 190%);
+  color: var(--on-m); font-family: var(--display); font-weight: 700; font-size: 0.95rem; letter-spacing: 0.04em; line-height: 1.2;
+  box-shadow: inset 0 1px 0 var(--glint), inset 0 -2px 0 var(--shade), 0 0 0 1.5px var(--wood-2), 0 2px 5px var(--shade);
+  overflow: visible;
+}
+.np-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-gem { flex: none; box-shadow: 0 0 0 1.5px var(--wood-2), 0 1px 2px var(--shade); }
+.np-aura { position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none; }
+.np-lg { font-size: 1.15rem; padding: 0.26rem 1.15rem 0.26rem 0.28rem; gap: 0.55rem; }
+.np-lg .np-gem { width: 1.9rem; height: 1.9rem; font-size: 0.8rem; }
+/* Rivets at the plate's tail (all ranks). */
+.nameplate::after {
+  content: ""; position: absolute; right: 0.32rem; top: 50%; width: 0.28rem; height: 0.28rem; translate: 0 -50%; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--mh), var(--wood-2)); box-shadow: 0 1px 1px var(--shade);
+}
+/* C and up: a sheen crossing the metal. */
+.nameplate[data-plate="c"], .nameplate[data-plate="b"], .nameplate[data-plate="a"], .nameplate[data-plate="s"] {
+  background:
+    linear-gradient(105deg, transparent 38%, var(--glint) 48%, transparent 58%) -150% 0 / 250% 100% no-repeat,
+    linear-gradient(180deg, var(--mh) -70%, var(--m) 40%, var(--m) 70%, var(--wood-2) 190%);
+}
+/* B gold: a gold rim and a warm glow. */
+.nameplate[data-plate="b"] { box-shadow: inset 0 1px 0 var(--glint), inset 0 -2px 0 var(--shade), 0 0 0 1.5px var(--wood-2), 0 0 0 3px var(--m-gold-hi), 0 0 12px var(--splash-glow); }
+.nameplate[data-plate="b"] .np-aura { inset: -5px; box-shadow: 0 0 14px 2px var(--m-gold); opacity: 0.55; }
+/* A mithril: a cool aura and sparkles. */
+.nameplate[data-plate="a"] { box-shadow: inset 0 1px 0 var(--glint), inset 0 -2px 0 var(--shade), 0 0 0 1.5px var(--wood-2), 0 0 0 3px var(--m-mithril-hi); }
+.nameplate[data-plate="a"] .np-aura { inset: -6px; box-shadow: 0 0 18px 4px var(--m-mithril); opacity: 0.7; }
+.nameplate[data-plate="a"]::before, .nameplate[data-plate="s"]::before {
+  content: ""; position: absolute; inset: -0.6rem -0.2rem; pointer-events: none;
+  background:
+    radial-gradient(circle, var(--mh) 0 1.5px, transparent 2.5px) 12% 70% / 6px 6px no-repeat,
+    radial-gradient(circle, var(--glint) 0 1px, transparent 2px) 34% 10% / 5px 5px no-repeat,
+    radial-gradient(circle, var(--mh) 0 1.5px, transparent 2.5px) 63% 88% / 6px 6px no-repeat,
+    radial-gradient(circle, var(--glint) 0 1px, transparent 2px) 86% 18% / 5px 5px no-repeat,
+    radial-gradient(circle, var(--mh) 0 1px, transparent 2px) 97% 62% / 5px 5px no-repeat;
+}
+/* S adamantite: a turning ring of runes in every metal of the guild, and embers. */
+.nameplate[data-plate="s"] { box-shadow: inset 0 1px 0 var(--glint), inset 0 -2px 0 var(--shade), 0 0 0 1.5px var(--wood-2), 0 0 18px 4px var(--m-adam-hi); }
+.nameplate[data-plate="s"] .np-aura {
+  inset: -2.5px;
+  background: conic-gradient(from var(--np-spin), var(--m-adam-hi), var(--m-mithril-hi) 25%, var(--m-gold-hi) 50%, var(--m-mithril-hi) 75%, var(--m-adam-hi));
+  padding: 2.5px;
+  -webkit-mask: linear-gradient(var(--ink) 0 0) content-box, linear-gradient(var(--ink) 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(var(--ink) 0 0) content-box exclude, linear-gradient(var(--ink) 0 0);
+}
+.nameplate[data-plate="s"]::before {
+  background:
+    radial-gradient(circle, var(--m-gold-hi) 0 1.5px, transparent 2.5px) 10% 80% / 6px 6px no-repeat,
+    radial-gradient(circle, var(--wax-hi) 0 1.5px, transparent 2.5px) 30% 0% / 6px 6px no-repeat,
+    radial-gradient(circle, var(--m-adam-hi) 0 2px, transparent 3px) 55% 95% / 7px 7px no-repeat,
+    radial-gradient(circle, var(--m-gold-hi) 0 1px, transparent 2px) 78% 8% / 5px 5px no-repeat,
+    radial-gradient(circle, var(--m-mithril-hi) 0 1.5px, transparent 2.5px) 95% 70% / 6px 6px no-repeat;
+}
+.nameplate[data-plate="s"] .np-name { text-shadow: 0 0 8px var(--m-adam-hi); }
+@media (prefers-reduced-motion: no-preference) {
+  .nameplate[data-plate="c"] { animation: np-sheen 5s ease-in-out infinite; }
+  .nameplate[data-plate="b"] { animation: np-sheen 3.6s ease-in-out infinite; }
+  .nameplate[data-plate="b"] .np-aura { animation: np-glow 2.4s ease-in-out infinite alternate; }
+  .nameplate[data-plate="a"] { animation: np-sheen 3s ease-in-out infinite; }
+  .nameplate[data-plate="a"] .np-aura { animation: np-glow 1.8s ease-in-out infinite alternate; }
+  .nameplate[data-plate="a"]::before { animation: np-twinkle 2.2s ease-in-out infinite; }
+  .nameplate[data-plate="s"] { animation: np-sheen 2.6s ease-in-out infinite; }
+  .nameplate[data-plate="s"] .np-aura { animation: np-spin 3.2s linear infinite, np-glow 1.6s ease-in-out infinite alternate; }
+  .nameplate[data-plate="s"]::before { animation: np-embers 2.4s ease-in infinite; }
+}
+@keyframes np-sheen { 0%, 55% { background-position: -150% 0, 0 0; } 100% { background-position: 250% 0, 0 0; } }
+@keyframes np-glow { from { opacity: 0.35; } to { opacity: 0.95; } }
+@keyframes np-spin { to { --np-spin: 360deg; } }
+@keyframes np-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+@keyframes np-embers { 0% { opacity: 0; translate: 0 6px; } 30% { opacity: 1; } 100% { opacity: 0; translate: 0 -10px; } }
+/* Where plates sit. */
+.guild-card-id .nameplate { justify-self: start; margin: 0.15rem 0 0.1rem; }
+th .nameplate { font-size: 0.85rem; }
+
+/* --- The gates (lab.ejs): one stone portal per threat level, its energy in the tier's colour. The chosen gate burns
+   bright and swirls; the others wait, dimmed, until hovered. A sealed gate carries a wax seal. --- */
+.gate-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)); gap: var(--sp-5); margin: var(--sp-4) 0 0; padding: 0; list-style: none; }
+.gate-row[data-count="1"] { grid-template-columns: minmax(0, 17rem); justify-content: center; }
+.gate { position: relative; --gate: var(--lv-acolyte); }
+.gate[data-level="templar"] { --gate: var(--lv-templar); }
+.gate[data-level="inquisitor"] { --gate: var(--lv-inquisitor); }
+.gate[data-level="divine"] { --gate: var(--lv-divine); }
+.gate-link {
+  position: relative; display: grid; justify-items: center; align-content: start; gap: var(--sp-1); width: 100%; height: 100%; padding: var(--sp-4) var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); text-align: center; text-decoration: none; color: var(--text);
+  background: radial-gradient(ellipse at 50% 32%, var(--overlay-strong), transparent 70%), var(--surface);
+  transition: translate var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.gate-link:hover { translate: 0 -4px; border-color: var(--gate); color: var(--text); }
+.gate-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.gate.is-current .gate-link { border-color: var(--gate); box-shadow: 0 0 0 1px var(--gate), 0 0 26px var(--splash-glow); }
+.gate-arch {
+  position: relative; display: block; width: min(100%, 9.5rem); aspect-ratio: 3 / 4; margin-bottom: var(--sp-2);
+  border-radius: 50% 50% 6px 6px / 36% 36% 6px 6px;
+  background-color: var(--m-iron);
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 1.5rem, var(--shade) 1.5rem calc(1.5rem + 2px)),
+    repeating-linear-gradient(0deg, transparent 0 1.15rem, var(--shade) 1.15rem calc(1.15rem + 2px)),
+    linear-gradient(180deg, var(--m-iron-hi), var(--m-iron) 55%, var(--wood-2));
+  box-shadow: inset 0 0 0 2px var(--wood-2), inset 0 6px 10px var(--sheen), 0 12px 18px var(--shade);
+}
+.gate-portal {
+  position: absolute; inset: 0.75rem 0.75rem 0.55rem; overflow: hidden; border-radius: 50% 50% 3px 3px / 36% 36% 3px 3px;
+  background: radial-gradient(ellipse at 50% 62%, var(--gate) 0%, var(--wood-2) 78%);
+  box-shadow: inset 0 0 20px var(--shade), inset 0 0 0 2px var(--wood-2);
+}
+.gate-swirl {
+  position: absolute; inset: -35%;
+  background: conic-gradient(from 0deg, transparent, var(--gate) 10%, transparent 24%, var(--glint) 30%, transparent 38%, var(--gate) 52%, transparent 66%, var(--gate) 80%, transparent);
+  opacity: 0.55; filter: blur(5px);
+}
+.gate-core {
+  position: absolute; left: 50%; top: 58%; width: 62%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+  background: radial-gradient(circle, var(--glint), var(--gate) 38%, transparent 70%); opacity: 0.75;
+}
+.gate-motes {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle, var(--glint) 0 1.5px, transparent 2.5px) 22% 80% / 8px 8px no-repeat,
+    radial-gradient(circle, var(--gate) 0 2px, transparent 3px) 70% 66% / 8px 8px no-repeat,
+    radial-gradient(circle, var(--glint) 0 1px, transparent 2px) 45% 90% / 6px 6px no-repeat,
+    radial-gradient(circle, var(--gate) 0 1.5px, transparent 2.5px) 82% 86% / 6px 6px no-repeat;
+}
+.gate-keystone {
+  position: absolute; left: 50%; top: -0.35rem; width: 1.3rem; height: 1.3rem; translate: -50% 0; rotate: 45deg;
+  background: linear-gradient(135deg, var(--m-gold-hi), var(--m-gold) 55%, var(--wood-2)); box-shadow: 0 0 0 2px var(--wood-2), 0 0 10px var(--gate);
+}
+.gate:not(.is-current) .gate-portal { filter: saturate(0.6) brightness(0.72); transition: filter var(--dur) var(--ease); }
+.gate:not(.is-current) .gate-link:hover .gate-portal { filter: none; }
+.gate-name { font-family: var(--poster); font-size: 1.45rem; line-height: 1.1; color: var(--text); }
+.gate-meaning { font-size: var(--fs-sm); color: var(--text-muted); max-width: 22ch; }
+.gate-reward { display: inline-flex; align-items: center; gap: var(--sp-1); margin-top: var(--sp-1); font-family: var(--display); font-weight: 700; color: var(--primary-text); }
+.gate-reward .coin { width: 0.9rem; height: 0.9rem; }
+.gate-chosen {
+  margin-top: var(--sp-1); padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--wax); color: var(--on-wax);
+  font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.1em; text-transform: uppercase;
+}
+.gate-seal { right: 0.3rem; top: 42%; width: 3.2rem; height: 3.2rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .gate-swirl { animation: gate-spin 9s linear infinite; }
+  .gate.is-current .gate-swirl { animation-duration: 4s; opacity: 0.8; }
+  .gate-core { animation: gate-pulse 2.4s ease-in-out infinite alternate; }
+  .gate.is-current .gate-motes { animation: gate-motes 2.2s ease-in infinite; }
+  .gate-link:hover .gate-swirl { animation-duration: 3s; }
+}
+@keyframes gate-spin { to { rotate: 360deg; } }
+@keyframes gate-pulse { from { opacity: 0.55; scale: 0.9; } to { opacity: 0.95; scale: 1.08; } }
+@keyframes gate-motes { 0% { translate: 0 6px; opacity: 0; } 30% { opacity: 1; } 100% { translate: 0 -40px; opacity: 0; } }
+
+/* --- NPC scenes: the merchant's stall and the Guildmaster's corner. Like Mira's counter: the dialogue box on the left,
+   the character on the right facing it. --- */
+.npc-scene {
+  position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, 14rem); align-items: end; gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-5) 0; border-radius: var(--radius-lg); overflow: hidden;
+  background-color: var(--wood-2);
+  background-image: radial-gradient(ellipse 40% 70% at 85% 40%, var(--splash-glow), transparent 70%), repeating-linear-gradient(90deg, transparent 0 7rem, var(--shade) 7rem calc(7rem + 3px)), var(--tex-wood);
+  box-shadow: inset 0 0 0 6px var(--wood), inset 0 0 50px var(--shade), var(--shadow);
+}
+.npc-scene .npc-box { grid-column: 1; grid-row: 1; margin-bottom: var(--sp-5); }
+.npc-scene .npc-talk { grid-column: 1; grid-row: 1; display: grid; gap: var(--sp-3); margin-bottom: var(--sp-5); min-width: 0; }
+.npc-talk .npc-box { margin-bottom: 0; }
+.npc-art { position: relative; z-index: 2; grid-column: 2; grid-row: 1; display: block; aspect-ratio: 560 / 584; width: 100%; }
+.npc-scene .counter { z-index: 3; }
+.shop-scene .npc-box { margin-bottom: 3.6rem; }
+.shop-scene .npc-art { margin-bottom: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .npc-art { animation: mira-rise 700ms var(--ease-swing) 0.15s backwards; }
+  .npc-box { animation: dialogue-in 420ms var(--ease-swing) 0.45s backwards; }
+}
+@media (max-width: 640px) {
+  .npc-scene { grid-template-columns: minmax(0, 1fr) 6.5rem; gap: var(--sp-2); padding: var(--sp-6) var(--sp-3) 0; }
+  .npc-art { width: 150%; margin-left: -25%; }
+}
+
+/* --- Magic scrolls (static/art/scroll-<kind>.webp): a wax-sealed parchment for Insight, a blue-bound scroll for
+   Revelation, a gold-and-violet relic for the Oracle. --- */
+.scroll-icon {
+  --sc: var(--av-azure-hi);
+  display: inline-block; flex: none; vertical-align: middle; width: 2.4rem; height: 3.2rem;
+  background: center / contain no-repeat;
+}
+.scroll-icon[data-kind="insight"] { --sc: var(--wax-hi); background-image: url("/static/art/scroll-insight.webp"); }
+.scroll-icon[data-kind="revelation"] { --sc: var(--av-azure-hi); background-image: url("/static/art/scroll-revelation.webp"); }
+.scroll-icon[data-kind="oracle"] { --sc: var(--m-gold-hi); background-image: url("/static/art/scroll-oracle.webp"); }
+.scroll-icon-sm { width: 1.3rem; height: 1.7rem; }
+.scroll-icon-lg { width: 7.5rem; height: 10rem; filter: drop-shadow(0 10px 10px var(--shade)) drop-shadow(0 0 10px var(--sc)); }
+@media (prefers-reduced-motion: no-preference) {
+  .scroll-icon-lg { animation: scroll-float 3s ease-in-out infinite alternate, scroll-glow 2.2s ease-in-out infinite alternate; }
+  .ware:hover .scroll-icon-lg { animation-duration: 1.4s, 1s; }
+}
+@keyframes scroll-float { from { translate: 0 0; rotate: -4deg; } to { translate: 0 -8px; rotate: 4deg; } }
+@keyframes scroll-glow { from { filter: drop-shadow(0 10px 10px var(--shade)) drop-shadow(0 0 4px var(--sc)); } to { filter: drop-shadow(0 10px 10px var(--shade)) drop-shadow(0 0 18px var(--sc)); } }
+
+/* --- The merchant's stall (shop.ejs). --- */
+.shop { display: grid; gap: var(--sp-5); margin-top: var(--sp-4); }
+.shop-purse {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3) var(--sp-5);
+  padding: var(--sp-3) var(--sp-5); border-radius: var(--radius);
+  background-color: var(--wood); background-image: var(--tex-wood); color: var(--on-wood); box-shadow: inset 0 0 0 1px var(--wood-3), var(--shadow-sm);
+}
+.purse-gold, .purse-bag { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.purse-gold strong { font-family: var(--display); font-size: var(--fs-xl); color: var(--m-gold-hi); }
+.purse-label { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--on-wood-muted); }
+.bag-item { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--shade); }
+.bag-item b { font-family: var(--display); color: var(--on-wood); }
+.wares { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--sp-5); margin: 0; padding: 0; list-style: none; }
+.ware {
+  position: relative; display: grid; justify-items: center; align-content: start; gap: var(--sp-2); padding: 0 var(--sp-5) var(--sp-5);
+  border-radius: var(--radius); text-align: center; box-shadow: inset 0 0 0 1px var(--parch-2), var(--shadow);
+}
+.ware-shelf {
+  display: grid; place-items: center; width: calc(100% + 2 * var(--sp-5)); height: 11.5rem; margin-bottom: var(--sp-2);
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: linear-gradient(180deg, transparent 78%, var(--wood-3) 78%, var(--wood-2) 86%, transparent 86%), radial-gradient(ellipse at 50% 60%, var(--splash-glow), transparent 70%), var(--wood-2);
+}
+.ware-name { margin: 0; font-family: var(--poster); font-weight: 400; font-size: 1.55rem; line-height: 1.1; color: var(--ink); }
+.ware-tier { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--wax-dark); }
+.ware-what { margin: 0; font-style: italic; color: var(--ink-muted); }
+.ware-price { display: inline-flex; align-items: center; gap: var(--sp-2); margin: var(--sp-1) 0 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-xl); color: var(--ink); }
+.ware-owned { margin: 0; font-size: var(--fs-sm); color: var(--ink-muted); }
+.ware form { width: 100%; margin-top: var(--sp-2); }
+.ware.is-needed { box-shadow: inset 0 0 0 1px var(--parch-2), 0 0 0 3px var(--m-gold), 0 0 26px var(--splash-glow); }
+.ware.is-bought .ware-owned { color: var(--ink-ok); font-weight: 700; }
+.shop-note { margin: 0; font-size: var(--fs-sm); font-style: italic; color: var(--text-muted); text-align: center; }
+.shop-back { margin: 0; text-align: center; }
+.shop-back .btn { gap: var(--sp-2); }
+
+/* --- The Guildmaster's counsel (lab.ejs). --- */
+.counsel { display: grid; gap: var(--sp-4); }
+.counsel-list { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
+.counsel-item { border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--parch-2), var(--shadow-sm); }
+.counsel-locked, .counsel-heard { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--sp-1) var(--sp-4); padding: var(--sp-3) var(--sp-4); }
+.counsel-locked .scroll-icon, .counsel-heard .scroll-icon { grid-row: span 2; }
+.counsel-tier { margin: 0; font-family: var(--display); font-weight: 700; letter-spacing: 0.04em; color: var(--ink); }
+.counsel-tier .badge { margin-left: var(--sp-2); }
+.counsel-what { margin: 0; font-style: italic; color: var(--ink-muted); }
+.counsel-form { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.counsel-form .btn { gap: var(--sp-2); }
+.counsel-heard .hint-text { margin: 0; grid-column: 2; font-size: var(--fs-md); line-height: 1.6; color: var(--ink); }
+.counsel-item:has(.counsel-heard) { box-shadow: inset 0 0 0 1px var(--ink-ok), var(--shadow-sm); }
+
+/* --- The quest page as a scene (lab.ejs): poster, gates (or the lone gate on the poster), then the camp: the
+   Guildmaster's corner on the left, the expedition desk (quest panel + Mira's claim desk) on the right. --- */
+.quest-hero { margin-bottom: var(--sp-6); }
+.gates { margin-bottom: var(--sp-6); }
+.gates-head { display: grid; gap: var(--sp-1); }
+.gates-head .panel-lead { margin: 0; }
+.quest-camp { display: grid; gap: var(--sp-6); align-items: start; }
+.quest-desk { display: grid; gap: var(--sp-5); min-width: 0; }
+@media (min-width: 960px) {
+  .quest-camp { grid-template-columns: minmax(0, 1.55fr) minmax(19rem, 1fr); }
+  .quest-desk { position: sticky; top: 5rem; }
+}
+
+/* The lone gate: a quest with one threat level wears it on its poster, an iron plaque glowing in the tier's colour. */
+.lone-gate { --gate: var(--lv-inquisitor); }
+.lone-gate[data-level="acolyte"] { --gate: var(--lv-acolyte); }
+.lone-gate[data-level="templar"] { --gate: var(--lv-templar); }
+.lone-gate[data-level="divine"] { --gate: var(--lv-divine); }
+.quest-hero.is-single .lab-hero-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.lone-gate {
+  position: relative; display: grid; justify-items: center; gap: var(--sp-1); width: 15rem; padding: var(--sp-5) var(--sp-4) var(--sp-4);
+  border-radius: var(--radius-lg); text-align: center; text-decoration: none; rotate: 1.5deg;
+  background: radial-gradient(ellipse at 50% 20%, var(--gate) -40%, transparent 65%), var(--wood-2);
+  color: var(--on-wood); box-shadow: 0 0 0 2px var(--m-gold), 0 0 0 5px var(--wood-2), 0 0 26px var(--gate), var(--shadow);
+  transition: rotate var(--dur) var(--ease), translate var(--dur) var(--ease);
+}
+.lone-gate:hover { rotate: 0deg; translate: 0 -3px; color: var(--on-wood); }
+.lone-gate:focus-visible { outline: 2px solid var(--focus); outline-offset: 5px; }
+.lone-sigil {
+  display: grid; place-items: center; width: 4.2rem; height: 4.2rem; margin-top: -3rem; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--gate), var(--wood-2) 80%); box-shadow: 0 0 0 3px var(--m-gold), 0 0 0 6px var(--wood-2), 0 0 22px var(--gate);
+}
+.lone-sigil .icon { width: 2.1rem; height: 2.1rem; color: var(--on-wood); stroke-width: 1.4; }
+.lone-kicker { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.18em; text-transform: uppercase; color: var(--m-gold-hi); }
+.lone-name { font-family: var(--poster); font-size: 2.2rem; line-height: 1; color: var(--gate); text-shadow: 0 0 14px var(--gate); }
+.lone-meaning { font-size: var(--fs-sm); color: var(--on-wood-muted); }
+.lone-reward { display: inline-flex; align-items: center; gap: var(--sp-1); font-family: var(--display); font-weight: 700; font-size: var(--fs-lg); color: var(--m-gold-hi); }
+.lone-note { margin-top: var(--sp-1); font-style: italic; font-size: var(--fs-xs); color: var(--on-wood-muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .lone-gate { animation: lone-aura 2.6s ease-in-out infinite alternate; }
+}
+@keyframes lone-aura { from { box-shadow: 0 0 0 2px var(--m-gold), 0 0 0 5px var(--wood-2), 0 0 12px var(--gate), var(--shadow); } to { box-shadow: 0 0 0 2px var(--m-gold-hi), 0 0 0 5px var(--wood-2), 0 0 34px var(--gate), var(--shadow); } }
+@media (max-width: 720px) {
+  .quest-hero.is-single .lab-hero-head { grid-template-columns: minmax(0, 1fr); }
+  .lone-gate { width: 100%; rotate: none; margin-top: var(--sp-6); }
+}
+
+/* The Guildmaster's corner: his choices under his words, then the panel he opens (the brief or the scrolls). */
+.counsel { display: grid; gap: var(--sp-4); min-width: 0; }
+.gm-choices { justify-self: start; margin: 0; }
+.gm-choices[hidden] { display: none; }
+.gm-choices .vn-choice { min-width: min(20rem, 100%); }
+.vn-choice.is-chosen { border-color: var(--m-gold); color: var(--m-gold-hi); }
+.vn-choice.is-chosen::before { opacity: 1; }
+.gm-panel { display: grid; gap: var(--sp-3); padding: var(--sp-5); border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--parch-2), var(--shadow); }
+.gm-panel[hidden] { display: none; }
+.gm-panel-title {
+  display: flex; align-items: center; gap: var(--sp-2); margin: 0;
+  font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--wax-dark);
+}
+.gm-panel .brief { font-style: normal; font-size: var(--fs-md); line-height: 1.7; color: var(--ink); }
+.gm-none { margin: 0; font-style: italic; color: var(--ink-muted); }
+.gm-scrolls .counsel-list { gap: var(--sp-2); }
+.gm-scrolls .counsel-item { box-shadow: none; }
+.gm-scrolls .counsel-heard { padding: var(--sp-3) var(--sp-4); border: 1px solid var(--ink-ok); border-radius: var(--radius); background: var(--sheen); }
+.counsel-form { display: grid; gap: var(--sp-1); margin: 0; }
+.scroll-offer {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); width: 100%;
+  padding: var(--sp-3) var(--sp-4); border: 1px solid var(--parch-2); border-radius: var(--radius); cursor: pointer; text-align: left;
+  font: inherit; color: var(--ink); background: linear-gradient(90deg, var(--sheen), transparent 80%);
+  transition: border-color var(--dur) var(--ease), translate var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.scroll-offer:hover:not(:disabled) { border-color: var(--m-gold); translate: 4px 0; box-shadow: 0 0 0 1px var(--m-gold), 0 0 16px var(--splash-glow); }
+.scroll-offer:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.scroll-offer:disabled { cursor: not-allowed; opacity: 0.6; }
+.scroll-icon-md { width: 2.8rem; height: 3.7rem; }
+.offer-body { display: grid; gap: 0.1rem; min-width: 0; }
+.offer-name { font-family: var(--poster); font-size: 1.25rem; line-height: 1.1; color: var(--ink); }
+.offer-what { font-size: var(--fs-sm); font-style: italic; color: var(--ink-muted); }
+.offer-count {
+  padding: 0.15rem 0.6rem; border-radius: 999px; white-space: nowrap; border: 1px solid var(--ink-muted);
+  font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+}
+.counsel-form:not(.is-empty) .offer-count { border-color: var(--ink-ok); color: var(--ink-ok); }
+.offer-buy { justify-self: end; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.1em; text-transform: uppercase; color: var(--wax-dark); }
+@media (prefers-reduced-motion: no-preference) {
+  .gm-panel.is-shown { animation: dialogue-in 360ms var(--ease-swing); }
+}
+@media (max-width: 640px) {
+  .scroll-offer { grid-template-columns: auto minmax(0, 1fr); }
+  .offer-count { grid-column: 2; justify-self: start; }
+}
+
+/* The client's request: a scroll on two wooden rods that rolls open when the Guildmaster tells it; the ink settles in,
+   a drop cap opens the letter and the client's wax seal closes it. */
+@property --unroll { syntax: "<percentage>"; inherits: true; initial-value: 100%; }
+.gm-brief {
+  --unroll: 100%;
+  position: relative; margin: 0 1rem; padding: 2.6rem 2.2rem 2.8rem; border-radius: 2px;
+  clip-path: inset(0 -3rem calc(100% - var(--unroll)) -3rem);
+  box-shadow: inset 0 0 0 1px var(--parch-2), inset 0 14px 18px -12px var(--shade), inset 0 -14px 18px -12px var(--shade), var(--shadow);
+}
+.gm-brief::before, .gm-brief::after {
+  content: ""; position: absolute; left: -1.1rem; right: -1.1rem; height: 1.15rem; border-radius: 999px;
+  background:
+    radial-gradient(circle at 0.55rem 50%, var(--m-gold-hi), var(--m-gold) 0.4rem, transparent 0.45rem),
+    radial-gradient(circle at calc(100% - 0.55rem) 50%, var(--m-gold-hi), var(--m-gold) 0.4rem, transparent 0.45rem),
+    linear-gradient(180deg, var(--wood-3), var(--wood) 55%, var(--wood-2));
+  box-shadow: 0 3px 6px var(--shade);
+}
+.gm-brief::before { top: -0.3rem; }
+.gm-brief::after { top: calc(var(--unroll) - 0.85rem); }
+.gm-brief .gm-panel-title { justify-content: center; font-size: var(--fs-xs); }
+.gm-brief .brief { font-size: var(--fs-lg); line-height: 1.75; }
+.gm-brief .brief::first-letter { font-family: var(--poster); font-size: 1.9em; line-height: 0.9; color: var(--wax-dark); }
+.brief-seal {
+  position: absolute; right: 1.4rem; bottom: 1.1rem; width: 2.6rem; height: 2.6rem; rotate: -12deg;
+  border-radius: 47% 53% 50% 50% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 36% 30%, var(--wax-hi), var(--wax) 55%, var(--wax-dark)); box-shadow: 0 0 0 3px var(--wax), 1px 3px 0 3px var(--wax-dark);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gm-brief.is-shown { animation: brief-unroll 950ms cubic-bezier(0.3, 0.7, 0.2, 1); }
+  .gm-brief.is-shown .brief { animation: ink-settle 700ms ease 650ms backwards; }
+  .gm-brief.is-shown .brief-seal { animation: seal-stamp 420ms var(--ease-swing) 1.05s backwards; }
+}
+@keyframes brief-unroll { from { --unroll: 7%; } to { --unroll: 100%; } }
+@keyframes ink-settle { from { opacity: 0; filter: blur(2px); } to { opacity: 1; filter: none; } }
+
+/* Mira at the claim desk: her line in a bubble, leaning on the wooden desk. */
+.desk-talk {
+  display: grid; grid-template-columns: minmax(0, 1fr) 6.5rem; align-items: end; gap: var(--sp-2);
+  margin: calc(var(--sp-5) * -1) calc(var(--sp-5) * -1) var(--sp-4); padding: var(--sp-4) var(--sp-4) 0;
+  border-bottom: 6px solid var(--wood-3); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: radial-gradient(ellipse at 85% 60%, var(--splash-glow), transparent 65%), var(--wood-2);
+}
+.desk-say { position: relative; align-self: center; margin-bottom: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--radius); }
+.desk-say::after { content: ""; position: absolute; right: -0.55rem; top: 50%; translate: 0 -50%; border-top: 0.5rem solid transparent; border-bottom: 0.5rem solid transparent; border-left: 0.6rem solid var(--parch); }
+.desk-say-name { margin: 0; font-family: var(--poster); font-size: 1.1rem; line-height: 1; color: var(--wax-dark); }
+.desk-say-text { margin: var(--sp-1) 0 0; min-height: calc(2 * 1.45em); line-height: 1.45; color: var(--ink); }
+.desk-mira { position: relative; display: block; aspect-ratio: 560 / 687; width: 100%; margin-bottom: -6px; }
+.desk-title { margin: 0 0 var(--sp-3); font-family: var(--display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: 0.04em; color: var(--on-wood); }
+.claim-desk .claim-form { display: grid; gap: var(--sp-2); }
+.claim-desk .claim-form .btn { gap: var(--sp-2); }
+
+/* --- Mira, the guild receptionist (static/art/mira-*.webp; static/ui.js voices her) --- */
+/* The RPG dialogue box: parchment in a wood-and-gold frame, a wax name ribbon, a bobbing "more" arrow. */
+.dialogue {
+  position: relative; z-index: 4; display: grid; gap: var(--sp-2); min-width: 0;
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--m-gold), 0 0 0 8px var(--wood-2), var(--shadow);
+}
+.dialogue::before {
+  content: ""; position: absolute; inset: 6px; z-index: 0; pointer-events: none; border: 1px solid var(--parch-2); border-radius: 3px;
+  background:
+    radial-gradient(circle at 0 0, var(--m-gold) 0 4px, transparent 4.5px),
+    radial-gradient(circle at 100% 0, var(--m-gold) 0 4px, transparent 4.5px),
+    radial-gradient(circle at 0 100%, var(--m-gold) 0 4px, transparent 4.5px),
+    radial-gradient(circle at 100% 100%, var(--m-gold) 0 4px, transparent 4.5px);
+}
+.dialogue > * { position: relative; z-index: 1; }
+.dialogue > .dialogue-name, .dialogue > .dialogue-more { position: absolute; }
+.dialogue-name {
+  position: absolute; top: 0; right: var(--sp-4); translate: 0 -60%; z-index: 2;
+  display: flex; align-items: baseline; gap: var(--sp-2); margin: 0; padding: 0.3rem var(--sp-4) 0.35rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, var(--wax-hi) -40%, var(--wax) 45%, var(--wax-dark));
+  box-shadow: 0 0 0 2px var(--wax-dark), 0 3px 6px var(--shade);
+  color: var(--on-wax); white-space: nowrap;
+}
+.dialogue-speaker { font-family: var(--poster); font-size: 1.35rem; line-height: 1; letter-spacing: 0.02em; }
+.dialogue-role { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; }
+.dialogue-text {
+  margin: 0; min-height: calc(3 * 1.5em); line-height: 1.5;
+  font-family: var(--serif); font-size: var(--fs-lg); color: var(--ink); cursor: default;
+}
+.dialogue-text.is-typing { cursor: pointer; }
+/* Typed letters (static/ui.js typewriter): laid out hidden, revealed one by one; each pops in where motion is allowed. */
+.tw-word { display: inline-block; white-space: nowrap; }
+.tw-ch { display: inline-block; visibility: hidden; white-space: pre; }
+.tw-ch.on { visibility: visible; }
+@media (prefers-reduced-motion: no-preference) {
+  .dialogue-text.is-typing .tw-ch.on { animation: ch-in 240ms var(--ease-swing); }
+}
+@keyframes ch-in { 0% { opacity: 0; translate: 0 0.45em; scale: 0.5; } 60% { opacity: 1; } 100% { opacity: 1; translate: 0 0; scale: 1; } }
+.dialogue-more {
+  position: absolute; right: var(--sp-4); bottom: var(--sp-3); z-index: 2; width: 0; height: 0;
+  border-left: 0.45rem solid transparent; border-right: 0.45rem solid transparent; border-top: 0.55rem solid var(--wax);
+  pointer-events: none;
+}
+.dialogue-text.is-typing ~ .dialogue-more { opacity: 0; }
+.dialogue-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: flex-end; padding-right: var(--sp-5); }
+.dialogue-actions[hidden] { display: none; }
+.dialogue-actions .btn { gap: var(--sp-1); }
+.dialogue-text:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The reception counter: Mira leans over a wooden counter at the foot of the hall, her dialogue box beside her. */
+.reception {
+  position: relative; z-index: 2; grid-column: 1 / -1;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(8rem, 15rem); align-items: end; gap: var(--sp-5);
+  margin: var(--sp-2) calc(var(--sp-5) * -1) calc(var(--sp-6) * -1); padding: 0 var(--sp-5) var(--sp-5);
+}
+.mira-stand {
+  position: relative; z-index: 2; display: block; align-self: end; aspect-ratio: 560 / 690; width: 100%;
+  margin: 0 0 calc(var(--sp-5) * -1); padding: 0; border: 0; background: none; cursor: pointer;
+  transform-origin: 50% 100%;
+}
+.mira-stand:focus { outline: none; }
+.mira-art {
+  position: absolute; left: 0; bottom: 0; display: block; width: 100%; height: 100%;
+  object-fit: contain; object-position: 50% 100%;
+  filter: drop-shadow(0 6px 10px var(--shade)); transform-origin: 50% 100%;
+  -webkit-user-drag: none; user-select: none;
+}
+.counter {
+  position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; height: 3.4rem; pointer-events: none;
+  background-color: var(--wood); background-image: linear-gradient(180deg, var(--wood-3) 0 0.55rem, var(--wood-2) 0.55rem 0.8rem, transparent 0.8rem), var(--tex-wood);
+  box-shadow: 0 -4px 10px var(--shade), inset 0 -10px 18px var(--shade);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.counter::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--sheen); }
+.reception .dialogue { margin-bottom: var(--sp-3); grid-column: 1; grid-row: 1; }
+.reception .mira-stand { grid-column: 2; grid-row: 1; }
+@media (min-width: 900px) { .reception { margin-inline: -4rem; padding-inline: 4rem; grid-template-columns: minmax(0, 1fr) 15rem; } }
+@media (max-width: 640px) {
+  .reception .mira-stand { margin-bottom: -0.4rem; width: 135%; margin-left: -0.4rem; }
+  .reception { grid-template-columns: minmax(0, 1fr) 7rem; gap: var(--sp-3); margin-inline: calc(var(--sp-4) * -1); padding-inline: var(--sp-3); margin-bottom: calc(var(--sp-5) * -1); }
+  .reception .dialogue { padding: var(--sp-5) var(--sp-3) var(--sp-3); }
+  .dialogue-text { font-size: var(--fs-md); min-height: calc(4 * 1.5em); }
+  .dialogue-role { display: none; }
+  .dialogue-actions { justify-content: stretch; padding-right: 0; }
+  .dialogue-actions .btn { flex: 1 1 auto; }
+  .counter { height: 2.6rem; border-radius: 0; }
+}
+
+/* Mira in the popups: a round portrait and a speech bubble (whisper confirm, flag result). */
+.mira-line { display: flex; flex-direction: row-reverse; align-items: center; gap: var(--sp-3); width: 100%; text-align: left; }
+.mira-cameo {
+  flex: none; width: 4.6rem; height: 4.6rem; border-radius: 50%; object-fit: cover; object-position: 50% 12%;
+  background: radial-gradient(circle at 50% 40%, var(--parch), var(--parch-2));
+  box-shadow: 0 0 0 3px var(--m-gold), 0 0 0 5px var(--wood-2), var(--shadow-sm);
+}
+.mira-say {
+  position: relative; flex: 1 1 auto; margin: 0; padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius); background: var(--parch-2); color: var(--ink);
+  font-family: var(--serif); font-style: italic; line-height: 1.4;
+}
+.mira-say[hidden] { display: none; }
+.mira-say::before { content: ""; position: absolute; right: -0.5rem; top: 50%; translate: 0 -50%; border-top: 0.45rem solid transparent; border-bottom: 0.45rem solid transparent; border-left: 0.55rem solid var(--parch-2); }
+.mira-say-name { display: block; font-family: var(--poster); font-style: normal; font-size: 1.05rem; color: var(--wax-dark); }
+.solve-mira-line { justify-content: center; }
+.solve-mira-line:has(.mira-say:not([hidden])) { justify-content: flex-end; }
+
+/* The guild tour: the page dims, a gold-ringed spotlight follows each stop, Mira's box moves out of its way. */
+.tour {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0;
+  border: 0; background: transparent; overflow: hidden; color: var(--text);
+}
+.tour::backdrop { background: transparent; }
+.tour-spot {
+  position: absolute; left: 0; top: 0; width: var(--spot-w, 0px); height: var(--spot-h, 0px);
+  translate: var(--spot-x, 50vw) var(--spot-y, 50vh);
+  border-radius: var(--radius-lg); pointer-events: none;
+  box-shadow: 0 0 0 3px var(--m-gold), 0 0 24px 6px var(--splash-glow), 0 0 0 200vmax var(--scrim);
+}
+.tour.is-open-floor .tour-spot { width: 0; height: 0; translate: 50vw 45vh; box-shadow: 0 0 0 200vmax var(--scrim); }
+.tour-box {
+  position: absolute; left: 50%; bottom: var(--sp-5); translate: -50% 0; width: min(46rem, calc(100vw - 2rem));
+  display: grid; grid-template-columns: minmax(0, 1fr) 10rem; align-items: end; gap: var(--sp-4);
+}
+.tour-box .tour-mira { grid-column: 2; grid-row: 1; }
+.tour-box .tour-dialogue { grid-column: 1; grid-row: 1; }
+.tour.box-top .tour-box { bottom: auto; top: var(--sp-5); }
+.tour-mira { position: relative; aspect-ratio: 560 / 690; width: 100%; margin-bottom: calc(var(--sp-3) * -1); }
+.tour-count { margin-left: var(--sp-2); font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.1em; opacity: 0.85; }
+.tour-dialogue .dialogue-actions .btn-ghost { margin-right: auto; color: var(--wax-dark); }
+.tour-dialogue .dialogue-actions [hidden] { display: none; }
+@media (max-width: 640px) {
+  .tour-box { grid-template-columns: minmax(0, 1fr) 5.5rem; gap: var(--sp-2); bottom: var(--sp-3); }
+  .tour.box-top .tour-box { top: var(--sp-3); }
+  .tour-count { display: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* She breathes while idle, bobs while talking, and pops into each new pose. */
+  .mira-art { animation: mira-breathe 4.2s ease-in-out infinite; }
+  .mira-art.is-talking { animation: mira-breathe 4.2s ease-in-out infinite, mira-talk 0.26s ease-in-out infinite alternate; }
+  .mira-art.is-pop { animation: mira-pop 360ms var(--ease-swing), mira-breathe 4.2s ease-in-out infinite 360ms; }
+  .mira-art.is-pop.is-talking { animation: mira-pop 360ms var(--ease-swing), mira-talk 0.26s ease-in-out infinite alternate 360ms; }
+  .mira-stand:hover .mira-art { filter: drop-shadow(0 6px 10px var(--shade)) drop-shadow(0 0 10px var(--splash-glow)); }
+  /* Arrival: she rises from behind the counter, then her box unfolds. */
+  .reception .mira-stand { animation: mira-rise 700ms var(--ease-swing) 0.35s backwards; }
+  .reception .dialogue { animation: dialogue-in 420ms var(--ease-swing) 0.75s backwards; }
+  .splash-done .reception .mira-stand { animation-delay: 0.15s; }
+  .splash-done .reception .dialogue { animation-delay: 0.5s; }
+  :root:not(.splash-done) .reception .mira-stand { animation-delay: 1.9s; }
+  :root:not(.splash-done) .reception .dialogue { animation-delay: 2.3s; }
+  .dialogue-more { animation: more-bob 0.8s ease-in-out infinite alternate; }
+  .tour[open] .tour-spot { transition: translate 380ms var(--ease), width 380ms var(--ease), height 380ms var(--ease); }
+  .tour[open] { animation: tour-fade 260ms var(--ease); }
+  .tour-box.is-step .tour-dialogue { animation: dialogue-in 300ms var(--ease-swing); }
+  .tour[open] .tour-mira { animation: mira-rise 520ms var(--ease-swing); }
+  .mira-cameo { animation: mira-pop 420ms var(--ease-swing) 120ms backwards; }
+}
+@keyframes mira-breathe { 0%, 100% { scale: 1 1; } 50% { scale: 1.006 1.014; } }
+@keyframes mira-talk { from { translate: 0 0; } to { translate: 0 -3px; } }
+@keyframes mira-pop { 0% { transform: translateY(10px) scale(0.94); opacity: 0.4; } 100% { transform: none; opacity: 1; } }
+@keyframes mira-rise { from { translate: 0 45%; opacity: 0; } to { translate: 0 0; opacity: 1; } }
+@keyframes dialogue-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+@keyframes more-bob { from { translate: 0 0; } to { translate: 0 4px; } }
+@keyframes tour-fade { from { opacity: 0; } }
 
 /* --- Opening splash: the guild crest over the dark wood, once per browser tab session (src/public/splash.js). --- */
 .splash {

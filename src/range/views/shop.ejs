@@ -1,0 +1,54 @@
+<%# The merchant's stall (src/range/shop.ts): Bram behind his counter with a dialogue box (he greets, thanks after a sale, or offers the scroll a quest sent you for), the player's purse and bag, and one ware per magic scroll. Buying asks first in the guild's confirm popup (a plain form with data-confirm). Hooks: shop, shop-purse, ware-<kind>, buy-<kind>, scroll-count-<kind>. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%
+  var nameOf = function (k) { return t('scroll.' + k + '.name'); };
+  var light = !bought && !need && gold < scrolls[0].price;
+  var merchantLine = bought ? t('shop.thanks').replace('{scroll}', function () { return nameOf(bought); })
+    : need ? t('shop.need').replace('{scroll}', function () { return nameOf(need); }) : light ? t('shop.light') : t('shop.hello');
+  var merchantPose = bought ? 'merchant-sale' : light ? 'merchant-think' : 'merchant';
+-%>
+<section class="shop" data-testid="shop">
+  <div class="npc-scene shop-scene">
+    <div class="dialogue npc-box" data-npc-box>
+      <p class="dialogue-name"><span class="dialogue-speaker"><%= t('merchant.name') %></span><span class="dialogue-role"><%= t('merchant.role') %></span></p>
+      <h1 class="sr-only"><%= t('shop.title') %></h1>
+      <p class="dialogue-text" data-npc-text aria-live="polite"><%= merchantLine %></p>
+      <span class="dialogue-more" aria-hidden="true"></span>
+    </div>
+    <span class="npc-art" aria-hidden="true"><img class="mira-art" data-npc-art src="/static/art/<%= merchantPose %>.webp" alt="" width="560" height="584" decoding="async"></span>
+    <span class="counter" aria-hidden="true"></span>
+  </div>
+
+  <div class="shop-purse" data-testid="shop-purse">
+    <span class="purse-gold"><span class="coin" aria-hidden="true"></span><span class="purse-label"><%= t('shop.purse') %></span><strong><%= gold %> G</strong></span>
+    <span class="purse-bag"><span class="purse-label"><%= t('shop.bag') %></span>
+<% scrolls.forEach(function (s) { -%>
+      <span class="bag-item" title="<%= nameOf(s.kind) %>"><span class="scroll-icon scroll-icon-sm" data-kind="<%= s.kind %>" aria-hidden="true"></span><span class="sr-only"><%= nameOf(s.kind) %>: </span><b data-testid="scroll-count-<%= s.kind %>"><%= bag[s.kind] %></b></span>
+<% }); -%>
+    </span>
+  </div>
+
+  <ul class="wares">
+<% scrolls.forEach(function (s) { var tab = gold < s.price; -%>
+    <li class="ware<%= need === s.kind ? ' is-needed' : '' %><%= bought === s.kind ? ' is-bought' : '' %>" data-kind="<%= s.kind %>" data-testid="ware-<%= s.kind %>">
+      <span class="ware-shelf" aria-hidden="true"><span class="scroll-icon scroll-icon-lg" data-kind="<%= s.kind %>"></span></span>
+      <h2 class="ware-name"><%= nameOf(s.kind) %></h2>
+      <p class="ware-tier"><%= t('gm.counsel').replace('{n}', s.tier) %></p>
+      <p class="ware-what"><%= t('scroll.' + s.kind + '.what') %></p>
+      <p class="ware-price"><span class="coin" aria-hidden="true"></span><%= s.price %> G</p>
+      <p class="ware-owned"><%= t('shop.owned').replace('{n}', bag[s.kind]) %></p>
+      <form method="post" action="/shop/buy" data-confirm="<%= (tab ? t('shop.confirm_tab') : t('shop.confirm')).replace('{scroll}', function () { return nameOf(s.kind); }).replace('{price}', s.price) %>" data-confirm-title="<%= t('shop.confirm_title') %>" data-confirm-ok="<%= t('shop.confirm_ok').replace('{price}', s.price) %>" data-confirm-kind="coin">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <input type="hidden" name="kind" value="<%= s.kind %>">
+<% if (back) { -%>
+        <input type="hidden" name="from" value="<%= back.replace('/labs/', '') %>">
+<% } -%>
+        <button type="submit" class="btn btn-primary btn-block" data-testid="buy-<%= s.kind %>"><%= t('shop.buy') %> · <%= s.price %> G</button>
+      </form>
+    </li>
+<% }); -%>
+  </ul>
+  <p class="shop-note"><%= t('shop.note') %></p>
+<% if (back) { -%>
+  <p class="shop-back"><a class="btn btn-secondary" href="<%= back %>#intel-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-left"></use></svg><%= t('shop.back') %></a></p>
+<% } -%>
+</section>

@@ -1,7 +1,7 @@
 {
   "id": "r01",
   "slug": "mercy-clinic",
-  "title": { "en": "The Clinic's Secret Ledger", "id": "Buku Besar Rahasia Klinik" },
+  "title": { "en": "What Has a Hundred Records but Shows You Only Three?", "id": "Apa yang Punya Seratus Catatan tapi Cuma Menunjukkan Tiga?" },
   "app": "Mercy Clinic",
   "category": "SQL injection",
   "difficulty": "easy",
@@ -13,11 +13,11 @@
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
   "themeId": "mercy-clinic",
-  "scenario": { "en": "A small clinic keeps more paper than it shows.", "id": "Sebuah klinik kecil menyimpan lebih banyak kertas daripada yang diperlihatkan." },
-  "briefing": { "en": "The clinic says staff notes never leave the back room. Read one anyway.", "id": "Klinik mengatakan catatan staf tidak pernah keluar dari ruang belakang. Baca satu juga." },
+  "scenario": { "en": "Mercy Clinic's notice search is very eager to please. A little too eager.", "id": "Pencarian pengumuman Klinik Mercy sangat ingin menyenangkan. Sedikit terlalu ingin." },
+  "briefing": { "en": "A staff-only secret hides behind the public notices. The search box glues your words straight into its SQL query, so talk to the database yourself and make it hand over what the public should never see.", "id": "Sebuah rahasia khusus staf bersembunyi di balik pengumuman publik. Kolom pencarian menempelkan kata-katamu langsung ke query SQL-nya, jadi ajak bicara database-nya sendiri dan buat ia menyerahkan yang tak boleh dilihat publik." },
   "hints": [
-    { "id": 1, "cost": 10, "text": { "en": "Answers are easy to find when the question is allowed to speak for itself.", "id": "Jawaban mudah ditemukan bila pertanyaannya dibiarkan berbicara sendiri." } },
-    { "id": 2, "cost": 20, "text": { "en": "Two shelves share one room: the one the public sees, and the one it does not. The staff shelf has moved; the index knows the new one.", "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak. Rak staf telah pindah; indeks mengetahui yang baru." } },
-    { "id": 3, "cost": 30, "text": { "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo. The token opens the staff room, but the ledger keeps the last page.", "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri. Token membuka ruang staf, tetapi buku besar menyimpan halaman terakhir." } }
+    { "id": 1, "cost": 10, "text": { "en": "This is SQL injection. The search builds something like ... WHERE title LIKE '%<your text>%'. Type a single quote ' and watch the page break: that means your text has become part of the SQL.", "id": "Ini SQL injection. Pencarian membangun query semacam ... WHERE title LIKE '%<teksmu>%'. Ketik satu tanda kutip ' dan lihat halamannya rusak: artinya teksmu sudah jadi bagian dari SQL." } },
+    { "id": 2, "cost": 20, "text": { "en": "Close the string with ') and add your own rows with UNION SELECT. Your UNION needs as many columns as the original query (Common: 3). Staff notices sit in the notices table with visibility='staff'. On Dangerous a filter deletes the first UNION and SELECT once, so hide each word inside itself: ununionion selselectect.", "id": "Tutup string-nya dengan ') lalu tambahkan baris milikmu dengan UNION SELECT. UNION harus punya jumlah kolom yang sama dengan query aslinya (Common: 3). Pengumuman staf ada di tabel notices dengan visibility='staff'. Di Dangerous ada filter yang menghapus UNION dan SELECT pertama sekali saja, jadi sembunyikan kata itu di dalam dirinya: ununionion selselectect." } },
+    { "id": 3, "cost": 30, "text": { "en": "End your payload with -- to comment out the rest. Common: ') UNION SELECT id,title,body FROM notices WHERE visibility='staff' -- . Dangerous: read vault_index to learn the vault table and column, then select from that table. Deadly: the query has 4 columns and only shows rows marked 'public', so UNION the token from staff_tokens with 'public' as the 4th column, then open /staff/notices?token=<token> and the ledger record it names.", "id": "Akhiri payload dengan -- agar sisa query jadi komentar. Common: ') UNION SELECT id,title,body FROM notices WHERE visibility='staff' -- . Dangerous: baca vault_index untuk tahu nama tabel dan kolom brankas, lalu select dari tabel itu. Deadly: query punya 4 kolom dan hanya menampilkan baris bertanda 'public', jadi UNION token dari staff_tokens dengan 'public' di kolom ke-4, lalu buka /staff/notices?token=<token> dan catatan ledger yang disebutkannya." } }
   ]
 }

@@ -1,0 +1,56 @@
+<%# Choose your avatar (src/range/avatar.ts): Mira at the counter, the chosen hero standing on a stage with name, class and what they are good at, and the roster as radio cards (one per hero). Without JavaScript the form posts the same; static/ui.js swaps the stage as you browse and lets Mira comment. A first-time player may skip and keep the default adventurer. Hooks: creator, avatar-form, hero-<id>, avatar-save, avatar-skip, avatar-random. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<% var pick = heroes.filter(function (h) { return h.id === choice.hero; })[0] || heroes[0]; -%>
+<section class="creator chooser" data-creator data-testid="creator" data-pick-line="<%= t('avatar.pick_line') %>" data-random-line="<%= t('avatar.random_line') %>">
+  <div class="creator-stage">
+    <div class="creator-mira">
+      <span class="mira-stand creator-mira-art" aria-hidden="true"><img class="mira-art" data-mira-art src="/static/art/mira-point.webp" alt="" width="560" height="690" decoding="async"></span>
+      <div class="dialogue">
+        <p class="dialogue-name"><span class="dialogue-speaker"><%= t('mira.name') %></span><span class="dialogue-role"><%= t('mira.role') %></span></p>
+        <p class="dialogue-text" data-dialogue-text aria-live="polite"><%= t('avatar.lead') %></p>
+        <span class="dialogue-more" aria-hidden="true"></span>
+      </div>
+    </div>
+    <figure class="hero-stage" data-color="<%= pick.color %>" data-preview aria-labelledby="hero-stage-name">
+      <span class="hero-stage-glow" aria-hidden="true"></span>
+      <img class="hero-stage-art" data-preview-img src="/static/art/heroes/<%= pick.id %>.webp" alt="" decoding="async">
+      <figcaption class="hero-stage-card">
+        <span class="hero-stage-class" data-preview-class><%= t('hero.cls.' + pick.cls) %></span>
+        <span class="hero-stage-name" id="hero-stage-name" data-preview-name><%= t('hero.' + pick.id + '.name') %></span>
+        <span class="hero-stage-desc" data-preview-desc><%= t('hero.' + pick.id + '.desc') %></span>
+        <%- include('nameplate', { name: username, letter: typeof playerRank !== 'undefined' && playerRank ? playerRank.letter : 'E' }) %>
+      </figcaption>
+    </figure>
+  </div>
+  <form method="post" action="/adventurer" class="creator-form roster-form" data-testid="avatar-form">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <fieldset class="creator-step">
+      <legend><span class="step-no" aria-hidden="true">✦</span><%= t('avatar.roster') %></legend>
+      <p class="help"><%= t('avatar.class_note') %></p>
+      <div class="roster">
+<% heroes.forEach(function (h) { -%>
+        <label class="hero-card" data-color="<%= h.color %>" data-testid="hero-<%= h.id %>" data-name="<%= t('hero.' + h.id + '.name') %>" data-cls="<%= t('hero.cls.' + h.cls) %>" data-desc="<%= t('hero.' + h.id + '.desc') %>" data-art="/static/art/heroes/<%= h.id %>.webp">
+          <input class="choice-input" type="radio" name="hero" value="<%= h.id %>"<% if (h.id === pick.id) { %> checked<% } %>>
+          <span class="hero-face-card">
+            <span class="hero-card-art"><img src="/static/art/heroes/<%= h.id %>.webp" alt="" loading="lazy" decoding="async"></span>
+            <span class="hero-card-name"><%= t('hero.' + h.id + '.name') %></span>
+            <span class="hero-card-class"><%= t('hero.cls.' + h.cls) %></span>
+          </span>
+        </label>
+<% }); -%>
+      </div>
+    </fieldset>
+    <div class="creator-actions">
+      <button type="button" class="btn btn-secondary" data-avatar-random data-testid="avatar-random" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-rotate"></use></svg><%= t('avatar.randomize') %></button>
+<% if (!firstTime) { -%>
+      <a class="btn btn-ghost" href="/"><%= t('avatar.back') %></a>
+<% } -%>
+      <button type="submit" class="btn btn-primary btn-lg" data-testid="avatar-save"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key-seal"></use></svg><%= t('avatar.save') %></button>
+    </div>
+  </form>
+<% if (firstTime) { -%>
+  <form method="post" action="/adventurer/skip" class="creator-skip">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <button type="submit" class="btn btn-ghost" data-testid="avatar-skip"><%= t('avatar.skip') %></button>
+  </form>
+<% } -%>
+</section>

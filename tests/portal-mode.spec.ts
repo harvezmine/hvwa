@@ -293,7 +293,7 @@ describe('a lab page', () => {
     expect((await agent.get('/labs/r99')).status).toBe(404);
   });
 
-  it('a hint costs points: the account CSRF token is required; it shows the text and the score drops once', async () => {
+  it('a scroll from the merchant buys one counsel: gold is spent at purchase, the Guildmaster reads it once', async () => {
     const { app } = portalApp();
     const { agent, userId } = await player(app, 'alice');
     recordRangeSolve(app.locals.db, userId, 'r01', 'acolyte', 100, T0);
@@ -302,19 +302,39 @@ describe('a lab page', () => {
     expect((await agent.post('/labs/r01/hint').set('Origin', 'https://evil.example').type('form').send({ _csrf: csrf, tier: '1' })).status)
       .toBe(403);
     expect((await agent.get('/')).text).toContain('data-testid="range-score">100<');
+    // No scroll yet: the Guildmaster sends the player to the merchant.
+    const none = await agent.post('/labs/r01/hint').type('form').send({ _csrf: csrf, tier: '1' });
+    expect(none.status).toBe(303);
+    expect(none.headers.location).toBe('/shop?need=insight&from=r01');
+    const noneHx = await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '1' });
+    expect(noneHx.status).toBe(400);
+    expect(noneHx.text).toContain('data-error="no_scroll"');
+    // Buying spends the gold at once.
+    const shop = await agent.get('/shop?need=insight&from=r01');
+    expect(shop.status).toBe(200);
+    expect(shop.text).toContain('data-testid="ware-insight"');
+    expect((await agent.post('/shop/buy').type('form').send({ kind: 'insight' })).status).toBe(403);
+    const bought = await agent.post('/shop/buy').type('form').send({ _csrf: csrfOf(shop.text), kind: 'insight', from: 'r01' });
+    expect(bought.status).toBe(303);
+    expect(bought.headers.location).toBe('/shop?bought=insight&from=r01');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">90<');
+    expect((await agent.get('/shop')).text).toContain('data-testid="scroll-count-insight">1<');
     const res = await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '1' });
     expect(res.status).toBe(200);
     expect(res.text).toContain('Hint one of clinic');
     expect(res.text).toMatch(/data-toast="unlocked"/);
     expect(res.text).toMatch(/data-toast-variant="success"/);
-    expect(res.text).toMatch(/data-toast-message="Whisper 1 bought · 10 G spent"/);
+    expect(res.text).toMatch(/data-toast-message="The Guildmaster read your Scroll of Insight"/);
+    // Heard once: asking again uses no second scroll and costs nothing more.
     const again = await agent.post('/labs/r01/hint').type('form').send({ _csrf: csrf, tier: '1' });
     expect(again.status).toBe(303);
     expect(again.headers.location).toBe('/labs/r01#hint-1');
+    expect((await agent.get('/shop')).text).toContain('data-testid="scroll-count-insight">0<');
     expect((await agent.get('/')).text).toContain('data-testid="range-score">90<');
     expect((await agent.get('/labs/r01')).text).toMatch(/data-tier="1">Hint one of clinic</);
     expect((await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '3' })).status).toBe(400);
     expect((await agent.post('/labs/r99/hint').type('form').send({ _csrf: csrf, tier: '1' })).status).toBe(404);
+    expect((await agent.post('/shop/buy').type('form').send({ _csrf: csrf, kind: 'elixir' })).headers.location).toBe('/shop');
   });
 
   it('a locked hint never shows its text', async () => {
@@ -398,16 +418,16 @@ describe('the leaderboard and the navigation', () => {
 });
 
 describe('portal copy and per-user headers', () => {
-  it('the public range never claims to run offline; the standalone shell keeps its copy', async () => {
+  it('the public range shows no safety strip and never claims to run offline; the standalone shell keeps its warning', async () => {
     const { app } = portalApp();
     const login = (await request(app).get('/login')).text;
-    expect(login).toContain('data-mode="portal"');
-    expect(login).toContain('Every lab is deliberately vulnerable');
+    expect(login).not.toContain('class="safety-banner"');
+    expect(login).not.toContain('Every lab is deliberately vulnerable');
     expect(login).not.toContain('Runs fully offline');
     const { agent } = await player(app, 'alice');
     for (const path of ['/', '/leaderboard', '/labs/r01']) {
       const html = (await agent.get(path)).text;
-      expect(html, path).toContain('data-mode="portal"');
+      expect(html, path).not.toContain('class="safety-banner"');
       expect(html, path).not.toContain('Runs fully offline');
       expect(html, path).not.toContain('Never expose it to an untrusted network');
       expect(html, path).not.toContain('Nothing is sent anywhere');

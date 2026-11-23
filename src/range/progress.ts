@@ -55,10 +55,15 @@ export function rangeHintCost(db: DatabaseSync, userId: number): number {
   return Number((db.prepare('SELECT COALESCE(SUM(cost), 0) AS c FROM range_hint_unlocks WHERE user_id = ?').get(userId) as { c: number }).c);
 }
 
-/** Sum of best-level points minus hint costs, floored at 0. */
+/** Gold spent at the merchant on magic scrolls (src/range/shop.ts), used or still in the bag. */
+export function rangeScrollCost(db: DatabaseSync, userId: number): number {
+  return Number((db.prepare('SELECT COALESCE(SUM(cost), 0) AS c FROM range_scrolls WHERE user_id = ?').get(userId) as { c: number }).c);
+}
+
+/** Sum of best-level points minus hint costs and scrolls bought, floored at 0. */
 export function rangeScore(db: DatabaseSync, userId: number): number {
   const pts = Number((db.prepare('SELECT COALESCE(SUM(points), 0) AS p FROM range_solves WHERE user_id = ?').get(userId) as { p: number }).p);
-  return Math.max(0, pts - rangeHintCost(db, userId));
+  return Math.max(0, pts - rangeHintCost(db, userId) - rangeScrollCost(db, userId));
 }
 
 export interface LeaderRow {
@@ -74,9 +79,10 @@ export interface LeaderRow {
 export function leaderboard(db: DatabaseSync, limit = 100): LeaderRow[] {
   const rows = db.prepare(`
     WITH s AS (SELECT user_id, SUM(points) AS pts, COUNT(*) AS solved, MAX(solved_at) AS last_at FROM range_solves GROUP BY user_id),
-         h AS (SELECT user_id, SUM(cost) AS cost FROM range_hint_unlocks GROUP BY user_id)
-    SELECT u.id AS id, u.username AS username, MAX(0, s.pts - COALESCE(h.cost, 0)) AS score, s.solved AS solved, s.last_at AS last_at
-    FROM users u JOIN s ON s.user_id = u.id LEFT JOIN h ON h.user_id = u.id
+         h AS (SELECT user_id, SUM(cost) AS cost FROM range_hint_unlocks GROUP BY user_id),
+         g AS (SELECT user_id, SUM(cost) AS cost FROM range_scrolls GROUP BY user_id)
+    SELECT u.id AS id, u.username AS username, MAX(0, s.pts - COALESCE(h.cost, 0) - COALESCE(g.cost, 0)) AS score, s.solved AS solved, s.last_at AS last_at
+    FROM users u JOIN s ON s.user_id = u.id LEFT JOIN h ON h.user_id = u.id LEFT JOIN g ON g.user_id = u.id
     WHERE u.disabled = 0
     ORDER BY score DESC, last_at ASC, username ASC
     LIMIT ?`).all(limit) as { id: number; username: string; score: number; solved: number; last_at: number }[];

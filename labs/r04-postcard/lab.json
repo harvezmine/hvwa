@@ -1,7 +1,7 @@
 {
   "id": "r04",
   "slug": "postcard",
-  "title": { "en": "The Ink That Writes Back", "id": "Tinta yang Membalas Tulisan" },
+  "title": { "en": "What Card Writes Back When You Write to It?", "id": "Kartu Apa yang Membalas Saat Kamu Menulisinya?" },
   "app": "Postcard",
   "category": "Template injection",
   "difficulty": "hard",
@@ -13,11 +13,11 @@
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
   "themeId": "postcard",
-  "scenario": { "en": "A studio that prints what it is told.", "id": "Sebuah studio yang mencetak apa yang diperintahkan." },
-  "briefing": { "en": "The press renders every message. Ask it to read a file it should not.", "id": "Mesin cetak merender setiap pesan. Minta ia membaca berkas yang seharusnya tidak." },
+  "scenario": { "en": "Postcard prints your greeting with the Jinja2 template engine, and treats your message as part of the template.", "id": "Postcard mencetak ucapanmu dengan template engine Jinja2, dan menganggap pesanmu sebagai bagian dari template." },
+  "briefing": { "en": "Write a card that the press runs instead of prints, then use it to read the flag file on the server.", "id": "Tulis kartu yang dijalankan mesin cetak alih-alih dicetak, lalu gunakan untuk membaca file flag di server." },
   "hints": [
-    { "id": 1, "cost": 15, "text": { "en": "A card is a mirror: what you write may be read as a spell.", "id": "Kartu adalah cermin: yang kau tulis bisa dibaca sebagai mantra." } },
-    { "id": 2, "cost": 30, "text": { "en": "A list of forbidden words is a fence with a gap; spell around it. The old proof is not on the front table; the outbox keeps its pieces in pairs.", "id": "Daftar kata terlarang adalah pagar bercelah; eja di sekitarnya. Bukti lama tidak ada di meja depan; kotak keluar menyimpan potongannya berpasangan." } },
-    { "id": 3, "cost": 45, "text": { "en": "The curtain is closed in the studio, but the press still prints what it is given. The archive is a deeper room; only the print stage can read it.", "id": "Tirai ditutup di studio, tetapi mesin cetak tetap mencetak yang diberikan. Arsip adalah ruang yang lebih dalam; hanya tahap cetak yang bisa membacanya." } }
+    { "id": 1, "cost": 15, "text": { "en": "This is server-side template injection (Jinja2). Put {{7*7}} in the message: if the card shows 49, your text is being run as a template, not printed as text.", "id": "Ini server-side template injection (Jinja2). Tulis {{7*7}} di pesan: kalau kartunya menampilkan 49, teksmu dijalankan sebagai template, bukan dicetak sebagai teks." } },
+    { "id": 2, "cost": 30, "text": { "en": "A template can reach Python's os module: {{ config.__class__.__init__.__globals__.os.popen('cat /tmp/postcard/flag.txt').read() }}. Dangerous blocks __, os, popen and import, so build them from pieces: {% set d='_'~'_' %} and config|attr(d~'cla'~'ss'~d), 'o'~'s'. There the flag is split into part-1 and part-2 files in /tmp/postcard/outbox/.", "id": "Template bisa menjangkau modul os milik Python: {{ config.__class__.__init__.__globals__.os.popen('cat /tmp/postcard/flag.txt').read() }}. Dangerous memblokir __, os, popen dan import, jadi susun dari potongan: {% set d='_'~'_' %} dan config|attr(d~'cla'~'ss'~d), 'o'~'s'. Di sana flag dipecah jadi file part-1 dan part-2 di /tmp/postcard/outbox/." } },
+    { "id": 3, "cost": 45, "text": { "en": "Deadly: /preview no longer renders your message. It saves a draft (look for data-draft in the page) and the print page GET /orders/<draft>/print renders it. Send your payload through /preview, open the print page, list /tmp/postcard/archive with ls -R, then cat the two parts the same way.", "id": "Deadly: /preview tidak lagi merender pesanmu. Ia menyimpan draf (cari data-draft di halaman) dan halaman cetak GET /orders/<draft>/print yang merendernya. Kirim payload lewat /preview, buka halaman cetaknya, tampilkan isi /tmp/postcard/archive dengan ls -R, lalu cat kedua bagiannya dengan cara yang sama." } }
   ]
 }

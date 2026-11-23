@@ -9,13 +9,15 @@ import { sendPage } from '../core/render.js';
 import { portalFramePolicy } from '../portal/frame-policy.js';
 import { adminRoutes } from './admin.js';
 import { catalogRoutes, rangeView } from './catalog.js';
+import { avatarOf, avatarRoutes, DEFAULT_AVATAR } from './avatar.js';
+import { shopRoutes } from './shop.js';
 import { edgeHandler } from './gate.js';
 import { instanceIdOfHost } from './hosts.js';
 import { labRoutes } from './lab-routes.js';
 import { createLifecycle, type Lifecycle } from './lifecycle.js';
 import { myLabChip } from './panel.js';
 import { rangeScore } from './progress.js';
-import { rankFor } from './rank.js';
+import { RANKS, rankFor } from './rank.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import { teamRoutes } from './teams.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
@@ -55,6 +57,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const locals: RequestHandler = (req, res, next) => {
     const active = req.path === '/leaderboard' ? 'leaderboard'
       : req.path === '/team' ? 'team'
+      : req.path === '/shop' ? 'shop'
       : req.path === '/adminportal' || req.path.startsWith('/adminportal/') ? 'admin'
       : req.path === '/' || req.path.startsWith('/labs/') ? 'labs' : undefined;
     res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin', active };
@@ -63,7 +66,15 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
       // An active or recently ended instance (the chip hides itself when there is neither).
       res.locals.myLab = myLabChip(lifecycle.store.latestForUser(userId), opts.registry, now(), res.locals.t, req.lang);
       // The adventurer rank for the account menu, derived from the player's bounty (no DB state).
-      const letter = rankFor(rangeScore(db, userId)).letter;
+      const points = rangeScore(db, userId);
+      const letter = rankFor(points).letter;
+      // The rank ladder popup (layout.ejs): every rank from E to S, what the player has earned and what is still ahead.
+      res.locals.rankLadder = RANKS.map((r) => ({
+        letter: r.letter, min: r.minPoints, name: res.locals.t(`rank.name.${r.letter.toLowerCase()}`), plate: res.locals.t(`rank.plate.${r.letter.toLowerCase()}`),
+        state: r.letter === letter ? 'here' : points >= r.minPoints ? 'done' : 'ahead', need: Math.max(0, r.minPoints - points),
+      }));
+      // The adventurer's portrait for the account button (the default one until they make theirs).
+      res.locals.avatar = avatarOf(db, userId) ?? DEFAULT_AVATAR;
       res.locals.playerRank = { letter, name: res.locals.t(`rank.name.${letter.toLowerCase()}`), plate: res.locals.t(`rank.plate.${letter.toLowerCase()}`) };
     }
     next();
@@ -97,6 +108,8 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     await sendPage(res, rangeView('lab-gone'), { pageTitle: res.locals.t('range.lab_gone_title'), retryHref });
   });
   catalogRoutes(router, ctx);
+  avatarRoutes(router, ctx);
+  shopRoutes(router, ctx);
   labRoutes(router, ctx);
   teamRoutes(router, ctx);
   adminRoutes(router, ctx);
