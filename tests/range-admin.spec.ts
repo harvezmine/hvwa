@@ -26,6 +26,31 @@ describe('admin access control', () => {
     expect((await agent.get('/')).text).not.toContain('data-testid="nav-admin"');
     expect((await admin.get('/')).text).toContain('data-testid="nav-admin"');
   });
+
+  it('the office is a button and a shell of its own: never a player tab; admins sign in to /admin', async () => {
+    const kit = portalApp();
+    const admin = await signInAdmin(kit.app);
+    const hall = (await admin.get('/')).text;
+    expect(hall).toMatch(/<a href="\/admin" class="btn btn-office" data-testid="nav-admin">/); // a button, not a nav-link
+    expect(hall).not.toMatch(/class="nav-link" data-testid="nav-admin"/);
+    expect(hall).not.toContain('class="office"');
+    const office = (await admin.get('/admin')).text;
+    expect(office).toContain('<body class="office">');
+    expect(office).toContain('data-testid="office-tag"');
+    expect(office).toContain('data-testid="nav-hall"'); // the way back to the guild hall
+    expect(office).not.toContain('data-testid="nav-labs"'); // the player tabs give way to the office
+    expect(office).toContain('data-testid="admin-tabs"');
+    // Signing in with no page to return to lands an admin in the office and a player in the hall.
+    const signIn = async (username: string, password: string, next?: string) => {
+      const a = request.agent(kit.app);
+      const csrf = csrfOf((await a.get('/login')).text);
+      return a.post('/login').type('form').send({ _csrf: csrf, username, password, ...(next ? { next } : {}) });
+    };
+    expect((await signIn('admin', 'Admin-Pass-1234')).headers.location).toBe('/admin');
+    expect((await signIn('admin', 'Admin-Pass-1234', '/leaderboard')).headers.location).toBe('/leaderboard');
+    await player(kit.app, 'bob');
+    expect((await signIn('bob', 'Player-Pass-1')).headers.location).toBe('/');
+  });
 });
 
 describe('admin overview and live feed', () => {

@@ -1681,7 +1681,6 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .auth-switch { margin: var(--sp-4) 0 0; text-align: left; font-size: var(--fs-sm); }
 
 /* --- Admin dashboard (src/range/admin.ts) --- */
-.admin-tabs { margin-bottom: var(--sp-5); }
 .admin-states { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-5); }
 .admin-count { margin: 0 0 var(--sp-3); color: var(--text-muted); font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.1em; text-transform: uppercase; }
 .admin-live { list-style: none; margin: 0 0 var(--sp-5); padding: 0; border-top: 1px solid var(--border-strong); }
@@ -1696,6 +1695,46 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .admin-members li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-1) 0; }
 .admin-mode-form { display: inline-flex; gap: var(--sp-2); align-items: center; }
 .admin-pager { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+
+/* --- The Guildmaster's Office (admin, src/range/admin.ts): its own shell, not a player tab ---
+   Admins get a wax "Office" button in the masthead (players never see it); every /admin page turns the shell into the
+   office: a wax-edged beam with the office plaque instead of the player tabs, a "Guild Hall" button back, and the
+   sections as a wooden ledger spine beside the page. */
+.btn-office {
+  min-height: 2.5rem; white-space: nowrap; color: var(--on-wax); border-color: var(--wax-dark);
+  background: radial-gradient(circle at 30% 20%, var(--wax-hi), var(--wax) 60%, var(--wax-dark));
+  box-shadow: inset 0 1px 0 var(--sheen), var(--shadow-sm);
+}
+.btn-office:hover { color: var(--on-wax); }
+.office-tag { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: 0 var(--sp-3); font-family: var(--display); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.14em; color: var(--on-wood); white-space: nowrap; }
+.office-seal { width: 1.1rem; height: 1.1rem; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, var(--wax-hi), var(--wax) 60%, var(--wax-dark)); box-shadow: 0 0 0 2px var(--wax); }
+.office .topbar { background-color: var(--wood-2); border-bottom-color: var(--wax); }
+.office .content, .office .topbar-inner, .office .footer-inner { max-width: 84rem; }
+.admin-nav {
+  display: flex; gap: var(--sp-1); margin: 0 0 var(--sp-5); padding: var(--sp-2); overflow-x: auto; scrollbar-width: none;
+  border-radius: var(--radius-lg); background-color: var(--wood); background-image: var(--tex-wood);
+  box-shadow: inset 0 0 0 4px var(--wood-2), var(--shadow-sm);
+}
+.admin-nav::-webkit-scrollbar { display: none; }
+.admin-nav-title { display: none; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.16em; color: var(--on-wood-muted); padding: var(--sp-2) var(--sp-3) var(--sp-1); }
+.admin-nav a {
+  display: flex; align-items: center; gap: var(--sp-2); flex: none; min-height: var(--tap); padding: 0 var(--sp-3); border-radius: var(--radius);
+  color: var(--on-wood-muted); text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+}
+.admin-nav a:hover { color: var(--on-wood); background: var(--wood-3); text-decoration: none; }
+.admin-nav a[aria-current] { background: var(--primary); color: var(--on-primary); }
+.office .stat-value { font-family: var(--display); }
+.office .content > section { margin-top: var(--sp-5); }
+@media (min-width: 900px) {
+  .office .content { display: grid; grid-template-columns: 13.5rem minmax(0, 1fr); column-gap: var(--sp-6); align-content: start; }
+  .office .content > * { grid-column: 2; min-width: 0; }
+  .office .content > .admin-nav { grid-column: 1; grid-row: 1 / span 40; align-self: start; position: sticky; top: 5.5rem; flex-direction: column; overflow: visible; padding: var(--sp-3); }
+  .office .admin-nav-title { display: block; }
+}
+@media (max-width: 1200px) {
+  .btn-office { padding: 0 var(--sp-3); }
+  .btn-office-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+}
 
 /* --- Active quest tag (masthead) --- */
 .my-lab {

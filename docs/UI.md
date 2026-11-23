@@ -100,6 +100,17 @@ position" row, and the Adventurers / Parties tabs.
 **Party.** One party per adventurer (`/team`): found or join forms, or the party sheet with a wax pennant, the join
 code, member chips and Leave. A lab in party mode shows a `PARTY` badge on its poster and hero.
 
+**The Guildmaster's Office (role admin, `src/range/admin.ts`).** Never a player tab: admins get a wax **Guildmaster's
+Office** button in the masthead (`.btn-office`, `data-testid="nav-admin"`; icon-only below 1200 px with a screen-reader
+label), and an admin who signs in with no page to return to lands on `/admin` (`AuthOptions.adminHome`; an explicit
+`next` still wins). Every `/admin/*` page renders the shell in **office mode** (`<body class="office">`): a wax-edged
+beam with the office plaque in place of the player tabs, a wax **Guild Hall** button back (`nav-hall`), and the five
+sections (Overview / Activity / Instances / Parties / Labs, `admin-nav.ejs`) as a wooden ledger spine beside the page
+(a swipeable strip below 900 px). Players and anonymous users still get the ordinary 404 / login for `/admin/*`. The
+pages keep their roles: ledger stat cards, the live exploit feed (`/admin/live`, htmx every 5 s, never a flag), the
+filtered activity feed, the instances table with Stop, parties with create/delete, and the per-lab mode switch; every
+state-changing form is CSRF + Origin + Sec-Fetch-Site guarded and every value is escaped.
+
 **Type.** `--serif` EB Garamond (headings, prose, the brief; body 17 px because Garamond reads small); `--display`
 Cinzel 700 (caps only: eyebrows, labels, buttons, nav, signs, plaques); `--poster` Pirata One (only the "Bounty" kicker,
 ≥ 2 rem); `--sans` system sans (kept for a few controls); `--mono` system mono (flags, ids, vulnerability tags, code).
