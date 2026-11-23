@@ -65,7 +65,7 @@ export const PAIRS: [string, string, number][] = [
   // metal plates, and brass actions/active signs.
   ...['--wood', '--wood-2', '--wood-3'].map((bg): [string, string, number] => ['--on-wood', bg, 4.5]),
   ['--on-wood-muted', '--wood', 4.5], ['--on-wood-muted', '--wood-2', 4.5],
-  ['--ink', '--parch', 4.5], ['--ink-muted', '--parch', 4.5], ['--ink-muted', '--parch-2', 4.5], ['--ink-ok', '--parch', 4.5], ['--wax-dark', '--parch', 4.5],
+  ['--ink', '--parch', 4.5], ['--ink-muted', '--parch', 4.5], ['--ink-muted', '--parch-2', 4.5], ['--ink-ok', '--parch', 4.5], ['--wax-dark', '--parch', 4.5], ['--ink-hand', '--parch', 4.5], ['--ink-hand', '--parch-2', 4.5],
   ['--on-wax', '--wax', 4.5],
   ...['--m-copper', '--m-silver', '--m-gold', '--m-mithril'].map((bg): [string, string, number] => ['--on-metal', bg, 4.5]),
   ['--on-metal-dark', '--m-iron', 4.5], ['--on-metal-dark', '--m-adam', 4.5],

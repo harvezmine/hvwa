@@ -64,6 +64,9 @@ const view = (name: string) => join(authViewsDir, `${name}.ejs`);
 
 // Explicit attributes: HttpOnly (no script reads it), SameSite=Lax (cross-site subrequests and posts never carry it),
 // Path=/, Max-Age = the token's absolute lifetime, Secure only behind HTTPS (portal mode). No Domain (host-only).
+/** One-shot marker of a fresh sign-in: the next full page shows the gate opening (layout.ejs), then it is cleared. */
+export const WELCOME_COOKIE = 'hvwa_welcome';
+
 function cookieAttributes(secure: boolean): { set: Readonly<CookieOptions>; clear: Readonly<CookieOptions> } {
   const base = { httpOnly: true, sameSite: 'lax', path: '/', ...(secure ? { secure: true } : {}) } as const;
   return { set: Object.freeze({ ...base, maxAge: AUTH_LIMITS.tokenTtlMs }), clear: Object.freeze({ ...base }) };
@@ -180,6 +183,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     service.revoke(req.cookies?.[AUTH_COOKIE]); // a fresh token per sign-in; the old one dies
     noStore(res);
     res.cookie(AUTH_COOKIE, result.token, cookies.set);
+    res.cookie(WELCOME_COOKIE, '1', { ...cookies.clear, maxAge: 60_000 });
     const signed = service.session(result.token); // the canonical account (username case, id)
     opts.onActivity?.({ event: 'auth.login', userId: signed?.userId, username: signed?.username ?? field(req, 'username'), ip: clientIp(req) });
     res.redirect(303, next === '/' && signed?.role === 'admin' && opts.adminHome ? opts.adminHome : next);
@@ -202,6 +206,11 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
         defaultPassword: session.defaultPassword,
         csrf: service.csrfToken(req.sessionId, authTokenOf(req)), // the layout's logout form: an account form
       };
+      // The first full page after signing in plays the gate opening once; fragments and posts leave the marker alone.
+      if (req.method === 'GET' && !isHtmx(req) && req.cookies?.[WELCOME_COOKIE] === '1') {
+        res.locals.welcome = true;
+        res.clearCookie(WELCOME_COOKIE, cookies.clear);
+      }
       next();
       return;
     }

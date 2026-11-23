@@ -27,6 +27,18 @@
       <span class="splash-loading"><span class="splash-dot"></span><span class="splash-dot"></span><span class="splash-dot"></span></span>
     </div>
   </div>
+<% if (typeof welcome !== 'undefined' && welcome && platformAuth && platformAuth.signedIn) { -%>
+  <div class="welcome-gate" aria-hidden="true" data-testid="welcome-gate">
+    <span class="welcome-door welcome-door-left"></span><span class="welcome-door welcome-door-right"></span>
+    <div class="welcome-banner">
+      <span class="welcome-kicker"><%= t('auth.welcome_kicker') %></span>
+      <span class="welcome-name"><%= t('auth.welcome_back').replace('{name}', () => platformAuth.user) %></span>
+<% if (typeof playerRank !== 'undefined' && playerRank) { -%>
+      <span class="welcome-rank"><span class="rank-seal seal" data-plate="<%= playerRank.letter.toLowerCase() %>"><%= playerRank.letter %></span><%= playerRank.plate %> · <%= playerRank.name %></span>
+<% } -%>
+    </div>
+  </div>
+<% } -%>
   <a class="skip-link" href="#main"><%= t('nav.skip') %></a>
   <div class="safety-banner" role="note" data-mode="<%= portalMode ? 'portal' : 'standalone' %>"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t(portalMode ? 'safety.portal' : 'safety.warning') %></span></div>
 <% if (platformAuth && platformAuth.defaultPassword) { -%>

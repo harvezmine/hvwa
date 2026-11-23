@@ -369,6 +369,16 @@ describe('the leaderboard and the navigation', () => {
     expect(html).toContain('class="rank-seal'); // the adventurer rank seal (letter)
   });
 
+  it('opens the guild gate once on the first page after signing in, then never again', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice'); // signs in: the hvwa_welcome marker is set
+    const first = await agent.get('/');
+    expect(first.text).toContain('data-testid="welcome-gate"');
+    expect(first.text).toContain('Welcome back, alice');
+    expect(setCookieHeader(first, 'hvwa_welcome')).toMatch(/^hvwa_welcome=;/); // consumed
+    expect((await agent.get('/leaderboard')).text).not.toContain('data-testid="welcome-gate"');
+  });
+
   it('Labs and Leaderboard for everyone; an Admin link only for admins; no Districts or Scoreboard links', async () => {
     const { app } = portalApp();
     const { agent } = await player(app, 'alice');

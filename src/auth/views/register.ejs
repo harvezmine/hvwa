@@ -1,60 +1,77 @@
-<%# Open registration (src/auth/register.ts). Each error is shown under the field it is about (data-error is the closed
-   error key); the typed username is kept, a password never is. Split surface like the login. Every value goes through
-   the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%# Open registration (src/auth/register.ts): the Charter of the Guild, a letter to the Guildmaster. It unrolls like the
+   login letter; the name, the secret word and its repeat are written on ink lines, the signature copies the name as it
+   is written, and the charter names the rank the adventurer is sworn in at (E, Copper, Greenhorn). Each error is shown
+   under the field it is about (data-error is the closed error key); the typed username is kept, a password never is.
+   Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
 <%
   var errUser = error === 'username' || error === 'taken';
   var errPw = error === 'too_short' || error === 'too_long' || error === 'control';
   var errConfirm = error === 'mismatch';
 -%>
-<div class="auth-shell">
-  <%- include('auth-brand', { statement: 'auth.brand_register', tagline: 'auth.tagline_register', ill: 'i-key-seal' }) %>
-  <section class="auth-panel" aria-labelledby="register-title">
-    <div class="auth-panel-head">
-      <p class="auth-eyebrow"><%= t('app.guild_tag') %></p>
-      <h1 class="page-title" id="register-title"><%= t('auth.register_heading') %></h1>
-    </div>
+<div class="gate">
+  <section class="letter" data-letter aria-labelledby="register-title">
+    <span class="letter-rod letter-rod-top" aria-hidden="true"></span>
+    <span class="letter-wax" aria-hidden="true"></span>
+    <div class="letter-sheet">
+      <header class="letter-head">
+        <img class="letter-crest" src="/static/brand/logo.png" alt="" width="800" height="533">
+        <p class="letter-eyebrow"><%= t('app.guild_tag') %></p>
+        <h1 class="letter-title" id="register-title"><%= t('auth.letter_register_title') %></h1>
+      </header>
 <% if (closed) { -%>
-    <p class="result result-bad" role="alert" data-testid="registration-closed"><%= t('auth.reg_closed') %></p>
+      <p class="result result-bad" role="alert" data-testid="registration-closed"><%= t('auth.reg_closed') %></p>
 <% } else { -%>
-    <p class="auth-intro"><%= t('auth.register_intro') %></p>
 <% if (limited) { -%>
-    <p class="result result-bad" role="alert" data-testid="registration-limited"><%= t('auth.reg_limited') %></p>
+      <p class="result result-bad" role="alert" data-testid="registration-limited"><%= t('auth.reg_limited') %></p>
 <% } -%>
 <% if (error === 'busy') { -%>
-    <p class="result result-bad" role="alert" data-error="busy"><%= t('auth.reg_err_busy') %></p>
+      <p class="result result-bad" role="alert" data-error="busy"><%= t('auth.reg_err_busy') %></p>
 <% } -%>
-    <form method="post" action="/register" class="auth-form">
-      <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <div class="field">
-        <label for="reg-username"><%= t('auth.username') %></label>
-        <input id="reg-username" type="text" name="username" value="<%= username %>" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="24" required autofocus aria-describedby="reg-username-help<% if (errUser) { %> reg-username-error<% } %>"<% if (errUser) { %> aria-invalid="true"<% } %>>
-        <p class="help" id="reg-username-help"><%= t('auth.username_help') %></p>
+      <p class="letter-to"><%= t('auth.letter_register_to') %></p>
+      <form method="post" action="/register" class="auth-form letter-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <p class="letter-prose"><%= t('auth.letter_register_line1') %></p>
+        <div class="field ink-field">
+          <label for="reg-username"><%= t('auth.username') %></label>
+          <input id="reg-username" type="text" name="username" value="<%= username %>" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="24" required autofocus data-signature-source aria-describedby="reg-username-help<% if (errUser) { %> reg-username-error<% } %>"<% if (errUser) { %> aria-invalid="true"<% } %>>
+          <p class="help" id="reg-username-help"><%= t('auth.username_help') %></p>
 <% if (errUser) { -%>
-        <p class="result result-bad field-error" role="alert" id="reg-username-error" data-error="<%= error %>"><%= t('auth.reg_err_' + error) %></p>
+          <p class="result result-bad field-error" role="alert" id="reg-username-error" data-error="<%= error %>"><%= t('auth.reg_err_' + error) %></p>
 <% } -%>
-      </div>
-      <div class="field">
-        <label for="reg-password"><%= t('auth.password') %></label>
-        <input id="reg-password" type="password" name="password" autocomplete="new-password" minlength="<%= pwMin %>" maxlength="1024" required data-strength="reg-strength" aria-describedby="reg-password-help<% if (errPw) { %> reg-password-error<% } %>"<% if (errPw) { %> aria-invalid="true"<% } %>>
-        <p class="help" id="reg-password-help"><%= t('auth.reg_pw_help').replace('{n}', pwMin) %></p>
-        <p class="strength" id="reg-strength" hidden aria-live="polite" data-label-weak="<%= t('auth.pw_strength_weak') %>" data-label-fair="<%= t('auth.pw_strength_fair') %>" data-label-strong="<%= t('auth.pw_strength_strong') %>"><span><%= t('auth.pw_strength') %>:</span><span class="strength-bar" aria-hidden="true"><span></span><span></span><span></span></span><span data-strength-value></span></p>
+        </div>
+        <p class="letter-prose"><%= t('auth.letter_register_line2') %></p>
+        <div class="field ink-field">
+          <label for="reg-password"><%= t('auth.password') %></label>
+          <input id="reg-password" type="password" name="password" autocomplete="new-password" minlength="<%= pwMin %>" maxlength="1024" required data-strength="reg-strength" aria-describedby="reg-password-help<% if (errPw) { %> reg-password-error<% } %>"<% if (errPw) { %> aria-invalid="true"<% } %>>
+          <p class="help" id="reg-password-help"><%= t('auth.reg_pw_help').replace('{n}', pwMin) %></p>
+          <p class="strength" id="reg-strength" hidden aria-live="polite" data-label-weak="<%= t('auth.pw_strength_weak') %>" data-label-fair="<%= t('auth.pw_strength_fair') %>" data-label-strong="<%= t('auth.pw_strength_strong') %>"><span><%= t('auth.pw_strength') %>:</span><span class="strength-bar" aria-hidden="true"><span></span><span></span><span></span></span><span data-strength-value></span></p>
 <% if (errPw) { -%>
-        <p class="result result-bad field-error" role="alert" id="reg-password-error" data-error="<%= error %>"><%= t('auth.reg_err_' + error).replace('{n}', pwMin) %></p>
+          <p class="result result-bad field-error" role="alert" id="reg-password-error" data-error="<%= error %>"><%= t('auth.reg_err_' + error).replace('{n}', pwMin) %></p>
 <% } -%>
-      </div>
-      <div class="field">
-        <label for="reg-confirm"><%= t('auth.pw_confirm_plain') %></label>
-        <input id="reg-confirm" type="password" name="confirm" autocomplete="new-password" minlength="<%= pwMin %>" maxlength="1024" required<% if (errConfirm) { %> aria-invalid="true" aria-describedby="reg-confirm-error"<% } %>>
+        </div>
+        <p class="letter-prose"><%= t('auth.letter_register_line3') %></p>
+        <div class="field ink-field">
+          <label for="reg-confirm"><%= t('auth.pw_confirm_plain') %></label>
+          <input id="reg-confirm" type="password" name="confirm" autocomplete="new-password" minlength="<%= pwMin %>" maxlength="1024" required<% if (errConfirm) { %> aria-invalid="true" aria-describedby="reg-confirm-error"<% } %>>
 <% if (errConfirm) { -%>
-        <p class="result result-bad field-error" role="alert" id="reg-confirm-error" data-error="<%= error %>"><%= t('auth.reg_err_' + error).replace('{n}', pwMin) %></p>
+          <p class="result result-bad field-error" role="alert" id="reg-confirm-error" data-error="<%= error %>"><%= t('auth.reg_err_' + error).replace('{n}', pwMin) %></p>
 <% } -%>
-      </div>
-      <button type="submit" class="btn btn-primary btn-lg btn-block" data-testid="register-submit"><%= t('auth.register_button') %></button>
-    </form>
+        </div>
+        <div class="letter-oath">
+          <span class="rank-plate oath-plate" data-plate="e" aria-hidden="true"><span class="plate-letter">E</span><span class="plate-metal"><%= t('rank.plate.e') %></span></span>
+          <p><%= t('auth.letter_rank') %> <strong>E · <%= t('rank.plate.e') %> · <%= t('rank.name.e') %></strong></p>
+        </div>
+        <div class="letter-sign">
+          <span class="letter-sign-label"><%= t('auth.letter_sign') %></span>
+          <span class="letter-signature" data-signature aria-hidden="true"><%= username %></span>
+        </div>
+        <button type="submit" class="seal-btn" data-testid="register-submit"><span class="seal-btn-wax" aria-hidden="true"></span><span><%= t('auth.register_button') %></span></button>
+      </form>
 <% } -%>
-    <div class="auth-switch">
-      <span><%= t('auth.already_sworn') %></span>
-      <a class="btn btn-secondary btn-sm" href="/login"><%= t('auth.switch_login') %></a>
+      <p class="letter-foot"><span><%= t('auth.already_sworn') %></span> <a href="/login"><%= t('auth.switch_login') %></a></p>
+      <span class="letter-stamp" aria-hidden="true"><span><%= t('range.sealed') %></span></span>
     </div>
+    <span class="letter-rod letter-rod-bottom" aria-hidden="true"></span>
+    <span class="quill" data-quill aria-hidden="true"><svg class="quill-feather" focusable="false"><use href="/static/icons.svg#i-quill"></use></svg></span>
   </section>
 </div>

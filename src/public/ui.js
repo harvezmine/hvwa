@@ -40,32 +40,42 @@
     update();
   });
 
-  // Sound: the guild's background music (static/audio, "Adventures Begin" by Pufino) and small effects synthesized with
-  // Web Audio (no files): a wooden knock on clicks, paper on menus, a slide between boards, a seal and coins on a solve.
-  // One toggle in the masthead switches all of it; the choice is remembered in this browser. Browsers refuse audio
-  // before the first user gesture, so the music starts on the first click or key press when sound is on.
+  // Sound: the guild's music (static/audio, "Adventures Begin" by Pufino) and effects synthesized with Web Audio (no
+  // files), themed to the guild: wood knocks, paper, brass, coins, wax, creaking signs and doors. One masthead toggle
+  // switches all of it and the choice is remembered in this browser. The music keeps one timeline across pages and
+  // tabs: its position is saved with a time stamp and a new page resumes where the music is now; a page reached by a
+  // click may play at once (Chrome), otherwise the next click or key press starts it, and every refused attempt is
+  // retried. Only the tab in front plays: a tab that starts the music quiets the others.
   var sound = (function () {
     var KEY = 'hvwa-sound';
     var POS = 'hvwa-music-pos';
     var MUSIC_URL = '/static/audio/adventures-begin.mp3';
     var MUSIC_VOLUME = 0.28;
-    var on = true; // shortcut: sound defaults on; flip to false here if the guild should start silent
-    try { var saved = window.localStorage.getItem(KEY); if (saved === 'off') on = false; } catch (e) { /* storage blocked */ }
+    function get(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+    function put(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* storage blocked or full */ } }
+    var on = get(KEY) !== 'off'; // sound defaults on; the toggle stores 'off'
+    var channel = null;
+    try { channel = new BroadcastChannel('hvwa-music'); } catch (e) { /* no channel: each tab plays on its own */ }
     var ctx = null;
+    var master = null;
     var noise = null;
     var music = null;
     var fade = 0;
+    var lastSave = 0;
 
     function audio() {
       var C = window.AudioContext || window.webkitAudioContext;
       if (!C) return null;
       if (!ctx) {
         ctx = new C();
+        master = ctx.createGain();
+        master.gain.value = 0.9;
+        master.connect(ctx.destination);
         noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
         var d = noise.getChannelData(0);
         for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state === 'suspended') { var r = ctx.resume(); if (r && r.catch) r.catch(function () { /* not allowed yet */ }); }
       return ctx;
     }
     function env(c, at, peak, attack, decay) {
@@ -73,7 +83,7 @@
       g.gain.setValueAtTime(0.0001, at);
       g.gain.exponentialRampToValueAtTime(peak, at + attack);
       g.gain.exponentialRampToValueAtTime(0.0001, at + attack + decay);
-      g.connect(c.destination);
+      g.connect(master);
       return g;
     }
     function tone(c, freq, at, peak, decay, type, glideTo) {
@@ -99,8 +109,21 @@
       s.stop(at + decay + 0.05);
     }
     var SFX = {
+      tick: function (c, t) { hiss(c, t, 0.03, 0.02, 4200, 0, 4); },
       click: function (c, t) { tone(c, 190, t, 0.22, 0.07, 'triangle', 120); hiss(c, t, 0.12, 0.04, 2200, 0, 2.5); },
+      page: function (c, t) { hiss(c, t, 0.08, 0.07, 1800, 4200, 1.2); hiss(c, t + 0.06, 0.06, 0.06, 2600, 5200, 1.2); },
       open: function (c, t) { hiss(c, t, 0.09, 0.16, 2600, 4200, 0.9); tone(c, 330, t, 0.05, 0.08, 'triangle'); },
+      close: function (c, t) { hiss(c, t, 0.07, 0.09, 3800, 2000, 1); },
+      scroll: function (c, t) { hiss(c, t, 0.08, 0.3, 700, 2600, 0.9); tone(c, 220, t + 0.26, 0.06, 0.08, 'triangle'); },
+      paper: function (c, t) { tone(c, 2400, t, 0.04, 0.05); hiss(c, t + 0.02, 0.11, 0.12, 1200, 3000, 0.8); },
+      clink: function (c, t) { tone(c, 1318, t, 0.09, 0.35); tone(c, 1976, t, 0.05, 0.25); tone(c, 2637, t + 0.01, 0.03, 0.15); hiss(c, t, 0.05, 0.03, 6000, 0, 3); },
+      creak: function (c, t) { tone(c, 120, t, 0.05, 0.32, 'sawtooth', 82); tone(c, 170, t + 0.3, 0.16, 0.08, 'triangle', 110); },
+      candle: function (c, t) { hiss(c, t, 0.12, 0.26, 380, 1200, 0.6); tone(c, 90, t, 0.1, 0.2); },
+      chime: function (c, t) { tone(c, 1046, t, 0.06, 0.5); tone(c, 1568, t + 0.05, 0.04, 0.6); },
+      fanfare: function (c, t) { [392, 523, 659, 784].forEach(function (f, i) { tone(c, f, t + i * 0.11, 0.07, 0.28, 'triangle'); }); },
+      quill: function (c, t) { hiss(c, t, 0.045, 0.05, 3000 + Math.random() * 2000, 0, 3); },
+      unroll: function (c, t) { hiss(c, t, 0.09, 0.7, 600, 2400, 0.8); tone(c, 110, t + 0.65, 0.12, 0.15, 'triangle'); },
+      gate: function (c, t) { tone(c, 85, t, 0.07, 0.9, 'sawtooth', 58); hiss(c, t, 0.05, 0.9, 300, 600, 2); tone(c, 60, t + 1, 0.25, 0.3); SFX.chime(c, t + 0.4); },
       slide: function (c, t) { hiss(c, t, 0.14, 0.32, 380, 1500, 0.8); tone(c, 150, t + 0.26, 0.18, 0.12, 'triangle', 95); },
       seal: function (c, t) { tone(c, 95, t, 0.32, 0.22, 'sine', 55); hiss(c, t, 0.14, 0.08, 900, 0, 1); tone(c, 880, t + 0.12, 0.09, 0.9); tone(c, 1320, t + 0.12, 0.05, 0.7); },
       coin: function (c, t) { tone(c, 1568, t, 0.08, 0.18); tone(c, 2093, t + 0.08, 0.07, 0.3); },
@@ -111,7 +134,25 @@
       var c = audio();
       if (c) SFX[name](c, c.currentTime + 0.01);
     }
+    // A page-load cue (the gate opening, the letter unrolling) plays only where the browser already allows sound.
+    function cue(name, delayMs) {
+      if (!on) return;
+      var c = audio();
+      if (c) window.setTimeout(function () { if (c.state === 'running') play(name); }, delayMs);
+    }
 
+    // The music: one timeline, saved as { t: seconds, at: epoch ms } and resumed where it would be now.
+    function savePos() {
+      if (music && !music.paused) put(POS, JSON.stringify({ t: music.currentTime, at: Date.now() }));
+    }
+    function resumeTime() {
+      var p = null;
+      try { p = JSON.parse(get(POS) || 'null'); } catch (e) { p = null; }
+      if (!p || typeof p.t !== 'number' || typeof p.at !== 'number') return 0;
+      var gap = (Date.now() - p.at) / 1000;
+      var t = p.t + (gap > 0 && gap < 60 ? gap : 0);
+      return music && music.duration > 0 ? t % music.duration : t;
+    }
     function setVolume(target, ms) {
       window.clearInterval(fade);
       var step = (target - music.volume) / Math.max(1, ms / 40);
@@ -121,53 +162,103 @@
         music.volume = Math.min(1, Math.max(0, v));
       }, 40);
     }
-    function startMusic() {
-      if (!on) return;
+    function onGesture() { if (on && (!music || music.paused)) startMusic(400); }
+    function armGesture(yes) {
+      ['pointerdown', 'keydown'].forEach(function (type) {
+        if (yes) document.addEventListener(type, onGesture, true); else document.removeEventListener(type, onGesture, true);
+      });
+    }
+    function startMusic(fadeMs) {
+      if (!on || document.hidden) return;
       if (!music) {
         music = new Audio(MUSIC_URL);
         music.loop = true;
         music.preload = 'auto';
         music.volume = 0;
-        var resumeAt = 0;
-        try { resumeAt = parseFloat(window.sessionStorage.getItem(POS) || '0') || 0; } catch (e) { /* storage blocked */ }
-        if (resumeAt > 0) music.addEventListener('loadedmetadata', function () { try { music.currentTime = resumeAt; } catch (e) { /* not seekable yet */ } }, { once: true });
+        music.addEventListener('loadedmetadata', function () { try { music.currentTime = resumeTime(); } catch (e) { /* not seekable yet */ } });
+        music.addEventListener('timeupdate', function () { var n = Date.now(); if (n - lastSave > 1000) { lastSave = n; savePos(); } });
+      } else if (music.paused && music.readyState > 0) {
+        try { music.currentTime = resumeTime(); } catch (e) { /* not seekable yet */ }
       }
       var p = music.play();
-      if (p && p.catch) p.catch(function () { /* still no gesture: the next one retries */ });
-      setVolume(MUSIC_VOLUME, 1200);
+      if (p && p.then) {
+        p.then(function () {
+          armGesture(false);
+          if (channel) channel.postMessage('playing');
+          setVolume(MUSIC_VOLUME, fadeMs);
+        }, function () { armGesture(true); }); // refused (no gesture yet): the next click or key press retries
+      } else setVolume(MUSIC_VOLUME, fadeMs);
     }
-    function stopMusic() { if (music) setVolume(0, 300); }
-    // Carry the track's position to the next page of this tab, so a click through the guild does not restart it.
-    window.addEventListener('pagehide', function () {
-      if (music && !music.paused) { try { window.sessionStorage.setItem(POS, String(music.currentTime)); } catch (e) { /* storage blocked */ } }
-    });
-    function firstGesture() {
-      document.removeEventListener('pointerdown', firstGesture, true);
-      document.removeEventListener('keydown', firstGesture, true);
-      startMusic();
+    function stopMusic(ms) { if (music && !music.paused) { savePos(); setVolume(0, ms); } }
+    function setOn(value, tell) {
+      on = value;
+      put(KEY, on ? 'on' : 'off');
+      document.querySelectorAll('[data-sound-toggle]').forEach(function (b) { b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      if (tell && channel) channel.postMessage(on ? 'on' : 'off');
     }
-    document.addEventListener('pointerdown', firstGesture, true);
-    document.addEventListener('keydown', firstGesture, true);
+    if (channel) {
+      channel.onmessage = function (e) {
+        if (e.data === 'playing') stopMusic(250); // another tab took the music over
+        else if (e.data === 'off') { setOn(false, false); stopMusic(250); }
+        else if (e.data === 'on') setOn(true, false);
+      };
+    }
+    window.addEventListener('pagehide', savePos);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && on && (!music || music.paused)) startMusic(500); });
+    armGesture(true);
+    if (on) startMusic(500);
 
     document.querySelectorAll('[data-sound-toggle]').forEach(function (btn) {
       btn.hidden = false;
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       btn.addEventListener('click', function () {
-        on = !on;
-        try { window.localStorage.setItem(KEY, on ? 'on' : 'off'); } catch (e) { /* storage blocked */ }
-        document.querySelectorAll('[data-sound-toggle]').forEach(function (b) { b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-        if (on) { startMusic(); play('coin'); } else stopMusic();
+        setOn(!on, true);
+        if (on) { startMusic(400); play('coin'); } else stopMusic(300);
       });
     });
 
-    // Effects on the shell: a knock for clicks, paper for a menu or accordion opening. Board links play their slide
-    // from the carousel instead, so they are skipped here.
+    // Every interaction has its sound. Clicks: paper for navigation and bounties, brass for the main action, a creak for
+    // leaving, a candle for the theme, a wooden knock for the rest; board links play their slide from the carousel.
+    var SKIP = '[data-board-link], [data-board-prev], [data-board-next], [data-sound-toggle], summary';
+    function clickSound(el) {
+      if (el.matches('.nav-link, .lang-switch a, .crumbs a, .tabs a, .admin-nav a, .letter-foot a, .board-step')) return 'page';
+      if (el.matches('.poster, .lab-card, .continue-slip, .tier-card-link, .my-lab')) return 'paper';
+      if (el.matches('.btn-primary, .seal-btn, .btn-office')) return 'clink';
+      if (el.matches('.theme-toggle')) return 'candle';
+      if (el.matches('.menu-item-danger, .btn-danger')) return 'creak';
+      return 'click';
+    }
     document.addEventListener('click', function (e) {
-      var el = e.target.closest ? e.target.closest('a, button, summary, select, input[type="submit"]') : null;
-      if (!el || el.matches('[data-board-link], [data-board-prev], [data-board-next], [data-sound-toggle], summary')) return;
-      play('click');
+      var el = e.target.closest ? e.target.closest('a, button, summary, select, input[type="submit"], input[type="checkbox"], input[type="radio"]') : null;
+      if (!el || el.matches(SKIP)) return;
+      play(clickSound(el));
     }, true);
-    document.addEventListener('toggle', function (e) { if (e.target && e.target.open) play('open'); }, true);
+    // Menus and accordions: paper opening (a whisper unrolls), paper folding shut.
+    document.addEventListener('toggle', function (e) {
+      var d = e.target;
+      if (!d || d.tagName !== 'DETAILS') return;
+      play(d.open ? (d.classList.contains('accordion') ? 'scroll' : 'open') : 'close');
+    }, true);
+    // Writing: the quill scratches while any text field is typed in.
+    var lastScratch = 0;
+    document.addEventListener('input', function (e) {
+      if (!e.target.matches || !e.target.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), textarea')) return;
+      var n = Date.now();
+      if (n - lastScratch > 70) { lastScratch = n; play('quill'); }
+    }, true);
+    document.addEventListener('change', function (e) { if (e.target.matches && e.target.matches('select')) play('page'); }, true);
+    // Hovering what can be pressed: a soft tick, once per element (mouse only).
+    var HOVER = '.btn, .nav-link, .board-sign, .poster, .tier-card-link, .seal-btn, .menu-item, .icon-btn, .board-nav, .continue-slip, .admin-nav a, .tabs a, summary';
+    var hovered = null;
+    document.addEventListener('pointerover', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var el = e.target.closest ? e.target.closest(HOVER) : null;
+      if (el === hovered) return;
+      hovered = el;
+      if (el) play('tick');
+    }, true);
+    if (document.querySelector('.welcome-gate')) cue('gate', 950);
+    if (document.querySelector('[data-letter]')) cue('unroll', document.documentElement.classList.contains('splash-done') ? 450 : 1750);
     return { play: play };
   })();
 
@@ -295,7 +386,9 @@
       window.requestAnimationFrame(function () { try { el.focus(); } catch (e) { /* not focusable */ } });
     }
     document.querySelectorAll('[data-toast]').forEach(function (node) {
-      if (node.getAttribute('data-toast') === 'unlocked') sound.play('coin');
+      // Action results the solve popup does not voice: a quest's fanfare, a closing creak, gold for a whisper, a failure.
+      var cue = { launched: 'fanfare', stopped: 'creak', reset: 'page', unlocked: 'coin', full: 'error', failed: 'error' }[node.getAttribute('data-toast')];
+      if (cue) sound.play(cue);
       showToast({
         variant: node.getAttribute('data-toast-variant') || 'info',
         title: node.getAttribute('data-toast-title') || '',
@@ -371,6 +464,44 @@
     var start = slides.findIndex(function (s) { return '#' + s.id === window.location.hash; });
     if (start > 0) { track.scrollLeft = start * step(); settled = start; }
     mark(Math.max(0, start));
+  });
+
+  // The guild letter (login / register): the quill follows the field being written and wiggles while it writes, the
+  // signature copies the name, and a submit presses the wax seal and rolls the letter up before the form posts (the
+  // server answers the same either way; without JS, or with reduced motion, the form posts at once).
+  document.querySelectorAll('[data-letter]').forEach(function (letter) {
+    var quill = letter.querySelector('[data-quill]');
+    var signature = letter.querySelector('[data-signature]');
+    var source = letter.querySelector('[data-signature-source]');
+    var form = letter.querySelector('form');
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var writing = 0;
+    function aim(field) {
+      if (!quill) return;
+      var y = field.getBoundingClientRect().top - letter.getBoundingClientRect().top + field.offsetHeight * 0.75;
+      quill.style.setProperty('--quill-y', y + 'px');
+    }
+    letter.addEventListener('focusin', function (e) { if (e.target.matches('input:not([type="hidden"])')) aim(e.target); });
+    letter.addEventListener('input', function (e) {
+      if (quill) {
+        quill.classList.add('is-writing');
+        window.clearTimeout(writing);
+        writing = window.setTimeout(function () { quill.classList.remove('is-writing'); }, 260);
+      }
+      if (signature && e.target === source) signature.textContent = source.value;
+    });
+    if (document.activeElement && letter.contains(document.activeElement)) aim(document.activeElement);
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        if (reduce || letter.classList.contains('is-sealing')) return;
+        e.preventDefault();
+        letter.classList.add('is-sealing');
+        sound.play('seal');
+        window.setTimeout(function () { form.submit(); }, 1000);
+      });
+    }
+    // Back from the next page (bfcache): the letter is open again.
+    window.addEventListener('pageshow', function (e) { if (e.persisted) letter.classList.remove('is-sealing'); });
   });
 
   // A plain (non-htmx) submit of a form with data-confirm asks first. htmx forms use hx-confirm instead, so skip them

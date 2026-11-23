@@ -1,39 +1,59 @@
-<%# Platform login (src/auth). One error for every failed sign-in. Split surface: the inverted guild panel and the paper
-   form. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
-<div class="auth-shell">
-  <%- include('auth-brand', { statement: 'auth.brand_login', tagline: 'auth.tagline_login', ill: 'i-guild-gate' }) %>
-  <section class="auth-panel" aria-labelledby="login-title">
-    <div class="auth-panel-head">
-      <p class="auth-eyebrow"><%= t('app.guild_tag') %></p>
-      <h1 class="page-title" id="login-title"><%= t('auth.login_heading') %></h1>
-    </div>
+<%# Platform login (src/auth): a letter to the guild's gate. The sealed scroll breaks its wax and unrolls (CSS), the
+   adventurer writes their name and secret word on the ink lines while the quill follows (static/ui.js), and the wax
+   seal button presses a seal and rolls the letter up before it posts (ui.js; without JS the form simply posts). One
+   error for every failed sign-in. Every value goes through the escaped output tag. Never put an EJS tag inside an EJS
+   comment: it breaks parsing. %>
+<div class="gate">
+  <section class="letter" data-letter aria-labelledby="login-title">
+    <span class="letter-rod letter-rod-top" aria-hidden="true"></span>
+    <span class="letter-wax" aria-hidden="true"></span>
+    <div class="letter-sheet">
+      <header class="letter-head">
+        <img class="letter-crest" src="/static/brand/logo.png" alt="" width="800" height="533">
+        <p class="letter-eyebrow"><%= t('app.guild_tag') %></p>
+        <h1 class="letter-title" id="login-title"><%= t('auth.letter_login_title') %></h1>
+      </header>
 <% if (registered) { -%>
-    <p class="result result-ok" role="status" data-testid="registered"><%= t('auth.registered') %></p>
+      <div class="charter" role="status" data-testid="registered">
+        <span class="rank-plate charter-plate" data-plate="e" aria-hidden="true"><span class="plate-letter">E</span><span class="plate-metal"><%= t('rank.plate.e') %></span></span>
+        <div class="charter-body">
+          <p class="charter-title"><%= t('auth.charter_title') %> · E · <%= t('rank.plate.e') %> · <%= t('rank.name.e') %></p>
+          <p class="charter-text"><%= t('auth.registered') %></p>
+        </div>
+      </div>
 <% } -%>
 <% if (notice) { -%>
-    <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
+      <p class="result result-bad" role="alert" data-testid="auth-busy"><%= notice %></p>
 <% } -%>
 <% if (failed) { -%>
-    <p class="result result-bad" role="alert" data-testid="login-error" id="login-error"><%= t('auth.login_failed') %></p>
+      <p class="result result-bad" role="alert" data-testid="login-error" id="login-error"><%= t('auth.login_failed') %></p>
 <% } -%>
-    <form method="post" action="/login" class="auth-form">
-      <input type="hidden" name="_csrf" value="<%= csrf %>">
-      <input type="hidden" name="next" value="<%= next %>">
-      <div class="field">
-        <label for="login-username"><%= t('auth.username') %></label>
-        <input id="login-username" type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus<% if (failed) { %> aria-describedby="login-error"<% } %>>
-      </div>
-      <div class="field">
-        <label for="login-password"><%= t('auth.password') %></label>
-        <input id="login-password" type="password" name="password" autocomplete="current-password" maxlength="1024" required<% if (failed) { %> aria-describedby="login-error"<% } %>>
-      </div>
-      <button type="submit" class="btn btn-primary btn-lg btn-block"><%= t('auth.login_button') %></button>
-    </form>
+      <p class="letter-to"><%= t('auth.letter_login_to') %></p>
+      <form method="post" action="/login" class="auth-form letter-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>">
+        <input type="hidden" name="next" value="<%= next %>">
+        <p class="letter-prose"><%= t('auth.letter_login_line1') %></p>
+        <div class="field ink-field">
+          <label for="login-username"><%= t('auth.username') %></label>
+          <input id="login-username" type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus data-signature-source<% if (failed) { %> aria-describedby="login-error"<% } %>>
+        </div>
+        <p class="letter-prose"><%= t('auth.letter_login_line2') %></p>
+        <div class="field ink-field">
+          <label for="login-password"><%= t('auth.password') %></label>
+          <input id="login-password" type="password" name="password" autocomplete="current-password" maxlength="1024" required<% if (failed) { %> aria-describedby="login-error"<% } %>>
+        </div>
+        <div class="letter-sign">
+          <span class="letter-sign-label"><%= t('auth.letter_sign') %></span>
+          <span class="letter-signature" data-signature aria-hidden="true"></span>
+        </div>
+        <button type="submit" class="seal-btn"><span class="seal-btn-wax" aria-hidden="true"></span><span><%= t('auth.login_button') %></span></button>
+      </form>
 <% if (registerLink) { -%>
-    <div class="auth-switch">
-      <span><%= t('auth.new_here') %></span>
-      <a class="btn btn-secondary btn-sm" href="/register" data-testid="register-link"><%= t('auth.switch_register') %></a>
-    </div>
+      <p class="letter-foot"><span><%= t('auth.new_here') %></span> <a href="/register" data-testid="register-link"><%= t('auth.switch_register') %></a></p>
 <% } -%>
+      <span class="letter-stamp" aria-hidden="true"><span><%= t('range.sealed') %></span></span>
+    </div>
+    <span class="letter-rod letter-rod-bottom" aria-hidden="true"></span>
+    <span class="quill" data-quill aria-hidden="true"><svg class="quill-feather" focusable="false"><use href="/static/icons.svg#i-quill"></use></svg></span>
   </section>
 </div>
