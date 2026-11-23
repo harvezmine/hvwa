@@ -9,13 +9,24 @@
   <meta name="color-scheme" content="dark light">
   <title><%= typeof pageTitle !== 'undefined' ? pageTitle : (labBar ? labBar.pageTitle : t('app.title')) %></title>
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'>
+  <link rel="icon" href="/static/brand/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/brand/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/splash.js"></script>
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/ui.js" defer></script>
 </head>
 <% const office = navActive === 'admin'; -%>
 <body<% if (office) { %> class="office"<% } %>>
 <%# The shared page shell (render.ts page()). Every value goes through the escaped output tag; only the rendered view body and the platform partials are included raw. Icons come from the /static/icons.svg sprite, so a page stays small (the XSS oracle reads whole lab pages, up to XSS_LIMITS.htmlLength). The theme toggle and the language switch are plain links (no JavaScript needed); static/ui.js only enhances. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+  <div class="splash" aria-hidden="true">
+    <span class="splash-ring"></span>
+    <div class="splash-inner">
+      <img class="splash-logo" src="/static/brand/logo.png" alt="" width="800" height="533">
+      <span class="splash-loading"><span class="splash-dot"></span><span class="splash-dot"></span><span class="splash-dot"></span></span>
+    </div>
+  </div>
   <a class="skip-link" href="#main"><%= t('nav.skip') %></a>
   <div class="safety-banner" role="note" data-mode="<%= portalMode ? 'portal' : 'standalone' %>"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t(portalMode ? 'safety.portal' : 'safety.warning') %></span></div>
 <% if (platformAuth && platformAuth.defaultPassword) { -%>
@@ -30,7 +41,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a href="/" class="brand">
-        <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
+        <img class="brand-mark brand-mark-img" src="/static/brand/icon-64.png" alt="" width="28" height="28">
         <span class="brand-name">HVWA</span>
         <span class="brand-tag"><%= t('app.guild_tag') %></span>
       </a>
