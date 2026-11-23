@@ -106,7 +106,9 @@ async function testLab(dir, report) {
       if (flag !== undefined) {
         // Deliver the flag exactly as the warden does (spec §6): after start, into /tmp, as a one-shot file — never an
         // env var (a read-only rootfs blocks `docker cp`/the archive endpoint, so both use a tiny exec that writes it).
-        const r = docker(['exec', name, 'sh', '-c', "umask 077; printf '%s\\n' \"$1\" > /tmp/.hvwa-flag; chmod 400 /tmp/.hvwa-flag", 'sh', flag]);
+        // Write to a temp name and rename last: the lab polls the final path, so it can never read (and unlink) the
+        // file between the write and the chmod — the race that made the delivery exec exit non-zero after success.
+        const r = docker(['exec', name, 'sh', '-c', "umask 077; printf '%s\\n' \"$1\" > /tmp/.hvwa-flag.tmp; chmod 400 /tmp/.hvwa-flag.tmp; mv /tmp/.hvwa-flag.tmp /tmp/.hvwa-flag", 'sh', flag]);
         if (r.status !== 0) fail(`${level}: deliver the one-shot flag file (docker exec exited ${r.status}): ${r.stderr}`);
       }
       await waitHealthy(name);                                                             // check 1

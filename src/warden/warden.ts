@@ -69,7 +69,9 @@ export function createWarden(deps: WardenDeps): WardenApi {
           if (r.flag !== undefined) {
             const execId = await docker.execCreate(name, {
               User: '10001:10001', AttachStdin: false, AttachStdout: false, AttachStderr: false, Tty: false,
-              Cmd: ['sh', '-c', 'umask 077; printf \'%s\\n\' "$1" > /tmp/.hvwa-flag; chmod 400 /tmp/.hvwa-flag', 'sh', r.flag],
+              // The lab polls the final path and unlinks the file as soon as it appears. Write a temp name, chmod it,
+              // then rename last, so the delivery can never fail because the lab removed the file mid-exec.
+              Cmd: ['sh', '-c', 'umask 077; printf \'%s\\n\' "$1" > /tmp/.hvwa-flag.tmp; chmod 400 /tmp/.hvwa-flag.tmp; mv /tmp/.hvwa-flag.tmp /tmp/.hvwa-flag', 'sh', r.flag],
             });
             await docker.execStart(execId);
           }
