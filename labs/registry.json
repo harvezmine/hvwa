@@ -300,7 +300,7 @@
         "placement": "custom"
       },
       "resources": {
-        "memoryMiB": 128,
+        "memoryMiB": 192,
         "pids": 64
       },
       "tmpfs": [
@@ -345,8 +345,8 @@
           }
         }
       ],
-      "version": "1.1.0",
-      "image": "sha256:31d6597b8513b1b7873251503b86dc6956883f9a854802a780c68c6a45b7fd28"
+      "version": "1.1.1",
+      "image": "sha256:d1ae2b211bf3b67bc2d030587a3bf6ceb8782d256893c90c3cebaca51524a18a"
     }
   ]
 }

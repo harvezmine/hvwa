@@ -9,7 +9,8 @@
 // Node standard library only; all state is in memory. Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { readFileSync, unlinkSync } from 'node:fs';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { simulateStaffBrowser } from './bot.mjs';
@@ -60,13 +61,30 @@ function sixDigitPin() {
   return String(n % 1_000_000).padStart(6, '0');
 }
 
-function hashPassword(password, salt) {
-  return scryptSync(password, salt, 32).toString('hex');
+// scrypt runs on libuv's thread pool: a sign-in storm must not block the event loop (the health check is on it).
+const scryptAsync = promisify(scrypt);
+async function hashPassword(password, salt) {
+  return (await scryptAsync(password, salt, 32)).toString('hex');
 }
-function verifyPassword(password, salt, expectedHex) {
-  const actual = scryptSync(password, salt, 32);
+async function verifyPassword(password, salt, expectedHex) {
+  const actual = await scryptAsync(password, salt, 32);
   const want = Buffer.from(expectedHex, 'hex');
   return actual.length === want.length && timingSafeEqual(actual, want);
+}
+
+// A few sign-ins a minute is plenty for the challenge; beyond that the scrypt work is refused, not queued.
+const LOGIN_LIMIT = 30;
+const LOGIN_WINDOW_MS = 60_000;
+const loginAttempts = new Map();
+function loginAllowed(req) {
+  const key = req.socket.remoteAddress ?? 'unknown';
+  const t = Date.now();
+  const recent = (loginAttempts.get(key) ?? []).filter((at) => t - at < LOGIN_WINDOW_MS);
+  if (recent.length >= LOGIN_LIMIT) { loginAttempts.set(key, recent); return false; }
+  recent.push(t);
+  loginAttempts.set(key, recent);
+  if (loginAttempts.size > 1024) loginAttempts.clear();
+  return true;
 }
 
 // --- in-memory state ------------------------------------------------------------------------------------------------
@@ -170,6 +188,7 @@ async function handle(req, res) {
 
   // --- account registration / login ---
   if (p === '/register' && method === 'POST') {
+    if (!loginAllowed(req)) return html(res, 429, registerPage('Too many attempts. Wait a minute.'));
     const form = parseForm(await readBody(req));
     const username = String(form.username ?? '').trim();
     const password = String(form.password ?? '');
@@ -179,7 +198,7 @@ async function handle(req, res) {
     const salt = randomBytes(16).toString('hex');
     const wallet = walletAddress();
     const record = {
-      username, salt, hash: hashPassword(password, salt), wallet,
+      username, salt, hash: await hashPassword(password, salt), wallet,
       balances: { BTC: 0.05, ETH: 1.2, USDT: 500 },
       createdAt: now(),
     };
@@ -189,11 +208,12 @@ async function handle(req, res) {
     return redirect(res, '/dashboard');
   }
   if (p === '/login' && method === 'POST') {
+    if (!loginAllowed(req)) return html(res, 429, loginPage('Too many sign-in attempts. Wait a minute.'));
     const form = parseForm(await readBody(req));
     const username = String(form.username ?? '').trim();
     const password = String(form.password ?? '');
     const record = users.get(username);
-    if (!record || !verifyPassword(password, record.salt, record.hash)) {
+    if (!record || !(await verifyPassword(password, record.salt, record.hash))) {
       return html(res, 401, loginPage('Invalid username or password.'));
     }
     openSession(res, username);

@@ -9,7 +9,7 @@
   "port": 8080,
   "health": "/healthz",
   "flag": { "placement": "custom" },
-  "resources": { "memoryMiB": 128, "pids": 64 },
+  "resources": { "memoryMiB": 192, "pids": 64 },
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
   "themeId": "binanse",
