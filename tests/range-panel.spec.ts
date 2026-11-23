@@ -113,7 +113,7 @@ describe('the Lab panel', () => {
     const full = await act(bob.agent, 'r01', 'launch');
     expect(stateOf(full.text)).toBe('none');
     expect(full.text).toContain('data-testid="range-full"');
-    expect(full.text).toContain('The range is full. Try again in a minute.');
+    expect(full.text).toContain('Every table is full. Try again in a minute.');
     expect(full.text).toContain('data-testid="lab-launch"');
     expect(full.text).not.toContain('queue-position');
   });
@@ -209,7 +209,7 @@ describe('instance state visibility', () => {
     expect(stateOf(started.text)).toBe('starting');
     expect(started.text).toContain('Starting…');
     expect(started.text).not.toContain('Running');
-    expect(started.text).toMatch(/data-testid="idle-rule">The lab stops automatically after 20 minutes/);
+    expect(started.text).toMatch(/data-testid="idle-rule">The lab closes after 20 minutes idle/);
   });
 
   it('shows a recent stop reason with Launch again: replaced after a relaunch', async () => {
@@ -240,8 +240,8 @@ describe('instance state visibility', () => {
     const started = await act(agent, 'r01', 'launch');
     await agent.get('/labs/r01/panel?level=acolyte');
     const running = (await agent.get('/labs/r01?level=acolyte')).text;
-    expect(running).toMatch(/hx-confirm="Stop this lab now\?/);
-    expect(running).toMatch(/data-confirm="Stop this lab now\?/);
+    expect(running).toMatch(/hx-confirm="Close this lab\?/);
+    expect(running).toMatch(/data-confirm="Close this lab\?/);
     expect(started.status).toBe(200);
   });
 });

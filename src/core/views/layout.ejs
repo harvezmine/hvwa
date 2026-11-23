@@ -154,7 +154,9 @@
     <div class="footer-inner">
       <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>HVWA</span>
       <span><%= t(portalMode ? 'app.portal_tagline' : 'app.tagline') %></span>
-      <span><%= t(portalMode ? 'app.portal_footer' : 'app.footer') %></span>
+<% if (!portalMode) { -%>
+      <span><%= t('app.footer') %></span>
+<% } -%>
       <span class="music-credit"><%= t('app.music_credit') %></span>
     </div>
   </footer>

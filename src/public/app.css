@@ -1391,7 +1391,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 /* --- Guild hall: heading + guild card --- */
 .hall-head { display: grid; gap: var(--sp-5); align-items: center; margin: 0 0 var(--sp-6); }
 .hall-intro { min-width: 0; }
-.gh-display { font-family: var(--serif); font-weight: 600; font-size: var(--fs-display); line-height: 1.02; letter-spacing: -0.01em; margin: 0 0 var(--sp-3); max-width: 15ch; text-wrap: balance; }
+.gh-display { font-family: var(--serif); font-weight: 600; font-size: var(--fs-display); line-height: 1.02; letter-spacing: -0.01em; margin: 0 0 var(--sp-3); max-width: 15ch; text-wrap: balance; overflow-wrap: break-word; }
 .gh-lead { color: var(--text-muted); font-size: var(--fs-lg); max-width: 50ch; margin: 0; }
 .guild-card {
   position: relative; display: grid; gap: var(--sp-3); padding: var(--sp-5) var(--sp-5) var(--sp-4);
@@ -1679,20 +1679,31 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 
 /* --- Login / register / password: the guild door and the registry --- */
 .auth-shell { display: grid; gap: 0; margin: 0 calc(var(--sp-4) * -1); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow); }
-.auth-brand { display: flex; flex-direction: column; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-6) var(--sp-5); box-shadow: inset 0 0 0 8px var(--wood-2); }
-.auth-brand .brand-mark { stroke: var(--primary); width: 2.4rem; height: 2.4rem; }
-.auth-logo { width: min(100%, 15rem); height: auto; align-self: center; filter: drop-shadow(0 8px 20px var(--shade)); }
-.auth-ill { width: min(100%, 13rem); height: auto; stroke-width: 1; color: var(--on-wood-muted); align-self: center; }
-.auth-statement { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, 3vw, 2.3rem); line-height: 1.15; letter-spacing: 0.04em; margin: 0; color: var(--on-wood); }
-.auth-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
-.auth-facts li { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--on-wood-muted); }
-.auth-facts li::before { content: "\25C6"; margin-right: var(--sp-2); color: var(--primary); }
-.auth-panel { padding: var(--sp-6) var(--sp-5); background-color: var(--surface); background-image: var(--tex-paper); }
-.auth-panel .page-title { margin: 0 0 var(--sp-2); }
+.auth-brand { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: var(--sp-5); padding: var(--sp-6) var(--sp-5); box-shadow: inset 0 0 0 8px var(--wood-2); }
+.auth-brand-top { display: grid; justify-items: center; gap: var(--sp-3); }
+.auth-logo { width: min(100%, 16rem); height: auto; filter: drop-shadow(0 8px 20px var(--shade)); }
+.auth-rule { position: relative; width: 100%; height: 1px; background: linear-gradient(90deg, transparent, var(--on-wood-muted), transparent); opacity: 0.45; }
+.auth-rule::after { content: ""; position: absolute; top: 50%; left: 50%; width: 0.4rem; height: 0.4rem; transform: translate(-50%, -50%) rotate(45deg); background: var(--primary); }
+.auth-brand-mid { position: relative; display: grid; place-items: center; padding: var(--sp-2) 0; }
+.auth-brand-mid::before { content: ""; position: absolute; width: min(70vw, 15rem); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, var(--splash-glow), transparent 68%); }
+.auth-ill { position: relative; width: min(100%, 12rem); height: auto; stroke-width: 1; color: var(--on-wood-muted); }
+.auth-brand-foot { display: grid; gap: var(--sp-2); }
+.auth-statement { font-family: var(--display); font-weight: 700; font-size: clamp(1.7rem, 3vw, 2.5rem); line-height: 1.12; letter-spacing: 0.03em; margin: 0; color: var(--on-wood); text-wrap: balance; }
+.auth-tagline { margin: 0; max-width: 34ch; color: var(--on-wood-muted); font-size: var(--fs-sm); line-height: 1.55; }
+.auth-panel { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: var(--sp-6) var(--sp-5); background-color: var(--surface); background-image: var(--tex-paper); }
+.auth-panel-head { margin: 0 0 var(--sp-2); }
+.auth-eyebrow { margin: 0 0 var(--sp-1); font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); }
+.auth-panel .page-title { margin: 0; }
 .auth-panel .auth-intro { color: var(--text-muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-5); }
-.auth-form { display: grid; gap: 0; }
+.auth-form { display: grid; gap: 0; margin-top: var(--sp-2); }
 .auth-form .btn { margin-top: var(--sp-2); }
-.auth-switch { margin: var(--sp-4) 0 0; text-align: left; font-size: var(--fs-sm); }
+.auth-switch { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); margin: var(--sp-5) 0 0; padding-top: var(--sp-4); border-top: 1px dashed var(--border-strong); color: var(--text-muted); font-size: var(--fs-sm); }
+@media (max-width: 767px) {
+  .auth-brand { gap: var(--sp-4); padding: var(--sp-5) var(--sp-4); }
+  .auth-ill { width: 9rem; }
+  .auth-statement { font-size: 1.55rem; }
+  .auth-panel { padding: var(--sp-5) var(--sp-4); }
+}
 
 /* --- Admin dashboard (src/range/admin.ts) --- */
 .admin-states { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-5); }

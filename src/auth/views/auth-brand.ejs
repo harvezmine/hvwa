@@ -1,0 +1,15 @@
+<%# The shared left panel of the login, registration and password pages: the guild's logo, its gate, and the greeting.
+   Locals: `statement` and `tagline` are i18n keys; `ill` is the /static/icons.svg symbol. %>
+<aside class="auth-brand">
+  <div class="auth-brand-top">
+    <img class="auth-logo" src="/static/brand/logo.png" alt="" width="800" height="533">
+    <span class="auth-rule" aria-hidden="true"></span>
+  </div>
+  <div class="auth-brand-mid">
+    <svg class="icon auth-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= ill %>"></use></svg>
+  </div>
+  <div class="auth-brand-foot">
+    <p class="auth-statement"><%= t(statement) %></p>
+    <p class="auth-tagline"><%= t(tagline) %></p>
+  </div>
+</aside>

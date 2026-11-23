@@ -246,7 +246,7 @@ describe('the catalog', () => {
     const slice = (from: string, to: string) => html.slice(html.indexOf(`id="board-${from}"`), html.indexOf(`id="board-${to}"`));
     expect(slice('web', 'crypto')).toContain('data-lab="r01"'); // every lab defaults to the web board
     expect(slice('crypto', 'pwn')).not.toContain('data-testid="lab-card"');
-    expect(slice('crypto', 'pwn')).toContain('No notices pinned here yet');
+    expect(slice('crypto', 'pwn')).toContain('No bounties pinned here yet');
     expect(html).toMatch(/data-testid="board-sign-web" aria-current="true"/); // the first board is the active one
     expect(html).toContain('data-board-prev hidden'); // the arrow knobs wait for ui.js; the plank links work without it
   });
@@ -376,7 +376,7 @@ describe('portal copy and per-user headers', () => {
     const { app } = portalApp();
     const login = (await request(app).get('/login')).text;
     expect(login).toContain('data-mode="portal"');
-    expect(login).toContain('runs in your own isolated instance');
+    expect(login).toContain('Every lab is deliberately vulnerable');
     expect(login).not.toContain('Runs fully offline');
     const { agent } = await player(app, 'alice');
     for (const path of ['/', '/leaderboard', '/labs/r01']) {

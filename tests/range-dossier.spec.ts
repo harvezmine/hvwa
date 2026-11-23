@@ -36,7 +36,7 @@ describe('the contract dossier page', () => {
     const { agent } = await player(app, 'alice');
     const html = (await agent.get('/labs/r05')).text;
     expect(html).toContain('Bounty r05 · 1 Threat level · REWARD 600 G');
-    expect(html).toContain('This bounty has a single deadly threat level. There is no secure reference in this lab.');
+    expect(html).toContain('This bounty has one deadly level and no safe copy.');
     expect((html.match(/data-testid="range-level-/g) ?? []).length).toBe(1);
     expect(html).toContain('data-testid="range-level-inquisitor"');
     expect(html).not.toContain('data-testid="range-level-divine"');
