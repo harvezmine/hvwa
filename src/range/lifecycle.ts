@@ -27,6 +27,10 @@ export interface LifecycleDeps {
   readonly log?: (line: string) => void;
 }
 
+/** A running lab that dies (a destructive payload, a crash) is relaunched this many times in the window before it fails. */
+export const MAX_RECOVERIES = 10;
+export const RECOVERY_WINDOW_MS = 10 * 60_000;
+
 export type LaunchOutcome = { ok: true; instance: InstanceRecord } | { ok: false; error: 'unknown_lab' | 'bad_level' | 'full' };
 
 export interface Lifecycle {
@@ -41,13 +45,18 @@ export interface Lifecycle {
   stopInstance(instanceId: string, reason: StopReason): Promise<void>;
   /** Mark an active instance failed and remove its container (best effort). */
   fail(instanceId: string, reason: string): Promise<void>;
+  /**
+   * Recover a running instance whose container is gone: remove the dead one and launch the same instance id again
+   * (the same deterministic flag and URL). Bounded per instance; after the bound it is failed as `crashed`.
+   */
+  recover(instanceId: string): Promise<void>;
   /** A new instance of the same lab and level: a clean state and a new flag. */
   reset(userId: number): Promise<LaunchOutcome | { ok: false; error: 'none' }>;
   /** Ask the warden whether a starting instance is ready (or failed, or too slow to start). */
   refresh(instanceId: string): Promise<InstanceRecord | undefined>;
   /** A request reached the instance (forward-auth): kept in memory until flushLastSeen. */
   touch(instanceId: string): void;
-  /** Write the remembered last-seen times (the reaper does it every 30 s). */
+  /** Write the remembered last-seen times (the reaper does it every 5 s). */
   flushLastSeen(): void;
 }
 
@@ -57,6 +66,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
   const log = deps.log ?? ((line: string) => console.warn(line));
   const store = createInstanceStore(deps.db);
   const lastSeen = new Map<string, number>();
+  const recoveries = new Map<string, number[]>();
   const chains = new Map<number, Promise<unknown>>();
   // Every launch's capacity decision runs here, so no two users can pass the check before either has reserved its slot.
   // The job itself is synchronous (SQLite reads/writes only), so once it runs, no other launch can interleave; the old
@@ -91,8 +101,19 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       });
     } catch (err) {
       store.update(rec.id, { state: 'failed', reason: codeOf(err), endedAt: now() });
+      recoveries.delete(rec.id);
       log(`range: launch of ${rec.id} failed (${codeOf(err)})`);
     }
+  }
+
+  /** The one place that fails a record: state, last-seen, recovery budget and the best-effort container removal. */
+  async function failRecord(id: string, reason: string): Promise<void> {
+    const rec = store.get(id);
+    if (!rec || !isActiveState(rec.state)) return;
+    store.update(id, { state: 'failed', reason, endedAt: now() });
+    lastSeen.delete(id);
+    recoveries.delete(id);
+    try { await warden.stop(id); } catch (err) { log(`range: removing failed ${id} failed (${codeOf(err)}); the reaper retries`); }
   }
 
   async function stopRecord(rec: InstanceRecord, reason: StopReason): Promise<void> {
@@ -102,6 +123,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
     }
     store.update(rec.id, { state: 'stopped', endedAt: now() });
     lastSeen.delete(rec.id);
+    recoveries.delete(rec.id);
   }
 
   /** A record already marked stopped by a reservation: remove its container (best effort). */
@@ -110,6 +132,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       try { await warden.stop(rec.id); } catch (err) { log(`range: stop of ${rec.id} failed (${codeOf(err)}); the reaper retries`); }
     }
     lastSeen.delete(rec.id);
+    recoveries.delete(rec.id);
   }
 
   const lc: Lifecycle = {
@@ -157,12 +180,35 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       });
     },
 
-    async fail(id, reason) {
-      const rec = store.get(id);
-      if (!rec || !isActiveState(rec.state)) return;
-      store.update(id, { state: 'failed', reason, endedAt: now() });
-      lastSeen.delete(id);
-      try { await warden.stop(id); } catch (err) { log(`range: removing failed ${id} failed (${codeOf(err)}); the reaper retries`); }
+    fail: (id, reason) => failRecord(id, reason),
+
+    async recover(id) {
+      const first = store.get(id);
+      if (!first || first.state !== 'running') return;
+      await serial(first.userId, async () => {
+        const rec = store.get(id);
+        if (!rec || rec.state !== 'running') return;
+        const t = now();
+        const attempts = (recoveries.get(id) ?? []).filter((at) => t - at < RECOVERY_WINDOW_MS);
+        if (attempts.length >= MAX_RECOVERIES) {
+          recoveries.delete(id);
+          await failRecord(id, 'crashed');
+          return;
+        }
+        attempts.push(t);
+        recoveries.set(id, attempts);
+        try {
+          // Remove the dead container and its per-instance network before the same instance id is created again.
+          await warden.stop(id);
+        } catch (err) {
+          log(`range: recovery of ${id} could not remove the dead container (${codeOf(err)}); the reaper retries`);
+          return;
+        }
+        store.update(id, { state: 'starting', startedAt: t, readyAt: null, endedAt: null, reason: null });
+        lastSeen.delete(id);
+        await start(store.get(id) as InstanceRecord);
+        if (store.get(id)?.state === 'starting') log(`range: recovered ${id} after a crash (attempt ${attempts.length})`);
+      });
     },
 
     async reset(userId) {
@@ -184,7 +230,7 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
       }
       if (health.status === 'ready') store.update(id, { state: 'running', readyAt: now() });
       // 'missing' is also what a launch in flight looks like (the record is inserted before the warden creates the
-      // container), and the reaper refreshes starting records every 30 s. Do not kill that launch: a container that is
+      // container), and the reaper refreshes starting records every 5 s. Do not kill that launch: a container that is
       // really gone is failed at the start timeout.
       else if (health.status === 'missing') {
         if (timedOut) await lc.fail(id, 'missing');

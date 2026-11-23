@@ -46,6 +46,22 @@ describe('portal mode: what is mounted', () => {
     for (const path of ['/login', '/register', '/healthz', '/static/app.css']) expect((await request(app).get(path)).status, path).toBe(200);
   });
 
+  it('serves the friendly lab-gone page for an instance host whose container is gone', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'goneplayer');
+    const res = await agent.get('/lab-gone');
+    expect(res.status).toBe(410);
+    expect(res.text).toContain('no longer running');
+    expect(res.text).toContain('Back to the Guild Hall');
+    expect(res.text).toContain('href="/"');
+    const host = `i-${'a'.repeat(26)}.${DOMAIN}`;
+    const retry = await agent.get(`/lab-gone?i=${host}`);
+    expect(retry.text).toContain('Try the lab again');
+    expect(retry.text).toContain(`href="https://${host}"`);
+    const evil = await agent.get('/lab-gone?i=i-' + 'a'.repeat(26) + '.evil.example');
+    expect(evil.text).not.toContain('Try the lab again');
+  });
+
   it('mounts no labs, no standalone portal pages, no admin pages and no JSON API, even signed in', async () => {
     const { app } = portalApp();
     expect(app.locals.mode).toBe('portal');

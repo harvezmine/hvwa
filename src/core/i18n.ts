@@ -455,6 +455,10 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   },
   // The range catalog and lab pages (src/range/catalog.ts).
   'range.catalog_title': { id: 'Aula Guild', en: 'Guild Hall' },
+  'range.lab_gone_title': { id: 'Lab itu sudah tidak berjalan', en: 'That lab is no longer running' },
+  'range.lab_gone_text': { id: 'Lab berhenti atau prosesnya berakhir. Kembali ke aula dan jalankan lagi.', en: 'It stopped or its process ended. Go back to the hall and launch it again.' },
+  'range.lab_gone_action': { id: 'Kembali ke Aula Guild', en: 'Back to the Guild Hall' },
+  'range.lab_gone_retry': { id: 'Coba lab lagi', en: 'Try the lab again' },
   'range.eyebrow': { id: 'GUILD PETUALANG · BOUNTY DIBUKA', en: 'ADVENTURERS\' GUILD · BOUNTIES OPEN' },
   'range.hero_title': { id: 'Ambil bounty. Bobol aplikasinya.', en: 'Pick a bounty. Break the app.' },
   'range.catalog_lead': { id: 'Tiap bounty adalah aplikasi rusak di balik pintunya sendiri. Ambil satu, temukan celahnya, klaim gold-nya.', en: 'Each bounty is a broken app behind its own door. Take one, find the crack, claim the gold.' },

@@ -117,7 +117,9 @@ one process, used by the lite and full images. Nothing in standalone mode change
    - **Reset** recreates the instance from a clean state with a new flag.
    - **Stop** removes it.
    - Changing level means a new instance.
-7. **Reaper.** Every 30 s it stops expired and idle instances. On portal start it reconciles with the warden
+7. **Reaper.** Every 5 s it stops expired and idle instances. A running instance whose container is gone is
+   relaunched with the same id and flag (bounded per instance), and an instance host with no route redirects to the
+   portal's friendly lab-gone page instead of a raw 404. On portal start it reconciles with the warden
    (`list` by label `hvwa.range=1`): unknown containers are removed, and records without a container are closed.
 
 States: `queued → starting → running → stopping → stopped`, plus `failed` with a reason shown to the player and to
@@ -169,7 +171,7 @@ Every instance container is created with exactly this configuration, fixed in th
 | Mounts | none (no volumes, no Docker socket, no host paths) |
 | Environment | `HVWA_LEVEL`, `HVWA_PORT`, `HVWA_INSTANCE_HOST`, `HOME=/tmp`, `HVWA_FLAG_FILE=/tmp/.hvwa-flag` only — never the flag |
 | Labels | `hvwa.range=1`, instance id, user id, lab id, level, expiry, Traefik router labels |
-| Restart policy | none (a crashed instance is reported as failed) |
+| Restart policy | none (the portal auto-recovers a crashed running instance with the same id and flag; after the recovery budget it is failed) |
 
 The lab images also strip setuid/setgid bits. For a server shared with untrusted users, the spec recommends
 `HVWA_RANGE_RUNTIME=runsc` (gVisor) as an additional kernel boundary. The warden supports it as a setting.

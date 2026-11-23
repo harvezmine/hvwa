@@ -5,9 +5,10 @@ import { Router, type RequestHandler } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import type { PlatformAuth } from '../auth/index.js';
 import { SCOPED_PAGE_CSP } from '../core/page-csp.js';
+import { sendPage } from '../core/render.js';
 import { portalFramePolicy } from '../portal/frame-policy.js';
 import { adminRoutes } from './admin.js';
-import { catalogRoutes } from './catalog.js';
+import { catalogRoutes, rangeView } from './catalog.js';
 import { edgeHandler } from './gate.js';
 import { instanceIdOfHost } from './hosts.js';
 import { labRoutes } from './lab-routes.js';
@@ -36,7 +37,7 @@ export interface RangePortal {
   readonly lifecycle: Lifecycle;
   /** The gate tickets ("Open lab" mints one; /__hvwa/gate spends it). */
   readonly tickets: TicketStore;
-  /** Reconcile with the warden now (logged on failure), then reap every 30 s. server.ts calls it once listening. */
+  /** Reconcile with the warden now (logged on failure), then reap every 5 s. server.ts calls it once listening. */
   start(): Reaper;
 }
 
@@ -79,6 +80,20 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     next();
   });
   router.use(portalFramePolicy());
+  // The friendly landing point for an instance host whose container is gone (the Traefik catch-all redirects here).
+  // `?i=<instance host>` is validated against the range domain, so the page can offer the same lab again while the
+  // reaper relaunches it; it is never used as an open redirect.
+  router.get('/lab-gone', async (req, res) => {
+    const raw = typeof req.query.i === 'string' ? req.query.i : '';
+    let retryHref: string | undefined;
+    if (raw && !raw.includes('/') && !raw.includes('@') && !raw.includes('?')) {
+      try {
+        if (isInstanceHost(new URL(`http://${raw}`).hostname)) retryHref = `${opts.publicScheme ?? 'https'}://${raw}`;
+      } catch { /* not a host: no retry link */ }
+    }
+    res.status(410);
+    await sendPage(res, rangeView('lab-gone'), { pageTitle: res.locals.t('range.lab_gone_title'), retryHref });
+  });
   catalogRoutes(router, ctx);
   labRoutes(router, ctx);
   teamRoutes(router, ctx);

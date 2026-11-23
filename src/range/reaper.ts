@@ -1,5 +1,5 @@
-// src/range/reaper.ts — the range's housekeeping (spec range §5.7). Every 30 s one pass: flush last-seen, stop expired and
-// idle instances, refresh the starting ones, fail the crashed ones (restart policy none: a dead container stays dead),
+// src/range/reaper.ts — the range's housekeeping (spec range §5.7). Every 5 s one pass: flush last-seen, stop expired and
+// idle instances, refresh the starting ones, recover the crashed ones (same id/flag), 
 // and remove containers no record owns. The compact POC (plan amendment) has no queue, so a pass starts nothing new.
 // On portal start, reconcile the records with the warden's list (hvwa.range=1): records without a container are closed,
 // unknown containers removed.
@@ -7,7 +7,7 @@ import type { ListedInstance, WardenApi } from '../warden/protocol.js';
 import type { Lifecycle } from './lifecycle.js';
 import type { RangeLimits } from './types.js';
 
-export const REAPER_INTERVAL_MS = 30_000;
+export const REAPER_INTERVAL_MS = 5_000;
 
 /** Ids of the records that own a container: starting, running (queued ones have none yet). */
 const owners = (lc: Lifecycle) => new Set(lc.store.listActive().filter((r) => r.state !== 'queued').map((r) => r.id));
@@ -31,7 +31,7 @@ export async function reapOnce(lc: Lifecycle, warden: WardenApi, limits: RangeLi
   const containers = new Map(listed.map((c) => [c.instanceId, c]));
   for (const rec of lc.store.listByState('running')) {
     const c = containers.get(rec.id);
-    if (c === undefined || c.state !== 'running') await lc.fail(rec.id, 'crashed');
+    if (c === undefined || c.state !== 'running') await lc.recover(rec.id);
   }
   const owned = owners(lc);
   for (const c of listed) {

@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from '../src/db/index.js';
-import { createLifecycle } from '../src/range/lifecycle.js';
+import { createLifecycle, MAX_RECOVERIES } from '../src/range/lifecycle.js';
 import { reapOnce, reconcile, startReaper } from '../src/range/reaper.js';
 import { DEFAULT_LIMITS, type RangeLimits } from '../src/range/types.js';
 import { fakeWarden } from './support/fake-warden.js';
@@ -46,18 +46,40 @@ describe('reapOnce', () => {
     expect(lc.store.get(busy)).toMatchObject({ state: 'stopped', reason: 'expired' });
   });
 
-  it('a crashed container (exited or gone) is failed "crashed"; a container no record owns is removed', async () => {
+  it('a crashed container (exited or gone) is recovered with the same id and flag; an orphan is removed', async () => {
     const { lc, warden, running, pass } = make();
     const a = await running(1);
     const b = await running(2);
+    const firstLaunch = warden.launched.map((l) => ({ id: l.instanceId, flag: l.flag }));
     warden.crash(a);
     warden.boxes.delete(b);
     warden.addOrphan('o'.repeat(26));
     await pass();
-    expect(lc.store.get(a)).toMatchObject({ state: 'failed', reason: 'crashed' });
-    expect(lc.store.get(b)).toMatchObject({ state: 'failed', reason: 'crashed' });
-    expect(warden.stopped).toEqual(expect.arrayContaining([a, 'o'.repeat(26)]));
-    expect(warden.boxes.size).toBe(0);
+    // Both are relaunched under the same instance ids with the same deterministic flags.
+    expect(lc.store.get(a)).toMatchObject({ state: 'starting' });
+    expect(lc.store.get(b)).toMatchObject({ state: 'starting' });
+    expect(warden.launched.slice(2).map((l) => ({ id: l.instanceId, flag: l.flag }))).toEqual(firstLaunch);
+    expect(warden.stopped).toEqual(expect.arrayContaining([a, b, 'o'.repeat(26)]));
+    // The next pass promotes the recovered instances to running.
+    await pass();
+    expect(lc.store.get(a)?.state).toBe('running');
+    expect(lc.store.get(b)?.state).toBe('running');
+    expect(warden.boxes.size).toBe(2);
+  });
+
+  it('after MAX_RECOVERIES crashes in the window the instance is failed as crashed', async () => {
+    const { lc, warden, running, pass } = make();
+    const id = await running(1);
+    for (let i = 0; i < MAX_RECOVERIES; i += 1) {
+      warden.crash(id);
+      await pass();
+      expect(lc.store.get(id)?.state, `attempt ${i + 1}`).toBe('starting');
+      await lc.refresh(id); // the fake warden is ready: back to running
+      expect(lc.store.get(id)?.state).toBe('running');
+    }
+    warden.crash(id);
+    await pass();
+    expect(lc.store.get(id)).toMatchObject({ state: 'failed', reason: 'crashed' });
   });
 
   it('refreshes starting instances; it never starts anything from a queue (the POC has none)', async () => {
@@ -70,7 +92,7 @@ describe('reapOnce', () => {
     expect(lc.store.listByState('queued')).toEqual([]);
   });
 
-  it('with the warden down a pass changes nothing and does not throw; the next pass works', async () => {
+  it('with the warden down a pass changes nothing and does not throw; the next pass recovers', async () => {
     const { lc, warden, running, pass } = make();
     const a = await running(1);
     warden.down = true;
@@ -79,7 +101,7 @@ describe('reapOnce', () => {
     warden.down = false;
     warden.crash(a);
     await pass();
-    expect(lc.store.get(a)?.state).toBe('failed');
+    expect(lc.store.get(a)?.state).toBe('starting');
   });
 });
 

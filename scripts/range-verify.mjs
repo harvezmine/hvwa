@@ -8,7 +8,7 @@
 //   host-only cookies; cross-user refusal; instance -> internet / DNS / portal / warden / socket proxies / another
 //   instance / Traefik all blocked; the client IP (CF-Connecting-IP) behind the registration limit; a flag shared between
 //   users refused; the proxies' allowlists; a full range refusing a launch (the compact POC has no queue); the reaper
-//   (a crashed instance); the startup reconcile (an orphan); Stop.
+//   recovering a crashed instance with the same id and flag; the startup reconcile (an orphan); Stop.
 // Stops at the first failure (later checks build on earlier ones), prints the stack's logs, and always ends with
 // `docker compose down -v` plus the removal of its forwarder, its edge network and every hvwa-i-* it made.
 // Refuses to start, changing nothing, when an hvwa.range=1 container or an hvwa-i-* network already exists on this
@@ -385,16 +385,26 @@ const checks = [
     }
     const page = await s.carol.get(PORTAL, refused.headers.location);
     if (page.status !== 200 || !page.body.includes('data-testid="range-full"')) throw new Error('the range-full panel did not show');
-    if (!page.body.includes('The range is full. Try again in a minute.')) throw new Error('the range-full panel has the wrong text');
+    if (!page.body.includes('Every table is full. Try again in a minute.')) throw new Error('the range-full panel has the wrong text');
     if (/data-state="(?:running|starting)"/.test(await panel(s.carol, 'acolyte'))) throw new Error('carol got an instance at capacity');
     await action(s.bob, 'stop', 'acolyte');
     s.launchMs.push(await launch(s.carol, 'acolyte'));
     s.c = await open(s.carol);
     if (exists('container', `hvwa-i-${s.b.id}`) || exists('network', `hvwa-i-${s.b.id}`)) throw new Error("bob's container or network is still there");
   }],
-  ['the reaper reports a crashed instance as failed (crashed)', async () => {
+  ['the reaper recovers a crashed instance with the same id and flag', async () => {
+    const flagOf = (html) => /<pre data-testid="flag">(HVWA\{[a-z2-7]{26}\})<\/pre>/.exec(html)?.[1];
+    const before = flagOf((await s.carol.get(s.c.host, '/flag')).body);
+    if (!before) throw new Error('no flag before the crash');
     must('docker', ['kill', `hvwa-i-${s.c.id}`]);
-    await poll("carol's panel to show the crash", async () => /data-reason="crashed"/.test(await panel(s.carol, 'acolyte')), 90_000, 2000);
+    await poll("carol's panel to recover to running", async () => {
+      const html = await panel(s.carol, 'acolyte');
+      return /data-state="running"/.test(html) && !/data-reason="crashed"/.test(html);
+    }, 90_000, 1000);
+    if (!exists('container', `hvwa-i-${s.c.id}`)) throw new Error('the recovered container is missing');
+    if (!exists('network', `hvwa-i-${s.c.id}`)) throw new Error('the recovered network is missing');
+    const after = flagOf((await s.carol.get(s.c.host, '/flag')).body);
+    if (after !== before) throw new Error(`the recovered instance has a different flag (${before} -> ${after})`);
   }],
   ['the portal removes an orphan container when it starts (reconcile)', async () => {
     const id = randomInstanceId();

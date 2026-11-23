@@ -334,10 +334,11 @@ single-use; each request to the instance host needs the cookie. The lab itself m
 ### If your payload kills the lab
 
 Command injection and SSTI are real inside the lab, so a payload such as `$(pkill -9 node)` can kill the lab process.
-The container exits, the old `i-<id>` host returns **404** (Traefik no longer has a route) and the dossier flips to
-**Failed** within about 30 seconds. Nothing outside your own lab is affected: the command runs as the unprivileged
-lab user inside its own gVisor container, with no route to the portal, the warden or another player. Press
-**Launch** or **Reset** for a fresh instance and a fresh flag. The old tab stays 404 — use the new URL.
+The platform now auto-recovers a running lab: the old `i-<id>` host redirects to a friendly page (never a raw 404),
+the reaper relaunches the same instance id with the same flag in about 11–43 seconds, and that page offers
+**Try the lab again**. Your portal progress and flags persist; the lab's in-memory state resets. If it keeps dying
+(more than 10 times in 10 minutes) the instance is failed and you relaunch it for a fresh flag. Nothing outside your
+own gVisor container is affected.
 
 ### Current operational notes
 

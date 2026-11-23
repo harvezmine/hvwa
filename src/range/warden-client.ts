@@ -18,7 +18,7 @@ const isCode = (x: unknown): x is WardenErrorCode => typeof x === 'string' && (W
 
 export function createWardenClient(opts: WardenClientOptions): WardenApi {
   const root = opts.baseUrl.replace(/\/+$/, '');
-  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const timeoutMs = opts.timeoutMs ?? 30_000;
   const enc = encodeURIComponent;
 
   async function call(method: string, path: string, body?: unknown): Promise<unknown> {

@@ -1,0 +1,9 @@
+<%# The friendly page for an instance host whose lab is gone: the Traefik catch-all redirects here. %>
+<section class="card empty">
+  <h1 class="page-title"><%= t('range.lab_gone_title') %></h1>
+  <p><%= t('range.lab_gone_text') %></p>
+  <% if (typeof retryHref !== 'undefined' && retryHref) { -%>
+  <p><a class="btn btn-secondary" href="<%= retryHref %>"><%= t('range.lab_gone_retry') %></a></p>
+  <% } -%>
+  <p><a class="btn btn-primary" href="/"><%= t('range.lab_gone_action') %></a></p>
+</section>
