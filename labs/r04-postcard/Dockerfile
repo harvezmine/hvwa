@@ -13,5 +13,5 @@ COPY seed/ ./seed/
 COPY lab.json ./lab.json
 USER 10001:10001
 EXPOSE 5000
-HEALTHCHECK --interval=2s --timeout=2s --start-period=30s --start-interval=500ms --retries=3 CMD ["python", "/app/health.py"]
+HEALTHCHECK --interval=5s --timeout=5s --start-period=20s --start-interval=1s --retries=3 CMD wget -q -O /dev/null "http://127.0.0.1:${HVWA_PORT:-5000}/healthz" || exit 1
 CMD ["python", "/app/app.py"]
