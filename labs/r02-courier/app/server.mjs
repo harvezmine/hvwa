@@ -41,7 +41,8 @@ async function readFlag() {
 const flag = level === 'divine' ? undefined : await readFlag();
 const store = createStore(level, flag);
 
-const json = (res, status, obj) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
+// A honeypot the API echoes in a header for Network-tab diggers — a decoy, never the flag (decoys.ts: n1c3_try_sm4rt_guy).
+const json = (res, status, obj) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-courier-trace': 'HVWA{n1c3_try_sm4rt_guy}' }); res.end(JSON.stringify(obj)); };
 const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
 const redirect = (res, location) => { res.writeHead(303, { location, 'cache-control': 'no-store' }); res.end(); };
 const bearer = (req) => (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '') || undefined;

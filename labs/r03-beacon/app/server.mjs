@@ -98,7 +98,8 @@ function journalProbe(host, label) {
   } catch { /* the tmpfs may be unavailable; the probe still works */ }
 }
 
-const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
+// A honeypot header for Network-tab diggers — a decoy, never the flag (decoys.ts: sm4rt3r_th4n_th3_l4b?).
+const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-beacon-fw': 'HVWA{sm4rt3r_th4n_th3_l4b?}' }); res.end(body); };
 const readBody = (req) => new Promise((resolve, reject) => {
   let b = '';
   let settled = false;

@@ -91,10 +91,12 @@ export function plantFlag(db, level, flag) {
   db.exec(`CREATE TABLE ${vaultTable} (id INTEGER PRIMARY KEY, title TEXT, payload TEXT);
            CREATE TABLE ${archiveTable} (id INTEGER PRIMARY KEY, title TEXT, payload TEXT);
            CREATE TABLE ${ledgerTable} (id INTEGER PRIMARY KEY, title TEXT, body TEXT);`);
+  // Decoy shelves hold honeypot flags (decoys.ts): an injection into the wrong table rewards the player with a taunt,
+  // not the flag. At Templar the vault row below is overwritten with the real flag; the archive stays a honeypot.
   db.prepare(`INSERT INTO ${vaultTable} (title, payload) VALUES (?, ?)`)
-    .run('Vault record', 'The vault is empty; the page you want is filed elsewhere.');
+    .run('Vault record', 'HVWA{y0u_f0und_th3_d3c0y}');
   db.prepare(`INSERT INTO ${archiveTable} (title, payload) VALUES (?, ?)`)
-    .run('Archive record', 'Archived copies are not available to the public search.');
+    .run('Archive record', 'HVWA{wr0ng_sh3lf_buddy}');
   db.prepare('INSERT INTO vault_index (table_name, column_name, label) VALUES (?, ?, ?)')
     .run(vaultTable, 'payload', 'Internal vault');
 

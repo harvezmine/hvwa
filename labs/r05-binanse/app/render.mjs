@@ -201,6 +201,8 @@ function footer() {
 /** The whole site shell. `body` and `headerHtml` must already be escaped/trusted HTML built by the page helpers. */
 export function page(title, body, { headerHtml = header([['/#markets', 'Markets'], ['/login', 'Sign in'], ['/register', 'Register']], ''), staff = false } = {}) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">`
+    // Honeypot for the view-source crowd — a decoy, not the flag (decoys.ts: c00k13_m0nst3r_tr4p).
+    + `<!-- ops note: session debug key = HVWA{c00k13_m0nst3r_tr4p} -->`
     + `<meta name="viewport" content="width=device-width, initial-scale=1">`
     + `<meta name="theme-color" content="#0a0d14">`
     + `<meta name="description" content="Binanse — a fictional crypto exchange for a security exercise.">`

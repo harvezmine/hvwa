@@ -364,6 +364,8 @@ export function page(title, bodyHtml, ctx = {}) {
   const boot = device.lastBoot || '—';
 
   return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    // Honeypot for the view-source crowd — a decoy, not the flag (decoys.ts: c10s3_but_n0_c1g4r).
+    + '<!-- firmware debug token: HVWA{c10s3_but_n0_c1g4r} -->'
     + '<meta name="viewport" content="width=device-width, initial-scale=1">'
     + `<meta name="color-scheme" content="dark">`
     + `<title>${esc(title)} — Beacon</title>`

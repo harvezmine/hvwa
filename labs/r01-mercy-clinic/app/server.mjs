@@ -47,6 +47,8 @@ const send = (res, status, type, body) => {
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'no-referrer',
     'x-frame-options': 'DENY',
+    // A honeypot for header diggers (DevTools Network tab) — a decoy, never the flag (decoys.ts: h34d3r_hunt3r_lol).
+    'x-clinic-build': 'HVWA{h34d3r_hunt3r_lol}',
     'content-security-policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
   });
   res.end(body);

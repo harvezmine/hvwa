@@ -68,8 +68,8 @@
           }
         }
       ],
-      "version": "1.1.0",
-      "image": "sha256:074fe33252b719ddcf336dc6d474c2447befb767c581a850ed97bb79217a01b1"
+      "version": "1.2.0",
+      "image": "sha256:f24f9951ac272425fdd2c796bda18dfa1556ca7c99b2e6705ab07048fc4d3194"
     },
     {
       "id": "r02",
@@ -138,8 +138,8 @@
           }
         }
       ],
-      "version": "1.1.0",
-      "image": "sha256:04e96a1a0a04b1e6abe154e44643db9cc192d708393e18a4447fcc63563c109a"
+      "version": "1.2.0",
+      "image": "sha256:ce4e032ea58bb8885097f9e2ae6fe80b368877ce8a3e66ceb6d5e886a42e51e2"
     },
     {
       "id": "r03",
@@ -208,8 +208,8 @@
           }
         }
       ],
-      "version": "1.1.0",
-      "image": "sha256:7add9561ae4c53b0d10db6288ca7ecde9a297f09dcd505495b7a196d4ce40c30"
+      "version": "1.2.0",
+      "image": "sha256:6b47e89a99604b3730dbdcaebb2aad64729abbc34bc6ac711e93988063b58364"
     },
     {
       "id": "r04",
@@ -278,8 +278,8 @@
           }
         }
       ],
-      "version": "1.1.0",
-      "image": "sha256:df610e7c086cb2d311f04fe157546ed58a2c5c03b683c32b68e9b4b45db596c2"
+      "version": "1.2.0",
+      "image": "sha256:a917721c73fd119ab4651a5ba9be4a42073f9c3869349307a7837c7eb7755884"
     },
     {
       "id": "r05",
@@ -345,8 +345,8 @@
           }
         }
       ],
-      "version": "1.0.0",
-      "image": "sha256:000d059c3a3501bbbf0c2c23d38663bd56cb0226673721c11306a3e907a71b5d"
+      "version": "1.1.0",
+      "image": "sha256:f94f59189c013e4e10e201544ea6b185fd796b34ae21326e519fc3b73ef5d60d"
     }
   ]
 }

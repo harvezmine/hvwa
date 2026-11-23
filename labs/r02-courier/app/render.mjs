@@ -227,6 +227,8 @@ function footer() {
 /** The whole site shell. `body` must already be escaped/trusted HTML built by the page helpers. */
 export function page(title, body, { active = '' } = {}) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">`
+    // Honeypot for the view-source crowd — a decoy, not the flag (decoys.ts: 1s_th1s_c0rr3ct?).
+    + `<!-- staging note: tracking key = HVWA{1s_th1s_c0rr3ct?} -->`
     + `<meta name="viewport" content="width=device-width, initial-scale=1">`
     + `<meta name="theme-color" content="#0d1b2f">`
     + `<meta name="description" content="Courier parcel tracking — follow every parcel from depot to door.">`

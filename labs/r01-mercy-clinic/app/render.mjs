@@ -332,6 +332,8 @@ mark{background:#ffe6a3;color:var(--ink);padding:0 .1em;border-radius:3px}
 
 export function page(title, bodyHtml, { active = '' } = {}) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">`
+    // A "forgotten" debug marker for the view-source crowd — a honeypot, not the flag (decoys.ts: d3bug_m0d3_g0tch4).
+    + `<!-- TODO(ops): drop debug build marker before go-live — build=HVWA{d3bug_m0d3_g0tch4} -->`
     + `<meta name="viewport" content="width=device-width, initial-scale=1">`
     + `<meta name="theme-color" content="#0d6e6e">`
     + `<meta name="description" content="Mercy Clinic is a community GP practice in Ashford, Kent. Book appointments, request repeat prescriptions and read patient notices.">`

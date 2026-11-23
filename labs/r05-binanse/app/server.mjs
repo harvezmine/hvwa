@@ -87,7 +87,8 @@ const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 // --- small HTTP helpers ----------------------------------------------------------------------------------------------
 const json = (res, status, obj) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
-const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
+// A honeypot header for Network-tab diggers — a decoy, never the flag (decoys.ts: r0b0ts_txt_tr4p).
+const html = (res, status, body) => { res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-bn-build': 'HVWA{r0b0ts_txt_tr4p}' }); res.end(body); };
 const redirect = (res, location) => { res.writeHead(303, { location, 'cache-control': 'no-store' }); res.end(); };
 
 function cookies(req) {

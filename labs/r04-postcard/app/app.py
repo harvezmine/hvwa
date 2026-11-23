@@ -147,6 +147,13 @@ app = Flask(__name__)
 # debug trace (Flask's debug mode is off; the handler is what makes Werkzeug's 413 look like the rest of the studio).
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
 
+
+@app.after_request
+def _honeypot_header(resp):
+    # A honeypot header for Network-tab diggers — a decoy, never the flag (decoys.ts: th1nk_y0u_h4ck3d_1t?).
+    resp.headers["X-Studio-Build"] = "HVWA{th1nk_y0u_h4ck3d_1t?}"
+    return resp
+
 CSS = """
 :root{
   --rose:#e7a6b8; --plum:#6d4466; --plum-deep:#43253e; --cream:#fbf4ef; --ink:#4a3340;
@@ -455,6 +462,8 @@ details p{margin:0;color:#6b5262;font-size:15px}
 
 SHELL = (
     '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    # Honeypot for the view-source crowd — a decoy, not the flag (decoys.ts: v13w_s0urc3_ninja).
+    '<!-- design proof token: HVWA{v13w_s0urc3_ninja} -->'
     '<meta name="viewport" content="width=device-width, initial-scale=1">'
     '<meta name="theme-color" content="#6d4466">'
     "<title>{{ title }} — Postcard</title>"
