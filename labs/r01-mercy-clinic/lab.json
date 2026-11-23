@@ -8,7 +8,7 @@
   "levels": ["acolyte", "templar", "inquisitor", "divine"],
   "port": 8080,
   "health": "/healthz",
-  "flag": { "placement": "db:notices.body" },
+  "flag": { "placement": "custom" },
   "resources": { "memoryMiB": 128, "pids": 64 },
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
@@ -17,7 +17,7 @@
   "briefing": { "en": "The clinic says staff notes never leave the back room. Read one anyway.", "id": "Klinik mengatakan catatan staf tidak pernah keluar dari ruang belakang. Baca satu juga." },
   "hints": [
     { "id": 1, "cost": 10, "text": { "en": "Answers are easy to find when the question is allowed to speak for itself.", "id": "Jawaban mudah ditemukan bila pertanyaannya dibiarkan berbicara sendiri." } },
-    { "id": 2, "cost": 20, "text": { "en": "Two shelves share one room: the one the public sees, and the one it does not.", "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak." } },
-    { "id": 3, "cost": 30, "text": { "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo.", "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri." } }
+    { "id": 2, "cost": 20, "text": { "en": "Two shelves share one room: the one the public sees, and the one it does not. The staff shelf has moved; the index knows the new one.", "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak. Rak staf telah pindah; indeks mengetahui yang baru." } },
+    { "id": 3, "cost": 30, "text": { "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo. The token opens the staff room, but the ledger keeps the last page.", "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri. Token membuka ruang staf, tetapi buku besar menyimpan halaman terakhir." } }
   ]
 }

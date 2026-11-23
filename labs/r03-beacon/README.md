@@ -2,10 +2,13 @@
 
 Beacon is a home-router admin panel with the feel of a real network appliance: a dark dashboard, WAN/LAN and Wi-Fi
 views, DHCP leases, a firewall table, a syslog, a firmware changelog and a connectivity diagnostics console. Its
-diagnostics tool probes a host the operator types by running a real busybox shell. The flag is a file
-(`/tmp/beacon/flag.txt`, in the tmpfs because the rootfs is read-only): at start the app reads the one-shot flag file
-(`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`), unlinks it, then writes it there. The flag is never in the environment.
-No page renders the file; only a shell reading it does.
+diagnostics tool probes a host the operator types by running a real busybox shell. The flag is a file in the tmpfs
+(because the rootfs is read-only), and each tier files it differently: Acolyte keeps the whole flag at
+`/tmp/beacon/flag.txt`; Templar tears it into a random pair under `/tmp/beacon/spool`; Inquisitor tears it into a
+random pair under `/tmp/beacon/audit/<random>`. Each split directory also holds decoy pairs, so only the real pair
+joins into a valid flag. At start the app reads the one-shot flag file (`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`),
+unlinks it, then plants the tier's files. The flag is never in the environment. No page renders the flag; only a shell
+reading it does.
 
 At Inquisitor the obvious host injection is closed, so the lab becomes a two-step chain: the host is validated and the
 probe runs no shell, but the free-text label an operator saves is later trusted by the report generator and reaches a
@@ -48,15 +51,19 @@ rendering. The report route is not linked from any page (the reference solve cal
 
 ## Levels
 
-- **Acolyte.** `<host>` is concatenated straight into `sh -c`. End the command and read the flag file.
+- **Acolyte.** `<host>` is concatenated straight into `sh -c`. End the command and read
+  `/tmp/beacon/flag.txt`.
 - **Templar.** The tool rejects `; & | ` backtick and newline, then still concatenates. The Acolyte separator is
-  blocked, so it fails. Command substitution contains none of those; its output lands in the echoed status line.
+  blocked, so it fails. The known flag path is also gone: the flag is a random pair under `/tmp/beacon/spool`, beside
+  decoy pairs. Command substitution contains none of the blocked characters, so list the spool and join the pair that
+  forms a valid `HVWA{...}`; its output lands in the echoed status line.
 - **Inquisitor.** The host is validated strictly and probed without a shell, so the host tricks above fail. The probe
   also saves a free-text label; the report generator trusts it and interpolates it into `sh -c 'echo "<label>" >> …'`.
-  Saving `$(cat /tmp/beacon/flag.txt)` as the label and then opening the report substitutes the flag into the file.
+  The flag is a random pair under `/tmp/beacon/audit/<random>`: save a label that lists the audit folder, then a label
+  that joins the right pair, and read the report file each time.
 - **Divine.** No shell for the probe (validated `execFile('ping', …)`) and no shell for the report (it renders the
   escaped label only). The page reports host rejections clearly (with the Indonesian line beneath the English one).
-  Nothing can chain or substitute a command. No flag.
+  Nothing can chain or substitute a command. `/tmp/beacon/flag.txt` is a decoy and no split pair exists. No flag.
 
 Note: `ping` may lack `CAP_NET_RAW` under the range hardening and fail; that is intentional and irrelevant — the flaw
 and the flag path run through `echo`/the shell, not through a successful ping.
@@ -64,6 +71,7 @@ and the flag path run through `echo`/the shell, not through a successful ping.
 ## Reference solves
 
 `solve/acolyte.mjs`, `solve/templar.mjs` and `solve/inquisitor.mjs` are HTTP clients; each contains the intended input
-for its level (Inquisitor performs the two-step chain: save the label, then request the report).
-`npm run labs:test -- --lab r03` proves each works at its level, that every lower-level solve fails at every higher
-level, that the Inquisitor chain fails at Divine and that Divine resists everyone.
+for its level. The Templar solve lists the spool and joins candidate pairs; the Inquisitor solve saves a listing label,
+then a joining label, and reads the report after each. `npm run labs:test -- --lab r03` proves each works at its level,
+that every lower-level solve fails at every higher level, that the Inquisitor chain fails at Divine and that Divine
+resists everyone.

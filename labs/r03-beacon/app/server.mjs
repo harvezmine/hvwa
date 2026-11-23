@@ -1,10 +1,14 @@
 // labs/r03-beacon/app/server.mjs — Beacon, a router admin panel. Start hook: read the one-shot flag file
-// (HVWA_FLAG_FILE) once and unlink it, then write it (or a Divine decoy) to /tmp/beacon/flag.txt (spec §6).
+// (HVWA_FLAG_FILE) once and unlink it, then plant it at the location that belongs to the level (spec §6):
+// Acolyte keeps the whole flag in /tmp/beacon/flag.txt; Templar tears it into a random pair under
+// /tmp/beacon/spool; Inquisitor tears it into a random pair under /tmp/beacon/audit/<random>. Each split
+// directory also holds decoy pairs, so the path taught by a lower tier is never the path that works next.
 // Shells exist in exactly two places: the /diagnostics probe (diag.mjs, Acolyte/Templar) and the /diagnostics/report
 // generator (report.mjs, Inquisitor); every other page is rendered from seed/device.json.
-// No page renders the flag file; only a shell that reads it does. Listens on 0.0.0.0:$HVWA_PORT.
+// No page renders the flag; only a shell that reads it does. Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync, appendFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { probe } from './diag.mjs';
@@ -37,11 +41,44 @@ async function readFlag() {
   }
 }
 
+const FLAG_BASE = '/tmp/beacon';
 const flag = level === 'divine' ? undefined : await readFlag();
-mkdirSync('/tmp/beacon', { recursive: true });
-writeFileSync('/tmp/beacon/flag.txt',
-  `${level === 'divine' || !flag ? 'Divine is the secure reference: the probe runs no shell, so there is nothing to inject.' : flag}\n`,
-  { mode: 0o400 });
+
+/** Write one owner-only file. */
+function writeSecret(path, value) {
+  writeFileSync(path, value, { mode: 0o400 });
+}
+
+/**
+ * The higher tiers do not keep the flag at the path the previous tier taught. Templar tears it into two
+ * pieces under /tmp/beacon/spool; Inquisitor tears it into two pieces under a random /tmp/beacon/audit/<dir>.
+ * Each directory also holds decoy pairs. Only the real pair joins into a valid HVWA{...} string, so a player
+ * who already knows /tmp/beacon/flag.txt has to enumerate the new location first.
+ */
+function plantParts(dir, flagValue) {
+  mkdirSync(dir, { recursive: true });
+  const cut = Math.floor(flagValue.length / 2);
+  const token = randomBytes(4).toString('hex');
+  writeSecret(join(dir, `part-1-${token}`), flagValue.slice(0, cut));
+  writeSecret(join(dir, `part-2-${token}`), flagValue.slice(cut));
+  for (let i = 0; i < 2; i++) {
+    const decoy = randomBytes(4).toString('hex');
+    writeSecret(join(dir, `part-1-${decoy}`), `FAKE-${decoy}-1`);
+    writeSecret(join(dir, `part-2-${decoy}`), `FAKE-${decoy}-2`);
+  }
+}
+
+mkdirSync(FLAG_BASE, { recursive: true });
+if (level === 'divine' || !flag) {
+  writeSecret(join(FLAG_BASE, 'flag.txt'),
+    'Divine is the secure reference: the probe runs no shell, so there is nothing to inject.\n');
+} else if (level === 'acolyte') {
+  writeSecret(join(FLAG_BASE, 'flag.txt'), `${flag}\n`);
+} else if (level === 'templar') {
+  plantParts(join(FLAG_BASE, 'spool'), flag);
+} else { // inquisitor: a nested random directory the report generator is the only way to read
+  plantParts(join(FLAG_BASE, 'audit', randomBytes(4).toString('hex')), flag);
+}
 
 // ---- in-memory state (this process only): recent probes, never probe output or the flag file ----------------------
 // Inquisitor/Divine also save the free-text label here. The report generator reads the most recent saved label from

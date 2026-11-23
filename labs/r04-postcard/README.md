@@ -1,10 +1,13 @@
 # Postcard (r04) — Server-side template injection (Hard)
 
 Postcard is a greeting-card maker on real Flask/Jinja2. The card preview renders the operator's message. At the lower
-levels the message becomes Jinja2 template source (SSTI). The flag is a file (`/tmp/postcard/flag.txt`, in the tmpfs):
-at start the app reads the one-shot flag file (`HVWA_FLAG_FILE`, default `/tmp/.hvwa-flag`), unlinks it, then writes it
-there. The flag is never in the environment. No page renders the file; only template code reading it does. Real template
-execution is intentional (spec §2); the container is the boundary.
+levels the message becomes Jinja2 template source (SSTI). Each tier files the flag differently: Acolyte keeps the whole
+flag at `/tmp/postcard/flag.txt`; Templar tears it into a random pair under `/tmp/postcard/outbox`; Inquisitor tears it
+into a random pair under `/tmp/postcard/archive/<random>`. Each split directory also holds decoy pairs, so only the
+real pair joins into a valid flag. At start the app reads the one-shot flag file (`HVWA_FLAG_FILE`, default
+`/tmp/.hvwa-flag`), unlinks it, then plants the tier's files. The flag is never in the environment. No page renders the
+flag in full; only template code reading the files does. Real template execution is intentional (spec §2); the
+container is the boundary.
 
 ## The studio
 
@@ -40,22 +43,25 @@ escape every reflected value; the card message is the one value that goes throug
 ## Levels
 
 - **Acolyte.** The message is concatenated into the card template and rendered. A template expression that walks
-  Python's object graph to `open()` prints the flag file into the card.
+  Python's object graph to `open()` prints `/tmp/postcard/flag.txt` into the card.
 - **Templar.** The press refuses a raw `__` or any of `os/popen/import/subprocess/eval/exec`, then still renders. The
-  literal Acolyte payload is caught and shown as a styled rejection card. The same file read works if every blocked
-  token is composed from Jinja string escapes / `attr`-style access so the raw message never contains one. This is why
-  Acolyte does not carry up.
+  literal Acolyte payload is caught and shown as a styled rejection card. The flag is also no longer at the Acolyte
+  path: it is torn into a random pair under `/tmp/postcard/outbox`, beside decoy pairs. The same object-graph read
+  works if every blocked token is composed from Jinja string escapes / `attr`-style access, and the outbox path is
+  split too; list the outbox, then join a candidate pair. This is why Acolyte does not carry up.
 - **Inquisitor.** The preview no longer renders the message. It saves it as a bounded draft (≤32, random id) and hands
   back a "Draft saved for printing" page carrying `data-draft="<id>"` and a `/orders/<id>/print` link. The print stage
-  renders the saved message with the normal Jinja renderer, so the Acolyte template payload works again — but only in
-  the second request. The Acolyte and Templar solves (which expect the flag in the `/preview` response) fail here.
+  renders the saved message with the normal Jinja renderer (second-order SSTI). The flag has moved again: it is a
+  random pair under `/tmp/postcard/archive/<random>`, so the print-stage payload lists the archive and joins the real
+  pair. The Acolyte and Templar solves (which expect the flag in the `/preview` response, or the known path) fail here.
 - **Divine.** Both the `/preview` card and the `/orders/<id>/print` proof are constant `{{ message }}` templates; the
-  message is passed as a bound, autoescaped value, never as template source. No flag.
+  message is passed as a bound, autoescaped value, never as template source. `/tmp/postcard/flag.txt` is a decoy and no
+  split pair exists. No flag.
 
 ## Reference solves
 
-`solve/acolyte.mjs`, `solve/templar.mjs` and `solve/inquisitor.mjs` are Node HTTP clients; the reference solve contains
-the intended template input for each level. `solve/inquisitor.mjs` posts the Acolyte payload to `/preview`, reads the
-draft id from `data-draft`, then requests `/orders/<id>/print` and prints only the `HVWA{...}` match.
-`npm run labs:test -- --lab r04` proves each works at its level, that lower-level solves fail at Inquisitor, and that
-Divine resists every solve.
+`solve/acolyte.mjs`, `solve/templar.mjs` and `solve/inquisitor.mjs` are Node HTTP clients; each contains the intended
+template input for its level. The Templar solve lists the outbox and joins candidate pairs; the Inquisitor solve reads
+the draft id from `data-draft`, requests `/orders/<id>/print`, lists the random archive directory and joins the real
+pair. `npm run labs:test -- --lab r04` proves each works at its level, that lower-level solves fail at Inquisitor, and
+that Divine resists every solve.

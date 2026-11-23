@@ -1,11 +1,12 @@
 // labs/r02-courier/app/server.mjs — Courier. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and unlink it,
-// then build the in-memory store, planting the flag as parcel 1001's private note (spec §6). The HTML portal uses a
-// demo-session cookie so a plain browse works and shows only the demo customer's parcels; the JSON API also accepts a
-// bearer token. Authorization (which parcels a session may read) is the flaw and is chosen by HVWA_LEVEL (store.canRead).
-// From Inquisitor up, parcel routes also require the parcel owner's API key in X-Api-Key; support may hand out any
-// customer's key to any signed-in session, so a demo bearer plus the vault key reads the vault's parcel.
-// The label route content-negotiates: browsers get a printable label page, API clients (Accept: */*) get the JSON the
-// reference solves rely on. The authorization decision is made before either representation is chosen.
+// then build the in-memory store, which plants the flag on the surface that belongs to the level (spec §6): Acolyte
+// uses parcel 1001's note, Templar a random vault parcel's label copy, Inquisitor a random vault parcel's manifest.
+// The HTML portal uses a demo-session cookie so a plain browse works and shows only the demo customer's parcels; the
+// JSON API also accepts a bearer token. Authorization (which parcels a session may read) is the flaw and is chosen by
+// HVWA_LEVEL (store.canRead). From Inquisitor up, parcel routes also require the parcel owner's API key in X-Api-Key;
+// support may hand out any customer's key to any signed-in session, so a demo bearer plus the vault key reads the
+// vault's parcel. The label route content-negotiates: browsers get a printable label page, API clients (Accept: */*)
+// get the JSON the reference solves rely on. The authorization decision is made before either representation is chosen.
 // Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { readFileSync, unlinkSync } from 'node:fs';
@@ -110,7 +111,8 @@ function handle(req, res) {
       const target = mSupport[1];
       if (level === 'divine' && target !== sessionCustomer) return json(res, 403, { error: 'not your account' });
       if (!store.customerExists(target)) return json(res, 404, { error: 'no such customer' });
-      return json(res, 200, { customer: target, apiKey: store.apiKeyFor(target) });
+      // Support also lists the customer's parcel ids, so the vault key can be used without guessing the id block.
+      return json(res, 200, { customer: target, apiKey: store.apiKeyFor(target), parcels: store.parcelIdsOf(target) });
     }
 
     if (p === '/api/parcels' && req.method === 'GET') {
@@ -128,14 +130,15 @@ function handle(req, res) {
       if (route === 'detail') {
         return json(res, 200, {
           id: parcel.id, to: parcel.to, status: parcel.status, note: parcel.note,
-          service: parcel.service, weight: parcel.weight, eta: parcel.eta,
+          manifest: parcel.manifest, service: parcel.service, weight: parcel.weight, eta: parcel.eta,
         });
       }
       if (route === 'label') {
-        // Same authorization decision above; only the representation changes.
+        // Same authorization decision above; only the representation changes. The label copy is its own
+        // surface: Templar's flag lives here while the detail note is a decoy.
         if (wantsHtml(req)) return html(res, 200, labelDocument(parcel));
         return json(res, 200, {
-          id: parcel.id, address: parcel.to, note: parcel.note,
+          id: parcel.id, address: parcel.to, note: parcel.note, labelNote: parcel.labelNote,
           service: parcel.service, weight: parcel.weight, eta: parcel.eta,
         });
       }

@@ -1,8 +1,10 @@
 // labs/r01-mercy-clinic/app/db.mjs — the clinic's SQLite stores (node:sqlite, --experimental-sqlite). The DBs live in
-// the /tmp tmpfs because the rootfs is read-only. The main clinic DB holds patients, notices and the planted staff flag.
-// Inquisitor's injectable search runs against a SEPARATE public DB that holds only the public notices and the service
-// token, so a direct UNION cannot reach the flag — the token is the only useful leak. The flag is a staff-only notice
-// planted by the start hook (never on a public page). The implementations are chosen by HVWA_LEVEL.
+// the /tmp tmpfs because the rootfs is read-only. The main clinic DB holds patients, notices and the level's flag shelf:
+// Acolyte a staff-only notice, Templar a randomly named vault table named by `vault_index`, Inquisitor a randomly named
+// ledger table reached through the token-gated staff route. Inquisitor's injectable search runs against a SEPARATE
+// public DB that holds only the public notices and the service token, so a direct UNION cannot reach the flag — the
+// token is the only useful leak, and the token-gated route returns a record number rather than the flag itself.
+// The implementations are chosen by HVWA_LEVEL.
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -28,6 +30,9 @@ export function openDb(path = '/tmp/clinic.db') {
                            category TEXT, author TEXT, published_at TEXT);
     CREATE TABLE appointments (id INTEGER PRIMARY KEY, patient_label TEXT, clinician TEXT, department TEXT, room TEXT,
                                starts_at TEXT, duration_min INTEGER, status TEXT);
+    -- The internal index the search can leak at Templar. It names the vault table and column; the flag itself is
+    -- never here. Acolyte keeps the flag in a staff notice, Templar in the vault table, Inquisitor in the ledger.
+    CREATE TABLE vault_index (id INTEGER PRIMARY KEY, table_name TEXT, column_name TEXT, label TEXT);
   `);
   const insPatient = db.prepare('INSERT INTO patients (name, role, department, room, extension, pronouns, bio) VALUES (?, ?, ?, ?, ?, ?, ?)');
   for (const p of seed('patients.json')) {
@@ -69,13 +74,61 @@ export function openPublicDb(path = '/tmp/public.db') {
   return db;
 }
 
-/** The start hook: plant the flag (or a Divine decoy) as a staff-only notice, invisible to the public pages. */
+/**
+ * The start hook. Each tier files the flag on a different shelf and returns the ledger table the staff route uses:
+ * - acolyte:    a staff-only notice in `notices`, exactly the shelf the easy UNION knows.
+ * - templar:    a randomly named vault table, named by the `vault_index` row the injection can leak; the staff
+ *               notice is only a decoy pointing at the index.
+ * - inquisitor: a randomly named ledger table, reached through the token-gated /staff/ledger route; the staff
+ *               notice only carries the record number, so the token alone is not the flag.
+ * - divine:     decoys only; there is no flag to recover.
+ * Decoy vault and archive tables exist at every tier, so a leaked table name is not automatically the flag table.
+ */
 export function plantFlag(db, level, flag) {
-  const body = level === 'divine' || !flag
-    ? 'Divine is the secure reference: the search is parameterised, so there is no flag to recover here.'
-    : flag;
-  db.prepare('INSERT INTO notices (title, body, visibility) VALUES (?, ?, ?)')
-    .run('Internal — do not distribute', body, 'staff');
+  const vaultTable = `vault_${randomBytes(4).toString('hex')}`;
+  const archiveTable = `archive_${randomBytes(4).toString('hex')}`;
+  const ledgerTable = `ledger_${randomBytes(4).toString('hex')}`;
+  db.exec(`CREATE TABLE ${vaultTable} (id INTEGER PRIMARY KEY, title TEXT, payload TEXT);
+           CREATE TABLE ${archiveTable} (id INTEGER PRIMARY KEY, title TEXT, payload TEXT);
+           CREATE TABLE ${ledgerTable} (id INTEGER PRIMARY KEY, title TEXT, body TEXT);`);
+  db.prepare(`INSERT INTO ${vaultTable} (title, payload) VALUES (?, ?)`)
+    .run('Vault record', 'The vault is empty; the page you want is filed elsewhere.');
+  db.prepare(`INSERT INTO ${archiveTable} (title, payload) VALUES (?, ?)`)
+    .run('Archive record', 'Archived copies are not available to the public search.');
+  db.prepare('INSERT INTO vault_index (table_name, column_name, label) VALUES (?, ?, ?)')
+    .run(vaultTable, 'payload', 'Internal vault');
+
+  const ledgerBody = level === 'divine' || !flag ? 'No ledger is available at this level.' : flag;
+  db.prepare(`INSERT INTO ${ledgerTable} (title, body) VALUES (?, ?)`).run('Vault ledger', ledgerBody);
+
+  if (flag && level === 'acolyte') {
+    db.prepare('INSERT INTO notices (title, body, visibility) VALUES (?, ?, ?)')
+      .run('Internal — do not distribute', flag, 'staff');
+  } else if (flag && level === 'templar') {
+    db.prepare(`UPDATE ${vaultTable} SET payload = ? WHERE id = 1`).run(flag);
+    db.prepare('INSERT INTO notices (title, body, visibility) VALUES (?, ?, ?)')
+      .run('Internal — moved', 'The internal notice has moved to the vault index. The search still knows the shelf.', 'staff');
+  } else if (flag && level === 'inquisitor') {
+    db.prepare('INSERT INTO notices (title, body, visibility) VALUES (?, ?, ?)')
+      .run('Internal — vault ledger',
+        'The vault ledger was moved. Request record #1 from /staff/ledger/1 with the service token.', 'staff');
+  } else {
+    db.prepare('INSERT INTO notices (title, body, visibility) VALUES (?, ?, ?)')
+      .run('Internal — do not distribute', level === 'divine'
+        ? 'Divine is the secure reference: the search is parameterised, so there is no flag to recover here.'
+        : 'The internal notice is no longer kept here.', 'staff');
+  }
+  return { ledgerTable };
+}
+
+/** One ledger record by id, for the token-gated /staff/ledger route. The table name is generated at start. */
+export function getLedger(db, table, id) {
+  if (!/^ledger_[a-f0-9]{8,}$/.test(table)) return undefined;
+  try {
+    return db.prepare(`SELECT id, title, body FROM ${table} WHERE id = ?`).get(id);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Public notices for the home page and /notices/:id (always visibility='public'; parameterised everywhere). */

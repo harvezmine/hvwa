@@ -335,7 +335,7 @@ export function labelDocument(parcel) {
     + `<div><span>ETA</span><b>${esc(parcel.eta ?? '—')}</b></div>`
     + `</div></div>`
     + `<div class="barcode-wrap">${barcode(id)}<p class="tracking-no">CR ${esc(id)} ${esc(String(parcel.status ?? 'PARCEL').toUpperCase())}</p></div>`
-    + `<section class="label-note"><h2>Private delivery note</h2><p>${esc(parcel.note)}</p></section>`
+    + `<section class="label-note"><h2>Private delivery note</h2><p>${esc(parcel.labelNote ?? parcel.note)}</p></section>`
     + `<p class="label-foot">Courier · Depot to door · This label is generated for the signed-in customer.</p>`
     + `</main>`
     + `<div class="print-bar no-print"><button class="btn" id="print-btn" type="button">Print label</button>`

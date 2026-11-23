@@ -8,7 +8,7 @@
   "levels": ["acolyte", "templar", "inquisitor", "divine"],
   "port": 8080,
   "health": "/healthz",
-  "flag": { "placement": "file:/tmp/beacon/flag.txt" },
+  "flag": { "placement": "custom" },
   "resources": { "memoryMiB": 128, "pids": 64 },
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 16 }],
   "needsBot": false,
@@ -17,7 +17,7 @@
   "briefing": { "en": "The appliance will run a diagnostic for anyone. Make it say more than it means to.", "id": "Perangkat itu mau menjalankan diagnostik untuk siapa saja. Buat ia berkata lebih dari yang seharusnya." },
   "hints": [
     { "id": 1, "cost": 10, "text": { "en": "The machine listens for a name and hears a sentence.", "id": "Mesin mendengar sebuah nama, lalu mendengar sebuah kalimat." } },
-    { "id": 2, "cost": 20, "text": { "en": "Some letters are forbidden, but a whisper can wear a disguise.", "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar." } },
-    { "id": 3, "cost": 30, "text": { "en": "The probe is watched; the note it leaves behind is not.", "id": "Probe diawasi; catatan yang ditinggalkannya tidak." } }
+    { "id": 2, "cost": 20, "text": { "en": "Some letters are forbidden, but a whisper can wear a disguise. The old note is gone; the spool keeps its pieces, and not every piece belongs to the same letter.", "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar. Catatan lama telah pergi; gelendong menyimpan potongannya, dan tidak setiap potongan berasal dari surat yang sama." } },
+    { "id": 3, "cost": 30, "text": { "en": "The probe is watched; the note it leaves behind is not. Do not knock at the old door — the audit folder files its pages in a deeper room.", "id": "Probe diawasi; catatan yang ditinggalkannya tidak. Jangan ketuk pintu lama — folder audit menyimpan halamannya di ruang yang lebih dalam." } }
   ]
 }

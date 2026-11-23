@@ -1,12 +1,14 @@
 // labs/r01-mercy-clinic/app/server.mjs — Mercy Clinic. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and
-// unlink it, then open the main SQLite DB in /tmp, seed it and plant the flag as a staff-only notice (spec §6). The
-// notice search at /search is the vulnerable feature; its behaviour is chosen by HVWA_LEVEL (db.mjs). At Inquisitor the
-// search runs against a separate public DB (public notices + service token) so the flag stays out of its reach.
+// unlink it, then open the main SQLite DB in /tmp, seed it and plant the flag on the level's shelf (spec §6): Acolyte a
+// staff-only notice, Templar a random vault table named by `vault_index`, Inquisitor a random ledger table reached
+// through the token-gated /staff/ledger route. The notice search at /search is the vulnerable feature; its behaviour is
+// chosen by HVWA_LEVEL (db.mjs). At Inquisitor the search runs against a separate public DB (public notices + service
+// token) so the flag stays out of its reach; the token opens the staff list, whose notice only names a ledger record.
 // Listens on 0.0.0.0:$HVWA_PORT.
 import { createServer } from 'node:http';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { openDb, openPublicDb, plantFlag, listPublic, getPublic, relatedPublic, listPatients, listAppointments, searchNotices, staffToken, listStaff } from './db.mjs';
+import { openDb, openPublicDb, plantFlag, getLedger, listPublic, getPublic, relatedPublic, listPatients, listAppointments, searchNotices, staffToken, listStaff } from './db.mjs';
 import {
   page, noticeCard, esc, searchForm, badge, staffCard, stat, sectionHead,
   formatDate, formatDayDate, formatTime, favicon, notFoundPage, errorPage,
@@ -36,7 +38,7 @@ async function readFlag() {
 const flag = level === 'divine' ? undefined : await readFlag();
 const db = openDb('/tmp/clinic.db');
 const publicDb = openPublicDb('/tmp/public.db');
-plantFlag(db, level, flag);
+const planted = plantFlag(db, level, flag); // { ledgerTable }, the shelf Inquisitor's staff route opens
 
 const send = (res, status, type, body) => {
   res.writeHead(status, {
@@ -239,6 +241,13 @@ function staffDeniedPage() {
   return `<div class="not-found"><p class="big">401</p><h1>Staff sign-in required</h1>`
     + `<p class="lede">This area is for Mercy Clinic staff. A valid service token is required.</p>`
     + `<p><a class="btn btn-secondary" href="/">Return to the home page</a></p></div>`;
+}
+
+/** One record from the vault ledger. The staff notice only carries its number; the token opens the record. */
+function ledgerPage(record) {
+  return `<h1>${esc(record.title)}</h1>`
+    + `<p class="lede">A record from the clinic's internal vault ledger.</p>`
+    + `<article class="notice-detail"><div class="body">${esc(record.body)}</div></article>`;
 }
 
 function noticePage(notice) {
@@ -473,6 +482,20 @@ createServer(async (req, res) => {
         return html(res, 401, page('Staff sign-in', staffDeniedPage(), { active: '' }));
       }
       return html(res, 200, page('Staff notices', staffNoticesPage(listStaff(db)), { active: '' }));
+    }
+
+    // Inquisitor's second step: the staff notice names a ledger record; this route opens it with the same token.
+    // The ledger table is random and its name is never rendered, so the staff list alone does not reveal the flag.
+    const mLedger = p.match(/^\/staff\/ledger\/(\d+)$/);
+    if (mLedger) {
+      const presented = (url.searchParams.get('token') || '').trim();
+      const expected = staffToken(publicDb);
+      if (!presented || !expected || presented !== expected) {
+        return html(res, 401, page('Staff sign-in', staffDeniedPage(), { active: '' }));
+      }
+      const record = getLedger(db, planted.ledgerTable, Number(mLedger[1]));
+      if (!record) return html(res, 404, page('Not found', notFoundPage(), { active: '' }));
+      return html(res, 200, page('Vault ledger', ledgerPage(record), { active: '' }));
     }
 
     if (p === '/notices') return html(res, 200, page('Patient notices', noticesPage(url), { active: 'notices' }));

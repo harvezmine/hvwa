@@ -17,7 +17,7 @@
   "briefing": { "en": "A parcel in the vault is not yours. Read its private note.", "id": "Sebuah paket di brankas bukan milikmu. Baca catatan pribadinya." },
   "hints": [
     { "id": 1, "cost": 10, "text": { "en": "You carry a name, but the door asks only for a number.", "id": "Kau membawa nama, tetapi pintu hanya meminta angka." } },
-    { "id": 2, "cost": 20, "text": { "en": "The parcel is yours; the label is the road it forgets to guard.", "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga." } },
-    { "id": 3, "cost": 30, "text": { "en": "A key handed out by the wrong desk opens the wrong vault.", "id": "Kunci dari meja yang salah membuka brankas yang salah." } }
+    { "id": 2, "cost": 20, "text": { "en": "The parcel is yours; the label is the road it forgets to guard. The old note has moved; the label keeps its own copy.", "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga. Catatan lama telah pindah; label menyimpan salinannya sendiri." } },
+    { "id": 3, "cost": 30, "text": { "en": "A key handed out by the wrong desk opens the wrong vault. Inside, the manifest is the page the vault forgot to hide.", "id": "Kunci dari meja yang salah membuka brankas yang salah. Di dalam, manifes adalah halaman yang lupa disembunyikan brankas." } }
   ]
 }

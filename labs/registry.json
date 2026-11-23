@@ -20,7 +20,7 @@
       "port": 8080,
       "health": "/healthz",
       "flag": {
-        "placement": "db:notices.body"
+        "placement": "custom"
       },
       "resources": {
         "memoryMiB": 128,
@@ -55,21 +55,21 @@
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "Two shelves share one room: the one the public sees, and the one it does not.",
-            "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak."
+            "en": "Two shelves share one room: the one the public sees, and the one it does not. The staff shelf has moved; the index knows the new one.",
+            "id": "Dua rak berbagi satu ruangan: yang dilihat publik, dan yang tidak. Rak staf telah pindah; indeks mengetahui yang baru."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo.",
-            "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri."
+            "en": "One sweep of the eraser is not a clean page. Hide a word inside its own echo. The token opens the staff room, but the ledger keeps the last page.",
+            "id": "Satu sapuan penghapus bukan halaman bersih. Sembunyikan kata di dalam gaungnya sendiri. Token membuka ruang staf, tetapi buku besar menyimpan halaman terakhir."
           }
         }
       ],
-      "version": "1.0.0",
-      "image": "sha256:747ca8175e50d5e47183a0d4da1627c661e7e99dacc61f27e94a03c2b20e3b55"
+      "version": "1.1.0",
+      "image": "sha256:074fe33252b719ddcf336dc6d474c2447befb767c581a850ed97bb79217a01b1"
     },
     {
       "id": "r02",
@@ -125,21 +125,21 @@
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "The parcel is yours; the label is the road it forgets to guard.",
-            "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga."
+            "en": "The parcel is yours; the label is the road it forgets to guard. The old note has moved; the label keeps its own copy.",
+            "id": "Paket itu milikmu; label adalah jalan yang lupa dijaga. Catatan lama telah pindah; label menyimpan salinannya sendiri."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "A key handed out by the wrong desk opens the wrong vault.",
-            "id": "Kunci dari meja yang salah membuka brankas yang salah."
+            "en": "A key handed out by the wrong desk opens the wrong vault. Inside, the manifest is the page the vault forgot to hide.",
+            "id": "Kunci dari meja yang salah membuka brankas yang salah. Di dalam, manifes adalah halaman yang lupa disembunyikan brankas."
           }
         }
       ],
-      "version": "1.0.0",
-      "image": "sha256:a077bed5e775f58d356392144d5bd918782fac9add1b178dc61fb69bdcd11b22"
+      "version": "1.1.0",
+      "image": "sha256:04e96a1a0a04b1e6abe154e44643db9cc192d708393e18a4447fcc63563c109a"
     },
     {
       "id": "r03",
@@ -160,7 +160,7 @@
       "port": 8080,
       "health": "/healthz",
       "flag": {
-        "placement": "file:/tmp/beacon/flag.txt"
+        "placement": "custom"
       },
       "resources": {
         "memoryMiB": 128,
@@ -195,21 +195,21 @@
           "id": 2,
           "cost": 20,
           "text": {
-            "en": "Some letters are forbidden, but a whisper can wear a disguise.",
-            "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar."
+            "en": "Some letters are forbidden, but a whisper can wear a disguise. The old note is gone; the spool keeps its pieces, and not every piece belongs to the same letter.",
+            "id": "Sebagian huruf dilarang, tetapi bisikan bisa menyamar. Catatan lama telah pergi; gelendong menyimpan potongannya, dan tidak setiap potongan berasal dari surat yang sama."
           }
         },
         {
           "id": 3,
           "cost": 30,
           "text": {
-            "en": "The probe is watched; the note it leaves behind is not.",
-            "id": "Probe diawasi; catatan yang ditinggalkannya tidak."
+            "en": "The probe is watched; the note it leaves behind is not. Do not knock at the old door — the audit folder files its pages in a deeper room.",
+            "id": "Probe diawasi; catatan yang ditinggalkannya tidak. Jangan ketuk pintu lama — folder audit menyimpan halamannya di ruang yang lebih dalam."
           }
         }
       ],
-      "version": "1.0.0",
-      "image": "sha256:3a817b84de7a97ec79b54dc7b239d9a83b0f857e5e2b9a5b634ea279625d63b5"
+      "version": "1.1.0",
+      "image": "sha256:7add9561ae4c53b0d10db6288ca7ecde9a297f09dcd505495b7a196d4ce40c30"
     },
     {
       "id": "r04",
@@ -230,7 +230,7 @@
       "port": 5000,
       "health": "/healthz",
       "flag": {
-        "placement": "file:/tmp/postcard/flag.txt"
+        "placement": "custom"
       },
       "resources": {
         "memoryMiB": 128,
@@ -265,21 +265,21 @@
           "id": 2,
           "cost": 30,
           "text": {
-            "en": "A list of forbidden words is a fence with a gap; spell around it.",
-            "id": "Daftar kata terlarang adalah pagar bercelah; eja di sekitarnya."
+            "en": "A list of forbidden words is a fence with a gap; spell around it. The old proof is not on the front table; the outbox keeps its pieces in pairs.",
+            "id": "Daftar kata terlarang adalah pagar bercelah; eja di sekitarnya. Bukti lama tidak ada di meja depan; kotak keluar menyimpan potongannya berpasangan."
           }
         },
         {
           "id": 3,
           "cost": 45,
           "text": {
-            "en": "The curtain is closed in the studio, but the press still prints what it is given.",
-            "id": "Tirai ditutup di studio, tetapi mesin cetak tetap mencetak yang diberikan."
+            "en": "The curtain is closed in the studio, but the press still prints what it is given. The archive is a deeper room; only the print stage can read it.",
+            "id": "Tirai ditutup di studio, tetapi mesin cetak tetap mencetak yang diberikan. Arsip adalah ruang yang lebih dalam; hanya tahap cetak yang bisa membacanya."
           }
         }
       ],
-      "version": "1.0.0",
-      "image": "sha256:58cc8e12376f7abbfa07b810bfd97ac6e55bad8e97fd573cc0cdeb75d4407e1c"
+      "version": "1.1.0",
+      "image": "sha256:df610e7c086cb2d311f04fe157546ed58a2c5c03b683c32b68e9b4b45db596c2"
     },
     {
       "id": "r05",
@@ -346,7 +346,7 @@
         }
       ],
       "version": "1.0.0",
-      "image": "sha256:d613c15b481b0e85a6f99a0506502d0d789d3ce2c32273092726bc88fe9ecc9f"
+      "image": "sha256:000d059c3a3501bbbf0c2c23d38663bd56cb0226673721c11306a3e907a71b5d"
     }
   ]
 }

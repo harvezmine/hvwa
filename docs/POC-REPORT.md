@@ -85,17 +85,19 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - Direktori **10 staf** dengan departemen, ruang, ekstensi, bio; halaman departemen.
 - Halaman `/departments`, `/appointments` (form booking simulasi), `/about`, `/contact`, `/opening-hours`.
 - Notice staf kedua yang wajar (rota) menjadi "noise" di samping notice flag saat UNION.
-- **Inquisitor (chain):** pencarian memakai DB publik terpisah (`public.db`) yang hanya berisi notices publik + `staff_tokens`; flag/staff notice tetap di DB utama. SQLi 4 kolom membocorkan **service token** 32-hex, lalu `/staff/notices?token=` membaca staff notices dari DB utama. UNION langsung ke staff notice tidak bisa karena flag tidak ada di DB pencarian; `ATTACH` tidak bisa menjembatani dua DB lewat satu statement.
+- **Lokasi flag berpindah per tier:** Acolyte di staff notice; Templar di tabel vault acak (`vault_<hex>`) yang namanya ditunjuk `vault_index` (staff notice jadi decoy); Inquisitor di tabel ledger acak yang dibuka rute staff bertoken (staff notice hanya menyebut nomor record). Tabel vault/archive decoy ada di semua tier.
+- **Inquisitor (chain):** pencarian memakai DB publik terpisah (`public.db`) yang hanya berisi notices publik + `staff_tokens`; flag berada di DB utama. SQLi 4 kolom membocorkan **service token** 32-hex, lalu `/staff/notices?token=` hanya memberi **nomor ledger**; flag dibaca dari `/staff/ledger/<id>?token=`. UNION langsung ke staff notice tidak bisa karena flag tidak ada di DB pencarian; `ATTACH` tidak bisa menjembatani dua DB lewat satu statement.
 - Identitas visual teal/cream, mark/favicon SVG, 404/500 bergaya, responsive 375 px.
 
 ### r02 — Courier (Broken access control, Easy)
 
 - Dashboard pelacakan nyata: 7 paket demo, status chip, ETA, timeline depot → transit → out for delivery → delivered.
 - **Printable label**: `GET /api/parcels/:id/label` dengan `Accept: text/html` mengembalikan label cetak (alamat, note, barcode CSS); `Accept` lain tetap JSON (solve tetap jalan).
-- **6 paket vault** (1001–1006); 1001 pembawa flag, sisanya note decoy yang wajar.
+- **6 paket vault** (1001–1006), masing-masing punya `note`, `labelNote`, dan `manifest`; permukaan yang tidak dipakai berisi decoy.
+- **Lokasi flag berpindah per tier:** Acolyte di note parcel 1001; Templar di `labelNote` parcel vault acak (selalu bukan 1001); Inquisitor di `manifest` parcel vault acak (selalu bukan 1001).
 - Halaman `/account`, `/support`, `/pricing`, `/faq`, `/signin`; landing menjelaskan demo mode.
 - Dashboard melakukan refresh API nyata (`POST /api/session` → `GET /api/parcels`) sehingga endpoint terlihat natural di DevTools.
-- **Inquisitor (chain):** semua rute parcel mewajibkan `X-Api-Key` milik pemilik parcel; endpoint support IDOR membocorkan API key customer `vault`; key itu dipakai bersama sesi demo untuk membaca parcel 1001. Key kosong/salah 403; Divine menolak kombinasi sesi demo + key vault.
+- **Inquisitor (chain):** semua rute parcel mewajibkan `X-Api-Key` milik pemilik parcel; endpoint support IDOR membocorkan API key **dan daftar parcel** customer `vault`; key itu dipakai bersama sesi demo untuk membaca manifest parcel vault yang benar. Key kosong/salah 403; Divine menolak kombinasi sesi demo + key vault.
 - Identitas orange/navy, mark/favicon, status chip, print CSS, styled 404/500, responsive.
 
 ### r03 — Beacon (Command injection, Medium)
@@ -105,7 +107,8 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - `/status` kini human-readable, bukan dump JSON.
 - `/diagnostics`: preset target, output terminal dengan timestamp/exit code, spinner CSS, daftar recent probes (escaped, in-memory).
 - Reboot simulasi murni CSS.
-- **Inquisitor (chain):** host divalidasi ketat dan dijalankan via `execFile` (tanpa shell), tetapi `label` disimpan; `/diagnostics/report` menjalankan shell dengan label tersimpan (second-order command injection) dan menampilkan report. Dua sink shell total: `diag.mjs` dan `report.mjs`.
+- **Lokasi flag berpindah per tier:** Acolyte di `/tmp/beacon/flag.txt`; Templar dipecah dua di `/tmp/beacon/spool` (acak, plus decoy pair); Inquisitor dipecah dua di `/tmp/beacon/audit/<random>` (acak, plus decoy pair). Hanya pasangan asli yang membentuk `HVWA{...}`.
+- **Inquisitor (chain):** host divalidasi ketat dan dijalankan via `execFile` (tanpa shell), tetapi `label` disimpan; `/diagnostics/report` menjalankan shell dengan label tersimpan (second-order command injection) dan menampilkan report. Pemain menyimpan label untuk list folder audit, lalu label untuk menggabungkan pasangan yang benar. Dua sink shell total: `diag.mjs` dan `report.mjs`.
 - Identitas dark/lime, LED, ilustrasi SVG, favicon, responsive.
 
 ### r04 — Postcard (SSTI, Hard)
@@ -115,7 +118,8 @@ Sebelum enhancement, keempat lab hanya punya 2–3 halaman dan CSS minimal. Audi
 - `/preview`: kartu dengan print CSS, flip front/back statis (CSS 3D), metadata gaya, "Send" simulasi, "Edit".
 - Halaman `/orders`, `/about`, `/pricing`, `/faq`, `/shipping`, `/contact`.
 - Status studio statis ("press queue: 3 cards ahead", same-day cutoff).
-- **Inquisitor (chain):** `/preview` tidak merender pesan; menyimpan draft (≤32, id acak) dan mengembalikan `data-draft`; `/orders/<id>/print` merender draft sebagai template (second-order SSTI). Divine merender draft sebagai data (escaped), jadi payload tidak dieksekusi.
+- **Lokasi flag berpindah per tier:** Acolyte di `/tmp/postcard/flag.txt`; Templar dipecah dua di `/tmp/postcard/outbox` (acak, plus decoy pair); Inquisitor dipecah dua di `/tmp/postcard/archive/<random>` (acak, plus decoy pair). Hanya pasangan asli yang membentuk `HVWA{...}`.
+- **Inquisitor (chain):** `/preview` tidak merender pesan; menyimpan draft (≤32, id acak) dan mengembalikan `data-draft`; `/orders/<id>/print` merender draft sebagai template (second-order SSTI). Payload print-stage mem-list folder archive lalu menggabungkan pasangan yang benar. Divine merender draft sebagai data (escaped), jadi payload tidak dieksekusi.
 - Identitas rose/plum, tekstur card stock, SVG mark/favicon, styled rejection card, 404/500, 375 px.
 
 ### r05 — Binanse (Stored XSS, Hard-only)
@@ -177,8 +181,8 @@ Redesain penuh dari tema navy+gold yang terasa generik menjadi sistem editorial 
 Perubahan keamanan 22 November 2026:
 
 - Warden **tidak lagi** mengirim `HVWA_FLAG` sebagai env container.
-- Container dibuat dan dijalankan, lalu warden mengirim flag lewat `docker exec` ke **file tmpfs sekali pakai** `/tmp/.hvwa-flag` (mode 0400, uid 10001).
-- Lab membaca file itu saat start, **menghapusnya**, lalu menanam flag di lokasi manifest (DB/record/file). Divine tidak menunggu file dan menanam decoy.
+- Container dibuat dan dijalankan, lalu warden mengirim flag lewat `docker exec` ke **file tmpfs sekali pakai** `/tmp/.hvwa-flag` (mode 0400, uid 10001). Pengiriman menulis ke nama sementara, `chmod`, lalu `mv` sebagai langkah terakhir — lab tidak bisa menghapus file di tengah eksekusi dan membuat delivery gagal (race yang sempat muncul di r02).
+- Lab membaca file itu saat start, **menghapusnya**, lalu menanam flag di lokasi milik tier-nya. Mulai 22 November 2026 lokasi itu **berbeda per level** (bukan satu path yang sama dengan filter berbeda): r01 staff notice → vault table berindeks → ledger record; r02 note 1001 → labelNote parcel acak → manifest parcel acak; r03/r04 satu file → pasangan acak di folder berbeda (plus decoy pair). Divine tidak menunggu file dan hanya menanam decoy.
 - Flag tidak ada di: environment proses, `/proc/self/environ`, image, container config, `docker inspect`, `docker logs`, log portal/warden, HTML biasa, URL, DB (hanya SHA-256), atau tiket gate.
 - Check otomatis:
   - `labs:test`: cek no-leak di setiap level (inspect + logs + image/config + file one-shot hilang), termasuk Inquisitor.

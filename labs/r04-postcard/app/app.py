@@ -1,7 +1,10 @@
 # labs/r04-postcard/app/app.py — Postcard. Start hook: read the one-shot flag file (HVWA_FLAG_FILE) once and unlink it,
-# then write it (or a Divine decoy) to /tmp/postcard/flag.txt (spec §6). POST /preview renders the operator's message per
-# level (templating.render_card). No page renders the flag file. Serves on 0.0.0.0:$HVWA_PORT with Flask's threaded
-# server (debug OFF — debug would be its own vulnerability).
+# then plant it where the level expects (spec §6): Acolyte keeps the whole flag at /tmp/postcard/flag.txt; Templar tears
+# it into a random pair under /tmp/postcard/outbox; Inquisitor tears it into a random pair under
+# /tmp/postcard/archive/<random>. Each split directory also holds decoy pairs, so the path a lower tier taught is a dead
+# end next door. POST /preview renders the operator's message per level (templating.render_card). No page renders the
+# flag in full; only the template primitive does. Serves on 0.0.0.0:$HVWA_PORT with Flask's threaded server (debug OFF —
+# debug would be its own vulnerability).
 import json
 import os
 import pathlib
@@ -45,13 +48,39 @@ def _read_flag():
 
 
 _flag = None if LEVEL == "divine" else _read_flag()
-flag_dir = pathlib.Path("/tmp/postcard")
-flag_dir.mkdir(parents=True, exist_ok=True)
-_body = (_flag if (_flag and LEVEL != "divine")
-         else "Divine is the secure reference: your message is printed as data, so there is nothing to inject.")
-flag_path = flag_dir / "flag.txt"
-flag_path.write_text(_body + "\n")
-flag_path.chmod(0o444)
+FLAG_BASE = pathlib.Path("/tmp/postcard")
+FLAG_BASE.mkdir(parents=True, exist_ok=True)
+_DIVINE_BODY = "Divine is the secure reference: your message is printed as data, so there is nothing to inject."
+
+
+def _write_secret(path: pathlib.Path, value: str) -> None:
+    path.write_text(value, encoding="utf-8")
+    path.chmod(0o444)
+
+
+def _plant_parts(directory: pathlib.Path, value: str) -> None:
+    """Tear the flag into a random pair beside decoy pairs; only the real pair joins into a valid HVWA{...}."""
+    directory.mkdir(parents=True, exist_ok=True)
+    cut = len(value) // 2
+    token = secrets.token_hex(4)
+    _write_secret(directory / f"part-1-{token}", value[:cut])
+    _write_secret(directory / f"part-2-{token}", value[cut:])
+    for _ in range(2):
+        decoy = secrets.token_hex(4)
+        _write_secret(directory / f"part-1-{decoy}", f"FAKE-{decoy}-1")
+        _write_secret(directory / f"part-2-{decoy}", f"FAKE-{decoy}-2")
+
+
+if LEVEL == "divine" or not _flag:
+    _write_secret(FLAG_BASE / "flag.txt", _DIVINE_BODY + "\n")
+elif LEVEL == "acolyte":
+    _write_secret(FLAG_BASE / "flag.txt", _flag + "\n")
+elif LEVEL == "templar":
+    _write_secret(FLAG_BASE / "flag.txt", "This card was moved to the outbox.\n")
+    _plant_parts(FLAG_BASE / "outbox", _flag)
+else:  # inquisitor: a deeper, random archive directory; the print stage is the only way to read it
+    _write_secret(FLAG_BASE / "flag.txt", "This card was moved to the archive.\n")
+    _plant_parts(FLAG_BASE / "archive" / secrets.token_hex(4), _flag)
 
 CARDS = json.loads((HERE / "seed" / "cards.json").read_text())
 
