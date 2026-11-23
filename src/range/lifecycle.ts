@@ -183,7 +183,12 @@ export function createLifecycle(deps: LifecycleDeps): Lifecycle {
         return store.get(id);
       }
       if (health.status === 'ready') store.update(id, { state: 'running', readyAt: now() });
-      else if (health.status !== 'starting') await lc.fail(id, health.reason ?? health.status);
+      // 'missing' is also what a launch in flight looks like (the record is inserted before the warden creates the
+      // container), and the reaper refreshes starting records every 30 s. Do not kill that launch: a container that is
+      // really gone is failed at the start timeout.
+      else if (health.status === 'missing') {
+        if (timedOut) await lc.fail(id, 'missing');
+      } else if (health.status !== 'starting') await lc.fail(id, health.reason ?? health.status);
       else if (timedOut) await lc.fail(id, 'start_timeout');
       return store.get(id);
     },

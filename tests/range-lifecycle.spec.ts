@@ -162,6 +162,9 @@ describe('readiness (refresh)', () => {
     expect(await lc.refresh(a.id)).toMatchObject({ state: 'failed', reason: 'start_timeout' });
     const b = (await lc.launch(2, 'r01', 'acolyte') as { ok: true; instance: { id: string } }).instance;
     warden.boxes.delete(b.id);
+    // The launch-in-flight window: the container is not created yet, so the reaper must not fail the record.
+    expect((await lc.refresh(b.id))?.state).toBe('starting');
+    advance(5001);
     expect(await lc.refresh(b.id)).toMatchObject({ state: 'failed', reason: 'missing' });
   });
 
