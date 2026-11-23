@@ -195,7 +195,14 @@ async function openLab(b, a) {
 function findInstance(labId, level) {
   const ids = must('docker', ['ps', '-q', '--filter', `label=hvwa.lab=${labId}`, '--filter', `label=hvwa.level=${level}`])
     .split(/\s+/).filter(Boolean);
-  if (ids.length !== 1) throw new Error(`expected exactly one ${labId}/${level} instance, found ${ids.length}`);
+  if (ids.length !== 1) {
+    const detail = ids.map((cid) => {
+      const r = run('docker', ['inspect', '--format',
+        '{{.Name}} created={{.Created}} user={{index .Config.Labels "hvwa.user"}} instance={{index .Config.Labels "hvwa.instance"}}', cid]);
+      return r.code === 0 ? r.out : cid;
+    }).join(' | ');
+    throw new Error(`expected exactly one ${labId}/${level} instance, found ${ids.length}: ${detail}`);
+  }
   const instanceId = must('docker', ['inspect', '--format', '{{index .Config.Labels "hvwa.instance"}}', ids[0]]);
   if (!/^[a-z2-7]{26}$/.test(instanceId)) throw new Error(`the hvwa.instance label is not an instance id: ${instanceId}`);
   return instanceId;
