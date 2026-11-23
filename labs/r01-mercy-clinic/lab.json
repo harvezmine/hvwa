@@ -1,7 +1,7 @@
 {
   "id": "r01",
   "slug": "mercy-clinic",
-  "title": { "en": "I Trusted the Search Bar", "id": "Saya Percaya Kolom Pencarian" },
+  "title": { "en": "The Clinic's Secret Ledger", "id": "Buku Besar Rahasia Klinik" },
   "app": "Mercy Clinic",
   "category": "SQL injection",
   "difficulty": "easy",

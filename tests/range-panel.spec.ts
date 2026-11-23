@@ -46,14 +46,14 @@ describe('the Lab panel', () => {
     const started = await act(agent, 'r01', 'launch');
     expect(started.text).toMatch(/data-toast="launched"/);
     expect(started.text).toMatch(/data-toast-variant="success"/);
-    expect(started.text).toContain('Contract started');
+    expect(started.text).toContain('Quest started');
     await agent.get('/labs/r01/panel?level=acolyte'); // now running
     const polled = (await agent.get('/labs/r01/panel?level=acolyte').set('HX-Request', 'true')).text;
     expect(polled).not.toContain('data-toast');
     const stopped = await act(agent, 'r01', 'stop');
     expect(stopped.text).toMatch(/data-toast="stopped"/);
     expect(stopped.text).toMatch(/data-toast-variant="info"/);
-    expect(stopped.text).toContain('Contract closed');
+    expect(stopped.text).toContain('Quest closed');
   });
 
   it('Launch needs the account CSRF token; a plain form gets a 303 to the lab page at that level', async () => {
@@ -195,9 +195,9 @@ describe('My Lab in the header', () => {
     const { agent } = await player(kit.app, 'alice');
     await act(agent, 'r01', 'launch');
     await agent.get('/labs/r01/panel?level=acolyte');
-    expect((await agent.get('/leaderboard')).text).toContain('Active contract');
+    expect((await agent.get('/leaderboard')).text).toContain('Active quest');
     await act(agent, 'r01', 'stop');
-    expect((await agent.get('/leaderboard')).text).toContain('Last contract');
+    expect((await agent.get('/leaderboard')).text).toContain('Last quest');
   });
 });
 

@@ -13,7 +13,7 @@ import { DEFAULT_LIMITS } from '../src/range/types.js';
 import { base32, INSTANCE_ID_RE, newInstanceId } from '../src/range/ids.js';
 import { instanceHost, instanceIdOfHost, instanceOrigin, portalOrigin } from '../src/range/hosts.js';
 import { csrfOf, FAST_HASHER, serve, setCookieHeader, setCookieValue, TEST_SECRET } from './helpers.js';
-import { parseRegistry } from '../src/lab-registry.js';
+import { parseRegistry, TRACKS } from '../src/lab-registry.js';
 import { ADMIN_PASSWORD, DOMAIN, FORWARD_SECRET, labEntry, player, portalApp, RANGE_KEY, signInAdmin, testRegistry, T0 } from './support/range.js';
 import { fakeWarden } from './support/fake-warden.js';
 
@@ -210,13 +210,13 @@ describe('the catalog', () => {
     const { agent, userId } = await player(app, 'alice');
     const fresh = (await agent.get('/')).text;
     expect(fresh).toContain('data-testid="range-rank"');
-    expect(fresh).toContain('Initiate'); // 0 points → E Initiate
+    expect(fresh).toContain('Greenhorn'); // 0 points → E Greenhorn (Copper)
     expect(fresh).toMatch(/data-testid="range-rank-progress" max="300" value="0"/);
-    expect(fresh).toMatch(/data-testid="account-nav"[\s\S]*?class="menu-rank"[\s\S]*?Initiate/); // the account menu shows the rank
+    expect(fresh).toMatch(/data-testid="account-nav"[\s\S]*?class="menu-rank"[\s\S]*?Greenhorn/); // the account menu shows the rank
     recordRangeSolve(app.locals.db, userId, 'r01', 'templar', 150, T0);
-    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 350 → D Scout, next C at 1000
+    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 350 → D Pathfinder (Iron), next C at 1000
     const html = (await agent.get('/')).text;
-    expect(html).toContain('Scout');
+    expect(html).toContain('Pathfinder');
     expect(html).toMatch(/data-testid="range-rank-progress" max="1000" value="350"/);
   });
 
@@ -230,9 +230,25 @@ describe('the catalog', () => {
     await kit.app.locals.range!.lifecycle.launch(userId, 'r01', 'templar');
     const hero = (await agent.get('/')).text;
     expect(hero).toMatch(/data-testid="continue-lab" data-state="starting"/);
-    expect(hero).toContain('Continue your contract');
+    expect(hero).toContain('Quest in hand');
     expect(hero).toContain('App clinic');
     expect(hero).toContain('href="/labs/r01?level=templar"');
+  });
+
+  it('pins each bounty on its guild board: one carousel slide per track, a sign per board, "soon" on an empty one', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'alice');
+    const html = (await agent.get('/')).text;
+    for (const track of TRACKS) {
+      expect(html).toContain(`id="board-${track}" data-board="${track}"`);
+      expect(html).toContain(`href="#board-${track}" data-board-link`);
+    }
+    const slice = (from: string, to: string) => html.slice(html.indexOf(`id="board-${from}"`), html.indexOf(`id="board-${to}"`));
+    expect(slice('web', 'crypto')).toContain('data-lab="r01"'); // every lab defaults to the web board
+    expect(slice('crypto', 'pwn')).not.toContain('data-testid="lab-card"');
+    expect(slice('crypto', 'pwn')).toContain('No notices pinned here yet');
+    expect(html).toMatch(/data-testid="board-sign-web" aria-current="true"/); // the first board is the active one
+    expect(html).toContain('data-board-prev hidden'); // the arrow knobs wait for ui.js; the plank links work without it
   });
 
   it('shows the Indonesian texts with ?lang=id, and every value escaped', async () => {
@@ -275,7 +291,7 @@ describe('a lab page', () => {
     expect(res.text).toContain('Hint one of clinic');
     expect(res.text).toMatch(/data-toast="unlocked"/);
     expect(res.text).toMatch(/data-toast-variant="success"/);
-    expect(res.text).toMatch(/data-toast-message="Intel 1 unlocked · 10 pts deducted"/);
+    expect(res.text).toMatch(/data-toast-message="Whisper 1 bought · 10 G spent"/);
     const again = await agent.post('/labs/r01/hint').type('form').send({ _csrf: csrf, tier: '1' });
     expect(again.status).toBe(303);
     expect(again.headers.location).toBe('/labs/r01#hint-1');
@@ -321,6 +337,8 @@ describe('the leaderboard and the navigation', () => {
     expect(html).toContain('data-testid="leaderboard-you"');
     expect(html).toMatch(/data-testid="leaderboard-you"[\s\S]*?data-rank="4" data-user="alice"/);
     expect(html).toContain('Your position');
+    expect(html).toContain('Top 100%'); // 4th of 4
+    expect(html).toContain('101 G to pass dave'); // dave has 200, alice 100: one more than the gap
   });
 
   it('counts one member in the singular and keeps the position separate from the rank seal', async () => {
@@ -328,8 +346,8 @@ describe('the leaderboard and the navigation', () => {
     const { agent, userId } = await player(app, 'alice');
     recordRangeSolve(app.locals.db, userId, 'r01', 'acolyte', 100, T0);
     const html = (await agent.get('/leaderboard')).text;
-    expect(html).toContain('1 member');
-    expect(html).not.toContain('1 members');
+    expect(html).toContain('1 adventurer');
+    expect(html).not.toContain('1 adventurers');
     expect(html).toMatch(/data-rank="1" data-user="alice"/);
     expect(html).toContain('class="podium-rank"'); // the numeric position
     expect(html).toContain('class="rank-seal'); // the adventurer rank seal (letter)

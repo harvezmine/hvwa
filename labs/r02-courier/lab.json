@@ -1,7 +1,7 @@
 {
   "id": "r02",
   "slug": "courier",
-  "title": { "en": "Oops, That Parcel Wasn't Mine", "id": "Ups, Paket Itu Bukan Punya Saya" },
+  "title": { "en": "The Courier Never Asks", "id": "Kurir yang Tak Pernah Bertanya" },
   "app": "Courier",
   "category": "Broken access control",
   "difficulty": "easy",

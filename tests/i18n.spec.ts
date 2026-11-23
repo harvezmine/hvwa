@@ -27,7 +27,9 @@ describe('i18n', () => {
   it('every range.* key is really translated in Indonesian (no English copy left behind)', () => {
     const keys = translationKeys().filter((k) => k.startsWith('range.'));
     expect(keys.length).toBeGreaterThan(30);
-    const untranslated = keys.filter((k) => t(k, 'id') === t(k, 'en'));
+    // Guild loanwords Indonesian players use as-is (the gold unit, the bounty, the party, OSINT).
+    const loanwords = new Set(['range.team_mode', 'range.gold', 'range.track_sub.osint', 'range.contract_word', 'range.modal_points']);
+    const untranslated = keys.filter((k) => !loanwords.has(k) && t(k, 'id') === t(k, 'en'));
     expect(untranslated).toEqual([]);
   });
 

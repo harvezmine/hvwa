@@ -1,22 +1,26 @@
-<%# Range lab page (src/range/catalog.ts): the contract dossier. Hero (contract-file meta, category + difficulty,
-   serif title, in-world app, scenario, sealed stamp, illustration), a full-width tier ladder, then a two-column body:
-   mission brief, intel (paid hints) and claim bounty on the left; the active-contract panel and how-it-works on the
-   right. Hooks: briefing, range-level-<level> (data-solved, aria-current), hint-<tier>, lab-panel, submit-result.
-   Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<%# Range lab page (src/range/catalog.ts): the bounty taken off the board and laid on the guild desk. A parchment poster
+   hero (bounty file line, client, title, the client's scenario, tags, threat marks, wax seal when done, illustration),
+   the threat-level ladder, then a two-column body: the client's request, tavern whispers (paid hints) and the claim desk
+   on the left; the active-quest panel and how-it-works on the right. Hooks: briefing, range-level-<level> (data-solved,
+   aria-current), hint-<tier>, lab-panel, submit-result. Every value goes through the escaped output tag. Never put an
+   EJS tag inside an EJS comment: it breaks parsing. %>
 <header class="page-head lab-hero lab-theme-<%= lab.themeId %>" data-theme="<%= lab.themeId %>"<% if (lab.mode === 'team') { %> data-mode="team"<% } %>>
   <div class="lab-hero-head">
     <div class="lab-hero-copy">
-      <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t(levels.length === 1 ? 'range.tier_word' : 'range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %></p>
-      <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="diff-seal seal seal-sm" aria-hidden="true"><%= lab.difficultyMark %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span><% if (lab.mode === 'team') { %><span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span><% } %></p>
+      <p class="contract-file"><%= t('range.contract_word') %> <%= lab.id %> · <%= levels.length %> <%= t(levels.length === 1 ? 'range.tier_word' : 'range.tiers_word') %> · <%= t('range.bounty') %> <%= lab.bounty %> <%= t('range.gold') %></p>
+      <p class="dossier-subtitle"><%= t('range.client') %> · <%= lab.app %></p>
       <h1 class="page-title"><%= lab.title %></h1>
-      <p class="dossier-subtitle"><%= lab.app %></p>
       <p class="contract-objective"><%= lab.scenario %></p>
+      <p class="lab-card-meta"><span class="category-tab"><%= lab.category %></span><span class="threat"><span class="threat-marks" aria-hidden="true"><%= '◆'.repeat(lab.threat) + '◇'.repeat(4 - lab.threat) %></span><span class="difficulty-label"><%= lab.difficultyLabel %></span></span><% if (lab.mode === 'team') { %><span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span><% } %></p>
 <% if (best) { -%>
-      <p class="status status-solved"><span class="sealed-stamp"><%= t('range.sealed') %></span><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
+      <p class="status status-solved"><span class="sealed-stamp"><%= t('range.sealed') %></span><%= t('challenge.solved_at').replace('{level}', lab.bestLabel) %></p>
 <% } -%>
     </div>
     <svg class="icon hero-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= lab.icon %>"></use></svg>
   </div>
+<% if (best) { -%>
+  <span class="wax-seal wax-seal-lg" aria-hidden="true"><span><%= t('range.sealed') %></span></span>
+<% } -%>
 </header>
 
 <div class="dossier">
@@ -28,9 +32,9 @@
       <li class="tier-card<%= l.current ? ' is-current' : '' %><%= l.solved ? ' is-solved' : '' %>" data-level="<%= l.id %>">
         <a class="tier-card-link" data-testid="range-level-<%= l.id %>" data-solved="<%= l.solved ? 'true' : 'false' %>" href="<%= l.href %>"<% if (l.current) { %> aria-current="true"<% } %>>
           <span class="tier-card-seal" aria-hidden="true"></span>
-          <span class="tier-card-name"><%= t(l.id === 'divine' ? 'challenge.divine_tab' : 'level.' + l.id) %></span>
+          <span class="tier-card-name"><%= l.label %></span>
           <span class="tier-card-meaning"><%= t('level_meaning.' + l.id) %></span>
-          <span class="tier-card-points"><%= l.scored ? l.points + ' ' + t('challenge.points') : t('scoreboard.not_scored') %></span>
+          <span class="tier-card-points"><%= l.scored ? l.points + ' ' + t('range.gold') : t('scoreboard.not_scored') %></span>
         </a>
       </li>
 <% }); -%>
@@ -56,12 +60,12 @@
             <details class="accordion hint" open><summary><span class="hint-name"><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge badge-ok"><%= t('range.intel_unlocked') %></span></summary><div class="accordion-body"><p class="hint-text" data-tier="<%= h.id %>"><%= h.text %></p></div></details>
 <% } else { -%>
             <details class="accordion hint">
-              <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge"><%= t('range.intel_cost') %>: <%= h.cost %> <%= t('challenge.points') %></span></summary>
+              <summary><span class="hint-name"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-lock"></use></svg><%= t('range.intel_tier') %> <%= h.id %></span><span class="badge"><%= t('range.intel_cost') %>: <%= h.cost %> <%= t('range.gold') %></span></summary>
               <div class="accordion-body">
                 <form method="post" action="/labs/<%= lab.id %>/hint" hx-post="/labs/<%= lab.id %>/hint" hx-target="#hint-<%= h.id %>" hx-swap="innerHTML" hx-confirm="<%= t('challenge.hint_confirm') %>">
                   <input type="hidden" name="_csrf" value="<%= csrf %>">
                   <input type="hidden" name="tier" value="<%= h.id %>">
-                  <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('range.intel_unlock') %> <%= h.id %> (<%= t('range.intel_cost') %>: <%= h.cost %>)</button>
+                  <button type="submit" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-unlock"></use></svg><%= t('range.intel_unlock') %> <%= h.id %> (<%= t('range.intel_cost') %>: <%= h.cost %> <%= t('range.gold') %>)</button>
                 </form>
               </div>
             </details>
@@ -71,7 +75,7 @@
         </ul>
       </section>
 
-      <section aria-labelledby="claim-title">
+      <section class="claim-desk" aria-labelledby="claim-title">
         <h2 class="section-title" id="claim-title"><%= t('range.claim') %></h2>
         <form method="post" action="/labs/<%= lab.id %>/submit" hx-post="/labs/<%= lab.id %>/submit" hx-target="#submit-result" hx-swap="innerHTML" class="submit-form claim-form">
           <input type="hidden" name="_csrf" value="<%= csrf %>">
@@ -86,7 +90,7 @@
 <% } else if (flash === 'decoy') { -%>
           <p class="result result-bad" data-solved="false" data-result="decoy" role="status"><%= t('range.result_decoy') %></p>
 <% } else if (flash === 'solved') { -%>
-          <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
+          <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', lab.bestLabel) %></p>
 <% } -%>
         </div>
       </section>

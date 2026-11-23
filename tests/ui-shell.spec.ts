@@ -188,13 +188,25 @@ describe('markup stays CSP-friendly and offline', () => {
     expect((await get('/')).text).toContain('<script src="/static/ui.js" defer></script>');
   });
 
-  it('the shipped source of the sprite and the script make no network request', () => {
+  it('the shipped source of the sprite, the textures and the script make no request off this origin', () => {
     const pub = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'public');
-    for (const f of ['ui.js', 'icons.svg', 'app.css']) {
+    for (const f of ['ui.js', 'icons.svg', 'app.css', 'tex/wood.svg', 'tex/paper.svg', 'tex/fibre.svg']) {
       const text = readFileSync(join(pub, f), 'utf8');
       expect(text, f).not.toMatch(/https?:\/\/(?!www\.w3\.org\/2000\/svg)/);
       expect(text, f).not.toMatch(/\b(fetch|XMLHttpRequest|import)\s*\(/);
-      expect(text, f).not.toMatch(/@import|url\(/);
+      expect(text, f).not.toMatch(/@import/);
+      // CSS may load fonts and textures, but only same-origin files under /static (an SVG's url(#id) is a local ref).
+      const urls = [...text.matchAll(/url\(\s*["']?([^"')]*)/g)].map((m) => m[1]);
+      expect(urls.filter((u) => !u.startsWith('/static/') && !u.startsWith('#')), f).toEqual([]);
     }
+    // ui.js plays only the guild's own music file.
+    expect(readFileSync(join(pub, 'ui.js'), 'utf8')).toMatch(/'\/static\/audio\/adventures-begin\.mp3'/);
+  });
+
+  it('serves the fonts, textures and music it references', async () => {
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'public', 'app.css'), 'utf8');
+    const refs = [...css.matchAll(/url\("(\/static\/[^"]+)"\)/g)].map((m) => m[1]);
+    expect(refs.length).toBeGreaterThanOrEqual(7);
+    for (const ref of [...refs, '/static/audio/adventures-begin.mp3']) expect((await get(ref)).status, ref).toBe(200);
   });
 });

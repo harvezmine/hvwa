@@ -14,6 +14,9 @@
 <% } -%>
   </div>
   <p class="page-lead"><%= t('leaderboard.lead') %></p>
+<% if (typeof standing !== 'undefined' && standing) { -%>
+  <p class="standing" data-testid="standing"><span class="standing-pct"><%= t('leaderboard.top_pct').replace('{n}', standing.pct) %></span><span class="standing-gap"><% if (standing.atTop) { %><%= t('leaderboard.at_top') %><% } else if (standing.gap) { %><%= t('leaderboard.gap').replace('{n}', standing.gap.points).replace('{name}', () => standing.gap.name) %><% } %></span></p>
+<% } -%>
 </header>
 <nav class="tabs" aria-label="<%= t('leaderboard.tabs_label') %>" data-testid="leaderboard-tabs">
   <a href="/leaderboard?board=individual" data-testid="tab-individual"<% if (board === 'individual') { %> aria-current="page"<% } %>><%= t('leaderboard.board_individual') %></a>
@@ -97,7 +100,7 @@
   <li data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="leaderboard-top leaderboard-top-<%= r.rank %><% if (r.userId === me) { %> leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
     <div class="podium-row">
       <span class="podium-rank"><%= r.rank < 10 ? '0' + r.rank : r.rank %></span>
-      <span class="podium-name"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
+      <span class="podium-name"><span class="rank-seal seal seal-sm" data-plate="<%= r.rankLetter.toLowerCase() %>" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="you"><%= t('leaderboard.you') %></span><% } %></span>
       <span class="podium-stat"><b><%= r.score %></b><%= r.solved %> <%= t('leaderboard.col_solved') %></span>
     </div>
   </li>
@@ -111,7 +114,7 @@
 <% rows.filter(function (r) { return r.rank > 3; }).forEach(function (r) { -%>
       <tr data-rank="<%= r.rank %>" data-user="<%= r.username %>" class="<% if (r.userId === me) { %>leaderboard-me<% } %>"<% if (r.userId === me) { %> aria-current="true"<% } %>>
         <td class="num"><span class="leaderboard-rank"><%= r.rank %></span></td>
-        <th scope="row"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
+        <th scope="row"><span class="rank-seal seal seal-sm" data-plate="<%= r.rankLetter.toLowerCase() %>" aria-hidden="true"><%= r.rankLetter %></span><%= r.username %><% if (r.userId === me) { %> <span class="muted"><%= t('leaderboard.you') %></span><% } %></th>
         <td class="num"><%= r.score %></td>
         <td class="num"><%= r.solved %></td>
       </tr>
@@ -134,7 +137,7 @@
     <tbody>
       <tr data-rank="<%= pinned.rank %>" data-user="<%= pinned.username %>" class="leaderboard-me" aria-current="true">
         <td class="num"><%= pinned.rank %></td>
-        <th scope="row"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= pinned.rankLetter %></span><%= pinned.username %> <span class="muted"><%= t('leaderboard.you') %></span></th>
+        <th scope="row"><span class="rank-seal seal seal-sm" data-plate="<%= pinned.rankLetter.toLowerCase() %>" aria-hidden="true"><%= pinned.rankLetter %></span><%= pinned.username %> <span class="muted"><%= t('leaderboard.you') %></span></th>
         <td class="num"><%= pinned.score %></td>
         <td class="num"><%= pinned.solved %></td>
       </tr>

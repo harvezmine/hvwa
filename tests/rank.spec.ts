@@ -35,14 +35,14 @@ describe('adventurer rank (src/range/rank.ts)', () => {
   });
 
   it('rank names are localised (EN/ID)', () => {
-    expect(rankName('E', 'en')).toBe('Initiate');
-    expect(rankName('E', 'id')).toBe('Pemula');
-    expect(rankName('D', 'en')).toBe('Scout');
-    expect(rankName('D', 'id')).toBe('Pengintai');
-    expect(rankName('C', 'en')).toBe('Adept');
-    expect(rankName('B', 'en')).toBe('Veteran');
-    expect(rankName('A', 'en')).toBe('Elite');
-    expect(rankName('A', 'id')).toBe('Elit');
+    expect(rankName('E', 'en')).toBe('Greenhorn');
+    expect(rankName('E', 'id')).toBe('Anak Bawang');
+    expect(rankName('D', 'en')).toBe('Pathfinder');
+    expect(rankName('D', 'id')).toBe('Penjelajah');
+    expect(rankName('C', 'en')).toBe('Sellsword');
+    expect(rankName('B', 'en')).toBe('Knight-errant');
+    expect(rankName('A', 'en')).toBe('Champion');
+    expect(rankName('A', 'id')).toBe('Jawara');
     expect(rankName('S', 'en')).toBe('Legend');
     expect(rankName('S', 'id')).toBe('Legenda');
   });

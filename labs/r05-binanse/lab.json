@@ -1,7 +1,7 @@
 {
   "id": "r05",
   "slug": "binanse",
-  "title": { "en": "I Believe My Crypto Web Is Very Secure", "id": "Saya Yakin Web Kripto Saya Sangat Aman" },
+  "title": { "en": "The Dragon Hoard Heist", "id": "Perampokan Peti Harta Naga" },
   "app": "Binanse",
   "category": "Stored XSS",
   "difficulty": "hard",

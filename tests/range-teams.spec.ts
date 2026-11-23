@@ -168,11 +168,11 @@ describe('team page and mode badge (portal HTTP)', () => {
     const { agent } = await player(kit.app, 'alice');
     const catalog = (await agent.get('/')).text;
     expect(catalog).toMatch(/data-lab="r01"[^>]*data-mode="team"/);
-    expect(catalog).toContain('TEAM');
+    expect(catalog).toContain('PARTY');
     expect(catalog).not.toMatch(/data-lab="r02"[^>]*data-mode="team"/);
     const lab = (await agent.get('/labs/r01')).text;
     expect(lab).toContain('data-mode="team"');
-    expect(lab).toContain('TEAM');
+    expect(lab).toContain('PARTY');
     expect((await agent.get('/labs/r02')).text).not.toContain('data-mode="team"');
   });
 
@@ -193,6 +193,6 @@ describe('team page and mode badge (portal HTTP)', () => {
     expect(html).toContain('data-team="Crew"');
     expect(html).toContain('Members');
     expect(html).toContain('Last solve');
-    expect(html).toContain('(your team)');
+    expect(html).toContain('(your party)');
   });
 });

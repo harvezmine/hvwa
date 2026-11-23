@@ -31,7 +31,7 @@
       <a href="/" class="brand">
         <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
         <span class="brand-name">HVWA</span>
-        <span class="brand-tag">RANGE GUILD</span>
+        <span class="brand-tag"><%= t('app.guild_tag') %></span>
       </a>
 <% if (!platformAuth || platformAuth.signedIn) { -%>
       <nav class="site-nav" aria-label="<%= t('nav.main') %>">
@@ -60,6 +60,7 @@
 <% if (typeof uiTheme === 'undefined' || uiTheme !== 'dark') { -%>
         <a href="?<%= keep %>theme=dark" class="icon-btn theme-toggle theme-to-dark" aria-label="<%= t('theme.to_dark') %>" title="<%= t('theme.to_dark') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-moon"></use></svg></a>
 <% } -%>
+        <button type="button" class="icon-btn sound-toggle" data-sound-toggle hidden aria-pressed="false" aria-label="<%= t('sound.toggle') %>" title="<%= t('sound.toggle') %>"><svg class="icon icon-sound-off" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sound-off"></use></svg><svg class="icon icon-sound-on" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sound-on"></use></svg></button>
 <% if (typeof myLab !== 'undefined' && myLab) { -%>
 <%- include('my-lab') %>
 <% } -%>
@@ -70,7 +71,7 @@
             <svg class="icon icon-sm menu-caret" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-down"></use></svg>
           </summary>
           <div class="menu-panel">
-            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <span class="menu-rank"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></span><% } %></p>
+            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <span class="menu-rank"><span class="rank-seal seal seal-sm" data-plate="<%= playerRank.letter.toLowerCase() %>" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></span><% } %></p>
             <a class="menu-item" href="/account/password"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg><%= t('auth.change_password') %></a>
             <form method="post" action="/logout" class="logout-form"><input type="hidden" name="_csrf" value="<%= platformAuth.csrf %>"><button type="submit" class="menu-item menu-item-danger" data-testid="logout"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-log-out"></use></svg><%= t('auth.logout') %></button></form>
           </div>
@@ -136,6 +137,7 @@
       <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>HVWA</span>
       <span><%= t(portalMode ? 'app.portal_tagline' : 'app.tagline') %></span>
       <span><%= t(portalMode ? 'app.portal_footer' : 'app.footer') %></span>
+      <span class="music-credit"><%= t('app.music_credit') %></span>
     </div>
   </footer>
   <div id="toasts" class="toasts" data-dismiss="<%= t('range.toast_dismiss') %>"></div>
