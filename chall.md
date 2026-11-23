@@ -331,6 +331,14 @@ single-use; each request to the instance host needs the cookie. The lab itself m
   a payload that works on an exploitable tier must fail here.
 - **r05** has one Inquisitor tier and no secure reference.
 
+### If your payload kills the lab
+
+Command injection and SSTI are real inside the lab, so a payload such as `$(pkill -9 node)` can kill the lab process.
+The container exits, the old `i-<id>` host returns **404** (Traefik no longer has a route) and the dossier flips to
+**Failed** within about 30 seconds. Nothing outside your own lab is affected: the command runs as the unprivileged
+lab user inside its own gVisor container, with no route to the portal, the warden or another player. Press
+**Launch** or **Reset** for a fresh instance and a fresh flag. The old tab stays 404 — use the new URL.
+
 ### Current operational notes
 
 - r04 is 1.2.1: its health check works under gVisor and the instance has 256 MiB.
