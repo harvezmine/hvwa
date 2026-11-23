@@ -102,12 +102,12 @@ code, member chips and Leave. A lab in party mode shows a `PARTY` badge on its p
 
 **The Guildmaster's Office (role admin, `src/range/admin.ts`).** Never a player tab: admins get a wax **Guildmaster's
 Office** button in the masthead (`.btn-office`, `data-testid="nav-admin"`; icon-only below 1200 px with a screen-reader
-label), and an admin who signs in with no page to return to lands on `/admin` (`AuthOptions.adminHome`; an explicit
-`next` still wins). Every `/admin/*` page renders the shell in **office mode** (`<body class="office">`): a wax-edged
+label), and an admin who signs in with no page to return to lands on `/adminportal` (`AuthOptions.adminHome`; an explicit
+`next` still wins). Every `/adminportal/*` page renders the shell in **office mode** (`<body class="office">`): a wax-edged
 beam with the office plaque in place of the player tabs, a wax **Guild Hall** button back (`nav-hall`), and the five
 sections (Overview / Activity / Instances / Parties / Labs, `admin-nav.ejs`) as a wooden ledger spine beside the page
-(a swipeable strip below 900 px). Players and anonymous users still get the ordinary 404 / login for `/admin/*`. The
-pages keep their roles: ledger stat cards, the live exploit feed (`/admin/live`, htmx every 5 s, never a flag), the
+(a swipeable strip below 900 px). Players and anonymous users still get the ordinary 404 / login for `/adminportal/*`. The
+pages keep their roles: ledger stat cards, the live exploit feed (`/adminportal/live`, htmx every 5 s, never a flag), the
 filtered activity feed, the instances table with Stop, parties with create/delete, and the per-lab mode switch; every
 state-changing form is CSRF + Origin + Sec-Fetch-Site guarded and every value is escaped.
 

@@ -162,15 +162,15 @@ Redesain penuh dari tema navy+gold yang terasa generik menjadi sistem editorial 
 ### Teams, mode challenge, dan admin dashboard
 
 - **Teams:** satu user satu tim; buat tim (nama 3–32, join code 8 karakter), join via kode, leave; cap 20 anggota; tim kosong dihapus. Halaman `/team` dengan anggota, kode, team bounty.
-- **Mode per challenge:** admin menentukan **individual** atau **team** di `/admin/labs`; default individual. Lab tim menampilkan badge `TEAM`; skor tim hanya dari lab mode tim.
+- **Mode per challenge:** admin menentukan **individual** atau **team** di `/adminportal/labs`; default individual. Lab tim menampilkan badge `TEAM`; skor tim hanya dari lab mode tim.
 - **Team scoring:** untuk setiap lab mode tim, ambil **best level dari anggota mana pun** (satu lab dihitung sekali), jumlahkan poin; user disabled dikecualikan; hint cost tidak mengurangi team bounty; tie-break last solve paling awal lalu nama tim.
 - **Leaderboard:** tab **Individual** dan **Teams**; baris tim (nama, skor, lab solved, anggota, last solve), tim viewer ditandai.
 - **Admin dashboard** (role admin; player 404):
-  - `/admin` overview: live instances/capacity, users, teams, exploit 24 jam, live exploit feed (htmx 5 detik), activity terbaru, running instances.
-  - `/admin/activity`: log lengkap dengan filter event/user/team/lab/date dan pagination.
-  - `/admin/instances`: tabel container/instance (user, team, lab/level, state, age, expires, container state), aksi **Stop**; log `admin.stop`.
-  - `/admin/teams`: manajemen tim/anggota dan skor.
-  - `/admin/labs`: toggle mode individual/team per lab; log `admin.mode`.
+  - `/adminportal` overview: live instances/capacity, users, teams, exploit 24 jam, live exploit feed (htmx 5 detik), activity terbaru, running instances.
+  - `/adminportal/activity`: log lengkap dengan filter event/user/team/lab/date dan pagination.
+  - `/adminportal/instances`: tabel container/instance (user, team, lab/level, state, age, expires, container state), aksi **Stop**; log `admin.stop`.
+  - `/adminportal/teams`: manajemen tim/anggota dan skor.
+  - `/adminportal/labs`: toggle mode individual/team per lab; log `admin.mode`.
   - Event: `auth.register/login`, `team.create/join/leave`, `range.launch/stop/reset`, `range.submit.wrong`, `range.exploit` (lab/level/points, tanpa flag), `admin.mode/stop/team.create/team.delete`.
   - Semua form admin: CSRF + Origin + Sec-Fetch-Site; nilai escaped; tidak ada flag/token/secret/socket di halaman atau log.
 - **Popup submit:** setiap submit membuka modal animasi — solved/new-best (“Contract sealed”, level + poin, **fun fact/backstory per lab**, confetti), wrong/already dengan varian tenang; inline result tetap untuk no-JS.

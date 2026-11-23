@@ -73,13 +73,13 @@ function dayStart(raw: string): number | undefined {
   return Number.isFinite(ms) ? ms : undefined;
 }
 
-/** `/admin/activity?…` with the current filters and the given 1-based page (page 1 drops `page`). */
+/** `/adminportal/activity?…` with the current filters and the given 1-based page (page 1 drops `page`). */
 function activityHref(filter: Record<string, string>, page: number): string {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(filter)) if (v !== '') params.set(k, v);
   if (page > 1) params.set('page', String(page));
   const qs = params.toString();
-  return qs === '' ? '/admin/activity' : `/admin/activity?${qs}`;
+  return qs === '' ? '/adminportal/activity' : `/adminportal/activity?${qs}`;
 }
 
 /** The instances table's row (and the overview's compact preview), with the warden's container state when it has one. */
@@ -112,7 +112,7 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
   sub.use(requireAdmin);
 
   // The overview: ledger cards, the live exploit feed (htmx polling), the latest activity and running instances.
-  sub.get('/admin', async (req, res) => {
+  sub.get('/adminportal', async (req, res) => {
     const store = lifecycle.store;
     const t0 = now();
     const live = store.countLive();
@@ -137,12 +137,12 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
 
   // The live exploit feed fragment (htmx polls this every 5 s). aria-live=polite, and no focus attribute: it never
   // steals focus. Read-only, so no CSRF.
-  sub.get('/admin/live', async (req, res) => {
+  sub.get('/adminportal/live', async (req, res) => {
     await sendFragment(res, view('admin-live'), { feed: liveExploitFeed(db, PREVIEW).map(exploitRow) });
   });
 
   // The full activity feed: filters (event select with groups, user, team, lab, date) and 50 rows per page.
-  sub.get('/admin/activity', async (req, res) => {
+  sub.get('/adminportal/activity', async (req, res) => {
     const q = req.query;
     const event = typeof q.event === 'string' ? q.event : '';
     const user = typeof q.user === 'string' ? q.user.trim().slice(0, 80) : '';
@@ -166,7 +166,7 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
     ];
     await sendPage(res, view('admin-activity'), {
       pageTitle: res.locals.t('admin.activity_title'), adminActive: 'activity',
-      crumbs: [{ label: res.locals.t('admin.title'), href: '/admin' }, { label: res.locals.t('admin.activity_title') }],
+      crumbs: [{ label: res.locals.t('admin.title'), href: '/adminportal' }, { label: res.locals.t('admin.activity_title') }],
       rows, total, filter, eventOptions, labIds: [...labIds],
       prevHref: page > 1 ? activityHref(filter, page - 1) : '',
       nextHref: (page - 1) * ACTIVITY_PAGE + rows.length < total ? activityHref(filter, page + 1) : '',
@@ -175,7 +175,7 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
 
   // A compact Portainer-like list: active instances (queued/starting/running/stopping) plus recent ended ones, with the
   // warden's container state where it is known. Read-only diagnostics: no socket, port or secret is shown.
-  sub.get('/admin/instances', async (req, res) => {
+  sub.get('/adminportal/instances', async (req, res) => {
     const store = lifecycle.store;
     const t0 = now();
     let containers = new Map<string, string>();
@@ -189,14 +189,14 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
     const capacity = opts.limits.capacity;
     await sendPage(res, view('admin-instances'), {
       pageTitle: res.locals.t('admin.instances_title'), adminActive: 'instances',
-      crumbs: [{ label: res.locals.t('admin.title'), href: '/admin' }, { label: res.locals.t('admin.instances_title') }],
+      crumbs: [{ label: res.locals.t('admin.title'), href: '/adminportal' }, { label: res.locals.t('admin.instances_title') }],
       active, ended, live, capacity, nearCapacity: live >= capacity, wardenDown, csrf: auth.csrfFor(req),
     });
   });
 
   // Stop one instance (the reaper's path, but on behalf of the admin): marks it stopped, removes the container, logs it.
-  sub.post('/admin/instances/:id/stop', async (req, res) => {
-    if (!auth.formOk(req)) { await auth.refuse(req, res, '/admin/instances'); return; }
+  sub.post('/adminportal/instances/:id/stop', async (req, res) => {
+    if (!auth.formOk(req)) { await auth.refuse(req, res, '/adminportal/instances'); return; }
     const me = userOf(res);
     const rec = lifecycle.store.get(req.params.id);
     if (rec) {
@@ -204,34 +204,34 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
       logActivity(db, { event: 'admin.stop', userId: me.userId, username: me.username, labId: rec.labId, level: rec.level,
         detail: `instance:${rec.id}`, ip: clientIp(req), now: now() });
     }
-    res.redirect(303, '/admin/instances');
+    res.redirect(303, '/adminportal/instances');
   });
 
   // Teams: the table (join code visible to the admin), create, delete (confirm) and remove a member.
-  sub.get('/admin/teams', async (req, res) => {
+  sub.get('/adminportal/teams', async (req, res) => {
     const r = req.query.r;
     const error = r === 'name' || r === 'duplicate' || r === 'full' ? res.locals.t(`team.err_${r}`) : '';
     const teams = listTeams(db).map((t) => teamRow(db, t));
     await sendPage(res, view('admin-teams'), {
       pageTitle: res.locals.t('admin.teams_title'), adminActive: 'teams',
-      crumbs: [{ label: res.locals.t('admin.title'), href: '/admin' }, { label: res.locals.t('admin.teams_title') }],
+      crumbs: [{ label: res.locals.t('admin.title'), href: '/adminportal' }, { label: res.locals.t('admin.teams_title') }],
       teams, csrf: auth.csrfFor(req), error, maxTeams: MAX_TEAMS,
     });
   });
 
-  sub.post('/admin/teams/create', async (req, res) => {
-    if (!auth.formOk(req)) { await auth.refuse(req, res, '/admin/teams'); return; }
+  sub.post('/adminportal/teams/create', async (req, res) => {
+    if (!auth.formOk(req)) { await auth.refuse(req, res, '/adminportal/teams'); return; }
     const me = userOf(res);
     const result = createTeam(db, field(req, 'name'), me.userId, now());
     if (result.ok) {
       logActivity(db, { event: 'admin.team.create', userId: me.userId, username: me.username, teamId: result.team.id,
         teamName: result.team.name, ip: clientIp(req), now: now() });
     }
-    res.redirect(303, result.ok ? '/admin/teams' : `/admin/teams?r=${result.error}`);
+    res.redirect(303, result.ok ? '/adminportal/teams' : `/adminportal/teams?r=${result.error}`);
   });
 
-  sub.post('/admin/teams/:id/delete', async (req, res) => {
-    if (!auth.formOk(req)) { await auth.refuse(req, res, '/admin/teams'); return; }
+  sub.post('/adminportal/teams/:id/delete', async (req, res) => {
+    if (!auth.formOk(req)) { await auth.refuse(req, res, '/adminportal/teams'); return; }
     const me = userOf(res);
     const team = teamById(db, Number(req.params.id));
     if (team) {
@@ -239,17 +239,17 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
       logActivity(db, { event: 'admin.team.delete', userId: me.userId, username: me.username, teamId: team.id,
         teamName: team.name, ip: clientIp(req), now: now() });
     }
-    res.redirect(303, '/admin/teams');
+    res.redirect(303, '/adminportal/teams');
   });
 
-  sub.post('/admin/teams/:id/members/:userId/remove', async (req, res) => {
-    if (!auth.formOk(req)) { await auth.refuse(req, res, '/admin/teams'); return; }
+  sub.post('/adminportal/teams/:id/members/:userId/remove', async (req, res) => {
+    if (!auth.formOk(req)) { await auth.refuse(req, res, '/adminportal/teams'); return; }
     removeTeamMember(db, Number(req.params.id), Number(req.params.userId));
-    res.redirect(303, '/admin/teams');
+    res.redirect(303, '/adminportal/teams');
   });
 
   // Labs: one row per registry lab with its mode (individual/team), a toggle/save form and the last update.
-  sub.get('/admin/labs', async (req, res) => {
+  sub.get('/adminportal/labs', async (req, res) => {
     const rows = registry.labs.map((lab) => {
       const meta = labModeMeta(db, lab.id);
       return {
@@ -260,22 +260,22 @@ export function adminRoutes(router: Router, ctx: RangeContext): void {
     });
     await sendPage(res, view('admin-labs'), {
       pageTitle: res.locals.t('admin.labs_title'), adminActive: 'labs',
-      crumbs: [{ label: res.locals.t('admin.title'), href: '/admin' }, { label: res.locals.t('admin.labs_title') }],
+      crumbs: [{ label: res.locals.t('admin.title'), href: '/adminportal' }, { label: res.locals.t('admin.labs_title') }],
       labs: rows, csrf: auth.csrfFor(req),
     });
   });
 
-  sub.post('/admin/labs/:id/mode', async (req, res, next) => {
+  sub.post('/adminportal/labs/:id/mode', async (req, res, next) => {
     const lab = registry.get(req.params.id);
     if (!lab) { next(); return; }
-    if (!auth.formOk(req)) { await auth.refuse(req, res, '/admin/labs'); return; }
+    if (!auth.formOk(req)) { await auth.refuse(req, res, '/adminportal/labs'); return; }
     const mode = field(req, 'mode');
-    if (!isLabMode(mode)) { res.redirect(303, '/admin/labs'); return; }
+    if (!isLabMode(mode)) { res.redirect(303, '/adminportal/labs'); return; }
     const me = userOf(res);
     setLabMode(db, lab.id, mode, me.userId, now());
     logActivity(db, { event: 'admin.mode', userId: me.userId, username: me.username, labId: lab.id,
       detail: `mode:${mode}`, ip: clientIp(req), now: now() });
-    res.redirect(303, '/admin/labs');
+    res.redirect(303, '/adminportal/labs');
   });
 
   router.use(sub);

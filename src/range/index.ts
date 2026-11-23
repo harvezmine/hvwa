@@ -55,7 +55,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   const locals: RequestHandler = (req, res, next) => {
     const active = req.path === '/leaderboard' ? 'leaderboard'
       : req.path === '/team' ? 'team'
-      : req.path === '/admin' || req.path.startsWith('/admin/') ? 'admin'
+      : req.path === '/adminportal' || req.path.startsWith('/adminportal/') ? 'admin'
       : req.path === '/' || req.path.startsWith('/labs/') ? 'labs' : undefined;
     res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin', active };
     const userId = res.locals.platformAuth?.userId;
@@ -80,6 +80,8 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     next();
   });
   router.use(portalFramePolicy());
+  // The office moved from /admin to /adminportal; keep the old bookmark working.
+  router.get('/admin', (_req, res) => res.redirect(303, '/adminportal'));
   // The friendly landing point for an instance host whose container is gone (the Traefik catch-all redirects here).
   // `?i=<instance host>` is validated against the range domain, so the page can offer the same lab again while the
   // reaper relaunches it; it is never used as an open redirect.

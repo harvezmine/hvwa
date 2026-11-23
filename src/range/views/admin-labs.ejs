@@ -16,7 +16,7 @@
       <tr data-lab="<%= lab.id %>" data-mode="<%= lab.mode %>">
         <th scope="row"><span class="mono"><%= lab.id %></span> <span class="muted"><%= lab.app %> · <%= lab.title %></span></th>
         <td>
-          <form method="post" action="/admin/labs/<%= lab.id %>/mode" class="admin-mode-form" data-testid="admin-mode-form">
+          <form method="post" action="/adminportal/labs/<%= lab.id %>/mode" class="admin-mode-form" data-testid="admin-mode-form">
             <input type="hidden" name="_csrf" value="<%= csrf %>">
             <select name="mode" aria-label="<%= lab.app %>">
               <option value="individual"<% if (lab.mode === 'individual') { %> selected<% } %>><%= t('admin.mode_individual') %></option>

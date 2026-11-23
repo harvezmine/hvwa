@@ -10,7 +10,7 @@
 <% } -%>
 <section class="card" aria-labelledby="admin-team-create">
   <h2 class="board-title" id="admin-team-create"><%= t('admin.team_create_title') %></h2>
-  <form method="post" action="/admin/teams/create" class="team-form" data-testid="admin-team-create-form">
+  <form method="post" action="/adminportal/teams/create" class="team-form" data-testid="admin-team-create-form">
     <input type="hidden" name="_csrf" value="<%= csrf %>">
     <div class="field">
       <label for="admin-team-name"><%= t('team.name_label') %></label>
@@ -34,7 +34,7 @@
           <ul class="admin-members">
 <% team.members.forEach(function (m) { -%>
             <li><span><%= m.username %></span>
-              <form method="post" action="/admin/teams/<%= team.id %>/members/<%= m.userId %>/remove" data-confirm="<%= t('admin.team_remove_confirm') %>">
+              <form method="post" action="/adminportal/teams/<%= team.id %>/members/<%= m.userId %>/remove" data-confirm="<%= t('admin.team_remove_confirm') %>">
                 <input type="hidden" name="_csrf" value="<%= csrf %>">
                 <button type="submit" class="btn btn-xs btn-quiet" data-testid="admin-team-remove"><%= t('admin.team_remove') %></button>
               </form>
@@ -45,7 +45,7 @@
         <td class="num"><%= team.score %></td>
         <td class="mono"><%= team.created %></td>
         <td>
-          <form method="post" action="/admin/teams/<%= team.id %>/delete" data-confirm="<%= t('admin.team_delete_confirm') %>">
+          <form method="post" action="/adminportal/teams/<%= team.id %>/delete" data-confirm="<%= t('admin.team_delete_confirm') %>">
             <input type="hidden" name="_csrf" value="<%= csrf %>">
             <button type="submit" class="btn btn-xs btn-danger" data-testid="admin-team-delete"><%= t('admin.team_delete') %></button>
           </form>

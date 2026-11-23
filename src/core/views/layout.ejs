@@ -79,7 +79,7 @@
 <% if (office) { -%>
         <a href="/" class="btn btn-office" data-testid="nav-hall"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-home"></use></svg><span class="btn-office-label"><%= t('nav.back_hall') %></span></a>
 <% } else { -%>
-        <a href="/admin" class="btn btn-office" data-testid="nav-admin"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-shield"></use></svg><span class="btn-office-label"><%= t('nav.admin') %></span></a>
+        <a href="/adminportal" class="btn btn-office" data-testid="nav-admin"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-shield"></use></svg><span class="btn-office-label"><%= t('nav.admin') %></span></a>
 <% } -%>
 <% } -%>
 <% if (platformAuth && platformAuth.signedIn) { -%>

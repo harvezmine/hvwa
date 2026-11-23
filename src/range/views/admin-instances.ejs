@@ -32,7 +32,7 @@
         <td class="mono"><%= r.container || '—' %></td>
         <td>
 <% if (r.state === 'queued' || r.state === 'starting' || r.state === 'running') { -%>
-          <form method="post" action="/admin/instances/<%= r.id %>/stop" data-confirm="<%= t('admin.stop_confirm') %>">
+          <form method="post" action="/adminportal/instances/<%= r.id %>/stop" data-confirm="<%= t('admin.stop_confirm') %>">
             <input type="hidden" name="_csrf" value="<%= csrf %>">
             <button type="submit" class="btn btn-xs btn-danger" data-testid="admin-stop"><%= t('admin.team_delete') %></button>
           </form>
