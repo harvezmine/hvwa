@@ -7,6 +7,7 @@ import type { Lang } from '../core/i18n.js';
 import type { Level } from '../core/levels.js';
 import { labPoints, type LabEntry } from '../lab-registry.js';
 import { labFact } from './facts.js';
+import { tierLabel } from './panel.js';
 import { flagHash, RANGE_FLAG_RE } from './flags.js';
 import { decoyOf, type Decoy } from './decoys.js';
 import { recordRangeSolve, type Best } from './progress.js';
@@ -48,14 +49,14 @@ export function submitResultHtml(r: RangeSubmitResult, t: (key: string) => strin
     return `<p class="result result-bad" data-solved="false" data-result="decoy" role="status" tabindex="-1" data-focus-after-swap data-toast="decoy" data-toast-variant="warning" data-toast-title="${escapeHtml(t('range.toast_decoy_title'))}" data-toast-message="${escapeHtml(t('range.toast_decoy'))}" data-modal="decoy" data-modal-title="${escapeHtml(t('range.modal_decoy_title'))}" data-modal-message="${escapeHtml(taunt)}" data-modal-points="" data-modal-fact="">${escapeHtml(t('range.result_decoy'))}</p>`;
   }
   const key = r.status === 'new_best' ? 'new_best' : r.level === r.best.level ? 'already' : 'lower';
-  const level = t(`level.${r.level}`);
+  const level = tierLabel(t, r.level);
   const msg = key === 'new_best'
-    ? `${t('challenge.result_new_best')} ${level} (+${r.gained} ${t('challenge.points')})`
-    : key === 'lower' ? `${t('challenge.result_lower')} ${t(`level.${r.best.level}`)}` : `${t('challenge.result_already')} ${level}`;
+    ? `${t('challenge.result_new_best')} ${level} (+${r.gained} ${t('range.gold')})`
+    : key === 'lower' ? `${t('challenge.result_lower')} ${tierLabel(t, r.best.level)}` : `${t('challenge.result_already')} ${level}`;
   const toast = key === 'new_best'
     ? ` data-toast="solved" data-toast-variant="success" data-toast-title="${escapeHtml(t('range.toast_solved_title'))}" data-toast-message="${escapeHtml(t('range.toast_solved').replace('{level}', level).replace('{points}', String(r.gained)))}" data-level="${r.level}" data-points="${r.gained}"`
-    : ` data-toast="already" data-toast-variant="info" data-toast-title="${escapeHtml(t('range.toast_already_title'))}" data-toast-message="${escapeHtml(t('range.toast_already').replace('{level}', t(`level.${r.best.level}`)))}" data-level="${r.best.level}" data-points="0"`;
-  const bestLevel = t(`level.${r.best.level}`);
+    : ` data-toast="already" data-toast-variant="info" data-toast-title="${escapeHtml(t('range.toast_already_title'))}" data-toast-message="${escapeHtml(t('range.toast_already').replace('{level}', tierLabel(t, r.best.level)))}" data-level="${r.best.level}" data-points="0"`;
+  const bestLevel = tierLabel(t, r.best.level);
   const modal = key === 'new_best'
     ? ` data-modal="solved" data-modal-title="${escapeHtml(t('range.modal_solved_title'))}" data-modal-message="${escapeHtml(t('range.modal_solved_message').replace('{level}', level))}" data-modal-points="+${r.gained}" data-modal-fact="${escapeHtml(labFact(labId)?.[lang] ?? '')}"`
     : key === 'already'

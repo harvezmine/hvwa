@@ -1,7 +1,7 @@
 {
   "id": "r03",
   "slug": "beacon",
-  "title": { "en": "It's Just a Ping, Bro", "id": "Cuma Ping, Bro" },
+  "title": { "en": "Whisper to the Watchtower", "id": "Bisikan ke Menara Suar" },
   "app": "Beacon",
   "category": "Command injection",
   "difficulty": "medium",

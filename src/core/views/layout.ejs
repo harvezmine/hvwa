@@ -8,12 +8,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <title><%= typeof pageTitle !== 'undefined' ? pageTitle : (labBar ? labBar.pageTitle : t('app.title')) %></title>
-  <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'>
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/ui.js" defer></script>
 </head>
-<body>
+<% const office = navActive === 'admin'; -%>
+<body<% if (office) { %> class="office"<% } %>>
 <%# The shared page shell (render.ts page()). Every value goes through the escaped output tag; only the rendered view body and the platform partials are included raw. Icons come from the /static/icons.svg sprite, so a page stays small (the XSS oracle reads whole lab pages, up to XSS_LIMITS.htmlLength). The theme toggle and the language switch are plain links (no JavaScript needed); static/ui.js only enhances. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
   <a class="skip-link" href="#main"><%= t('nav.skip') %></a>
   <div class="safety-banner" role="note" data-mode="<%= portalMode ? 'portal' : 'standalone' %>"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-alert"></use></svg><span><%= t(portalMode ? 'safety.portal' : 'safety.warning') %></span></div>
@@ -31,17 +32,16 @@
       <a href="/" class="brand">
         <svg class="brand-mark" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>
         <span class="brand-name">HVWA</span>
-        <span class="brand-tag">RANGE GUILD</span>
+        <span class="brand-tag"><%= t('app.guild_tag') %></span>
       </a>
 <% if (!platformAuth || platformAuth.signedIn) { -%>
       <nav class="site-nav" aria-label="<%= t('nav.main') %>">
-<% if (typeof portalNav !== 'undefined' && portalNav) { -%>
+<% if (typeof portalNav !== 'undefined' && portalNav && office) { -%>
+        <span class="office-tag" data-testid="office-tag"><span class="office-seal" aria-hidden="true"></span><%= t('admin.office_tag') %></span>
+<% } else if (typeof portalNav !== 'undefined' && portalNav) { -%>
         <a href="/" class="nav-link" data-testid="nav-labs"<% if (navActive === 'labs') { %> aria-current="page"<% } %>><%= t('nav.labs') %></a>
         <a href="/team" class="nav-link" data-testid="nav-team"<% if (navActive === 'team') { %> aria-current="page"<% } %>><%= t('nav.team') %></a>
         <a href="/leaderboard" class="nav-link" data-testid="nav-leaderboard"<% if (navActive === 'leaderboard') { %> aria-current="page"<% } %>><%= t('nav.leaderboard') %></a>
-<% if (portalNav.admin) { -%>
-        <a href="/admin" class="nav-link" data-testid="nav-admin"<% if (navActive === 'admin') { %> aria-current="page"<% } %>><%= t('nav.admin') %></a>
-<% } -%>
 <% } else { -%>
         <a href="/" class="nav-link"><%= t('nav.districts') %></a>
         <a href="/scoreboard" class="nav-link"><%= t('nav.scoreboard') %></a>
@@ -60,8 +60,16 @@
 <% if (typeof uiTheme === 'undefined' || uiTheme !== 'dark') { -%>
         <a href="?<%= keep %>theme=dark" class="icon-btn theme-toggle theme-to-dark" aria-label="<%= t('theme.to_dark') %>" title="<%= t('theme.to_dark') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-moon"></use></svg></a>
 <% } -%>
-<% if (typeof myLab !== 'undefined' && myLab) { -%>
+        <button type="button" class="icon-btn sound-toggle" data-sound-toggle hidden aria-pressed="false" aria-label="<%= t('sound.toggle') %>" title="<%= t('sound.toggle') %>"><svg class="icon icon-sound-off" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sound-off"></use></svg><svg class="icon icon-sound-on" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-sound-on"></use></svg></button>
+<% if (typeof myLab !== 'undefined' && myLab && !office) { -%>
 <%- include('my-lab') %>
+<% } -%>
+<% if (typeof portalNav !== 'undefined' && portalNav && portalNav.admin) { -%>
+<% if (office) { -%>
+        <a href="/" class="btn btn-office" data-testid="nav-hall"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-home"></use></svg><span class="btn-office-label"><%= t('nav.back_hall') %></span></a>
+<% } else { -%>
+        <a href="/admin" class="btn btn-office" data-testid="nav-admin"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-shield"></use></svg><span class="btn-office-label"><%= t('nav.admin') %></span></a>
+<% } -%>
 <% } -%>
 <% if (platformAuth && platformAuth.signedIn) { -%>
         <details class="menu account-menu" data-testid="account-nav">
@@ -70,7 +78,7 @@
             <svg class="icon icon-sm menu-caret" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-chevron-down"></use></svg>
           </summary>
           <div class="menu-panel">
-            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <span class="menu-rank"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></span><% } %></p>
+            <p class="menu-meta"><%= t('auth.signed_in_as') %> <strong><%= platformAuth.user %></strong><% if (typeof playerRank !== 'undefined' && playerRank) { %> <span class="menu-rank"><span class="rank-seal seal seal-sm" data-plate="<%= playerRank.letter.toLowerCase() %>" aria-hidden="true"><%= playerRank.letter %></span><span class="rank-name"><%= playerRank.name %></span></span><% } %></p>
             <a class="menu-item" href="/account/password"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-key"></use></svg><%= t('auth.change_password') %></a>
             <form method="post" action="/logout" class="logout-form"><input type="hidden" name="_csrf" value="<%= platformAuth.csrf %>"><button type="submit" class="menu-item menu-item-danger" data-testid="logout"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-log-out"></use></svg><%= t('auth.logout') %></button></form>
           </div>
@@ -136,6 +144,7 @@
       <span class="footer-brand"><svg class="icon icon-sm" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-crest"></use></svg>HVWA</span>
       <span><%= t(portalMode ? 'app.portal_tagline' : 'app.tagline') %></span>
       <span><%= t(portalMode ? 'app.portal_footer' : 'app.footer') %></span>
+      <span class="music-credit"><%= t('app.music_credit') %></span>
     </div>
   </footer>
   <div id="toasts" class="toasts" data-dismiss="<%= t('range.toast_dismiss') %>"></div>

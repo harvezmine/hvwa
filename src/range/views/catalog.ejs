@@ -1,32 +1,37 @@
-<%# Range catalog (src/range/catalog.ts): the Guild Hall. A typographic hero with a guild crest and a ruled ledger strip
-   (Bounty earned / Contracts sealed / Rank), a "Continue your contract" inverted slip, and a mission board of contract
-   slips. Hooks: range-score, range-solved, range-rank, range-progress, continue-lab (data-state), lab-card (data-lab,
-   data-difficulty, data-solved, data-theme). Every value goes through the escaped output tag. Never put an EJS tag
-   inside an EJS comment: it breaks parsing. %>
-<header class="gh-hero">
-  <div class="gh-hero-main">
+<%# Range catalog (src/range/catalog.ts): the Guild Hall. A hall heading beside the adventurer's guild card (rank plate,
+   gold, bounties done, progress), the "quest in hand" note, then the bounty boards: one wooden board per guild track,
+   laid out as a horizontal scroll-snap carousel. The hanging signs and each board's prev/next links are plain anchors
+   (#board-<track>), so the boards switch without JavaScript; static/ui.js only smooths the slide and tracks the active
+   sign. Hooks: range-score, range-solved, range-rank, range-progress, range-rank-progress, continue-lab (data-state),
+   range-filters, board-sign-<track>, board-<track>, lab-card (data-lab, data-difficulty, data-solved, data-theme).
+   Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<header class="hall-head">
+  <div class="hall-intro">
     <p class="eyebrow"><%= t('range.eyebrow') %></p>
     <h1 class="gh-display"><%= t('range.hero_title') %></h1>
     <p class="gh-lead"><%= t('range.catalog_lead') %></p>
   </div>
-  <aside class="gh-hero-side">
-    <svg class="icon gh-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-guild-hall"></use></svg>
+  <aside class="guild-card" aria-labelledby="guild-card-name">
+    <div class="guild-card-top">
+      <span class="rank-plate" data-plate="<%= rank.letter.toLowerCase() %>" aria-hidden="true"><span class="plate-letter"><%= rank.letter %></span><span class="plate-metal"><%= rank.plate %></span></span>
+      <div class="guild-card-id">
+        <span class="guild-card-label"><%= t('rank.label') %></span>
+        <span class="guild-card-name" id="guild-card-name"><%= username %></span>
+        <span class="guild-card-title" data-testid="range-rank"><span class="rank-name"><%= rank.name %></span><span class="sr-only"> · <%= rank.letter %></span> · <%= rank.plate %></span>
+      </div>
+    </div>
     <dl class="ledger-strip">
       <div class="ledger-entry">
         <dt><%= t('range.your_score') %></dt>
-        <dd data-testid="range-score"><%= score %></dd>
+        <dd><span data-testid="range-score"><%= score %></span> <span class="stat-of"><%= t('range.gold') %></span></dd>
       </div>
       <div class="ledger-entry">
         <dt><%= t('range.contracts_sealed') %></dt>
         <dd data-testid="range-solved"><%= solved %> <span class="stat-of"><%= t('home.of').replace('{n}', total) %></span></dd>
       </div>
-      <div class="ledger-entry ledger-rank-entry">
-        <dt><%= t('rank.label') %></dt>
-        <dd data-testid="range-rank"><span class="rank-seal seal seal-sm" aria-hidden="true"><%= rank.letter %></span><span class="rank-name"><%= rank.name %></span></dd>
-      </div>
     </dl>
-    <div class="progress-label"><span><%= rank.points %> / <%= rank.nextMinPoints %></span><span><% if (rank.maxed) { %><%= t('rank.max') %><% } else { %><%= t('rank.to').replace('{rank}', rank.nextLetter) %><% } %></span></div>
-    <progress class="progress" data-testid="range-rank-progress" max="<%= rank.nextMinPoints %>" value="<%= rank.points %>"><%= rank.points %> / <%= rank.nextMinPoints %></progress>
+    <div class="progress-label"><span><%= rank.points %> / <%= rank.nextMinPoints %> <%= t('range.gold') %></span><span><% if (rank.maxed) { %><%= t('rank.max') %><% } else { %><%= t('rank.to').replace('{rank}', rank.nextLetter + ' · ' + rank.nextName) %><% } %></span></div>
+    <progress class="progress progress-gold" data-testid="range-rank-progress" max="<%= rank.nextMinPoints %>" value="<%= rank.points %>"><%= rank.points %> / <%= rank.nextMinPoints %></progress>
     <div class="progress-label"><span><%= t('range.progress_label') %></span><span><%= solved %>/<%= total %></span></div>
     <progress class="progress" data-testid="range-progress" max="<%= total %>" value="<%= solved %>"><%= solved %>/<%= total %></progress>
   </aside>
@@ -42,13 +47,18 @@
   <span class="continue-go"><%= t('range.resume') %></span>
 </a>
 <% } -%>
-<section aria-labelledby="board-title">
+<section class="boards" data-boards aria-labelledby="board-title">
   <div class="board-head">
     <h2 class="board-title" id="board-title"><%= t('range.mission_board') %></h2>
     <span class="board-count"><%= t('range.mission_count').replace('{n}', total) %></span>
   </div>
+  <nav class="board-signs" aria-label="<%= t('range.tracks_label') %>">
+<% boards.forEach(function (b, i) { -%>
+    <a class="board-sign<%= b.total === 0 ? ' is-soon' : '' %>" href="#board-<%= b.id %>" data-board-link="<%= i %>" data-testid="board-sign-<%= b.id %>"<% if (i === 0) { %> aria-current="true"<% } %>><span class="board-sign-name"><%= b.name %></span><span class="board-sign-sub"><%= b.total === 0 ? t('range.track_soon') : b.done + '/' + b.total %></span></a>
+<% }); -%>
+  </nav>
   <form method="get" action="/" class="range-filters" data-testid="range-filters">
-    <div class="field">
+    <div class="field field-search">
       <label for="f-q"><%= t('range.search') %></label>
       <input id="f-q" type="search" name="q" value="<%= filter.q %>" placeholder="<%= t('range.search_placeholder') %>">
     </div>
@@ -88,46 +98,63 @@
     </div>
     <button type="submit" class="btn btn-secondary"><%= t('range.filter_apply') %></button>
   </form>
-  <% if (cards.length === 0) { -%>
+<% if (cards.length === 0) { -%>
   <div class="empty">
-    <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg>
+    <svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-empty-scroll"></use></svg>
     <p><%= t('range.empty') %></p>
     <a class="btn btn-secondary" href="/" data-testid="empty-clear"><%= t('range.empty_action') %></a>
   </div>
-  <% } -%>
-  <div class="catalog-grid">
-<% cards.forEach(function (c) { -%>
-    <a class="contract-slip lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>"<% if (c.mode === 'team') { %> data-mode="team"<% } %>>
-      <svg class="icon slip-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg>
-      <div class="slip-head">
-        <span class="category-tab"><%= c.category %></span>
-        <span class="diff-seal seal seal-sm" aria-hidden="true"><%= c.difficultyMark %></span>
-        <span class="difficulty-label"><%= c.difficultyLabel %></span>
-<% if (c.mode === 'team') { -%>
-        <span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span>
 <% } -%>
-        <span class="pin-dot" aria-hidden="true"></span>
-      </div>
-      <h2 class="contract-app"><%= c.title %></h2>
-      <p class="contract-title"><%= c.app %></p>
-      <p class="contract-objective"><%= c.scenario %></p>
-      <ul class="tier-rows" aria-label="<%= t('range.tiers') %>">
+  <div class="boards-viewport">
+    <button type="button" class="board-nav board-nav-prev" data-board-prev hidden aria-label="<%= t('range.board_prev') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-left"></use></svg></button>
+    <div class="boards-track" data-boards-track>
+<% boards.forEach(function (b, i) { var prev = boards[(i + boards.length - 1) % boards.length], next = boards[(i + 1) % boards.length]; -%>
+      <section class="board-slide" id="board-<%= b.id %>" data-board="<%= b.id %>" data-testid="board-<%= b.id %>" aria-labelledby="board-<%= b.id %>-name">
+        <header class="board-plank">
+          <a class="board-step board-step-prev" href="#board-<%= prev.id %>" data-board-link="<%= (i + boards.length - 1) % boards.length %>" aria-label="<%= t('range.board_prev') %>: <%= prev.name %>"><span aria-hidden="true">‹</span><span class="board-step-name"><%= prev.name %></span></a>
+          <div class="board-plank-title">
+            <h3 id="board-<%= b.id %>-name"><%= b.name %></h3>
+            <span class="board-plank-sub"><%= b.sub %><% if (b.total > 0) { %> · <%= t('range.mission_count').replace('{n}', b.total) %><% } %></span>
+          </div>
+          <a class="board-step board-step-next" href="#board-<%= next.id %>" data-board-link="<%= (i + 1) % boards.length %>" aria-label="<%= t('range.board_next') %>: <%= next.name %>"><span class="board-step-name"><%= next.name %></span><span aria-hidden="true">›</span></a>
+        </header>
+<% if (b.cards.length > 0) { -%>
+        <div class="catalog-grid">
+<% b.cards.forEach(function (c) { -%>
+          <a class="poster contract-slip lab-card lab-theme-<%= c.themeId %>" href="<%= c.href %>" data-testid="lab-card" data-lab="<%= c.id %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'true' : 'false' %>" data-theme="<%= c.themeId %>"<% if (c.mode === 'team') { %> data-mode="team"<% } %>>
+            <span class="poster-kicker" aria-hidden="true"><%= t('range.contract_word') %></span>
+            <span class="poster-client"><%= t('range.client') %> · <%= c.app %></span>
+            <h4 class="contract-app"><%= c.title %></h4>
+            <p class="contract-objective"><%= c.scenario %></p>
+            <span class="poster-tags"><span class="category-tab"><%= c.category %></span><% if (c.mode === 'team') { %><span class="badge team-mode-badge" data-mode="team"><%= t('range.team_mode') %></span><% } %></span>
+            <ul class="tier-rows" aria-label="<%= t('range.tiers') %>">
 <% c.levels.forEach(function (l) { -%>
-        <li class="tier-row level-<%= l.id %><%= l.solved ? ' is-solved' : '' %>" aria-label="<%= t('level.' + l.id) %>: <%= l.points %> <%= t('challenge.points') %>">
-          <span class="tier-seal" aria-hidden="true"></span>
-          <span class="tier-name"><%= t('level.' + l.id) %></span>
-<% if (l.solved) { -%>
-          <span class="sealed-stamp"><%= t('range.sealed') %></span>
+              <li class="tier-row level-<%= l.id %><%= l.solved ? ' is-solved' : '' %>" aria-label="<%= l.label %>: <%= l.points %> <%= t('range.gold') %>"><span class="tier-seal" aria-hidden="true"></span><span class="tier-name"><%= l.label %></span></li>
+<% }); -%>
+            </ul>
+            <span class="slip-foot">
+              <span class="threat"><span class="threat-marks" aria-hidden="true"><%= '◆'.repeat(c.threat) + '◇'.repeat(4 - c.threat) %></span><span class="difficulty-label"><%= c.difficultyLabel %></span></span>
+              <span class="bounty"><span class="sr-only"><%= t('range.bounty') %> </span><span class="bounty-figure"><%= c.bounty %></span> <%= t('range.gold') %></span>
+            </span>
+            <svg class="icon slip-ill" aria-hidden="true" focusable="false"><use href="/static/icons.svg#<%= c.icon %>"></use></svg>
+<% if (c.solved) { -%>
+            <span class="wax-seal" title="<%= t('challenge.solved_at').replace('{level}', c.bestLabel) %>"><span><%= t('range.sealed') %></span></span>
 <% } -%>
-          <span class="tier-points"><%= l.points %></span>
-        </li>
+          </a>
 <% }); -%>
-      </ul>
-      <div class="slip-foot">
-        <span class="bounty"><%= t('range.bounty') %><span class="bounty-figure"><%= c.bounty %></span></span>
-        <span class="slip-arrow" aria-hidden="true">→</span>
-      </div>
-    </a>
+        </div>
+<% } else { -%>
+        <div class="board-empty">
+          <span class="board-empty-pins" aria-hidden="true"><span></span><span></span><span></span></span>
+          <p><%= b.total === 0 ? t('range.board_soon') : t('range.board_nomatch') %></p>
+<% if (b.total > 0) { -%>
+          <a class="btn btn-secondary btn-sm" href="/#board-<%= b.id %>"><%= t('range.empty_action') %></a>
+<% } -%>
+        </div>
+<% } -%>
+      </section>
 <% }); -%>
+    </div>
+    <button type="button" class="board-nav board-nav-next" data-board-next hidden aria-label="<%= t('range.board_next') %>"><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-arrow-right"></use></svg></button>
   </div>
 </section>

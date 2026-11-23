@@ -5,8 +5,8 @@
       "id": "r01",
       "slug": "mercy-clinic",
       "title": {
-        "en": "I Trusted the Search Bar",
-        "id": "Saya Percaya Kolom Pencarian"
+        "en": "The Clinic's Secret Ledger",
+        "id": "Buku Besar Rahasia Klinik"
       },
       "app": "Mercy Clinic",
       "category": "SQL injection",
@@ -75,8 +75,8 @@
       "id": "r02",
       "slug": "courier",
       "title": {
-        "en": "Oops, That Parcel Wasn't Mine",
-        "id": "Ups, Paket Itu Bukan Punya Saya"
+        "en": "The Courier Never Asks",
+        "id": "Kurir yang Tak Pernah Bertanya"
       },
       "app": "Courier",
       "category": "Broken access control",
@@ -145,8 +145,8 @@
       "id": "r03",
       "slug": "beacon",
       "title": {
-        "en": "It's Just a Ping, Bro",
-        "id": "Cuma Ping, Bro"
+        "en": "Whisper to the Watchtower",
+        "id": "Bisikan ke Menara Suar"
       },
       "app": "Beacon",
       "category": "Command injection",
@@ -215,8 +215,8 @@
       "id": "r04",
       "slug": "postcard",
       "title": {
-        "en": "My Greeting Card Is Possessed",
-        "id": "Kartu Ucapan Saya Kerasukan"
+        "en": "The Ink That Writes Back",
+        "id": "Tinta yang Membalas Tulisan"
       },
       "app": "Postcard",
       "category": "Template injection",
@@ -285,8 +285,8 @@
       "id": "r05",
       "slug": "binanse",
       "title": {
-        "en": "I Believe My Crypto Web Is Very Secure",
-        "id": "Saya Yakin Web Kripto Saya Sangat Aman"
+        "en": "The Dragon Hoard Heist",
+        "id": "Perampokan Peti Harta Naga"
       },
       "app": "Binanse",
       "category": "Stored XSS",

@@ -1,9 +1,11 @@
-<%# Admin sub-navigation (included by every admin page): five plain links, the active one marked with aria-current.
-   Every value goes through the escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
-<nav class="tabs admin-tabs" aria-label="<%= t('admin.nav_label') %>" data-testid="admin-tabs">
-  <a href="/admin"<% if (adminActive === 'overview') { %> aria-current="page"<% } %>><%= t('admin.nav.overview') %></a>
-  <a href="/admin/activity"<% if (adminActive === 'activity') { %> aria-current="page"<% } %>><%= t('admin.nav.activity') %></a>
-  <a href="/admin/instances"<% if (adminActive === 'instances') { %> aria-current="page"<% } %>><%= t('admin.nav.instances') %></a>
-  <a href="/admin/teams"<% if (adminActive === 'teams') { %> aria-current="page"<% } %>><%= t('admin.nav.teams') %></a>
-  <a href="/admin/labs"<% if (adminActive === 'labs') { %> aria-current="page"<% } %>><%= t('admin.nav.labs') %></a>
+<%# The Guildmaster's Office sections (included by every admin page): a wooden ledger spine beside the page on desktop,
+   a swipeable strip on phones. Five plain links, the active one marked with aria-current. Every value goes through the
+   escaped output tag. Never put an EJS tag inside an EJS comment: it breaks parsing. %>
+<nav class="admin-nav" aria-label="<%= t('admin.nav_label') %>" data-testid="admin-tabs">
+  <span class="admin-nav-title"><%= t('admin.office_tag') %></span>
+  <a href="/admin"<% if (adminActive === 'overview') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-landmark"></use></svg><%= t('admin.nav.overview') %></a>
+  <a href="/admin/activity"<% if (adminActive === 'activity') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-scroll"></use></svg><%= t('admin.nav.activity') %></a>
+  <a href="/admin/instances"<% if (adminActive === 'instances') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-layers"></use></svg><%= t('admin.nav.instances') %></a>
+  <a href="/admin/teams"<% if (adminActive === 'teams') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flag"></use></svg><%= t('admin.nav.teams') %></a>
+  <a href="/admin/labs"<% if (adminActive === 'labs') { %> aria-current="page"<% } %>><svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#i-flask"></use></svg><%= t('admin.nav.labs') %></a>
 </nav>

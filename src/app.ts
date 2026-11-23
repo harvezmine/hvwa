@@ -207,6 +207,7 @@ function createPortalApp(opts: AppOptions): HvwaApp {
     ...authOpts,
     // The activity feed (src/range/activity.ts) also records auth.login / auth.register; nothing else (no password).
     onActivity: (e) => logActivity(db, e),
+    adminHome: '/admin', // the Guildmaster's Office (src/range/admin.ts)
     registration: { open: range.registrationOpen ?? true, ...authOpts.registration },
   });
   const portal = createRangePortal(db, login, range);

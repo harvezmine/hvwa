@@ -18,6 +18,11 @@ export const FAILURE_SHOWN_MS = 15 * 60_000;
 /** The My Lab chip also shows a recently ended instance for this long, so a player can relaunch it. */
 export const MY_LAB_RECENT_MS = FAILURE_SHOWN_MS;
 
+/** A threat level as the guild names it (Common / Dangerous / Deadly / Warded); `long` adds "(secure reference)" to Warded. */
+export function tierLabel(t: (key: string) => string, level: Level, long = false): string {
+  return t(long && level === "divine" ? "range.tier_long.divine" : `range.tier.${level}`);
+}
+
 /** What the panel shows: not running, being prepared, running, or the last attempt failed. */
 export type PanelState = 'none' | 'starting' | 'running' | 'failed';
 
@@ -53,9 +58,8 @@ export function panelFor(ctx: RangeContext, req: Request, res: Response, lab: La
   const { lifecycle } = ctx;
   const now = ctx.now();
   const current = lifecycle.current(userId);
-  const label = (l: Level) => t(l === 'divine' ? 'challenge.divine_tab' : `level.${l}`);
   const base = {
-    labId: lab.id, level, levelLabel: label(level), minutesLeft: 0, reason: '', full: notice === 'full',
+    labId: lab.id, level, levelLabel: tierLabel(t, level, true), minutesLeft: 0, reason: '', full: notice === 'full',
     idleMinutes: Math.max(1, Math.round(ctx.opts.limits.idleMs / 60_000)),
     maxMinutes: Math.max(1, Math.round(ctx.opts.limits.maxMs / 60_000)),
     pollSeconds: 0, csrf: ctx.auth.csrfFor(req),
@@ -70,7 +74,7 @@ export function panelFor(ctx: RangeContext, req: Request, res: Response, lab: La
   }
   // The user's instance elsewhere (a different lab or level): Launch here would replace it.
   const replaces = current === undefined ? undefined
-    : { app: ctx.registry.get(current.labId)?.app ?? current.labId, levelLabel: label(current.level) };
+    : { app: ctx.registry.get(current.labId)?.app ?? current.labId, levelLabel: tierLabel(t, current.level, true) };
   // This lab at this level, if one ended recently: show why, with the Launch button as the relaunch path.
   const latest = lifecycle.store.latestFor(userId, lab.id, level);
   const recent = latest !== undefined && latest.endedAt !== null && now - latest.endedAt < FAILURE_SHOWN_MS;

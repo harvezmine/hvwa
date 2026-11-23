@@ -61,5 +61,14 @@ export const PAIRS: [string, string, number][] = [
   // The Guild Ledger additions: text on the inverted slip, and the copper seal/hardware on paper.
   ['--on-inverted', '--inverted', 4.5],
   ['--copper', '--surface', 3], ['--copper', '--surface-2', 3], ['--copper', '--bg', 3],
+  // The Adventurers' Guild materials: text on wood (beam, boards, signs, desk), ink on parchment, the wax seal, rank
+  // metal plates, and brass actions/active signs.
+  ...['--wood', '--wood-2', '--wood-3'].map((bg): [string, string, number] => ['--on-wood', bg, 4.5]),
+  ['--on-wood-muted', '--wood', 4.5], ['--on-wood-muted', '--wood-2', 4.5],
+  ['--ink', '--parch', 4.5], ['--ink-muted', '--parch', 4.5], ['--ink-muted', '--parch-2', 4.5], ['--ink-ok', '--parch', 4.5], ['--wax-dark', '--parch', 4.5],
+  ['--on-wax', '--wax', 4.5],
+  ...['--m-copper', '--m-silver', '--m-gold', '--m-mithril'].map((bg): [string, string, number] => ['--on-metal', bg, 4.5]),
+  ['--on-metal-dark', '--m-iron', 4.5], ['--on-metal-dark', '--m-adam', 4.5],
+  ['--on-primary', '--primary', 4.5], ['--primary', '--wood', 3], ['--primary', '--wood-2', 3],
 ];
 

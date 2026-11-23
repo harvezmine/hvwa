@@ -10,6 +10,9 @@ import { FLAG_LEVELS, LEVELS, pointsForLevel, type Level } from './core/levels.j
 export const LAB_ID_RE = /^r\d{2}$/;
 export const DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard', 'expert'] as const);
 export type Difficulty = (typeof DIFFICULTIES)[number];
+/** The guild's boards (challenge categories). `category` stays the vulnerability class shown on the bounty. */
+export const TRACKS = Object.freeze(['web', 'crypto', 'pwn', 'reverse', 'forensics', 'osint', 'misc'] as const);
+export type Track = (typeof TRACKS)[number];
 /** Base points per rating (spec §8.2); a level scales them like every other challenge (core/levels.ts). */
 export const DIFFICULTY_POINTS: Readonly<Record<Difficulty, number>> = Object.freeze({ easy: 100, medium: 200, hard: 300, expert: 400 });
 /**
@@ -33,6 +36,7 @@ export const labManifestSchema = z.object({
   title: text,
   app: z.string().trim().min(1).max(60),
   category: z.string().trim().min(1).max(60),
+  track: z.enum(TRACKS).default('web'),
   difficulty: z.enum(DIFFICULTIES),
   levels: z.array(z.enum(LEVELS)).min(1).max(4)
     .refine((ls) => new Set(ls).size === ls.length, 'levels must be unique')

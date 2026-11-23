@@ -55,6 +55,8 @@ export interface AuthOptions extends AuthServiceOptions {
    * write its activity feed (src/range/activity.ts). The username is canonical (lower-cased); never a password.
    */
   onActivity?: (event: { event: 'auth.login' | 'auth.register'; userId?: number; username: string; ip?: string }) => void;
+  /** Portal mode only: where an admin lands after signing in without a page of their own to return to (`next` = /). */
+  adminHome?: string;
 }
 
 export const authViewsDir = join(dirname(fileURLToPath(import.meta.url)), 'views');
@@ -180,7 +182,7 @@ export function platformAuth(db: DatabaseSync, opts: AuthOptions = {}): Platform
     res.cookie(AUTH_COOKIE, result.token, cookies.set);
     const signed = service.session(result.token); // the canonical account (username case, id)
     opts.onActivity?.({ event: 'auth.login', userId: signed?.userId, username: signed?.username ?? field(req, 'username'), ip: clientIp(req) });
-    res.redirect(303, next);
+    res.redirect(303, next === '/' && signed?.role === 'admin' && opts.adminHome ? opts.adminHome : next);
   });
   if (opts.registration) {
     publicRouter.use(registrationRouter({

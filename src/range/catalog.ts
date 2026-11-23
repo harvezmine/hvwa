@@ -7,8 +7,8 @@ import { escapeHtml, sendPage } from '../core/render.js';
 import { parseTier } from '../core/hints.js';
 import { clampLevel, FLAG_LEVELS, LEVELS, levelRank, type Level } from '../core/levels.js';
 import type { Lang } from '../core/i18n.js';
-import { DIFFICULTIES, labPoints, type Difficulty, type LabEntry } from '../lab-registry.js';
-import { MY_LAB_RECENT_MS, panelFor } from './panel.js';
+import { DIFFICULTIES, TRACKS, labPoints, type Difficulty, type LabEntry } from '../lab-registry.js';
+import { MY_LAB_RECENT_MS, panelFor, tierLabel } from './panel.js';
 import { leaderboard, rangeScore, rangeSolvesOf, rangeUnlockedTiers, unlockRangeHint, type Best, type LeaderRow } from './progress.js';
 import { nextRank, pointsToNext, rankFor } from './rank.js';
 import { labMode, labModes, type LabMode } from './modes.js';
@@ -47,12 +47,25 @@ export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (k
   const scored = levels.filter((l): l is Level => FLAG_LEVELS.includes(l));
   const bounty = scored.length > 0 ? Math.max(...scored.map((l) => labPoints(lab, l))) : 0;
   return {
-    id: lab.id, app: lab.app, title: lab.title[lang], category: lab.category, difficulty: lab.difficulty,
+    id: lab.id, app: lab.app, title: lab.title[lang], category: lab.category, track: lab.track, difficulty: lab.difficulty,
     difficultyLabel: t(`range.difficulty.${lab.difficulty}`), difficultyMark: DIFFICULTY_MARK[lab.difficulty],
+    threat: DIFFICULTIES.indexOf(lab.difficulty) + 1,
     scenario: lab.scenario[lang], href: `/labs/${lab.id}`,
-    solved: best !== undefined, best: best?.level, themeId: lab.themeId, icon: themeIcon(lab.themeId), bounty,
+    solved: best !== undefined, best: best?.level, bestLabel: best ? tierLabel(t, best.level) : '',
+    themeId: lab.themeId, icon: themeIcon(lab.themeId), bounty,
     mode,
-    levels: levels.map((l) => ({ id: l, solved: levelSolved(l, best), points: labPoints(lab, l) })),
+    levels: levels.map((l) => ({ id: l, label: tierLabel(t, l), solved: levelSolved(l, best), points: labPoints(lab, l) })),
+  };
+}
+
+/** The guild card's rank: letter, title, plate metal and the way to the next one (rank.ts; derived, never stored). */
+function rankView(score: number, t: (key: string) => string) {
+  const step = rankFor(score);
+  const next = nextRank(score);
+  return {
+    letter: step.letter, name: t(`rank.name.${step.letter.toLowerCase()}`), plate: t(`rank.plate.${step.letter.toLowerCase()}`),
+    points: score, nextLetter: next?.letter ?? '', nextName: next ? t(`rank.plate.${next.letter.toLowerCase()}`) : '',
+    nextMinPoints: next?.minPoints ?? score, toNext: pointsToNext(score), maxed: next === undefined,
   };
 }
 
@@ -108,17 +121,19 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       ? (a, b) => DIFFICULTIES.indexOf(a.difficulty) - DIFFICULTIES.indexOf(b.difficulty) || byApp(a, b)
       : sort === 'solved' ? (a, b) => Number(b.solved) - Number(a.solved) || byApp(a, b) : byApp);
     const score = rangeScore(db, userId);
-    const step = rankFor(score);
-    const next = nextRank(score);
+    // One board per guild track (a slide in the board carousel); a track with no lab yet is shown as "soon".
+    const boards = TRACKS.map((track) => {
+      const all = registry.labs.filter((l) => l.track === track);
+      return {
+        id: track, name: t(`range.track.${track}`), sub: t(`range.track_sub.${track}`),
+        total: all.length, done: all.filter((l) => solves.has(l.id)).length, cards: cards.filter((c) => c.track === track),
+      };
+    });
     await sendPage(res, rangeView('catalog'), {
-      pageTitle: t('range.catalog_title'), cards, categories, difficulties: DIFFICULTIES,
-      filter: { category, difficulty, show, q, sort },
+      pageTitle: t('range.catalog_title'), cards, boards, categories, difficulties: DIFFICULTIES,
+      filter: { category, difficulty, show, q, sort }, filtered: category !== '' || difficulty !== '' || show !== 'all' || q !== '',
       score, solved: registry.labs.filter((l) => solves.has(l.id)).length, total: registry.labs.length,
-      rank: {
-        letter: step.letter, name: t(`rank.name.${step.letter.toLowerCase()}`), points: score,
-        nextLetter: next?.letter ?? '', nextMinPoints: next?.minPoints ?? score,
-        toNext: pointsToNext(score), maxed: next === undefined,
-      },
+      rank: rankView(score, t), username: res.locals.platformAuth?.user ?? '',
       continueLab: continueLabFor(ctx, userId, req.lang, t),
     });
   });
@@ -139,7 +154,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       flash: req.query.r === 'wrong' ? 'wrong' : req.query.r === 'decoy' ? 'decoy' : req.query.r === 'solved' && best ? 'solved' : '',
       panel: panelFor(ctx, req, res, lab, currentLevel, req.query.r === 'full' ? 'full' : undefined),
       levels: LEVELS.filter((l) => lab.levels.includes(l)).map((l) => ({
-        id: l, scored: FLAG_LEVELS.includes(l), points: labPoints(lab, l), solved: levelSolved(l, best),
+        id: l, label: tierLabel(t, l, true), scored: FLAG_LEVELS.includes(l), points: labPoints(lab, l), solved: levelSolved(l, best),
         current: l === currentLevel, href: `/labs/${lab.id}?level=${l}`,
       })),
       // A locked hint's text never reaches the view: only what was paid for is rendered.
@@ -183,7 +198,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       const teamPinned = viewer !== undefined && viewer.rank > 3 ? viewer : (beyond === undefined ? undefined : rankOf(beyond));
       await sendPage(res, rangeView('leaderboard'), {
         pageTitle: t('leaderboard.title'), board, crumbs, myTeamId,
-        rows: [], me, viewer: undefined, pinned: undefined,
+        rows: [], me, viewer: undefined, pinned: undefined, standing: undefined,
         teamRows: rows, teamViewer: viewer, teamPinned,
       });
       return;
@@ -191,11 +206,18 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     const rankOf = (r: LeaderRow) => ({ ...r, rankLetter: rankFor(r.score).letter });
     const rows = leaderboard(db, 100).map(rankOf);
     // The viewer's own row, even beyond the top 100: pinned below the table when it is not already in the top three.
-    const beyond = leaderboard(db, 100_000).find((r) => r.userId === me);
+    const everyone = leaderboard(db, 100_000);
+    const beyond = everyone.find((r) => r.userId === me);
     const viewer = rows.find((r) => r.userId === me) ?? (beyond === undefined ? undefined : rankOf(beyond));
     const pinned = viewer !== undefined && viewer.rank > 3 ? viewer : undefined;
+    // Where the viewer stands (a relative view, so a long board still shows a reachable next target).
+    const ahead = viewer === undefined ? undefined : everyone.find((r) => r.rank === viewer.rank - 1);
+    const standing = viewer === undefined ? undefined : {
+      pct: Math.max(1, Math.ceil((viewer.rank / everyone.length) * 100)), atTop: viewer.rank === 1,
+      gap: ahead === undefined ? undefined : { points: ahead.score - viewer.score + 1, name: ahead.username },
+    };
     await sendPage(res, rangeView('leaderboard'), {
-      pageTitle: t('leaderboard.title'), board, rows, me, viewer, pinned, crumbs,
+      pageTitle: t('leaderboard.title'), board, rows, me, viewer, pinned, crumbs, standing,
       teamRows: [], myTeamId: undefined, teamViewer: undefined, teamPinned: undefined,
     });
   });

@@ -9,7 +9,7 @@ describe('the contract dossier page', () => {
     const { app } = portalApp();
     const { agent } = await player(app, 'alice');
     const html = (await agent.get('/labs/r01?level=templar')).text;
-    expect(html).toContain('Contract r01 · 4 Tiers · BOUNTY 200');
+    expect(html).toContain('Bounty r01 · 4 Threat levels · REWARD 200 G');
     for (const [level, points] of [['acolyte', '100'], ['templar', '150'], ['inquisitor', '200']] as const) {
       expect(html).toMatch(new RegExp(`data-testid="range-level-${level}"[^>]*>[\\s\\S]*?${points} `));
     }
@@ -35,8 +35,8 @@ describe('the contract dossier page', () => {
     const { app } = portalApp({ range: { registry } });
     const { agent } = await player(app, 'alice');
     const html = (await agent.get('/labs/r05')).text;
-    expect(html).toContain('Contract r05 · 1 Tier · BOUNTY 600');
-    expect(html).toContain('This contract has a single hard tier. There is no secure reference in this lab.');
+    expect(html).toContain('Bounty r05 · 1 Threat level · REWARD 600 G');
+    expect(html).toContain('This bounty has a single deadly threat level. There is no secure reference in this lab.');
     expect((html.match(/data-testid="range-level-/g) ?? []).length).toBe(1);
     expect(html).toContain('data-testid="range-level-inquisitor"');
     expect(html).not.toContain('data-testid="range-level-divine"');
