@@ -189,6 +189,18 @@ Perubahan keamanan 22 November 2026:
   - `range:verify`: 16 check, termasuk log portal/warden, inspect/log instance, dan file one-shot hilang.
 - **Residual exposure (owner-only):** flag sesaat terlihat di exec store Docker (`GET /exec/{id}/json`), hanya bisa diakses lewat socket proxy tulis yang hanya dijangkau warden; proxy read-only tetap `EXEC=0`. Pemain tidak punya rute ke proxy tersebut. Ini didokumentasikan di spec dan plan.
 
+### Honeypot / decoy flags (23 November 2026)
+
+- **Flag umpan** yang berbentuk flag tapi sengaja *malformed* (leet, underscore, `?`) sehingga tak pernah cocok `RANGE_FLAG_RE`. Sumber tunggal: `src/range/decoys.ts` (set string + taunt bilingual + tag lokasi).
+- **Disebar di tempat yang "terlihat pintar":** komentar HTML (view-source), response header (Network tab), dan — di Mercy Clinic — rak SQL decoy yang didapat injeksi ke tabel yang salah.
+- **Submit flag umpan → popup ngeledek** ("Selamat, kamu menemukan flag umpan 🎣"), bukan "wrong" biasa; dicatat `range.submit.decoy`, tidak pernah menambah skor. Taunt bervariasi menurut lokasi penemuannya.
+- **Tidak memicu false-leak:** check no-leak `labs:test` kini mencocokkan bentuk flag asli (`HVWA{[a-z2-7]{26}}`), bukan `HVWA{` longgar, sehingga umpan boleh berada di page source/header/data decoy sementara kebocoran flag asli tetap tertangkap.
+
+### Difficulty per tier
+
+- Flag berpindah lokasi per tier + decoy (lihat §4), dan tier Inquisitor adalah chain second-order — bukan satu path dengan filter berbeda.
+- Pertahanan Templar tiap lab adalah *incomplete-fix* realistis (bukan filter token): nested-keyword (r01), rute `label` yang lupa diperbaiki (r02), bypass command-substitution (r03), bypass string-building SSTI (r04). Memperberat lebih jauh = redesign berisiko memecah solve teruji; difficulty dinaikkan lewat relokasi-flag-per-tier + honeypot.
+
 ---
 
 ## 6. Hasil audit dan perbaikan
