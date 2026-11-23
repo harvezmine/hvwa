@@ -42,7 +42,7 @@
 
   // Toasts (stamped slips). Built from the data-toast-* attributes the server puts on an ACTION-swap fragment; polls
   // never carry them, so polling never spams a toast. Progressive enhancement: the inline .result stays for no-JS.
-  var TOAST_GLYPH = { success: '✓', error: '!', info: 'i' };
+  var TOAST_GLYPH = { success: '✓', error: '!', info: 'i', warning: '🎣' };
   function dismissToast(node) {
     node.classList.add('is-leaving');
     window.setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 200);

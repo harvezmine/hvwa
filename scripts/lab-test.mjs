@@ -10,6 +10,9 @@ import { isMainModule } from './main-module.mjs';
 import { labDirs, readManifest, dockerRunArgs, newFlag, RUNNER_IMAGE } from './lab-harness.mjs';
 
 const RUNTIME = (process.env.HVWA_LAB_TEST_RUNTIME ?? 'runc').trim() || 'runc';
+// The real flag shape (RANGE_FLAG_RE). Leak checks match THIS, not a loose `HVWA{`, so decoy honeypot flags
+// (deliberately malformed) can sit in page source, headers and decoy data without tripping a false leak.
+const REAL_FLAG_RE = /HVWA\{[a-z2-7]{26}\}/;
 /** Bound every Docker call so a wedged daemon (or a hung container) fails the run instead of hanging it. */
 const TIMEOUT_MS = (() => {
   const n = Number(process.env.HVWA_LAB_TEST_TIMEOUT_MS);
@@ -72,7 +75,7 @@ function browseHasNoFlag(network, baseName, port) {
     '    if (u.startsWith("http")){ if(!u.startsWith(base)) continue; u=u.slice(base.length)||"/"; }',
     '    if (!u.startsWith("/")) continue; if (seen.size<25) seen.add(u); } } catch {} }',
     '(async()=>{ await get("/"); for (const p of [...seen].slice(1)) await get(p);',
-    '  process.stdout.write(bodies.some((b)=>/HVWA\\{/.test(b))?"LEAK":"CLEAN"); })();',
+    '  process.stdout.write(bodies.some((b)=>/HVWA\\{[a-z2-7]{26}\\}/.test(b))?"LEAK":"CLEAN"); })();',
   ].join('\n');
   return runner(network, ['node', '-e', script]).stdout === 'CLEAN';
 }
@@ -118,8 +121,10 @@ async function testLab(dir, report) {
       // inspect output, logs or the delivered file itself (which the start hook must have unlinked).
       const inspectOut = docker(['inspect', name]).stdout;
       const logsOut = docker(['logs', name]).stdout;
-      if (/HVWA\{/.test(inspectOut) || /HVWA\{/.test(logsOut)) fail(`${level}: docker inspect or logs leak the flag`);
-      pass(`${level}: docker inspect and logs contain no HVWA{`);
+      // Only the REAL flag shape (RANGE_FLAG_RE) counts as a leak; decoy/honeypot flags are deliberately malformed
+      // (leet, underscores, punctuation) so they may sit in page source, headers and decoy data without false leaks.
+      if (REAL_FLAG_RE.test(inspectOut) || REAL_FLAG_RE.test(logsOut)) fail(`${level}: docker inspect or logs leak the flag`);
+      pass(`${level}: docker inspect and logs contain no real flag`);
       if (flag !== undefined) {
         const imageCfg = docker(['inspect', image]).stdout;
         if (imageCfg.includes(flag) || inspectOut.includes(flag)) fail(`${level}: the image or container config holds the flag`);
@@ -146,7 +151,7 @@ async function testLab(dir, report) {
     if (containers.divine) {                                                               // check 4
       for (const level of exploitable) {
         const d = runSolve(net, solveDir, level, containers.divine, manifest.port);
-        if (/HVWA\{/.test(d)) fail(`Divine leaked a flag to the ${level} solve`);
+        if (REAL_FLAG_RE.test(d)) fail(`Divine leaked a flag to the ${level} solve`);
       }
       pass('divine: resists every solve');
     }

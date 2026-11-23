@@ -83,6 +83,8 @@
         <div id="submit-result" aria-live="polite">
 <% if (flash === 'wrong') { -%>
           <p class="result result-bad" data-solved="false" data-result="wrong" role="status"><%= t('challenge.result_bad') %></p>
+<% } else if (flash === 'decoy') { -%>
+          <p class="result result-bad" data-solved="false" data-result="decoy" role="status"><%= t('range.result_decoy') %></p>
 <% } else if (flash === 'solved') { -%>
           <p class="result result-ok" data-solved="true" data-result="solved" role="status"><%= t('challenge.solved_at').replace('{level}', t('level.' + best.level)) %></p>
 <% } -%>

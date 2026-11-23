@@ -136,7 +136,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       pageTitle: `${lab.app} — ${lab.title[req.lang]}`,
       lab: { ...labCard(lab, best, req.lang, t, mode), briefing: lab.briefing[req.lang] },
       best, currentLevel, csrf: auth.csrfFor(req),
-      flash: req.query.r === 'wrong' ? 'wrong' : req.query.r === 'solved' && best ? 'solved' : '',
+      flash: req.query.r === 'wrong' ? 'wrong' : req.query.r === 'decoy' ? 'decoy' : req.query.r === 'solved' && best ? 'solved' : '',
       panel: panelFor(ctx, req, res, lab, currentLevel, req.query.r === 'full' ? 'full' : undefined),
       levels: LEVELS.filter((l) => lab.levels.includes(l)).map((l) => ({
         id: l, scored: FLAG_LEVELS.includes(l), points: labPoints(lab, l), solved: levelSolved(l, best),

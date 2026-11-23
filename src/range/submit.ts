@@ -8,6 +8,7 @@ import type { Level } from '../core/levels.js';
 import { labPoints, type LabEntry } from '../lab-registry.js';
 import { labFact } from './facts.js';
 import { flagHash, RANGE_FLAG_RE } from './flags.js';
+import { decoyOf, type Decoy } from './decoys.js';
 import { recordRangeSolve, type Best } from './progress.js';
 import type { InstanceStore } from './store.js';
 
@@ -15,10 +16,15 @@ export const FLAG_WINDOW_MS = 24 * 60 * 60_000;
 
 export type RangeSubmitResult =
   | { readonly status: 'wrong' }
+  | { readonly status: 'decoy'; readonly decoy: Decoy }
   | { readonly status: 'new_best' | 'same_or_lower'; readonly level: Level; readonly points: number; readonly gained: number; readonly best: Best };
 
 export function submitRangeFlag(db: DatabaseSync, store: InstanceStore, lab: LabEntry, userId: number, submission: string, now: number): RangeSubmitResult {
   const flag = submission.trim();
+  // A honeypot the player dug out of the page source, a header, a decoy table, etc. — recognised so the popup can
+  // mock them instead of a plain "wrong". Checked before the shape test, since decoys are deliberately malformed.
+  const decoy = decoyOf(flag);
+  if (decoy !== undefined) return { status: 'decoy', decoy };
   if (!RANGE_FLAG_RE.test(flag)) return { status: 'wrong' };
   const level = store.levelForFlag(userId, lab.id, flagHash(flag), now - FLAG_WINDOW_MS);
   if (level === undefined || level === 'divine') return { status: 'wrong' };
@@ -35,6 +41,11 @@ export function submitResultHtml(r: RangeSubmitResult, t: (key: string) => strin
   // toast, data-modal-* opens the solve dialog (both removed by ui.js after handling, so polls never re-trigger them).
   if (r.status === 'wrong') {
     return `<p class="result result-bad" data-solved="false" data-result="wrong" role="status" tabindex="-1" data-focus-after-swap data-toast="wrong" data-toast-variant="error" data-toast-title="${escapeHtml(t('range.toast_wrong_title'))}" data-toast-message="${escapeHtml(t('range.toast_wrong'))}" data-modal="wrong" data-modal-title="${escapeHtml(t('range.modal_wrong_title'))}" data-modal-message="${escapeHtml(t('range.modal_wrong_message'))}" data-modal-points="" data-modal-fact="">${escapeHtml(t('challenge.result_bad'))}</p>`;
+  }
+  if (r.status === 'decoy') {
+    // A honeypot: mock the player for "outsmarting" the system, with a line flavoured by where they found it.
+    const taunt = r.decoy.taunt[lang];
+    return `<p class="result result-bad" data-solved="false" data-result="decoy" role="status" tabindex="-1" data-focus-after-swap data-toast="decoy" data-toast-variant="warning" data-toast-title="${escapeHtml(t('range.toast_decoy_title'))}" data-toast-message="${escapeHtml(t('range.toast_decoy'))}" data-modal="decoy" data-modal-title="${escapeHtml(t('range.modal_decoy_title'))}" data-modal-message="${escapeHtml(taunt)}" data-modal-points="" data-modal-fact="">${escapeHtml(t('range.result_decoy'))}</p>`;
   }
   const key = r.status === 'new_best' ? 'new_best' : r.level === r.best.level ? 'already' : 'lower';
   const level = t(`level.${r.level}`);

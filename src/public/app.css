@@ -1448,6 +1448,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .toast-success .toast-seal { border-color: var(--success); color: var(--success); }
 .toast-error .toast-seal { border-color: var(--danger); color: var(--danger); }
 .toast-info .toast-seal { border-color: var(--info); color: var(--info); }
+.toast-warning .toast-seal { border-color: var(--warning); color: var(--warning); }
 .toast-body { min-width: 0; }
 .toast-title { font-family: var(--mono); font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); margin: 0 0 0.1rem; }
 .toast-message { font-family: var(--serif); font-size: var(--fs-sm); line-height: 1.4; color: var(--text-muted); margin: 0; }
@@ -1525,6 +1526,8 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 .solve-dialog[data-variant="lower"] .solve-seal { border-color: var(--border-strong); color: var(--text-muted); }
 .solve-dialog[data-variant="wrong"] .solve-seal { border-color: var(--danger); color: var(--danger); }
 .solve-dialog[data-variant="wrong"] .solve-seal::before { content: "!"; content: "!" / ""; }
+.solve-dialog[data-variant="decoy"] .solve-seal { border-color: var(--warning); color: var(--warning); }
+.solve-dialog[data-variant="decoy"] .solve-seal::before { content: "\01F3A3"; content: "\01F3A3" / ""; }
 .solve-title { margin: 0; font-family: var(--serif); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
 .solve-message { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
 .solve-points {

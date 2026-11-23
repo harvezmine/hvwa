@@ -607,6 +607,11 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
     id: 'Tidak ada tanda yang cocok di ledger. Segel hanya mengering pada flag yang diterbitkan untuk instans Anda sendiri, dalam batas harinya.',
     en: 'No matching mark in the ledger. A seal only dries on a flag issued to your own instance, within its day.',
   },
+  // Decoy / honeypot flag submitted: a mocking result, not a plain "wrong".
+  'range.result_decoy': { id: 'Itu flag umpan. 🎣', en: "That's a decoy flag. 🎣" },
+  'range.toast_decoy_title': { id: 'Flag umpan', en: 'Decoy flag' },
+  'range.toast_decoy': { id: 'Kamu masuk honeypot. Bukan flag.', en: 'You hit a honeypot. Not the flag.' },
+  'range.modal_decoy_title': { id: 'Selamat, kamu menemukan flag umpan 🎣', en: 'Congrats, you found a decoy flag 🎣' },
   'range.modal_field_note': { id: 'CATATAN LAPANGAN', en: 'FIELD NOTE' },
   'range.modal_continue': { id: 'Lanjutkan', en: 'Continue' },
   'range.modal_points': { id: 'poin', en: 'pts' },

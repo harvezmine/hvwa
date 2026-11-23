@@ -29,12 +29,16 @@ export function labRoutes(router: Router, ctx: RangeContext): void {
     if (!auth.formOk(req)) { await auth.refuse(req, res, `/labs/${lab.id}`); return; }
     const me = userOf(res);
     const result = submitRangeFlag(db, lifecycle.store, lab, me.userId, field(req, 'submission'), ctx.now());
-    logActivity(db, result.status === 'wrong'
-      ? { event: 'range.submit.wrong', userId: me.userId, username: me.username, labId: lab.id, ip: clientIp(req), now: ctx.now() }
-      : { event: 'range.exploit', userId: me.userId, username: me.username, labId: lab.id, level: result.level,
-          detail: `points:${result.points}`, ip: clientIp(req), now: ctx.now() });
+    // A decoy (honeypot) submission is not an exploit and not a scored solve; log it like a wrong flag, with its tag.
+    logActivity(db, result.status === 'new_best' || result.status === 'same_or_lower'
+      ? { event: 'range.exploit', userId: me.userId, username: me.username, labId: lab.id, level: result.level,
+          detail: `points:${result.points}`, ip: clientIp(req), now: ctx.now() }
+      : { event: result.status === 'decoy' ? 'range.submit.decoy' : 'range.submit.wrong',
+          userId: me.userId, username: me.username, labId: lab.id,
+          detail: result.status === 'decoy' ? result.decoy.where : undefined, ip: clientIp(req), now: ctx.now() });
     if (isHtmx(req)) { res.type('html').send(submitResultHtml(result, res.locals.t, lab.id, req.lang)); return; }
-    res.redirect(303, `/labs/${lab.id}?r=${result.status === 'wrong' ? 'wrong' : 'solved'}`);
+    const r = result.status === 'wrong' ? 'wrong' : result.status === 'decoy' ? 'decoy' : 'solved';
+    res.redirect(303, `/labs/${lab.id}?r=${r}`);
   });
 
   // The panel (htmx polling): a starting instance is asked about once per poll.

@@ -3,6 +3,7 @@
 // copied from another user never matches. htmx gets the result fragment; a plain form a 303 back to the lab page.
 import { describe, it, expect } from 'vitest';
 import { FLAG_WINDOW_MS } from '../src/range/submit.js';
+import { RANGE_DECOYS } from '../src/range/decoys.js';
 import { csrfOf } from './helpers.js';
 import { player, portalApp, signInAs, PLAYER_PASSWORD, type Agent, type Kit } from './support/range.js';
 
@@ -114,5 +115,21 @@ describe('POST /labs/:id/submit', () => {
     expect((await alice.agent.get('/labs/r01?r=solved')).text).toContain('data-result="solved"');
     expect((await submit(alice.agent, 'r01', 'nope', false)).headers.location).toBe('/labs/r01?r=wrong');
     expect((await alice.agent.post('/labs/r01/submit').type('form').send({ submission: flag })).status).toBe(403);
+  });
+
+  it('a honeypot decoy flag gets a mocking result, not a plain wrong, and never scores', async () => {
+    const kit = portalApp();
+    const alice = await player(kit.app, 'alice');
+    await launched(kit, alice.userId, 'r01', 'templar'); // an instance exists, so this is not a "no instance" path
+    const decoy = RANGE_DECOYS[0];
+    const res = await submit(alice.agent, 'r01', `  ${decoy.flag}  `); // trimmed like a real flag
+    expect(result(res.text)).toBe('decoy');
+    expect(res.text).toMatch(/data-toast="decoy"/);
+    expect(res.text).toMatch(/data-modal="decoy"/);
+    expect(res.text).toContain(`data-modal-message="${decoy.taunt.en}"`); // flavoured by where it was found
+    expect(res.text).not.toContain('data-result="wrong"');
+    expect((await alice.agent.get('/')).text).toContain('data-testid="range-score">0<'); // no points
+    // A plain (non-htmx) submit of a decoy redirects back without scoring.
+    expect((await submit(alice.agent, 'r01', decoy.flag, false)).headers.location).toBe('/labs/r01?r=decoy');
   });
 });

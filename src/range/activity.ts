@@ -95,7 +95,7 @@ export const ADMIN_EVENTS = Object.freeze(['admin.mode', 'admin.stop', 'admin.te
 /** Every event the activity feed knows, newest groups last (the admin filter's select). */
 export const ACTIVITY_EVENTS = Object.freeze([
   'team.create', 'team.join', 'team.leave',
-  'range.launch', 'range.stop', 'range.reset', 'range.submit.wrong', 'range.exploit',
+  'range.launch', 'range.stop', 'range.reset', 'range.submit.wrong', 'range.submit.decoy', 'range.exploit',
   'auth.register', 'auth.login',
   ...ADMIN_EVENTS,
 ] as const);
