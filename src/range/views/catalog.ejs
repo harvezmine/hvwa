@@ -105,7 +105,7 @@
   </div>
   <nav class="board-signs" aria-label="<%= t('range.tracks_label') %>">
 <% boards.forEach(function (b, i) { -%>
-    <a class="board-sign<%= b.total === 0 ? ' is-soon' : '' %>" href="#board-<%= b.id %>" data-board-link="<%= i %>" data-testid="board-sign-<%= b.id %>"<% if (i === 0) { %> aria-current="true"<% } %>><span class="board-sign-name"><%= b.name %></span><span class="board-sign-sub"><%= b.total === 0 ? t('range.track_soon') : b.done + '/' + b.total %></span></a>
+    <a class="board-sign<%= b.total === 0 && !b.quest ? ' is-soon' : '' %>" href="#board-<%= b.id %>" data-board-link="<%= i %>" data-testid="board-sign-<%= b.id %>"<% if (i === 0) { %> aria-current="true"<% } %>><span class="board-sign-name"><%= b.name %></span><span class="board-sign-sub"><%= b.quest && b.total === 0 ? t('quest.grand') : b.total === 0 ? t('range.track_soon') : b.done + '/' + b.total %></span></a>
 <% }); -%>
   </nav>
   <form method="get" action="/" class="range-filters" data-testid="range-filters">
@@ -169,6 +169,14 @@
           </div>
           <a class="board-step board-step-next" href="#board-<%= next.id %>" data-board-link="<%= (i + 1) % boards.length %>" aria-label="<%= t('range.board_next') %>: <%= next.name %>"><span class="board-step-name"><%= next.name %></span><span aria-hidden="true">›</span></a>
         </header>
+<% if (b.quest) { -%>
+        <a class="quest-slip" href="<%= b.quest.href %>" data-testid="quest-card">
+          <span class="quest-slip-kicker"><%= t('quest.board_kicker') %></span>
+          <span class="quest-slip-title"><%= b.quest.title %></span>
+          <span class="quest-slip-tagline"><%= b.quest.tagline %></span>
+          <span class="quest-slip-foot"><span class="quest-slip-reward"><span class="coin" aria-hidden="true"></span><%= b.quest.reward %> <%= t('range.gold') %></span><span class="quest-slip-progress"><%= t('quest.progress').replace('{done}', b.quest.done).replace('{total}', b.quest.total) %></span><span class="btn btn-primary btn-sm"><%= t('quest.board_open') %></span></span>
+        </a>
+<% } -%>
 <% if (b.cards.length > 0) { -%>
         <div class="catalog-grid">
 <% b.cards.forEach(function (c) { -%>
@@ -194,7 +202,7 @@
           </a>
 <% }); -%>
         </div>
-<% } else { -%>
+<% } else if (!b.quest) { -%>
         <div class="board-empty">
           <span class="board-empty-pins" aria-hidden="true"><span></span><span></span><span></span></span>
           <p><%= b.total === 0 ? t('range.board_soon') : t('range.board_nomatch') %></p>

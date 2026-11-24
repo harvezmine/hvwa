@@ -3378,3 +3378,23 @@ th .nameplate { font-size: 0.85rem; }
   .seal, .toast-seal, .solve-seal, .tier-card-seal, .wax-seal, .rank-plate { border: 1px solid CanvasText; }
   .poster::before { border: 1px solid CanvasText; }
 }
+
+/* --- The Grand Quest slip (src/quest): pinned across the top of the forensics board, above its bounties. A wide dark
+   notice with the quest's drawing behind it; the whole slip is the link to the quest journal. */
+.quest-slip {
+  position: relative; display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-5); padding: var(--sp-6) var(--sp-6) var(--sp-5);
+  border-radius: var(--radius); overflow: hidden; text-decoration: none; color: var(--on-wood);
+  background-color: var(--wood-2);
+  background-image: linear-gradient(90deg, var(--wood-2) 35%, transparent 100%), url("/static/quest/sf/bg/drawing.webp");
+  background-size: cover; background-position: right 40%;
+  box-shadow: 0 0 0 2px var(--m-gold), 0 0 0 5px var(--wood-2), 0 8px 18px var(--shade);
+  transition: translate var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.quest-slip:hover { color: var(--on-wood); text-decoration: none; translate: 0 -3px; box-shadow: 0 0 0 2px var(--m-gold-hi), 0 0 0 5px var(--wood-2), 0 12px 24px var(--shade); }
+.quest-slip:focus-visible { outline: 3px solid var(--primary); outline-offset: 4px; }
+.quest-slip-kicker { font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.3em; text-transform: uppercase; color: var(--m-gold-hi); }
+.quest-slip-title { font-family: var(--display); font-weight: 700; font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1; letter-spacing: 0.04em; }
+.quest-slip-tagline { max-width: 30rem; font-family: var(--serif); font-style: italic; font-size: var(--fs-md); color: var(--on-wood-muted); }
+.quest-slip-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-5); margin-top: var(--sp-2); font-family: var(--display); font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.06em; }
+.quest-slip-reward { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--m-gold-hi); }
+.quest-slip-progress { color: var(--on-wood-muted); }

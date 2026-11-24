@@ -20,6 +20,7 @@ import { rangeScore } from './progress.js';
 import { ladderFor, maxBounty, rankFor } from './rank.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import { teamRoutes } from './teams.js';
+import { questRoutes } from '../quest/index.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
 import type { RangeContext, RangePortalOptions } from './types.js';
 
@@ -59,7 +60,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
       : req.path === '/team' ? 'team'
       : req.path === '/shop' ? 'shop'
       : req.path === '/adminportal' || req.path.startsWith('/adminportal/') ? 'admin'
-      : req.path === '/' || req.path.startsWith('/labs/') ? 'labs' : undefined;
+      : req.path === '/' || req.path.startsWith('/labs/') || req.path.startsWith('/quests/') ? 'labs' : undefined;
     res.locals.portalNav = { admin: res.locals.platformAuth?.role === 'admin', active };
     const userId = res.locals.platformAuth?.userId;
     if (userId !== undefined) {
@@ -112,6 +113,7 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
   shopRoutes(router, ctx);
   labRoutes(router, ctx);
   teamRoutes(router, ctx);
+  questRoutes(router, ctx);
   adminRoutes(router, ctx);
   const log = opts.log ?? ((line: string) => console.warn(line));
   const start = (): Reaper => {

@@ -1,0 +1,63 @@
+<%# A story quest's journal (src/quest/index.ts): the Grand Quest banner, then one card per chapter (done, open,
+   locked, or still being written). Playing a chapter opens the scene stage, a modal <dialog> that static/quest.js
+   builds and drives from the boot data below (cast, chapter states, the player's name and portrait, the stage's
+   words). The scenes themselves are fetched one unlocked chapter at a time. The page plays its own music
+   (data-own-music), so the guild's music stays quiet here. Never put an EJS tag inside an EJS comment. %>
+<link rel="stylesheet" href="/static/quest.css">
+<div class="quest-page" data-own-music data-quest-page data-quest="<%= quest.id %>" data-testid="quest-page">
+  <header class="quest-hero" data-art="<%= quest.art %>">
+    <div class="quest-hero-inner">
+      <p class="quest-kicker"><%= t('quest.grand') %></p>
+      <h1 class="quest-title"><%= quest.title %></h1>
+      <p class="quest-tagline"><%= quest.tagline %></p>
+      <p class="quest-lead"><%= t('quest.lead') %></p>
+      <div class="quest-meta">
+        <span class="quest-reward"><span class="coin" aria-hidden="true"></span><span class="sr-only"><%= t('quest.reward') %>: </span><%= quest.reward %> <%= t('quest.gold') %></span>
+        <span class="quest-progress-label"><%= t('quest.progress').replace('{done}', quest.done).replace('{total}', quest.total) %></span>
+        <progress class="progress quest-progress" max="<%= quest.total %>" value="<%= quest.done %>"><%= quest.done %>/<%= quest.total %></progress>
+      </div>
+      <div class="quest-hero-actions">
+        <button type="button" class="btn btn-primary quest-play" data-quest-play hidden data-testid="quest-play"><%= quest.done === 0 ? t('quest.begin') : t('quest.continue') %></button>
+        <noscript><p class="quest-nojs"><%= t('quest.needs_js') %></p></noscript>
+      </div>
+    </div>
+  </header>
+
+  <section class="quest-journal" aria-labelledby="journal-title">
+    <h2 class="quest-journal-title" id="journal-title"><%= t('quest.journal') %></h2>
+    <ol class="chapter-list">
+<% quest.chapters.forEach(function (c) { -%>
+      <li class="chapter-card is-<%= c.state %>" data-chapter="<%= c.n %>" data-state="<%= c.state %>" data-testid="chapter-<%= c.n %>">
+<% if (c.state === 'locked') { -%>
+        <span class="chapter-cover chapter-cover-blank" aria-hidden="true"></span>
+<% } else { -%>
+        <span class="chapter-cover"><img src="/static/quest/<%= quest.art %>/bg/<%= c.cover %>.webp" alt="" width="1672" height="941" loading="lazy" decoding="async"></span>
+<% } -%>
+        <span class="chapter-body">
+          <span class="chapter-sub"><%= c.sub %></span>
+          <span class="chapter-name"><%= c.state === 'locked' ? '? ? ?' : c.title %></span>
+          <span class="chapter-state"><%= c.state === 'done' ? t('quest.done') : c.state === 'locked' ? t('quest.locked') : '' %></span>
+        </span>
+<% if (c.state !== 'locked') { -%>
+        <button type="button" class="btn <%= c.state === 'open' ? 'btn-primary' : 'btn-secondary' %> btn-sm chapter-go" data-quest-chapter="<%= c.n %>" hidden><%= c.state === 'done' ? t('quest.replay') : t('quest.begin') %></button>
+<% } -%>
+<% if (c.state === 'done') { -%>
+        <span class="wax-seal chapter-seal" aria-hidden="true"><span>✓</span></span>
+<% } -%>
+      </li>
+<% }); -%>
+<% quest.upcoming.forEach(function (u) { -%>
+      <li class="chapter-card is-soon" data-state="soon">
+        <span class="chapter-cover chapter-cover-blank" aria-hidden="true"></span>
+        <span class="chapter-body">
+          <span class="chapter-sub"><%= u.sub %></span>
+          <span class="chapter-name"><%= u.title %></span>
+          <span class="chapter-state"><%= t('quest.soon') %></span>
+        </span>
+      </li>
+<% }); -%>
+    </ol>
+  </section>
+</div>
+<script type="application/json" id="quest-boot"><%- bootJson %></script>
+<script src="/static/quest.js" defer></script>

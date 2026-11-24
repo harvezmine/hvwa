@@ -50,6 +50,9 @@
     var KEY = 'hvwa-sound';
     var POS = 'hvwa-music-pos';
     var MUSIC_URL = '/static/audio/adventures-begin.mp3';
+    // A page that scores itself (a story quest: [data-own-music]) keeps the guild's music quiet and plays its own.
+    var OWN_MUSIC = !!document.querySelector('[data-own-music]');
+    var listeners = [];
     var MUSIC_VOLUME = 0.28;
     function get(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
     function put(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* storage blocked or full */ } }
@@ -178,7 +181,7 @@
       });
     }
     function startMusic(fadeMs) {
-      if (!on || document.hidden) return;
+      if (!on || document.hidden || OWN_MUSIC) return;
       if (!music) {
         music = new Audio(MUSIC_URL);
         music.loop = true;
@@ -204,6 +207,7 @@
       put(KEY, on ? 'on' : 'off');
       document.querySelectorAll('[data-sound-toggle]').forEach(function (b) { b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
       if (tell && channel) channel.postMessage(on ? 'on' : 'off');
+      listeners.forEach(function (fn) { try { fn(on); } catch (e) { /* a listener's own bug */ } });
     }
     if (channel) {
       channel.onmessage = function (e) {
@@ -268,6 +272,13 @@
     }, true);
     if (document.querySelector('.welcome-gate')) cue('gate', 950);
     if (document.querySelector('[data-letter]')) cue('unroll', document.documentElement.classList.contains('splash-done') ? 450 : 1750);
+    // The quest stage (static/quest.js) borrows the effects, the switch and the mixer: its own sounds go through the
+    // same limiter, and the masthead toggle silences them too.
+    window.hvwaSound = {
+      play: play, isOn: function () { return on; }, onChange: function (fn) { listeners.push(fn); },
+      set: function (value) { setOn(!!value, true); },
+      context: audio, output: function () { audio(); return master; }, tone: tone, hiss: hiss,
+    };
     return { play: play };
   })();
 

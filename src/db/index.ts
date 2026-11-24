@@ -37,6 +37,8 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'shop.sql'), 'utf8')),
   // 8: who has seen the starter purse popup (src/range/shop.ts).
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'purse.sql'), 'utf8')),
+  // 9: the story quests' chapter progress (src/quest).
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'quest.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

@@ -1,6 +1,8 @@
 // src/range/catalog.ts — the range's read pages and hints (portal mode): the catalog (/), a lab's page (/labs/:id), a
 // paid hint unlock, and the leaderboard. Everything is the signed-in user's (src/range/progress.ts).
 import type { Router } from 'express';
+import { questStatus } from '../quest/index.js';
+import { SILENT_FRIDAY } from '../quest/silent-friday/story.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { escapeHtml, sendPage } from '../core/render.js';
@@ -130,7 +132,13 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
     // One board per guild track (a slide in the board carousel); a track with no lab yet is shown as "soon".
     const boards = TRACKS.map((track) => {
       const all = registry.labs.filter((l) => l.track === track);
+      // The forensics board carries the Grand Quest (src/quest): a story in chapters, pinned above its bounties.
+      const q = track === 'forensics' ? SILENT_FRIDAY : undefined;
+      const qs = q === undefined ? undefined : questStatus(db, userId, q);
       return {
+        quest: q === undefined || qs === undefined ? undefined : {
+          href: `/quests/${q.id}`, title: q.title[req.lang], tagline: q.tagline[req.lang], reward: q.reward, done: qs.done, total: qs.total,
+        },
         id: track, name: t(`range.track.${track}`), sub: t(`range.track_sub.${track}`),
         total: all.length, done: all.filter((l) => solves.has(l.id)).length, cards: cards.filter((c) => c.track === track),
       };
