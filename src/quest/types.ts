@@ -16,13 +16,14 @@ export type Spot = 'left' | 'center' | 'right';
  * Images are names under /static/quest/<art>/bg (bg, cg) and characters are cast ids.
  */
 export type Step =
-  | { readonly bg: string; readonly fx?: 'fade' | 'cut' | 'slow' }          // the backdrop (crossfades by default)
+  | { readonly bg: string | null; readonly fx?: 'fade' | 'cut' | 'slow' }    // null: an empty, dark stage          // the backdrop (crossfades by default)
   | { readonly music: string | null; readonly fade?: number }              // a track under /static/quest/<art>/music, or silence
   | { readonly sfx: string }                                               // a synthesized effect (static/quest.js)
   | { readonly black: boolean }                                            // fade the whole stage to/from black
   | { readonly narr: Text }                                                // the narrator: a box in the middle of the screen
   | { readonly say: string; readonly text: Text; readonly pose?: string; readonly at?: Spot; readonly as?: Text;
-      readonly style?: 'shout' | 'whisper'; readonly react?: 'shake' | 'jump' }   // a cast line
+      readonly style?: 'shout' | 'whisper'; readonly react?: 'shake' | 'jump';
+      readonly off?: boolean }                                             // a cast line (off: heard, not shown)
   | { readonly you: Text }                                                 // the player's own line (their adventurer)
   | { readonly show: string; readonly pose?: string; readonly at: Spot }   // bring a portrait on stage
   | { readonly hide: string }                                              // a cast id, or 'all'
@@ -37,7 +38,12 @@ export type Step =
   | { readonly place: Text; readonly time?: Text }                         // a location caption, top left, fades by itself
   | { readonly amb: string | null }                                        // a synthesized ambience loop (static/quest.js)
   | { readonly particles: string | null }                                  // dust, fireflies, embers or ash over the scene
-  | { readonly shock: 'big' | 'small' }                                    // a reveal: sting, flash, shake, camera punch
+  // A reveal: 'big' a white flash, sting and hard shake; 'small' a dark blink; 'dark' the screen closes in like a held
+  // breath; 'blood' a red pulse, kept for violence.
+  | { readonly shock: 'big' | 'small' | 'dark' | 'blood' }
+  | { readonly intro: { readonly who: string; readonly title: Text; readonly text: Text } } // a character card
+  | { readonly notes: { readonly title: Text; readonly items: readonly Text[] } }           // the case so far
+  | { readonly clue: Text }                                                // a 'new clue' slip, top right, by itself
   | { readonly cam: 'push' | 'reset' }                                     // a slow push-in on the scene, or back
   | { readonly tint: 'warm' | 'cold' | 'red' | 'memory' | null }          // a colour grade over the scene
   | { readonly letterbox: boolean }                                        // cinema bars
@@ -75,6 +81,10 @@ export interface Chapter {
   /** The card art in the quest journal (a bg name). */
   readonly cover: string;
   readonly pre: readonly Step[];
+  /** What happens before the case, in a few lines: shown when the player asks to skip ahead. */
+  readonly recap: Text;
+  /** The same for the scenes after the case (sent with them, never before the answer). */
+  readonly recapPost?: Text;
   readonly challenge?: Challenge;
   readonly post?: readonly Step[];
 }

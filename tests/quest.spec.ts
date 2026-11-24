@@ -66,6 +66,8 @@ describe('the Silent Friday quest', () => {
     expect(one.body.post).toBeUndefined();
     expect(one.body.challenge.evidence[0].href).toBe(`${Q}/evidence/1/memory-crystal.png`);
     expect(JSON.stringify(one.body)).not.toMatch(/arandelle/i); // the answer is not in what the player is sent
+    expect(one.body.recap).toMatch(/Little Lantern House/);
+    expect(one.body.recapPost).toBeUndefined();
   });
 
   it('speaks the player\'s language', async () => {
@@ -100,6 +102,7 @@ describe('the Silent Friday quest', () => {
     const right = await answer(agent, 1, csrf, 'theme park arandelle');
     expect(right.body.ok).toBe(true);
     expect(JSON.stringify(right.body.post)).toContain('Theme Park Arandelle');
+    expect(right.body.recapPost).toMatch(/Arandelle/);
     expect((await agent.get(`${Q}/chapter/1`)).body.post).toBeDefined(); // a replay gets the whole chapter
     expect((await agent.get(`${Q}/chapter/2`)).status).toBe(200);
   });
@@ -194,7 +197,7 @@ describe('the story', () => {
   it('names only pictures, portraits, tracks and cast that exist', () => {
     const art = join(pub, 'quest', SILENT_FRIDAY.art);
     for (const s of steps) {
-      if ('bg' in s) expect(existsSync(join(art, 'bg', `${s.bg}.webp`)), s.bg).toBe(true);
+      if ('bg' in s && s.bg) expect(existsSync(join(art, 'bg', `${s.bg}.webp`)), s.bg).toBe(true);
       if ('cg' in s && s.cg) {
         const sealed = s.cg.startsWith('sealed:');
         const file = sealed ? join(root, 'src/quest/silent-friday/sealed', `${s.cg.slice(7)}.webp`) : join(art, 'bg', `${s.cg}.webp`);
@@ -205,6 +208,7 @@ describe('the story', () => {
       if ('music' in s && s.music) expect(existsSync(join(art, 'music', `${s.music}.mp3`)), s.music).toBe(true);
       if ('say' in s) expect(SILENT_FRIDAY.cast[s.say], s.say).toBeDefined();
       if ('show' in s) expect(SILENT_FRIDAY.cast[s.show]?.art, s.show).toBeDefined();
+      if ('intro' in s) expect(SILENT_FRIDAY.cast[s.intro.who]?.art, s.intro.who).toBeDefined();
       if ('hide' in s && s.hide !== 'all') expect(SILENT_FRIDAY.cast[s.hide], s.hide).toBeDefined();
     }
     for (const c of SILENT_FRIDAY.chapters) expect(existsSync(join(art, 'bg', `${c.cover}.webp`)), c.cover).toBe(true);

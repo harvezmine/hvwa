@@ -407,3 +407,70 @@ html.qs-open { overflow: hidden; }
   .qs-place { top: 3.6rem; }
   .qs-spots-head { font-size: 0.98rem; top: 3.6rem; }
 }
+
+/* ---- key phrases, character cards, case notes, clue slips, the skip recap ------------------------------------- */
+/* Key phrases (written **like this** in the story): gold over the narrator's dark glass, deep red on parchment. */
+.qs-narr .qs-key, .qs-clue .qs-key { color: var(--qs-gold-hi); font-weight: 600; }
+.qs-box .qs-key, .qs-notes .qs-key, .qs-intro .qs-key, .qs-skip .qs-key { color: #8b1d1d; font-weight: 700; }
+
+/* A character card: the portrait on the left, looking at the words on the right. */
+.qs-intro {
+  position: relative; display: grid; grid-template-columns: minmax(9rem, 15rem) minmax(0, 1fr); align-items: end; gap: 0;
+  width: min(46rem, 100%); overflow: hidden; border-radius: 4px; color: var(--ink);
+  background: linear-gradient(90deg, #1a110b 0 34%, #e8d6ac 34%); background-image: linear-gradient(90deg, #1a110b 0 34%, transparent 34%), var(--tex-parch);
+  background-color: #e8d6ac;
+  box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--m-gold), 0 0 0 8px var(--wood-2), 0 28px 70px rgba(0, 0, 0, 0.7);
+}
+.qs-intro-art { align-self: stretch; display: flex; align-items: flex-end; justify-content: center; min-height: 17rem; background: radial-gradient(ellipse at 50% 85%, rgba(201, 155, 69, 0.35), transparent 70%); }
+.qs-intro-art img { display: block; max-height: 20rem; max-width: 100%; object-fit: contain; object-position: bottom; filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.6)); }
+.qs-intro-art img.is-flip { transform: scaleX(-1); }
+.qs-intro-art.is-shadow img { opacity: 0.9; }
+.qs-intro-body { display: grid; gap: 0.35rem; padding: 1.8rem 1.8rem 1.6rem; align-self: center; }
+.qs-intro-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.26em; text-transform: uppercase; color: var(--wax-dark); }
+.qs-intro-name { margin: 0; font-family: var(--poster); font-weight: 400; font-size: clamp(2rem, 4.4vw, 2.8rem); line-height: 1; color: #2a1a0c; }
+.qs-intro-role { margin: 0; font-family: var(--display); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
+.qs-intro-text { margin: 0.4rem 0 0; padding-top: 0.6rem; border-top: 1px solid rgba(90, 64, 34, 0.35); font-family: var(--serif); font-size: 1.08rem; line-height: 1.6; color: #2a1a0c; }
+
+/* Case notes: what the guild knows so far, a numbered parchment list. */
+.qs-notes { width: min(36rem, 100%); max-height: 84dvh; overflow: auto; padding: 1.8rem 2rem 1.6rem; display: grid; gap: 0.5rem; }
+.qs-notes-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.3em; text-transform: uppercase; color: var(--wax-dark); }
+.qs-notes-title { margin: 0 0 0.4rem; font-family: var(--display); font-weight: 700; font-size: 1.45rem; letter-spacing: 0.03em; }
+.qs-notes-list { margin: 0; padding: 0; list-style: none; counter-reset: note; display: grid; gap: 0.55rem; }
+.qs-notes-list li { counter-increment: note; position: relative; padding: 0.15rem 0 0.15rem 2.3rem; font-family: var(--serif); font-size: 1.06rem; line-height: 1.5; color: #2a1a0c; }
+.qs-notes-list li::before { content: counter(note); position: absolute; left: 0; top: 0.1rem; display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; font-family: var(--display); font-weight: 700; font-size: 0.8rem; color: #fdebd9; background: radial-gradient(circle at 35% 30%, var(--wax-hi), var(--wax) 60%, var(--wax-dark)); }
+
+/* A clue slip: top right, under the controls, it fades by itself. */
+.qs-clue {
+  position: absolute; z-index: 13; top: 3.6rem; right: 0.75rem; width: min(22rem, calc(100vw - 1.5rem)); padding: 0.7rem 0.95rem 0.8rem;
+  border-radius: 3px; background: rgba(12, 8, 5, 0.92); box-shadow: inset 3px 0 0 var(--qs-gold-hi), inset 0 0 0 1px rgba(201, 155, 69, 0.45), 0 12px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: none; opacity: 0; translate: 12px 0; transition: opacity 400ms ease, translate 400ms var(--ease);
+}
+.qs-clue.is-on { opacity: 1; translate: 0 0; }
+.qs-clue-kicker { margin: 0 0 0.2rem; font-family: var(--display); font-weight: 700; font-size: 0.68rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--qs-gold-hi); }
+.qs-clue-text { margin: 0; font-family: var(--serif); font-size: 1rem; line-height: 1.45; color: var(--qs-ink-light); }
+
+/* The skip recap. */
+.qs-skip-wrap { position: absolute; inset: 0; z-index: 16; display: grid; place-items: center; padding: var(--sp-5); background: rgba(5, 3, 2, 0.75); opacity: 0; visibility: hidden; transition: opacity 300ms ease, visibility 0s linear 300ms; }
+.qs-skip-wrap.is-on { opacity: 1; visibility: visible; transition: opacity 300ms ease; }
+.qs-skip { width: min(34rem, 100%); padding: 1.8rem 1.9rem 1.5rem; display: grid; gap: 0.8rem; color: var(--ink); border-radius: 4px; background-color: #e8d6ac; background-image: var(--tex-parch); box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--m-gold), 0 0 0 8px var(--wood-2), 0 28px 70px rgba(0, 0, 0, 0.7); }
+.qs-skip-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: 1.2rem; letter-spacing: 0.04em; }
+.qs-skip-text { margin: 0; font-family: var(--serif); font-size: 1.06rem; line-height: 1.6; color: #2a1a0c; }
+.qs-skip-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
+
+/* The dark reveal: the edges close in like a held breath, then let go. */
+@keyframes qs-iris { 0% { box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0); } 35% { box-shadow: inset 0 0 0 34vmin rgba(0, 0, 0, 0.9); } 60% { box-shadow: inset 0 0 0 30vmin rgba(0, 0, 0, 0.85); } 100% { box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0); } }
+@keyframes qs-slide-in { from { opacity: 0; translate: -18px 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .qs.is-iris .qs-vignette { animation: qs-iris 1600ms cubic-bezier(0.3, 0, 0.3, 1); }
+  .qs-overlay.is-on .qs-intro, .qs-overlay.is-on .qs-notes { animation: qs-card 520ms var(--ease-swing); }
+  .qs-overlay.is-on .qs-intro-art img { animation: qs-slide-in 700ms var(--ease) 120ms backwards; }
+  .qs-overlay.is-on .qs-notes-list li { animation: qs-rise 380ms var(--ease) backwards; animation-delay: calc(240ms + var(--i, 0) * 110ms); }
+  .qs-skip-wrap.is-on .qs-skip { animation: qs-card 420ms var(--ease-swing); }
+}
+@media (max-width: 720px) {
+  .qs-intro { grid-template-columns: 1fr; background-image: var(--tex-parch); }
+  .qs-intro-art { min-height: 11rem; background: #1a110b; }
+  .qs-intro-art img { max-height: 12rem; }
+  .qs-intro-body { padding: 1.2rem 1.2rem 1.2rem; }
+  .qs-clue { top: 3.4rem; }
+}

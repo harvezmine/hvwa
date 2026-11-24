@@ -243,13 +243,27 @@
       QSFX[name](c, S.output(), c.currentTime + 0.02);
     } else S.play(name);
   }
-  // Each character speaks with a pitch of their own: a soft blip per few letters while the line types.
+  // Each character speaks with a pitch of their own: the classic RPG "talk" chirp every other letter while the line
+  // types, a short square wave softened by a low-pass, a little random in pitch so a sentence sounds like speech.
   function voice(pitch, soft) {
     if (!soundOn()) return;
     var c = ac();
     if (!c) return;
-    var f = pitch * (0.92 + Math.random() * 0.16);
-    osc(c, S.output(), pitch < 300 ? 'square' : 'triangle', f, c.currentTime + 0.005, 0.045, soft ? 0.012 : (pitch < 300 ? 0.014 : 0.03));
+    var t = c.currentTime + 0.005;
+    var f = pitch * (0.93 + Math.random() * 0.14);
+    var o = c.createOscillator(); o.type = 'square'; o.frequency.setValueAtTime(f, t);
+    var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(6000, f * 5);
+    o.connect(lp); lp.connect(gainAt(c, S.output(), t, soft ? 0.028 : 0.075, 0.003, 0.014, 0.035));
+    o.start(t); o.stop(t + 0.08);
+  }
+  // Key phrases are written **like this** in the story: drawn in gold (narrator) or deep red (dialogue).
+  function plain(text) { return String(text).replace(/\*\*/g, ''); }
+  function rich(target, text) {
+    target.textContent = '';
+    String(text).split('**').forEach(function (part, i) {
+      if (!part) return;
+      if (i % 2) el('span', 'qs-key', target).textContent = part; else target.appendChild(document.createTextNode(part));
+    });
   }
 
   // ---- the stage -----------------------------------------------------------------------------------------------
@@ -318,6 +332,9 @@
   var logClose = el('button', 'qs-btn', logHead); logClose.type = 'button'; logClose.textContent = UI.close;
   var logList = el('ol', 'qs-log-list', logPanel);
   var endWrap = el('div', 'qs-end-wrap', dlg);
+  var skipWrap = el('div', 'qs-skip-wrap', dlg);
+  var clueBox = el('div', 'qs-clue', dlg);
+  clueBox.setAttribute('role', 'status');
   document.body.appendChild(dlg);
 
   // ---- particles: dust in the lamplight, fireflies, embers, ash --------------------------------------------------
@@ -394,9 +411,16 @@
   var auto = false, skip = false, ctrlSkip = false;
   var onStage = {};     // cast id -> { img, at }
   var progressed = false;
-  var fast = function () { return skip || ctrlSkip; };
+  var skipAll = false;  // the player chose "skip ahead" after reading the recap: run to the case (or the end)
+  var phase = 'pre';    // which recap applies: before the case, or after it
+  var fast = function () { return skip || ctrlSkip || skipAll; };
 
   function setBg(name, fx) {
+    if (!name) { // an empty stage: the backdrop fades out to the dark behind it
+      bgFront.classList.remove('is-cut', 'is-slow'); bgFront.classList.add(fast() ? 'is-cut' : 'is-fade');
+      bgFront.classList.remove('is-on');
+      return fast() ? 0 : 600;
+    }
     var src = ART + '/bg/' + name + '.webp';
     if (bgFront.getAttribute('src') === src && bgFront.classList.contains('is-on')) return 0;
     var back = bgFront === bgA ? bgB : bgA;
@@ -500,32 +524,49 @@
     placeCard.classList.remove('is-on'); void placeCard.offsetWidth; placeCard.classList.add('is-on');
     placeTimer = window.setTimeout(function () { placeCard.classList.remove('is-on'); }, 4200);
   }
+  // A reveal lands four ways: 'big' a white flash, a sting and a hard shake (a discovery); 'small' a dark blink and a
+  // thud; 'dark' the screen closing in like a held breath, on a heartbeat (dread); 'blood' a red pulse (violence only).
   function shock(kind) {
     if (fast()) return 0;
-    var big = kind === 'big';
-    sfx(big ? 'sting' : 'thud');
-    Music.duck(true); window.setTimeout(function () { Music.duck(false); }, big ? 1600 : 700);
-    flash.className = 'qs-flash ' + (big ? 'is-white' : 'is-dark'); void flash.offsetWidth; flash.classList.add('is-on');
+    var big = kind === 'big', blood = kind === 'blood', dark = kind === 'dark';
+    sfx(big || blood ? 'sting' : dark ? 'heartbeat' : 'thud');
+    Music.duck(true); window.setTimeout(function () { Music.duck(false); }, big || blood ? 1600 : dark ? 1800 : 700);
+    if (!dark) { flash.className = 'qs-flash ' + (big ? 'is-white' : blood ? 'is-red' : 'is-dark'); void flash.offsetWidth; flash.classList.add('is-on'); }
     if (!reduce) {
       scene.classList.remove('is-shake', 'is-shake-big', 'is-punch'); void scene.offsetWidth;
-      scene.classList.add(big ? 'is-shake-big' : 'is-shake');
-      if (big) scene.classList.add('is-punch');
-      dlg.classList.remove('is-pulse'); void dlg.offsetWidth; dlg.classList.add('is-pulse');
+      if (big || blood) scene.classList.add('is-shake-big', 'is-punch');
+      else if (!dark) scene.classList.add('is-shake');
+      dlg.classList.remove('is-pulse', 'is-iris'); void dlg.offsetWidth;
+      if (blood) dlg.classList.add('is-pulse');
+      if (dark) dlg.classList.add('is-iris');
     }
-    return big ? 650 : 300;
+    return big || blood ? 650 : dark ? 1000 : 300;
+  }
+  var clueTimer = 0;
+  function showClue(text) {
+    window.clearTimeout(clueTimer);
+    clueBox.innerHTML = '';
+    el('p', 'qs-clue-kicker', clueBox).textContent = UI.clue;
+    rich(el('p', 'qs-clue-text', clueBox), fill(text));
+    clueBox.classList.remove('is-on'); void clueBox.offsetWidth; clueBox.classList.add('is-on');
+    sfx('spot');
+    log(UI.clue, plain(fill(text)));
+    clueTimer = window.setTimeout(function () { clueBox.classList.remove('is-on'); }, 5200);
   }
 
   // The typed line: laid out hidden first (no reflow), letters revealed one by one; a click finishes it.
   function type(target, text, pitch, soft) {
     target.textContent = '';
-    var sr = el('span', 'sr-only', target); sr.textContent = text;
+    var sr = el('span', 'sr-only', target); sr.textContent = plain(text);
     var shown = el('span', '', target); shown.setAttribute('aria-hidden', 'true');
     var chars = [];
-    text.split(/(\s+)/).forEach(function (part) {
-      if (!part) return;
-      if (/^\s+$/.test(part)) { shown.appendChild(document.createTextNode(part)); return; }
-      var w = el('span', 'tw-word', shown);
-      Array.prototype.forEach.call(part, function (ch) { var c = el('span', 'tw-ch', w); c.textContent = ch; chars.push(c); });
+    String(text).split('**').forEach(function (seg, k) {
+      seg.split(/(\s+)/).forEach(function (part) {
+        if (!part) return;
+        if (/^\s+$/.test(part)) { shown.appendChild(document.createTextNode(part)); return; }
+        var w = el('span', 'tw-word' + (k % 2 ? ' qs-key' : ''), shown);
+        Array.prototype.forEach.call(part, function (ch) { var c = el('span', 'tw-ch', w); c.textContent = ch; chars.push(c); });
+      });
     });
     var i = 0, timer = 0, done = false, resolve;
     var p = new Promise(function (r) { resolve = r; });
@@ -544,7 +585,8 @@
       if (i >= chars.length) { finish(); return; }
       var c = chars[i++];
       c.classList.add('on');
-      if (pitch && i % 3 === 1 && /\w/.test(c.textContent)) voice(pitch, soft);
+      if (pitch && i % 2 === 1 && /\w/.test(c.textContent)) voice(pitch, soft);
+      else if (!pitch && i % 4 === 1 && /\w/.test(c.textContent)) sfx('tick');
       var ch = c.textContent;
       timer = window.setTimeout(step, /[.!?…]/.test(ch) ? 260 : /[,;:—]/.test(ch) ? 130 : speed);
     }
@@ -570,7 +612,7 @@
   function log(name, text) {
     var li = el('li', '', logList);
     if (name) el('b', '', li).textContent = name;
-    el('span', '', li).textContent = text;
+    el('span', '', li).textContent = plain(text);
   }
   function clearText(keep) {
     if (keep !== 'narr') narrBox.classList.remove('is-on');
@@ -607,7 +649,9 @@
     var side = kind === 'you' ? 'left' : (onStage[who] && onStage[who].at) || opts.at || 'left';
     box.setAttribute('data-side', side === 'right' ? 'right' : 'left');
     if (kind === 'you') face.src = boot.player.face;
-    if (kind === 'say' && m && m.art) { await sleep(show(who, opts.pose, opts.at || (onStage[who] && onStage[who].at) || 'center')); }
+    // A line marked `off` is heard, not seen: the speaker stays off stage (a voice behind the camera).
+    if (kind === 'say' && m && m.art && !opts.off) { await sleep(show(who, opts.pose, opts.at || (onStage[who] && onStage[who].at) || 'center')); }
+    if (opts.off && opts.react && !reduce && !fast()) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); }
     focusSpeaker(kind === 'say' && onStage[who] ? who : null);
     if (opts.react) react(who, opts.react);
     if (opts.style === 'shout' && !reduce && !fast()) { box.classList.remove('is-jolt'); void box.offsetWidth; box.classList.add('is-jolt'); }
@@ -640,6 +684,33 @@
       p.textContent = step.item.hand ? fill(step.item.text).split('/').join('/​') : fill(step.item.text);
       log(step.item.title, fill(step.item.text));
       sfx('spot');
+    } else if (step.intro) {
+      // A character card: the portrait on the left looking towards the words, name, standing and who they are.
+      var who = member(step.intro.who);
+      c = el('div', 'qs-intro', overlay);
+      var pic = el('div', 'qs-intro-art', c);
+      var im = el('img', '', pic); im.alt = ''; im.src = castArt(step.intro.who) || '';
+      if ((who.face || 'left') === 'left') im.classList.add('is-flip');
+      if (/shadow-/.test(im.src)) pic.classList.add('is-shadow');
+      var body = el('div', 'qs-intro-body', c);
+      el('p', 'qs-intro-kicker', body).textContent = step.intro.title;
+      el('h3', 'qs-intro-name', body).textContent = who.name || step.intro.who;
+      if (who.role) el('p', 'qs-intro-role', body).textContent = who.role;
+      rich(el('p', 'qs-intro-text', body), fill(step.intro.text));
+      log(who.name, plain(fill(step.intro.text)));
+      sfx('whoosh');
+    } else if (step.notes) {
+      c = el('div', 'qs-notes', overlay);
+      el('p', 'qs-notes-kicker', c).textContent = UI.notes;
+      el('h3', 'qs-notes-title', c).textContent = step.notes.title;
+      var ol = el('ol', 'qs-notes-list', c);
+      step.notes.items.forEach(function (it, k) {
+        var li = el('li', '', ol);
+        li.style.setProperty('--i', String(k));
+        rich(li, fill(it));
+      });
+      log(UI.notes, step.notes.items.map(function (it) { return plain(fill(it)); }).join(' · '));
+      sfx('page');
     } else if (step.letter) {
       c = el('div', 'qs-letter', overlay);
       fill(step.letter).split('\n\n').forEach(function (para) { el('p', '', c).textContent = para; });
@@ -714,6 +785,7 @@
     if (first) window.setTimeout(function () { first.focus({ preventScroll: true }); }, 80);
   }
   function pick(options, head) {
+    if (skipAll) return Promise.resolve(Math.max(0, options.findIndex(function (o) { return !o.visited; })));
     skip = false; skipBtn.setAttribute('aria-pressed', 'false');
     return new Promise(function (resolve) { menu(options, head, resolve); });
   }
@@ -730,6 +802,7 @@
     return [Math.min(W - 40, Math.max(40, x)), Math.min(H - 150, Math.max(90, y))];
   }
   function searchOnPicture(ex, seen) {
+    if (skipAll) return Promise.resolve(seen.indexOf(false));
     skip = false; skipBtn.setAttribute('aria-pressed', 'false');
     return new Promise(function (resolve) {
       spots.innerHTML = '';
@@ -786,7 +859,8 @@
     if ('show' in step) { await sleep(show(step.show, step.pose, step.at)); return; }
     if ('hide' in step) { await sleep(hide(step.hide)); return; }
     if ('cg' in step) { if (step.cg) clearText(null); await sleep(setCg(step.cg)); return; }
-    if ('item' in step || 'letter' in step || 'accept' in step) { await card(step); return; }
+    if ('item' in step || 'letter' in step || 'accept' in step || 'intro' in step || 'notes' in step) { await card(step); return; }
+    if ('clue' in step) { if (!fast()) showClue(step.clue); else log(UI.clue, plain(fill(step.clue))); return; }
     if ('title' in step) { await titleShow(step); return; }
     if ('choice' in step) {
       var i = await pick(step.choice.map(function (c) { return { label: c.label }; }));
@@ -905,6 +979,7 @@
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         if (run.chapter.done) { caseWrap.classList.remove('is-on'); dlg.focus({ preventScroll: true }); resolve(run.chapter.post || []); return; }
+        // (a replay already holds the recap of the scenes after the case)
         if (!input.value.trim() || go.disabled) return;
         go.disabled = true; msg.className = 'qs-case-msg'; msg.textContent = UI.checking;
         fetch('/quests/' + QID + '/chapter/' + run.n, {
@@ -918,6 +993,7 @@
             el('span', 'qs-stamp qs-case-stamp', f).textContent = UI.solved;
             msg.className = 'qs-case-msg is-ok'; msg.textContent = UI.solved;
             markDone(run.n);
+            run.chapter.recapPost = j.recapPost;
             window.setTimeout(function () { caseWrap.classList.remove('is-on'); dlg.focus({ preventScroll: true }); resolve(j.post || []); }, reduce ? 600 : 1800);
             return;
           }
@@ -944,7 +1020,8 @@
       (list || []).forEach(function (s) {
         if (s.bg && !seen[s.bg]) { seen[s.bg] = 1; new Image().src = ART + '/bg/' + s.bg + '.webp'; }
         if (s.cg && !seen[s.cg] && s.cg.indexOf('sealed:') !== 0) { seen[s.cg] = 1; new Image().src = ART + '/bg/' + s.cg + '.webp'; }
-        if (s.show) { var a = castArt(s.show, s.pose); if (a && !seen[a]) { seen[a] = 1; new Image().src = a; } }
+        var who = s.show || s.say;
+        if (who) { var a = castArt(who, s.pose); if (a && !seen[a]) { seen[a] = 1; new Image().src = a; } }
         if (s.music) Music.preload(s.music);
         if (s.choice) s.choice.forEach(function (c) { walk(c.then); });
         if (s.explore) s.explore.spots.forEach(function (c) { walk(c.then); });
@@ -1001,6 +1078,7 @@
     if (!res.ok) { leave(); return; }
     var ch = await res.json();
     var me = { n: n, alive: true, chapter: ch };
+    phase = 'pre'; skipAll = false;
     run = me;
     preloadChapter(ch);
     resetStage();
@@ -1009,7 +1087,9 @@
     await steps(ch.pre, true, saved);
     if (run !== me || !me.alive) return;
     if (ch.challenge) {
+      skipAll = false; skipBtn.setAttribute('aria-pressed', 'false');
       var post = await caseFile(ch);
+      phase = 'post';
       if (run !== me || !me.alive) return;
       await steps(post, false);
     } else if (!ch.done) {
@@ -1022,6 +1102,7 @@
     store(placeKey(n), null);
     if (run !== me || !me.alive) return;
     clearText(null); hide('all');
+    skipAll = false; skipBtn.setAttribute('aria-pressed', 'false');
     var nextN = await endCard(n);
     if (run !== me || !me.alive) return;
     if (nextN >= 0) { me.alive = false; Amb.stop(800); Particles.stop(); await play(nextN, true); } else leave();
@@ -1056,7 +1137,8 @@
 
   // ---- input -----------------------------------------------------------------------------------------------------
   dlg.addEventListener('click', function (e) {
-    if (e.target.closest('.qs-bar, .qs-choices, .qs-spots, .qs-case-wrap, .qs-end-wrap, .qs-log, a, button, input')) return;
+    if (skipWrap.classList.contains('is-on')) return;
+    if (e.target.closest('.qs-bar, .qs-choices, .qs-spots, .qs-case-wrap, .qs-end-wrap, .qs-log, .qs-skip-wrap, a, button, input')) return;
     advance();
   });
   dlg.addEventListener('cancel', function (e) {
@@ -1074,7 +1156,8 @@
       return;
     }
     // Space and Enter belong to a control only while its panel is showing; anywhere else they advance the scene.
-    var control = e.target.closest && e.target.closest('.qs-choices.is-on, .qs-spots.is-on, .qs-case-wrap.is-on, .qs-end-wrap.is-on, .qs-log.is-on') && e.target.matches('button, a');
+    if (skipWrap.classList.contains('is-on') && !(e.target.matches && e.target.matches('button'))) { e.preventDefault(); return; }
+    var control = e.target.closest && e.target.closest('.qs-choices.is-on, .qs-spots.is-on, .qs-case-wrap.is-on, .qs-end-wrap.is-on, .qs-log.is-on, .qs-skip-wrap.is-on') && e.target.matches('button, a');
     if ((e.key === ' ' || e.key === 'Enter') && !control) { e.preventDefault(); advance(); }
     else if (e.key === 'a' || e.key === 'A') autoBtn.click();
     else if (e.key === 'l' || e.key === 'L') logBtn.click();
@@ -1087,11 +1170,32 @@
     if (auto && !typing && waiter) waiter();
     dlg.focus({ preventScroll: true });
   });
-  skipBtn.addEventListener('click', function () {
-    skip = !skip; skipBtn.setAttribute('aria-pressed', String(skip));
-    if (skip) { if (typing) typing.finish(); if (waiter) waiter(); }
-    dlg.focus({ preventScroll: true });
-  });
+  // Skip asks first: a short recap of what this part says, then "skip ahead" runs to the case (or the end).
+  function askSkip() {
+    if (!run || skipAll) return;
+    var recap = phase === 'post' ? run.chapter.recapPost : run.chapter.recap;
+    skipWrap.innerHTML = '';
+    var c = el('section', 'qs-skip', skipWrap);
+    el('p', 'qs-skip-kicker', c).textContent = UI.skip_title;
+    rich(el('p', 'qs-skip-text', c), fill(recap || ''));
+    var acts = el('div', 'qs-skip-actions', c);
+    var stay = el('button', 'btn btn-secondary', acts); stay.type = 'button'; stay.textContent = UI.skip_stay;
+    var go = el('button', 'btn btn-primary', acts); go.type = 'button'; go.textContent = UI.skip_go;
+    stay.addEventListener('click', function () { skipWrap.classList.remove('is-on'); dlg.focus({ preventScroll: true }); });
+    go.addEventListener('click', function () {
+      skipWrap.classList.remove('is-on');
+      skipAll = true; skipBtn.setAttribute('aria-pressed', 'true');
+      dlg.focus({ preventScroll: true });
+      if (typing) typing.finish();
+      if (waiter) waiter();
+      if (choices.classList.contains('is-on') && choices.buttons && choices.buttons[0]) choices.buttons[0].click();
+      var spot = spots.classList.contains('is-on') && spots.querySelector('.qs-spot:not(.is-seen)');
+      if (spot) spot.click();
+    });
+    skipWrap.classList.add('is-on');
+    window.setTimeout(function () { go.focus({ preventScroll: true }); }, 60);
+  }
+  skipBtn.addEventListener('click', askSkip);
   soundBtn.addEventListener('click', function () {
     if (!S) return;
     S.set(!S.isOn());

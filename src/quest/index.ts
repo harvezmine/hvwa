@@ -69,12 +69,13 @@ function chapterView(quest: Quest, c: Chapter, done: boolean, lang: Lang) {
   const ch = c.challenge;
   return {
     n: c.n, title: localize(c.title, lang), sub: localize(c.sub, lang), done,
-    pre: localize(c.pre, lang),
+    pre: localize(c.pre, lang), recap: localize(c.recap, lang),
     challenge: ch === undefined ? undefined : {
       title: localize(ch.title, lang), brief: localize(ch.brief, lang), placeholder: localize(ch.placeholder, lang),
       evidence: ch.evidence.map((e) => ({ label: localize(e.label, lang), name: e.as, href: `/quests/${quest.id}/evidence/${c.n}/${encodeURIComponent(e.as)}` })),
     },
     post: done && c.post ? localize(c.post, lang) : undefined,
+    recapPost: done && c.recapPost ? localize(c.recapPost, lang) : undefined,
   };
 }
 
@@ -144,7 +145,7 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
       res.json({ ok: true });
       return;
     }
-    if (done.has(c.n)) { res.json({ ok: true, post: localize(c.post ?? [], lang) }); return; }
+    if (done.has(c.n)) { res.json({ ok: true, post: localize(c.post ?? [], lang), recapPost: c.recapPost ? localize(c.recapPost, lang) : undefined }); return; }
     const key = `${userId}:${quest.id}:${c.n}`;
     const now = ctx.now();
     const recent = (wrong.get(key) ?? []).filter((at) => now - at < 60_000);
@@ -158,7 +159,7 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
     }
     wrong.delete(key);
     markDone(db, userId, quest.id, c.n, now);
-    res.json({ ok: true, post: localize(c.post ?? [], lang) });
+    res.json({ ok: true, post: localize(c.post ?? [], lang), recapPost: c.recapPost ? localize(c.recapPost, lang) : undefined });
   });
 
   router.get('/quests/:quest/evidence/:n/:file', (req, res, next) => {
@@ -206,5 +207,5 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
 export const QUEST_UI = [
   'begin', 'continue', 'replay', 'locked', 'soon', 'done', 'auto', 'log', 'skip', 'close', 'next', 'submit', 'evidence',
   'wrong', 'slow', 'solved', 'chapter_done', 'back', 'next_chapter', 'answer', 'grand', 'accepted', 'reward', 'tap',
-  'left', 'backlog', 'case', 'error', 'confirm_close', 'gold', 'end', 'resume', 'archive_hint', 'checking', 'sound', 'choose', 'found',
+  'left', 'backlog', 'case', 'error', 'confirm_close', 'gold', 'end', 'resume', 'archive_hint', 'checking', 'sound', 'choose', 'found', 'skip_title', 'skip_go', 'skip_stay', 'clue', 'notes',
 ] as const;
