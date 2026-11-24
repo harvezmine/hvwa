@@ -33,7 +33,7 @@ describe('containerSpec', () => {
         [`traefik.http.routers.g-${ID}.priority`]: '1000',
         [`traefik.http.routers.g-${ID}.service`]: 'hvwa-portal@file',
       },
-      Healthcheck: { Test: [], Interval: 2_000_000_000, Timeout: 2_000_000_000, Retries: 3, StartPeriod: 60_000_000_000, StartInterval: 500_000_000 },
+      Healthcheck: { Test: [], Interval: 5_000_000_000, Timeout: 4_000_000_000, Retries: 3, StartPeriod: 60_000_000_000, StartInterval: 500_000_000 },
       StopTimeout: 2,
       HostConfig: {
         ReadonlyRootfs: true,

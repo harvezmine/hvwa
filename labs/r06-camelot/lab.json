@@ -10,7 +10,7 @@
   "port": 8080,
   "health": "/healthz",
   "flag": { "placement": "custom" },
-  "resources": { "memoryMiB": 96, "pids": 48 },
+  "resources": { "memoryMiB": 128, "pids": 48 },
   "tmpfs": [{ "path": "/tmp", "sizeMiB": 8 }],
   "needsBot": false,
   "themeId": "camelot",

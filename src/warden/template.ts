@@ -102,7 +102,9 @@ export function containerSpec(input: InstanceSpecInput, settings: TemplateSettin
         [`traefik.http.routers.${gate}.service`]: 'hvwa-portal@file',
       },
       // Test [] = the image's own HEALTHCHECK (it requests the manifest's health path); the timings are ours (plan D2).
-      Healthcheck: { Test: [], Interval: 2_000_000_000, Timeout: 2_000_000_000, Retries: 3, StartPeriod: 60_000_000_000, StartInterval: 500_000_000 },
+      // Under gVisor a probe can take seconds, so a 5 s interval / 4 s timeout keeps a busy lab from flapping unhealthy
+      // (Traefik drops an unhealthy container's router, which players see as the lab vanishing). Start polls stay 0.5 s.
+      Healthcheck: { Test: [], Interval: 5_000_000_000, Timeout: 4_000_000_000, Retries: 3, StartPeriod: 60_000_000_000, StartInterval: 500_000_000 },
       StopTimeout: 2,
       HostConfig: {
         ReadonlyRootfs: true,

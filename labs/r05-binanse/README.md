@@ -66,6 +66,6 @@ silently, like the other reference solves.
 ## Files
 
 `app/server.mjs` (routing, in-memory state, flag), `app/bot.mjs` (simulated staff browser), `app/render.mjs` (escaped
-HTML/CSS, all pages), `app/health.mjs` (HEALTHCHECK), `seed/market.json` (market table), `solve/inquisitor.mjs`.
+HTML/CSS, all pages), the Dockerfile `HEALTHCHECK` (BusyBox `wget` on `/healthz`), `seed/market.json` (market table), `solve/inquisitor.mjs`.
 Node standard library only (`node:http`, `node:crypto`, `node:fs`, `node:vm`); no npm install, no package.json in the
 image, read-only rootfs, state in memory, `/tmp` a tmpfs.

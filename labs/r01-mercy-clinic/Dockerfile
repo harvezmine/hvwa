@@ -11,5 +11,5 @@ COPY seed/ ./seed/
 COPY lab.json ./lab.json
 USER 10001:10001
 EXPOSE 8080
-HEALTHCHECK --interval=2s --timeout=2s --start-period=30s --start-interval=500ms --retries=3 CMD ["node", "/app/health.mjs"]
+HEALTHCHECK --interval=5s --timeout=4s --start-period=30s --start-interval=500ms --retries=3 CMD wget -q -T 3 -O /dev/null "http://127.0.0.1:${HVWA_PORT:-8080}/healthz" || exit 1
 CMD ["node", "--experimental-sqlite", "/app/server.mjs"]

@@ -40,7 +40,7 @@ hand-built parchment UI (inline CSS and SVG, no external assets). It runs on the
 | `POST /petition`, `POST /api/petition` `{name}` | A seal over `petitioner=<name>;rank=peasant` |
 | `POST /oracle`, `POST /api/oracle` `{scrolls:[...]}` | Merlin's verdict per scroll: `clear` or `clouded` |
 | `POST /stone`, `POST /api/stone` `{words}` or `{seal}` | Knighted (with the writ) for the true words or a seal whose `rank` is `knight` |
-| `/`, `/table`, `/clerks` | Great Hall (decree + riddle), Round Table, the JSON API reference |
+| `/` | Great Hall: the story, the riddle and a four-step quest map ("Start here" marks the weak room on each tier) |
 
 The stone accepts both proofs at every tier. The tier changes only the cryptography behind each surface:
 
@@ -51,7 +51,8 @@ The stone accepts both proofs at every tier. The tier changes only the cryptogra
 | Inquisitor (Deadly) | **AES-128-CBC**, IV first | AES-256-GCM | **CBC padding oracle** |
 | Divine (Warded) | AES-256-GCM | AES-256-GCM | GCM check |
 
-Each room states, in character, which spell it uses on that tier.
+Each room states, in one short line, which spell it uses on that tier; the weak one is tagged **Weak spell**. Every room
+folds its JSON endpoint into a **For scripts** note. `/table` and `/clerks` (first edition) redirect to `/`.
 
 ## Reference solves
 

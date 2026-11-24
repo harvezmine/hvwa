@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { createCourt } from './court.mjs';
 import {
-  hallPage, dreamPage, petitionPage, oraclePage, stonePage, tablePage, clerksPage, notFoundPage,
+  hallPage, dreamPage, petitionPage, oraclePage, stonePage, notFoundPage,
 } from './render.mjs';
 
 const LEVELS = ['acolyte', 'templar', 'inquisitor', 'divine'];
@@ -86,18 +86,20 @@ function tryStone({ words, seal }) {
 
 async function handle(req, res) {
   const url = new URL(req.url ?? '/', 'http://camelot');
-  const p = url.pathname;
+  // `/dream/` and `/dream` are the same room; a stray trailing slash never leads to the lost corridor.
+  const p = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') || '/' : url.pathname;
 
   if (p === '/healthz') return json(res, 200, { status: 'ok' });
 
-  if (req.method === 'GET') {
+  // HEAD is answered like GET (Node drops the body), so link checkers and prefetchers see the real status.
+  if (req.method === 'GET' || req.method === 'HEAD') {
     if (p === '/') return html(res, 200, hallPage(level));
     if (p === '/dream') return html(res, 200, dreamPage(level, court.dreamScroll()));
     if (p === '/petition') return html(res, 200, petitionPage(level));
     if (p === '/oracle') return html(res, 200, oraclePage(level));
     if (p === '/stone') return html(res, 200, stonePage(level));
-    if (p === '/table') return html(res, 200, tablePage(seed.knights));
-    if (p === '/clerks') return html(res, 200, clerksPage());
+    // Rooms from the first edition of the court: old bookmarks land in the Great Hall.
+    if (p === '/table' || p === '/clerks') { res.writeHead(303, { ...SECURITY, location: '/' }); return res.end(); }
     if (p === '/robots.txt') return text(res, 200, 'User-agent: *\nDisallow: /royal-treasury\n# treasurer\'s note: HVWA{r0b0ts_txt_tr4p}\n');
     if (p === '/api/dream') return json(res, 200, { scroll: court.dreamScroll() });
   }
