@@ -5,7 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from '../src/db/index.js';
 import { createAuthService } from '../src/auth/service.js';
 import {
-  bestRangeSolve, leaderboard, rangeHintCost, rangeScore, rangeSolvesOf, rangeUnlockedTiers, recordRangeSolve, unlockRangeHint,
+  bestRangeSolve, leaderboard, rangeHintCost, rangeScore, rangeSolvesOf, STARTER_PURSE, rangeUnlockedTiers, recordRangeSolve, unlockRangeHint,
 } from '../src/range/progress.js';
 import { FAST_HASHER } from './helpers.js';
 import { testRegistry } from './support/range.js';
@@ -48,7 +48,7 @@ describe('recordRangeSolve', () => {
     const { db, ids: [alice, bob] } = await setup('alice', 'bob');
     recordRangeSolve(db, alice, 'r01', 'acolyte', 100, 10);
     expect(rangeSolvesOf(db, bob).size).toBe(0);
-    expect(rangeScore(db, bob)).toBe(0);
+    expect(rangeScore(db, bob)).toBe(STARTER_PURSE); // only the starter purse every account holds
   });
 });
 
@@ -60,9 +60,11 @@ describe('hints', () => {
     expect(unlockRangeHint(db, alice, clinic, 1, 6)).toMatchObject({ ok: true });
     expect(rangeUnlockedTiers(db, alice, 'r01')).toEqual([1]);
     expect(rangeHintCost(db, alice)).toBe(10);
-    expect(rangeScore(db, alice)).toBe(0);
+    expect(rangeScore(db, alice)).toBe(STARTER_PURSE - 10);
     recordRangeSolve(db, alice, 'r01', 'acolyte', 100, 10);
-    expect(rangeScore(db, alice)).toBe(90);
+    expect(rangeScore(db, alice)).toBe(STARTER_PURSE + 90);
+    db.prepare('INSERT INTO range_hint_unlocks (user_id, lab_id, tier, cost, unlocked_at) VALUES (?, ?, 9, 500, 11)').run(alice, 'r01');
+    expect(rangeScore(db, alice)).toBe(0); // floored
   });
 });
 
@@ -74,12 +76,12 @@ describe('leaderboard', () => {
     recordRangeSolve(db, carol, 'r01', 'inquisitor', 200, 900);
     recordRangeSolve(db, carol, 'r02', 'acolyte', 200, 950);
     recordRangeSolve(db, dave, 'r02', 'acolyte', 200, 100);
-    unlockRangeHint(db, dave, clinic, 1, 101);               // 200 - 10 = 190
+    unlockRangeHint(db, dave, clinic, 1, 101);               // 20 + 200 - 10 = 210
     expect(leaderboard(db)).toEqual([
-      { rank: 1, userId: carol, username: 'carol', score: 400, solved: 2, lastSolveAt: 950 },
-      { rank: 2, userId: dave, username: 'dave', score: 190, solved: 1, lastSolveAt: 100 },
-      { rank: 3, userId: bob, username: 'bob', score: 150, solved: 1, lastSolveAt: 200 },
-      { rank: 4, userId: alice, username: 'alice', score: 150, solved: 1, lastSolveAt: 300 },
+      { rank: 1, userId: carol, username: 'carol', score: 420, solved: 2, lastSolveAt: 950 },
+      { rank: 2, userId: dave, username: 'dave', score: 210, solved: 1, lastSolveAt: 100 },
+      { rank: 3, userId: bob, username: 'bob', score: 170, solved: 1, lastSolveAt: 200 },
+      { rank: 4, userId: alice, username: 'alice', score: 170, solved: 1, lastSolveAt: 300 },
     ]);
     // The compact POC has no admin operations (plan amendment, Task 3): the column is set directly.
     db.prepare('UPDATE users SET disabled = 1 WHERE id = ?').run(carol);

@@ -5,8 +5,10 @@ import { describe, it, expect, afterEach } from 'vitest';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, migrate } from '../src/db/index.js';
 import { createAuthService } from '../src/auth/service.js';
-import { leaderboard, rangeScore, rangeUnlockedTiers, recordRangeSolve } from '../src/range/progress.js';
-import { buyScroll, SCROLLS, scrollBag, scrollFor, seekCounsel } from '../src/range/shop.js';
+import { leaderboard, rangePurse, rangeScore, rangeUnlockedTiers, recordRangeSolve } from '../src/range/progress.js';
+import {
+  buyScroll, SCROLLS, scrollBag, scrollFor, seekCounsel, STARTER_PURSE, takeStarterNotice,
+} from '../src/range/shop.js';
 import { FAST_HASHER } from './helpers.js';
 import { testRegistry } from './support/range.js';
 
@@ -35,19 +37,56 @@ describe('scrolls and counsel', () => {
     expect(scrollFor(5)?.kind).toBe('oracle');
   });
 
+  it('every account holds the same starter purse, exactly one medium scroll; its popup shows once', async () => {
+    const { db, ids: [alice, bob] } = await setup('alice', 'bob');
+    expect(STARTER_PURSE).toBe(SCROLLS[1].price);
+    expect(rangeScore(db, alice)).toBe(STARTER_PURSE);
+    expect(rangeScore(db, bob)).toBe(STARTER_PURSE);
+    expect(takeStarterNotice(db, alice, 1)).toBe(STARTER_PURSE);
+    expect(takeStarterNotice(db, alice, 2)).toBeUndefined();
+    expect(rangeScore(db, alice)).toBe(STARTER_PURSE); // seeing the popup changes nothing
+    // It buys the medium scroll and nothing after it.
+    expect(buyScroll(db, alice, 'revelation', 3)).toEqual({ ok: true });
+    expect(rangeScore(db, alice)).toBe(0);
+    expect(buyScroll(db, alice, 'insight', 4)).toEqual({ ok: false, error: 'poor', short: 10 });
+    expect(scrollBag(db, alice)).toEqual({ insight: 0, revelation: 1, oracle: 0 });
+  });
+
+  it('refuses a scroll the purse cannot pay for in full: no tab, never below 0', async () => {
+    const { db, ids: [alice] } = await setup('alice');
+    expect(buyScroll(db, alice, 'oracle', 1)).toEqual({ ok: false, error: 'poor', short: 10 });
+    recordRangeSolve(db, alice, 'r01', 'acolyte', 100, 2); // 120 in the purse
+    for (let i = 0; i < 3; i++) expect(buyScroll(db, alice, 'oracle', 3 + i).ok).toBe(true);
+    expect(buyScroll(db, alice, 'revelation', 7).ok).toBe(true);
+    expect(buyScroll(db, alice, 'insight', 8).ok).toBe(true);
+    expect(rangePurse(db, alice)).toBe(0);
+    expect(buyScroll(db, alice, 'insight', 9)).toEqual({ ok: false, error: 'poor', short: 10 });
+    expect(rangePurse(db, alice)).toBe(0);
+  });
+
+  it('an old tab (bought before purchases were checked) is paid back by new bounties first', async () => {
+    const { db, ids: [alice] } = await setup('alice');
+    db.prepare("INSERT INTO range_scrolls (user_id, kind, cost, bought_at) VALUES (?, 'oracle', 30, 1), (?, 'oracle', 30, 1)").run(alice, alice);
+    expect(rangePurse(db, alice)).toBe(-40);
+    expect(rangeScore(db, alice)).toBe(0);
+    expect(buyScroll(db, alice, 'insight', 2)).toEqual({ ok: false, error: 'poor', short: 10 });
+    recordRangeSolve(db, alice, 'r01', 'acolyte', 100, 3);
+    expect(rangeScore(db, alice)).toBe(60);
+  });
+
   it('spends gold at purchase, uses one scroll per counsel, never twice for the same counsel', async () => {
     const { db, ids: [alice] } = await setup('alice');
     recordRangeSolve(db, alice, 'r01', 'acolyte', 100, 1);
     expect(seekCounsel(db, alice, clinic, 1, 2)).toEqual({ ok: false, error: 'no_scroll', kind: 'insight' });
     buyScroll(db, alice, 'insight', 3);
     buyScroll(db, alice, 'insight', 4);
-    expect(rangeScore(db, alice)).toBe(80);
+    expect(rangeScore(db, alice)).toBe(100);
     expect(scrollBag(db, alice)).toEqual({ insight: 2, revelation: 0, oracle: 0 });
     expect(seekCounsel(db, alice, clinic, 1, 5)).toMatchObject({ ok: true, used: true, hint: { id: 1 } });
     expect(seekCounsel(db, alice, clinic, 1, 6)).toMatchObject({ ok: true, used: false });
     expect(scrollBag(db, alice).insight).toBe(1);
     expect(rangeUnlockedTiers(db, alice, 'r01')).toEqual([1]);
-    expect(rangeScore(db, alice)).toBe(80); // the counsel itself costs nothing more
+    expect(rangeScore(db, alice)).toBe(100); // the counsel itself costs nothing more
     expect(seekCounsel(db, alice, clinic, 9, 7)).toEqual({ ok: false, error: 'unknown_tier' });
   });
 
@@ -57,7 +96,9 @@ describe('scrolls and counsel', () => {
     recordRangeSolve(db, bob, 'r01', 'acolyte', 100, 2);
     buyScroll(db, alice, 'oracle', 3);
     const rows = leaderboard(db);
-    expect(rows.map((r) => [r.username, r.score])).toEqual([['bob', 100], ['alice', 70]]);
-    expect(rangeScore(db, alice)).toBe(70);
+    // Both hold the same starter purse, so only the scroll tells them apart; the board matches each player's gold.
+    expect(rows.map((r) => [r.username, r.score])).toEqual([['bob', 120], ['alice', 90]]);
+    expect(rangeScore(db, alice)).toBe(90);
+    expect(rangeScore(db, bob)).toBe(120);
   });
 });

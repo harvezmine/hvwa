@@ -17,7 +17,7 @@ import { labRoutes } from './lab-routes.js';
 import { createLifecycle, type Lifecycle } from './lifecycle.js';
 import { myLabChip } from './panel.js';
 import { rangeScore } from './progress.js';
-import { RANKS, rankFor } from './rank.js';
+import { ladderFor, maxBounty, rankFor } from './rank.js';
 import { reapOnce, reconcile, startReaper, type Reaper } from './reaper.js';
 import { teamRoutes } from './teams.js';
 import { createTicketStore, type TicketStore } from './tickets.js';
@@ -49,8 +49,8 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     db, warden: opts.warden, registry: opts.registry, rangeKey: opts.rangeKey, limits: opts.limits, now, log: opts.log,
   });
   const tickets = createTicketStore({ now });
-  const ctx: RangeContext = { db, auth, opts, registry: opts.registry, now, lifecycle, tickets };
-  const isInstanceHost = (hostname: string) => instanceIdOfHost(hostname, opts.domain) !== undefined;
+  const ranks = ladderFor(maxBounty(opts.registry.labs));
+  const ctx: RangeContext = { db, auth, opts, registry: opts.registry, now, lifecycle, tickets, ranks };  const isInstanceHost = (hostname: string) => instanceIdOfHost(hostname, opts.domain) !== undefined;
   // The gate on instance hosts, 404 for the rest of them, the internal host and /__hvwa/* anywhere (src/range/gate.ts).
   const edge = edgeHandler(ctx);
 
@@ -65,11 +65,11 @@ export function createRangePortal(db: DatabaseSync, auth: PlatformAuth, opts: Ra
     if (userId !== undefined) {
       // An active or recently ended instance (the chip hides itself when there is neither).
       res.locals.myLab = myLabChip(lifecycle.store.latestForUser(userId), opts.registry, now(), res.locals.t, req.lang);
-      // The adventurer rank for the account menu, derived from the player's bounty (no DB state).
+      // The adventurer rank for the account menu, derived from the player's gold (no DB state).
       const points = rangeScore(db, userId);
-      const letter = rankFor(points).letter;
+      const letter = rankFor(points, ranks).letter;
       // The rank ladder popup (layout.ejs): every rank from E to S, what the player has earned and what is still ahead.
-      res.locals.rankLadder = RANKS.map((r) => ({
+      res.locals.rankLadder = ranks.map((r) => ({
         letter: r.letter, min: r.minPoints, name: res.locals.t(`rank.name.${r.letter.toLowerCase()}`), plate: res.locals.t(`rank.plate.${r.letter.toLowerCase()}`),
         state: r.letter === letter ? 'here' : points >= r.minPoints ? 'done' : 'ahead', need: Math.max(0, r.minPoints - points),
       }));

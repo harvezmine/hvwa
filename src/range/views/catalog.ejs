@@ -53,7 +53,7 @@
   var nameFn = function () { return username; };
   if (needsAvatar) miraLines.push({ pose: 'point', text: t('avatar.invite').replace('{name}', nameFn) });
   if (madeAvatar) miraLines.push({ pose: 'cheer', text: t('avatar.made').replace('{class}', function () { return t('hero.' + avatar.hero + '.name'); }) });
-  if (!needsAvatar && !madeAvatar) miraLines.push({ pose: 'smile', text: (solved === 0 && score === 0 ? t('mira.hello_new') : t('mira.hello')).replace('{name}', nameFn) });
+  if (!needsAvatar && !madeAvatar) miraLines.push({ pose: 'smile', text: (solved === 0 ? t('mira.hello_new') : t('mira.hello')).replace('{name}', nameFn) });
   if (continueLab) miraLines.push({ pose: 'point', text: t('mira.continue').replace('{title}', function () { return continueLab.title; }) });
   if (solved === 0) miraLines.push({ pose: 'point', text: t('mira.first') });
   else if (solved < total) miraLines.push({ pose: 'cheer', text: t('mira.progress').replace('{n}', solved).replace('{left}', total - solved) });
@@ -222,6 +222,52 @@
       <h2 class="sr-only" id="preboard-title"><%= t('avatar.invite_title') %></h2>
       <p class="dialogue-text" id="preboard-text" data-preboard-text><%= t('avatar.invite').replace('{name}', function () { return username; }) %></p>
       <span class="dialogue-more" aria-hidden="true"></span>
+    </div>
+  </div>
+</dialog>
+<% } -%>
+<% if (gift) { -%>
+<dialog class="gift-dialog" data-gift data-amount="<%= gift.amount %>" data-before="<%= gift.before %>" aria-labelledby="gift-title" aria-describedby="gift-text" data-testid="starter-gift">
+  <div class="gift-slip">
+    <div class="gift-confetti" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <svg class="gift-ill" viewBox="0 0 240 190" aria-hidden="true" focusable="false">
+      <g class="gift-rays"><path d="M120 92 111 0h18z"/><path d="M120 92 111 0h18z" transform="rotate(30 120 92)"/><path d="M120 92 111 0h18z" transform="rotate(60 120 92)"/><path d="M120 92 111 0h18z" transform="rotate(-30 120 92)"/><path d="M120 92 111 0h18z" transform="rotate(-60 120 92)"/><path d="M120 92 111 0h18z" transform="rotate(90 120 92)"/><path d="M120 92 111 0h18z" transform="rotate(-90 120 92)"/></g>
+      <circle class="gift-glow" cx="120" cy="96" r="66"/>
+      <g class="gift-rise">
+        <g class="gift-c gift-c1"><ellipse class="gc-rim" cx="104" cy="64" rx="12" ry="5.5"/><ellipse class="gc-face" cx="104" cy="62" rx="12" ry="5.5"/></g>
+        <g class="gift-c gift-c2"><ellipse class="gc-rim" cx="122" cy="56" rx="12" ry="5.5"/><ellipse class="gc-face" cx="122" cy="54" rx="12" ry="5.5"/></g>
+        <g class="gift-c gift-c3"><ellipse class="gc-rim" cx="139" cy="64" rx="12" ry="5.5"/><ellipse class="gc-face" cx="139" cy="62" rx="12" ry="5.5"/></g>
+      </g>
+      <g class="gift-pouch">
+        <path class="pouch-frill" d="M86 80c-6-15 10-21 17-11 3-13 31-13 34 0 7-10 23-4 17 11z"/>
+        <path class="pouch-body" d="M80 92c-28 20-30 74 6 88 18 7 50 7 68 0 36-14 34-68 6-88z"/>
+        <path class="pouch-shade" d="M150 100c22 22 22 64-4 76 14-18 16-52 4-76z"/>
+        <path class="pouch-neck" d="M84 78c12-7 60-7 72 0l6 14c-22 8-62 8-84 0z"/>
+        <path class="pouch-cord" d="M80 92c20 8 60 8 80 0M120 99c-5 12-11 18-17 24M120 99c6 13 13 19 19 25"/>
+        <circle class="pouch-knot" cx="120" cy="98" r="5"/>
+        <circle class="pouch-seal" cx="120" cy="144" r="17"/>
+        <path class="pouch-mark" d="M126 137a10 10 0 1 0 1 13v-6h-7"/>
+      </g>
+      <g class="gift-spill">
+        <ellipse class="gc-rim" cx="58" cy="178" rx="13" ry="5"/><ellipse class="gc-face" cx="58" cy="176" rx="13" ry="5"/>
+        <ellipse class="gc-rim" cx="76" cy="184" rx="11" ry="4.5"/><ellipse class="gc-face" cx="76" cy="182" rx="11" ry="4.5"/>
+        <ellipse class="gc-rim" cx="176" cy="182" rx="13" ry="5"/><ellipse class="gc-face" cx="176" cy="180" rx="13" ry="5"/>
+        <ellipse class="gc-rim" cx="186" cy="173" rx="11" ry="4.5"/><ellipse class="gc-face" cx="186" cy="171" rx="11" ry="4.5"/>
+      </g>
+      <g class="gift-sparks"><path d="m42 52 3 9 9 3-9 3-3 9-3-9-9-3 9-3z"/><path d="m196 40 2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/><path d="m206 112 2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path d="m30 124 2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></g>
+    </svg>
+    <p class="gift-eyebrow"><%= t('gift.eyebrow') %></p>
+    <h2 class="gift-title" id="gift-title"><%= t('gift.title') %></h2>
+    <p class="gift-amount"><span class="coin" aria-hidden="true"></span><b data-gift-count><%= t('gift.amount').replace('{n}', gift.amount) %></b></p>
+    <p class="gift-what"><%= t('gift.what') %></p>
+    <div class="gift-say">
+      <span class="gift-face" aria-hidden="true"><img src="/static/art/mira-cheer.webp" alt="" width="560" height="628" decoding="async"></span>
+      <p class="gift-text" id="gift-text"><b class="gift-speaker"><%= t('mira.name') %></b> <%= t('gift.line').replace('{name}', function () { return username; }).replace('{scroll}', function () { return gift.scroll; }) %></p>
+    </div>
+    <p class="gift-tip"><%= t('gift.tip') %></p>
+    <div class="gift-actions">
+      <form method="dialog"><button type="submit" class="btn btn-primary btn-block" data-gift-ok data-testid="gift-ok"><%= t('gift.ok') %></button></form>
+      <a class="btn btn-secondary btn-block" href="/shop" data-testid="gift-shop"><%= t('gift.shop') %></a>
     </div>
   </div>
 </dialog>

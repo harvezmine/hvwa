@@ -27,7 +27,7 @@ describe('POST /labs/:id/submit', () => {
     const res = await submit(alice.agent, 'r01', `  ${flag}  `);
     expect(result(res.text)).toBe('new_best');
     expect(res.text).toContain('+150');
-    expect((await alice.agent.get('/')).text).toContain('data-testid="range-score">150<');
+    expect((await alice.agent.get('/')).text).toContain('data-testid="range-score">170<');
     expect((await alice.agent.get('/leaderboard')).text).toContain('data-user="alice"');
   });
 
@@ -128,7 +128,7 @@ describe('POST /labs/:id/submit', () => {
     expect(res.text).toMatch(/data-modal="decoy"/);
     expect(res.text).toContain(`data-modal-message="${decoy.taunt.en}"`); // flavoured by where it was found
     expect(res.text).not.toContain('data-result="wrong"');
-    expect((await alice.agent.get('/')).text).toContain('data-testid="range-score">0<'); // no points
+    expect((await alice.agent.get('/')).text).toContain('data-testid="range-score">20<'); // the starter purse only: no points
     // A plain (non-htmx) submit of a decoy redirects back without scoring.
     expect((await submit(alice.agent, 'r01', decoy.flag, false)).headers.location).toBe('/labs/r01?r=decoy');
   });

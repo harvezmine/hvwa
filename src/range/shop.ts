@@ -1,15 +1,16 @@
 // src/range/shop.ts — the merchant and the Guildmaster's counsel (portal mode). Hints are no longer bought one by one
 // on a quest: the merchant sells magic scrolls, one kind per counsel tier, and on any quest the player hands a scroll
 // to the Guildmaster, who then gives that quest's counsel of the scroll's tier.
-// Gold: a scroll's price is spent when it is bought (rangeScore subtracts range_scrolls.cost); handing it over unlocks
-// the counsel with cost 0, so a counsel is paid for exactly once. Like the old paid hints, a purchase is allowed even
-// when the purse is short ("on the guild's tab"): the score is floored at 0, so learners are never locked out.
+// Gold: a scroll's price is spent when it is bought (rangePurse subtracts range_scrolls.cost); handing it over unlocks
+// the counsel with cost 0, so a counsel is paid for exactly once. A purchase needs the whole price in the purse: there
+// is no tab. Every adventurer gets the same starter purse once (STARTER_PURSE, exactly one medium scroll), so nobody
+// starts unable to ask for help, and the purse after that is only what their own bounties earned.
 import type { DatabaseSync } from 'node:sqlite';
 import type { Router } from 'express';
 import { escapeHtml, sendPage } from '../core/render.js';
 import { parseTier } from '../core/hints.js';
 import type { LabEntry } from '../lab-registry.js';
-import { rangeScore } from './progress.js';
+import { rangePurse, rangeScore, STARTER_PURSE } from './progress.js';
 import type { RangeContext } from './types.js';
 import { isHtmx, userOf } from './user.js';
 import { rangeView } from './catalog.js';
@@ -25,11 +26,34 @@ export type ScrollKind = (typeof SCROLLS)[number]['kind'];
 export const scrollFor = (tier: number) => SCROLLS.find((s) => s.tier === Math.min(tier, SCROLLS.length));
 const scrollOf = (kind: unknown) => SCROLLS.find((s) => s.kind === kind);
 
-/** Buy one scroll (its price is spent now). */
-export function buyScroll(db: DatabaseSync, userId: number, kind: ScrollKind, at: number): void {
+export { STARTER_PURSE };
+
+/** The starter purse's amount the first time this is asked for a player (the popup shows it once); then undefined. */
+export function takeStarterNotice(db: DatabaseSync, userId: number, at: number): number | undefined {
+  const r = db.prepare('INSERT OR IGNORE INTO range_gift_seen (user_id, seen_at) VALUES (?, ?)').run(userId, at);
+  return Number(r.changes) > 0 ? STARTER_PURSE : undefined;
+}
+
+export type BuyResult = { readonly ok: true } | { readonly ok: false; readonly error: 'poor'; readonly short: number };
+
+/**
+ * Buy one scroll: its price is spent now, and only if the purse holds all of it. One IMMEDIATE transaction, so two
+ * clicks at once can never spend the same gold twice.
+ */
+export function buyScroll(db: DatabaseSync, userId: number, kind: ScrollKind, at: number): BuyResult {
   const s = scrollOf(kind);
   if (!s) throw new Error(`shop: unknown scroll ${String(kind)}`);
-  db.prepare('INSERT INTO range_scrolls (user_id, kind, cost, bought_at) VALUES (?, ?, ?, ?)').run(userId, s.kind, s.price, at);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const purse = rangePurse(db, userId);
+    if (purse < s.price) { db.exec('ROLLBACK'); return { ok: false, error: 'poor', short: s.price - Math.max(0, purse) }; }
+    db.prepare('INSERT INTO range_scrolls (user_id, kind, cost, bought_at) VALUES (?, ?, ?, ?)').run(userId, s.kind, s.price, at);
+    db.exec('COMMIT');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch { /* already rolled back */ }
+    throw err;
+  }
+  return { ok: true };
 }
 
 /** The scrolls still in the player's bag, per kind. */
@@ -78,10 +102,11 @@ export function shopRoutes(router: Router, ctx: RangeContext): void {
     const t = res.locals.t;
     const bought = scrollOf(req.query.bought);
     const need = scrollOf(req.query.need);
+    const poor = scrollOf(req.query.poor);
     const back = typeof req.query.from === 'string' && ctx.registry.get(req.query.from) ? `/labs/${req.query.from}` : '';
     await sendPage(res, rangeView('shop'), {
       pageTitle: t('shop.title'), csrf: auth.csrfFor(req), gold: rangeScore(db, userId), bag: scrollBag(db, userId), scrolls: SCROLLS,
-      bought: bought?.kind ?? '', need: need?.kind ?? '', back,
+      bought: bought?.kind ?? '', need: need?.kind ?? '', poor: poor?.kind ?? '', back,
       crumbs: [{ label: t('nav.labs'), href: '/' }, { label: t('shop.title') }],
     });
   });
@@ -89,9 +114,9 @@ export function shopRoutes(router: Router, ctx: RangeContext): void {
     if (!auth.formOk(req)) { await auth.refuse(req, res, '/shop'); return; }
     const s = scrollOf(req.body?.kind);
     if (!s) { res.redirect(303, '/shop'); return; }
-    buyScroll(db, userOf(res).userId, s.kind, ctx.now());
+    const r = buyScroll(db, userOf(res).userId, s.kind, ctx.now());
     const from = typeof req.body?.from === 'string' && ctx.registry.get(req.body.from) ? `&from=${encodeURIComponent(req.body.from)}` : '';
-    res.redirect(303, `/shop?bought=${s.kind}${from}`);
+    res.redirect(303, `/shop?${r.ok ? 'bought' : 'poor'}=${s.kind}${from}`);
   });
 }
 

@@ -926,7 +926,11 @@
     window.addEventListener('scroll', function () { if (d.open) place(); }, { passive: true });
     document.querySelectorAll('[data-tour-start]').forEach(function (b) { b.addEventListener('click', start); });
     // A player still to make their adventurer meets Mira's preboarding popup first; the tour waits for the next visit.
-    if (window.location.hash === '#tour' || (!seen() && !document.querySelector('[data-preboard]'))) {
+    // A starter purse to hand over comes before the tour too: the tour starts once that popup is closed.
+    var gift = document.querySelector('[data-gift]');
+    if (gift && !seen() && window.location.hash !== '#tour') {
+      gift.addEventListener('close', function () { window.setTimeout(start, 500); });
+    } else if (window.location.hash === '#tour' || (!seen() && !document.querySelector('[data-preboard]'))) {
       // After the splash and the opening gate, so she does not talk over them.
       var wait = 1100;
       if (!document.documentElement.classList.contains('splash-done')) wait += 2200;
@@ -971,6 +975,58 @@
     });
     choices.forEach(function (c) { c.addEventListener('pointerenter', function () { try { c.focus(); } catch (e) { /* not focusable */ } }); });
     d.addEventListener('close', function () { document.documentElement.classList.remove('preboarding'); });
+  })();
+  // The starter purse: once, after the adventurer is made, Mira hands over the guild's gift. The amount counts up with
+  // a jingle; closing it lets the gold land in the licence, which counts from the old purse to the new one and glints.
+  (function () {
+    var d = document.querySelector('[data-gift]');
+    if (!d || typeof d.showModal !== 'function') return;
+    var amount = Number(d.getAttribute('data-amount')) || 0;
+    var before = Number(d.getAttribute('data-before')) || 0;
+    var countEl = d.querySelector('[data-gift-count]');
+    var label = countEl ? countEl.textContent : '';
+    function countUp(el, from, to, ms, fmt, done) {
+      if (!el) return;
+      if (reduceMotion || to <= from) { el.textContent = fmt(to); if (done) done(); return; }
+      var t0 = 0;
+      var finished = false;
+      function finish() { if (finished) return; finished = true; el.textContent = fmt(to); if (done) done(); }
+      function frame(t) {
+        if (finished) return;
+        if (!t0) t0 = t;
+        var k = Math.min(1, (t - t0) / ms);
+        el.textContent = fmt(Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3))));
+        if (k < 1) window.requestAnimationFrame(frame); else finish();
+      }
+      window.requestAnimationFrame(frame);
+      // A hidden tab pauses animation frames: the final figure lands regardless.
+      window.setTimeout(finish, ms + 150);
+    }
+    var wait = 900;
+    if (!document.documentElement.classList.contains('splash-done')) wait += 2200;
+    if (document.querySelector('.welcome-gate')) wait += 2000;
+    window.setTimeout(function () {
+      d.showModal();
+      sound.play('chime');
+      if (countEl) countEl.textContent = label.replace(String(amount), '0');
+      window.setTimeout(function () {
+        sound.play('coin');
+        countUp(countEl, 0, amount, 700, function (n) { return label.replace(String(amount), String(n)); }, function () { sound.play('fanfare'); });
+      }, reduceMotion ? 0 : 820);
+      var ok = d.querySelector('[data-gift-ok]');
+      if (ok) { try { ok.focus(); } catch (e) { /* not focusable */ } }
+    }, wait);
+    d.addEventListener('close', function () {
+      sound.play('clink');
+      var purse = document.querySelector('[data-testid="range-score"]');
+      if (!purse) return;
+      purse.classList.add('is-gifted');
+      countUp(purse, before, before + amount, 900, String, function () {
+        window.setTimeout(function () { purse.classList.remove('is-gifted'); }, 2400);
+      });
+    });
+    // A click on the backdrop closes it like the button does.
+    d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
   })();
 
   // Choose your avatar: the stage shows whichever hero is picked (art, name, class, what they are good at), Mira

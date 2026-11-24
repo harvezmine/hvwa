@@ -203,7 +203,7 @@ describe('the catalog', () => {
     expect(await ids('?show=done')).toEqual(['r02']);
     expect(await ids('?show=todo')).toEqual(['r01']);
     expect(await ids('?difficulty=insane&category=%3Cx%3E')).toEqual(['r01', 'r02']);
-    expect((await agent.get('/')).text).toContain('data-testid="range-score">200<');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">220<');
   });
 
   it('searches and sorts (a GET form), and shows a solved-progress bar', async () => {
@@ -226,14 +226,14 @@ describe('the catalog', () => {
     const { agent, userId } = await player(app, 'alice');
     const fresh = (await agent.get('/')).text;
     expect(fresh).toContain('data-testid="range-rank"');
-    expect(fresh).toContain('Greenhorn'); // 0 points → E Greenhorn (Copper)
-    expect(fresh).toMatch(/data-testid="range-rank-progress" max="300" value="0"/);
+    expect(fresh).toContain('Greenhorn'); // the 20 G starter purse → E Greenhorn (Copper); the test labs pay 400 in all
+    expect(fresh).toMatch(/data-testid="range-rank-progress" max="40" value="20"/);
     expect(fresh).toMatch(/data-testid="account-nav"[\s\S]*?class="menu-rank"[\s\S]*?Greenhorn/); // the account menu shows the rank
     recordRangeSolve(app.locals.db, userId, 'r01', 'templar', 150, T0);
-    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 350 → D Pathfinder (Iron), next C at 1000
+    recordRangeSolve(app.locals.db, userId, 'r02', 'acolyte', 200, T0); // 370 → A Champion, next S at 380 (95% of 400)
     const html = (await agent.get('/')).text;
-    expect(html).toContain('Pathfinder');
-    expect(html).toMatch(/data-testid="range-rank-progress" max="1000" value="350"/);
+    expect(html).toContain('Champion');
+    expect(html).toMatch(/data-testid="range-rank-progress" max="380" value="370"/);
   });
 
   it('gives each lab its own theme class and icon, and a Continue hero for an active instance', async () => {
@@ -301,7 +301,7 @@ describe('a lab page', () => {
     const csrf = csrfOf((await agent.get('/labs/r01')).text);
     expect((await agent.post('/labs/r01/hint').set('Origin', 'https://evil.example').type('form').send({ _csrf: csrf, tier: '1' })).status)
       .toBe(403);
-    expect((await agent.get('/')).text).toContain('data-testid="range-score">100<');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">120<');
     // No scroll yet: the Guildmaster sends the player to the merchant.
     const none = await agent.post('/labs/r01/hint').type('form').send({ _csrf: csrf, tier: '1' });
     expect(none.status).toBe(303);
@@ -317,7 +317,7 @@ describe('a lab page', () => {
     const bought = await agent.post('/shop/buy').type('form').send({ _csrf: csrfOf(shop.text), kind: 'insight', from: 'r01' });
     expect(bought.status).toBe(303);
     expect(bought.headers.location).toBe('/shop?bought=insight&from=r01');
-    expect((await agent.get('/')).text).toContain('data-testid="range-score">90<');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">110<');
     expect((await agent.get('/shop')).text).toContain('data-testid="scroll-count-insight">1<');
     const res = await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '1' });
     expect(res.status).toBe(200);
@@ -330,11 +330,34 @@ describe('a lab page', () => {
     expect(again.status).toBe(303);
     expect(again.headers.location).toBe('/labs/r01#hint-1');
     expect((await agent.get('/shop')).text).toContain('data-testid="scroll-count-insight">0<');
-    expect((await agent.get('/')).text).toContain('data-testid="range-score">90<');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">110<');
     expect((await agent.get('/labs/r01')).text).toMatch(/data-tier="1">Hint one of clinic</);
     expect((await agent.post('/labs/r01/hint').set('HX-Request', 'true').type('form').send({ _csrf: csrf, tier: '3' })).status).toBe(400);
     expect((await agent.post('/labs/r99/hint').type('form').send({ _csrf: csrf, tier: '1' })).status).toBe(404);
     expect((await agent.post('/shop/buy').type('form').send({ _csrf: csrf, kind: 'elixir' })).headers.location).toBe('/shop');
+  });
+
+  it('a new adventurer gets the starter purse once with its popup; a scroll the purse cannot pay for is refused', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'alice');
+    app.locals.db.prepare("INSERT OR IGNORE INTO avatars (user_id, spec, updated_at) VALUES (?, '{\"hero\":\"kael\"}', 1)").run(userId);
+    const hall = (await agent.get('/')).text;
+    expect(hall).toContain('data-testid="starter-gift"');
+    expect(hall).toContain('data-amount="20"');
+    expect(hall).toContain('data-testid="range-score">20<');
+    expect((await agent.get('/')).text).not.toContain('data-testid="starter-gift"'); // shown once
+    const shop = (await agent.get('/shop')).text;
+    expect(shop).toContain('data-testid="short-oracle"');
+    expect(shop).toMatch(/disabled[^>]*data-testid="buy-oracle"/);
+    expect(shop).not.toContain('data-testid="short-revelation"');
+    const csrf = csrfOf(shop);
+    const poor = await agent.post('/shop/buy').type('form').send({ _csrf: csrf, kind: 'oracle' });
+    expect(poor.headers.location).toBe('/shop?poor=oracle');
+    expect((await agent.get('/shop?poor=oracle')).text).toContain('10 G short for the Scroll of the Oracle');
+    expect((await agent.post('/shop/buy').type('form').send({ _csrf: csrf, kind: 'revelation' })).headers.location).toBe('/shop?bought=revelation');
+    expect((await agent.get('/shop')).text).toContain('data-testid="scroll-count-revelation">1<');
+    expect((await agent.post('/shop/buy').type('form').send({ _csrf: csrf, kind: 'insight' })).headers.location).toBe('/shop?poor=insight');
+    expect((await agent.get('/')).text).toContain('data-testid="range-score">0<');
   });
 
   it('a locked hint never shows its text', async () => {

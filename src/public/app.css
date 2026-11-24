@@ -541,16 +541,23 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   border-left: 1px solid var(--wood-3); white-space: nowrap;
 }
 .site-nav {
-  order: 3; flex: 1 0 100%;
+  order: 3; flex: 1 0 100%; min-width: 0;
   display: flex; gap: var(--sp-1);
   margin: 0 calc(var(--sp-2) * -1);
+  /* Phones: four links may not fit; the row scrolls instead of widening the page. */
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain;
 }
+.site-nav::-webkit-scrollbar { display: none; }
 .nav-link {
   position: relative;
   display: inline-flex; align-items: center; gap: var(--sp-2);
   min-height: var(--tap); padding: 0 var(--sp-3);
   color: var(--on-wood-muted); font-family: var(--display); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; white-space: nowrap;
   border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+@media (max-width: 480px) {
+  .site-nav { gap: 0; }
+  .nav-link { padding: 0 var(--sp-2); letter-spacing: 0.03em; font-size: 0.68rem; }
 }
 .nav-link:hover { color: var(--on-wood); text-decoration: none; }
 .nav-link[aria-current] { color: var(--on-wood); border-bottom-color: var(--primary); }
@@ -1384,7 +1391,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
 }
 /* Parchment: the bounty/guild-paper surface. Inside it the text tokens are re-pointed at ink, so shared components
    (ledger entries, progress, badges, results) read correctly on paper in both themes. */
-.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .toast, .standing, .poster, .letter-sheet, .confirm-dialog, .dialogue, .ware, .counsel-item, .gm-panel, .desk-say {
+.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .gift-dialog, .toast, .standing, .poster, .letter-sheet, .confirm-dialog, .dialogue, .ware, .counsel-item, .gm-panel, .desk-say {
   --text: var(--ink); --text-muted: var(--ink-muted); --text-faint: var(--ink-muted);
   --primary-text: var(--wax-dark); --link: var(--wax-dark); --link-hover: var(--wax); --focus: var(--wax-dark);
   --surface: var(--parch); --surface-2: var(--parch); --surface-3: var(--parch-2);
@@ -1393,7 +1400,7 @@ span.lab-error { padding: 0.05em 0.4em; border-radius: 3px; color: var(--danger)
   --success-bg: transparent; --danger-bg: transparent; --success-border: var(--ink-ok); --danger-border: var(--wax-dark);
   color: var(--ink);
 }
-.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .toast, .standing, .letter-sheet, .dialogue, .ware, .counsel-item, .gm-panel, .desk-say {
+.parchment, .guild-card, .continue-slip, .lab-hero, .solve-dialog, .gift-dialog, .toast, .standing, .letter-sheet, .dialogue, .ware, .counsel-item, .gm-panel, .desk-say {
   background-color: var(--parch);
   background-image: radial-gradient(ellipse at 50% 45%, transparent 55%, var(--parch-2) 135%), var(--tex-parch);
 }
@@ -2921,6 +2928,87 @@ th .nameplate { font-size: 0.85rem; }
 .ware form { width: 100%; margin-top: var(--sp-2); }
 .ware.is-needed { box-shadow: inset 0 0 0 1px var(--parch-2), 0 0 0 3px var(--m-gold), 0 0 26px var(--splash-glow); }
 .ware.is-bought .ware-owned { color: var(--ink-ok); font-weight: 700; }
+/* A ware the purse cannot pay for: the scroll dims on its shelf, the missing gold is said plainly, the button rests. */
+.ware.is-short .ware-shelf, .ware.is-short .ware-price { opacity: 0.55; filter: saturate(0.5); }
+.ware-short { display: inline-flex; align-items: center; gap: var(--sp-2); margin: var(--sp-1) 0 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.04em; color: var(--wax-dark); }
+.ware.is-short .btn[disabled] { width: 100%; margin-top: var(--sp-2); cursor: not-allowed; opacity: 0.6; }
+.coin.coin-empty { background: transparent; box-shadow: inset 0 0 0 2px var(--wax-dark); opacity: 0.8; }
+
+/* --- The starter purse: Mira's welcome gift, shown once after the adventurer is made. A loot card on parchment:
+   a leather pouch in a halo of rays with three coins rising out of it, the amount counting up, Mira's line, then
+   the way to Bram's stall. Inline SVG coloured from tokens; every motion sits behind no-preference. */
+.gift-dialog { padding: 0; border: 0; border-radius: var(--radius-lg); width: min(27rem, calc(100vw - 1.5rem)); max-height: calc(100dvh - 1.5rem); overflow: auto; box-shadow: var(--shadow), 0 0 0 1px var(--parch-2), 0 0 60px var(--splash-glow); }
+.gift-dialog::backdrop { background: radial-gradient(ellipse at 50% 40%, var(--shade), var(--scrim) 75%); }
+.gift-slip { position: relative; isolation: isolate; display: grid; justify-items: center; gap: var(--sp-2); text-align: center; padding: var(--sp-4) var(--sp-5) var(--sp-5); overflow: hidden; }
+.gift-ill { width: min(15rem, 70%); height: auto; margin-bottom: calc(-1 * var(--sp-2)); overflow: visible; }
+.gift-rays path { fill: var(--m-gold-hi); opacity: 0.42; }
+.gift-rays { transform-origin: 120px 92px; }
+.gift-glow { fill: var(--m-gold-hi); opacity: 0.35; filter: blur(14px); }
+.pouch-body { fill: var(--wood-3); stroke: var(--wood-2); stroke-width: 2.5; }
+.pouch-shade { fill: var(--wood-2); opacity: 0.35; }
+.pouch-neck { fill: var(--wood-3); stroke: var(--wood-2); stroke-width: 2.5; }
+.pouch-frill { fill: var(--wood); stroke: var(--wood-2); stroke-width: 2.5; }
+.pouch-cord { fill: none; stroke: var(--m-gold); stroke-width: 3.5; stroke-linecap: round; }
+.pouch-knot { fill: var(--m-gold-hi); stroke: var(--m-gold); stroke-width: 2; }
+.pouch-seal { fill: var(--wax); stroke: var(--wax-dark); stroke-width: 2.5; }
+.pouch-mark { fill: none; stroke: var(--wax-hi); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.gc-rim { fill: var(--m-gold); stroke: var(--wood-2); stroke-width: 1.2; }
+.gc-face { fill: var(--m-gold-hi); stroke: var(--m-gold); stroke-width: 1.4; }
+.gift-sparks path { fill: var(--m-gold-hi); stroke: var(--m-gold); stroke-width: 0.8; }
+.gift-eyebrow { margin: 0; font-family: var(--display); font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--wax-dark); }
+.gift-title { margin: 0; font-family: var(--display); font-size: 1.4rem; font-weight: 700; letter-spacing: 0.04em; line-height: 1.2; color: var(--ink); }
+.gift-amount { display: inline-flex; align-items: center; gap: var(--sp-2); margin: var(--sp-1) 0 0; padding: var(--sp-1) var(--sp-4); border-radius: 999px; background: linear-gradient(180deg, transparent, var(--splash-glow)); box-shadow: inset 0 0 0 1px var(--m-gold); font-family: var(--display); font-size: 2.1rem; font-weight: 700; font-variant-numeric: tabular-nums lining-nums; color: var(--ink); }
+.gift-amount .coin { width: 1.6rem; height: 1.6rem; }
+.gift-what { margin: 0; font-size: var(--fs-sm); color: var(--ink-muted); }
+.gift-say { display: grid; grid-template-columns: auto 1fr; align-items: start; gap: var(--sp-3); width: 100%; margin-top: var(--sp-2); padding: var(--sp-3); text-align: left; border: 1px dashed var(--parch-2); border-radius: var(--radius); }
+.gift-face { width: 3.25rem; height: 3.25rem; border-radius: 50%; overflow: hidden; background: var(--parch-2); box-shadow: 0 0 0 2px var(--m-gold), 0 2px 4px var(--shade); }
+.gift-face img { display: block; width: 400%; max-width: none; height: auto; margin: -94% 0 0 -115%; }
+.gift-text { margin: 0; font-size: var(--fs-md); line-height: 1.5; color: var(--ink); }
+.gift-speaker { display: block; font-family: var(--display); font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; color: var(--wax-dark); }
+.gift-tip { margin: 0; font-size: var(--fs-sm); font-style: italic; color: var(--ink-muted); }
+.gift-actions { display: grid; gap: var(--sp-2); width: 100%; margin-top: var(--sp-2); }
+.gift-actions form { margin: 0; }
+.gift-confetti { position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
+.gift-confetti span { position: absolute; top: -0.8rem; width: 0.6rem; height: 0.6rem; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 30%, var(--m-gold-hi), var(--m-gold)); }
+.gift-confetti span:nth-child(3n) { width: 0.4rem; height: 0.4rem; background: var(--wax); }
+.gift-confetti span:nth-child(1) { left: 8%; } .gift-confetti span:nth-child(2) { left: 18%; } .gift-confetti span:nth-child(3) { left: 29%; }
+.gift-confetti span:nth-child(4) { left: 40%; } .gift-confetti span:nth-child(5) { left: 52%; } .gift-confetti span:nth-child(6) { left: 63%; }
+.gift-confetti span:nth-child(7) { left: 72%; } .gift-confetti span:nth-child(8) { left: 81%; } .gift-confetti span:nth-child(9) { left: 90%; }
+.gift-confetti span:nth-child(10) { left: 46%; }
+/* The licence's gold glows once the purse lands in it. */
+.is-gifted { animation: none; text-shadow: 0 0 10px var(--m-gold-hi); }
+@media (prefers-reduced-motion: no-preference) {
+  .gift-dialog[open] { animation: gift-in 420ms var(--ease-swing); }
+  .gift-dialog[open]::backdrop { animation: solve-backdrop-in 260ms var(--ease); }
+  .gift-dialog[open] .gift-rays { animation: gift-spin 24s linear infinite; }
+  .gift-dialog[open] .gift-glow { animation: gift-breathe 2.4s ease-in-out infinite alternate; }
+  .gift-dialog[open] .gift-pouch { transform-origin: 120px 182px; animation: gift-hop 640ms var(--ease-swing) 160ms backwards; }
+  .gift-dialog[open] .gift-c { animation: gift-rise 700ms var(--ease-swing) backwards; }
+  .gift-dialog[open] .gift-c1 { animation-delay: 520ms; } .gift-dialog[open] .gift-c2 { animation-delay: 600ms; } .gift-dialog[open] .gift-c3 { animation-delay: 680ms; }
+  .gift-dialog[open] .gift-spill { animation: gift-drop 500ms var(--ease-swing) 760ms backwards; }
+  .gift-dialog[open] .gift-sparks path { transform-box: fill-box; transform-origin: center; animation: gift-twinkle 1.6s ease-in-out infinite alternate; }
+  .gift-dialog[open] .gift-sparks path:nth-child(2) { animation-delay: 0.4s; } .gift-dialog[open] .gift-sparks path:nth-child(3) { animation-delay: 0.8s; } .gift-dialog[open] .gift-sparks path:nth-child(4) { animation-delay: 1.2s; }
+  .gift-dialog[open] .gift-amount { animation: gift-pop 520ms var(--ease-swing) 820ms backwards; }
+  .gift-dialog[open] .gift-confetti span { animation: gift-fall 1.8s var(--ease) forwards; }
+  .gift-dialog[open] .gift-confetti span:nth-child(odd) { animation-delay: 700ms; } .gift-dialog[open] .gift-confetti span:nth-child(even) { animation-delay: 860ms; }
+  .is-gifted { animation: gift-glint 1.2s ease-out 2; }
+}
+@keyframes gift-in { from { opacity: 0; transform: translateY(14px) scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes gift-spin { to { transform: rotate(360deg); } }
+@keyframes gift-breathe { from { opacity: 0.22; } to { opacity: 0.45; } }
+@keyframes gift-hop { 0% { transform: translateY(18px) scale(0.86, 0.8); opacity: 0; } 55% { transform: translateY(-6px) scale(1.04, 1.06); opacity: 1; } 100% { transform: none; } }
+@keyframes gift-rise { from { transform: translateY(34px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes gift-drop { from { transform: translateY(-26px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes gift-twinkle { from { transform: scale(0.6); opacity: 0.4; } to { transform: scale(1.15); opacity: 1; } }
+@keyframes gift-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes gift-fall { 0% { opacity: 1; transform: translateY(0) rotate(0); } 100% { opacity: 0; transform: translateY(26rem) rotate(560deg); } }
+@keyframes gift-glint { 0%, 100% { text-shadow: none; } 40% { text-shadow: 0 0 12px var(--m-gold-hi), 0 0 2px var(--m-gold); } }
+@media (max-width: 520px) {
+  .gift-slip { padding: var(--sp-3) var(--sp-4) var(--sp-4); }
+  .gift-ill { width: min(12rem, 62%); }
+  .gift-title { font-size: 1.2rem; }
+  .gift-amount { font-size: 1.8rem; }
+}
 .shop-note { margin: 0; font-size: var(--fs-sm); font-style: italic; color: var(--text-muted); text-align: center; }
 .shop-back { margin: 0; text-align: center; }
 .shop-back .btn { gap: var(--sp-2); }

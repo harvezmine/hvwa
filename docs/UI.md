@@ -86,8 +86,15 @@ client's request (a quoted paper), the tavern whispers and the **claim desk** (a
 the brass Claim button); the rail holds the active-quest panel and "How a bounty works" (sticky on desktop, above the
 request below 1024 px so Launch comes before reading).
 
-**Adventurer rank (E → S).** Derived from gold (`src/range/rank.ts`), never stored: E 0, D 300, C 1000, B 2000, A 3000,
-S 3750 (= every bounty today; rescale when new boards add labs). Each letter has a plate and a title: E Copper
+**Adventurer rank (E → S).** Derived from gold (`src/range/rank.ts`), never stored. The thresholds are shares of the
+full bounty (each lab paid once, at its best scored tier): D 10%, C 25%, B 45%, A 70%, S 95%, rounded to 10 G, so
+they rescale by themselves when labs are added. With the six labs today (2400 G): D 240, C 600, B 1080, A 1680, S 2280.
+
+**Gold and the merchant.** Every account holds a 20 G starter purse (exactly one Scroll of Revelation, the medium
+scroll), shown once in Mira's gift popup on the hall after the avatar step. Gold = 20 + best-tier bounties − scrolls
+and old paid hints. The merchant sells only when the purse holds the full price (no tab); a ware the purse cannot
+pay for shows the missing gold and a disabled button. The same gold ranks the Hall of Fame, so a scroll is a fair
+penalty and the equal starter purse leaves the order unchanged. Each letter has a plate and a title: E Copper
 Greenhorn, D Iron Pathfinder, C Silver Sellsword, B Gold Knight-errant, A Mithril Champion, S Adamantite Legend
 (Tembaga Anak Bawang, Besi Penjelajah, Perak Pendekar, Emas Ksatria Kelana, Mithril Jawara, Adamantit Legenda). Shown
 as a `.rank-plate[data-plate]` on the guild card and as a metal `.rank-seal[data-plate]` in the account menu and every

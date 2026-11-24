@@ -10,12 +10,12 @@ import type { Lang } from '../core/i18n.js';
 import { DIFFICULTIES, TRACKS, labPoints, type Difficulty, type LabEntry } from '../lab-registry.js';
 import { MY_LAB_RECENT_MS, panelFor, tierLabel } from './panel.js';
 import { leaderboard, rangeScore, rangeSolvesOf, rangeUnlockedTiers, unlockRangeHint, type Best, type LeaderRow } from './progress.js';
-import { nextRank, pointsToNext, rankFor } from './rank.js';
+import { nextRank, pointsToNext, rankFor, type RankLadder } from './rank.js';
 import { labMode, labModes, type LabMode } from './modes.js';
 import { teamLeaderboard, teamOfUser, type TeamLeaderRow } from './teams.js';
 import { isActiveState } from './store.js';
 import { avatarOf, avatarsByUser, DEFAULT_AVATAR } from './avatar.js';
-import { counselRoute, scrollBag, scrollFor } from './shop.js';
+import { counselRoute, SCROLLS, scrollBag, scrollFor, takeStarterNotice } from './shop.js';
 import type { RangeContext } from './types.js';
 import { isHtmx, userOf, type RangeUser } from './user.js';
 
@@ -61,13 +61,13 @@ export function labCard(lab: LabEntry, best: Best | undefined, lang: Lang, t: (k
 }
 
 /** The guild card's rank: letter, title, plate metal and the way to the next one (rank.ts; derived, never stored). */
-function rankView(score: number, t: (key: string) => string) {
-  const step = rankFor(score);
-  const next = nextRank(score);
+function rankView(score: number, ladder: RankLadder, t: (key: string) => string) {
+  const step = rankFor(score, ladder);
+  const next = nextRank(score, ladder);
   return {
     letter: step.letter, name: t(`rank.name.${step.letter.toLowerCase()}`), plate: t(`rank.plate.${step.letter.toLowerCase()}`),
     points: score, nextLetter: next?.letter ?? '', nextName: next ? t(`rank.plate.${next.letter.toLowerCase()}`) : '',
-    nextMinPoints: next?.minPoints ?? score, toNext: pointsToNext(score), maxed: next === undefined,
+    nextMinPoints: next?.minPoints ?? score, toNext: pointsToNext(score, ladder), maxed: next === undefined,
   };
 }
 
@@ -135,14 +135,18 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
         total: all.length, done: all.filter((l) => solves.has(l.id)).length, cards: cards.filter((c) => c.track === track),
       };
     });
+    const needsAvatar = avatarOf(db, userId) === undefined && userOf(res).role === 'player';
+    const gift = needsAvatar || isHtmx(req) ? undefined : takeStarterNotice(db, userId, ctx.now());
     await sendPage(res, rangeView('catalog'), {
       pageTitle: t('range.catalog_title'), cards, boards, categories, difficulties: DIFFICULTIES,
       filter: { category, difficulty, show, q, sort }, filtered: category !== '' || difficulty !== '' || show !== 'all' || q !== '',
       score, solved: registry.labs.filter((l) => solves.has(l.id)).length, total: registry.labs.length,
-      rank: rankView(score, t), username: res.locals.platformAuth?.user ?? '',
+      rank: rankView(score, ctx.ranks, t), username: res.locals.platformAuth?.user ?? '',
       continueLab: continueLabFor(ctx, userId, req.lang, t),
       // No adventurer yet: Mira invites the player to make one (or skip and keep the default).
-      avatar: avatarOf(db, userId) ?? DEFAULT_AVATAR, needsAvatar: avatarOf(db, userId) === undefined && userOf(res).role === 'player',
+      avatar: avatarOf(db, userId) ?? DEFAULT_AVATAR, needsAvatar,
+      // Once the adventurer is made, Mira hands over the starter purse in a popup, shown once (then the tour).
+      gift: gift === undefined ? undefined : { amount: gift, scroll: t(`scroll.${SCROLLS[1].kind}.name`), before: Math.max(0, score - gift) },
       madeAvatar: req.query.made === '1', csrf: auth.csrfFor(req),
     });
   });
@@ -199,7 +203,7 @@ export function catalogRoutes(router: Router, ctx: RangeContext): void {
       return;
     }
     const avatars = avatarsByUser(db);
-    const rankOf = (r: LeaderRow) => ({ ...r, rankLetter: rankFor(r.score).letter, avatar: avatars.get(r.userId) ?? DEFAULT_AVATAR });
+    const rankOf = (r: LeaderRow) => ({ ...r, rankLetter: rankFor(r.score, ctx.ranks).letter, avatar: avatars.get(r.userId) ?? DEFAULT_AVATAR });
     const rows = leaderboard(db, 100).map(rankOf);
     // The viewer's own row, even beyond the top 100: pinned below the table when it is not already in the top three.
     const everyone = leaderboard(db, 100_000);

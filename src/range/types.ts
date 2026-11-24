@@ -6,6 +6,7 @@ import type { LabRegistry } from '../lab-registry.js';
 import type { WardenApi } from '../warden/protocol.js';
 import type { Lifecycle } from './lifecycle.js';
 import type { TicketStore } from './tickets.js';
+import type { RankLadder } from './rank.js';
 
 /** Spec §5's limits in ms (src/range/config.ts reads them from HVWA_RANGE_* minutes). */
 export interface RangeLimits {
@@ -66,4 +67,6 @@ export interface RangeContext {
   readonly now: () => number;
   readonly lifecycle: Lifecycle;
   readonly tickets: TicketStore;
+  /** The rank ladder for this registry's full bounty (src/range/rank.ts ladderFor). */
+  readonly ranks: RankLadder;
 }

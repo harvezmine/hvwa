@@ -35,6 +35,8 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'avatars.sql'), 'utf8')),
   // 7: the merchant's magic scrolls, handed to the Guildmaster for a quest's counsel (src/range/shop.ts).
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'shop.sql'), 'utf8')),
+  // 8: who has seen the starter purse popup (src/range/shop.ts).
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'purse.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

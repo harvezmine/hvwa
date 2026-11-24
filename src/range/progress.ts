@@ -60,10 +60,26 @@ export function rangeScrollCost(db: DatabaseSync, userId: number): number {
   return Number((db.prepare('SELECT COALESCE(SUM(cost), 0) AS c FROM range_scrolls WHERE user_id = ?').get(userId) as { c: number }).c);
 }
 
-/** Sum of best-level points minus hint costs and scrolls bought, floored at 0. */
-export function rangeScore(db: DatabaseSync, userId: number): number {
+/**
+ * The starter purse every account holds from the start: the price of the medium scroll (shop.ts SCROLLS, Revelation;
+ * a test keeps the two equal). Part of the formula rather than a stored grant, so it is exactly the same for every
+ * player, whether they signed up before or after it existed, and the leaderboard order is untouched by it.
+ */
+export const STARTER_PURSE = 20;
+
+/**
+ * The purse, not floored: the starter purse plus best-level points, minus hint costs and scrolls bought. Spending
+ * checks this value, so a purchase never takes the purse below 0. It can only be negative for an account that bought
+ * on the old "guild's tab" (before purchases were checked); such a purse refills from new bounties first.
+ */
+export function rangePurse(db: DatabaseSync, userId: number): number {
   const pts = Number((db.prepare('SELECT COALESCE(SUM(points), 0) AS p FROM range_solves WHERE user_id = ?').get(userId) as { p: number }).p);
-  return Math.max(0, pts - rangeHintCost(db, userId) - rangeScrollCost(db, userId));
+  return STARTER_PURSE + pts - rangeHintCost(db, userId) - rangeScrollCost(db, userId);
+}
+
+/** The gold shown to the player and ranked on the leaderboard: the purse, floored at 0. */
+export function rangeScore(db: DatabaseSync, userId: number): number {
+  return Math.max(0, rangePurse(db, userId));
 }
 
 export interface LeaderRow {
@@ -81,11 +97,12 @@ export function leaderboard(db: DatabaseSync, limit = 100): LeaderRow[] {
     WITH s AS (SELECT user_id, SUM(points) AS pts, COUNT(*) AS solved, MAX(solved_at) AS last_at FROM range_solves GROUP BY user_id),
          h AS (SELECT user_id, SUM(cost) AS cost FROM range_hint_unlocks GROUP BY user_id),
          g AS (SELECT user_id, SUM(cost) AS cost FROM range_scrolls GROUP BY user_id)
-    SELECT u.id AS id, u.username AS username, MAX(0, s.pts - COALESCE(h.cost, 0) - COALESCE(g.cost, 0)) AS score, s.solved AS solved, s.last_at AS last_at
+    SELECT u.id AS id, u.username AS username,
+      MAX(0, ? + s.pts - COALESCE(h.cost, 0) - COALESCE(g.cost, 0)) AS score, s.solved AS solved, s.last_at AS last_at
     FROM users u JOIN s ON s.user_id = u.id LEFT JOIN h ON h.user_id = u.id LEFT JOIN g ON g.user_id = u.id
     WHERE u.disabled = 0
     ORDER BY score DESC, last_at ASC, username ASC
-    LIMIT ?`).all(limit) as { id: number; username: string; score: number; solved: number; last_at: number }[];
+    LIMIT ?`).all(STARTER_PURSE, limit) as { id: number; username: string; score: number; solved: number; last_at: number }[];
   return rows.map((r, i) => ({
     rank: i + 1, userId: Number(r.id), username: r.username, score: Number(r.score), solved: Number(r.solved), lastSolveAt: Number(r.last_at),
   }));
