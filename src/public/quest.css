@@ -117,7 +117,7 @@ html.qs-open { overflow: hidden; }
 /* A full-screen picture (a drawing, a clue) laid over the scene. */
 .qs-cg { z-index: 3; display: grid; place-items: center; padding: 5vh 5vw 16vh; background: radial-gradient(ellipse at 50% 45%, rgba(20, 12, 8, 0.78), rgba(3, 2, 1, 0.94)); opacity: 0; pointer-events: none; transition: opacity 700ms ease-in-out; }
 .qs-cg.is-on { opacity: 1; }
-.qs-cg img { max-width: min(100%, 74rem); max-height: 100%; object-fit: contain; border-radius: 3px; box-shadow: 0 0 0 6px #ece0c4, 0 0 0 7px rgba(0, 0, 0, 0.3), 0 24px 70px rgba(0, 0, 0, 0.8); rotate: -0.8deg; }
+.qs-cg img { width: auto; height: auto; max-width: min(100%, 74rem); max-height: calc(100dvh - 21vh); object-fit: contain; border-radius: 3px; box-shadow: 0 0 0 6px #ece0c4, 0 0 0 7px rgba(0, 0, 0, 0.3), 0 24px 70px rgba(0, 0, 0, 0.8); rotate: -0.8deg; }
 
 /* Cinema bars. */
 .qs-bars { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
@@ -402,6 +402,7 @@ html.qs-open { overflow: hidden; }
   .qs-case { padding: 1.6rem 1.2rem 1.2rem; }
   .qs-log { inset: var(--sp-3); }
   .qs-cg { padding: 7vh 3vw 18vh; }
+  .qs-cg img { max-height: calc(100dvh - 25vh); }
   .qs-choice { font-size: 1.02rem; }
   .qs-place { top: 3.6rem; }
   .qs-spots-head { font-size: 0.98rem; top: 3.6rem; }

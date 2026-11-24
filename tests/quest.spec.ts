@@ -135,6 +135,32 @@ describe('the Silent Friday quest', () => {
     expect((await answer(agent, 1, csrf, 'theme park arandelle')).body.ok).toBe(true);
   });
 
+  it('chapter III: Exhibit 7 is handed over once chapter II is done, and its revealed note is sealed until the case is solved', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'reader');
+    const { csrf } = await journal(agent);
+    const sealed = `${Q}/sealed/3/exhibit-full.webp`;
+    await answer(agent, 0, csrf);
+    await answer(agent, 1, csrf, 'arandelle');
+    expect((await agent.get(`${Q}/evidence/3/exhibit-7.png`)).status).toBe(404);
+    await answer(agent, 2, csrf, 'the devils right hand');
+    const ex = await agent.get(`${Q}/evidence/3/exhibit-7.png`).buffer(true);
+    expect(ex.status).toBe(200);
+    // The file claims 1024 rows (IHDR height at byte 20); the hidden rows are the challenge.
+    expect((ex.body as Buffer).readUInt32BE(20)).toBe(1024);
+    expect((await agent.get(sealed)).status).toBe(404);
+    expect(JSON.stringify((await agent.get(`${Q}/chapter/3`)).body)).not.toMatch(/old circus/i);
+    expect((await answer(agent, 3, csrf, 'the circus of valeria')).body.ok).toBe(false);
+    const right = await answer(agent, 3, csrf, 'The Old Circus');
+    expect(right.body.ok).toBe(true);
+    expect(JSON.stringify(right.body.post)).toContain('sealed:exhibit-full');
+    const pic = await agent.get(sealed);
+    expect(pic.status).toBe(200);
+    expect(pic.headers['content-type']).toMatch(/image\/webp/);
+    expect((await agent.get(`${Q}/sealed/3/other.webp`)).status).toBe(404);
+    expect((await agent.get(`${Q}/sealed/2/exhibit-full.webp`)).status).toBe(404);
+  });
+
   it('progress is per player', async () => {
     const { app } = portalApp();
     const a = await player(app, 'first');
@@ -169,7 +195,13 @@ describe('the story', () => {
     const art = join(pub, 'quest', SILENT_FRIDAY.art);
     for (const s of steps) {
       if ('bg' in s) expect(existsSync(join(art, 'bg', `${s.bg}.webp`)), s.bg).toBe(true);
-      if ('cg' in s && s.cg) expect(existsSync(join(art, 'bg', `${s.cg}.webp`)), s.cg).toBe(true);
+      if ('cg' in s && s.cg) {
+        const sealed = s.cg.startsWith('sealed:');
+        const file = sealed ? join(root, 'src/quest/silent-friday/sealed', `${s.cg.slice(7)}.webp`) : join(art, 'bg', `${s.cg}.webp`);
+        expect(existsSync(file), s.cg).toBe(true);
+        // A picture that gives an answer away is never public.
+        if (sealed) expect(existsSync(join(art, 'bg', `${s.cg.slice(7)}.webp`)), s.cg).toBe(false);
+      }
       if ('music' in s && s.music) expect(existsSync(join(art, 'music', `${s.music}.mp3`)), s.music).toBe(true);
       if ('say' in s) expect(SILENT_FRIDAY.cast[s.say], s.say).toBeDefined();
       if ('show' in s) expect(SILENT_FRIDAY.cast[s.show]?.art, s.show).toBeDefined();

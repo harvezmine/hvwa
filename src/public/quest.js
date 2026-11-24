@@ -479,9 +479,14 @@
   }
   function setCg(name) {
     if (!name) { cgWrap.classList.remove('is-on'); return fast() ? 0 : 550; }
-    cgImg.src = ART + '/bg/' + name + '.webp';
+    cgImg.src = picture(name);
     cgWrap.classList.remove('is-on'); void cgWrap.offsetWidth; cgWrap.classList.add('is-on');
     return fast() ? 0 : 800;
+  }
+  // A picture that shows a challenge's answer is not public: 'sealed:<name>' comes from the quest router, which serves
+  // it only to a player who has finished the chapter.
+  function picture(name) {
+    return name.indexOf('sealed:') === 0 ? '/quests/' + QID + '/sealed/' + (run ? run.n : 0) + '/' + name.slice(7) + '.webp' : ART + '/bg/' + name + '.webp';
   }
   function setTint(t) { tint.className = 'qs-tint' + (t ? ' is-' + t : ''); }
   function setCam(c) { cam.classList.toggle('is-push', c === 'push' && !reduce); }
@@ -578,8 +583,8 @@
     if (kind === 'narr') {
       clearText('narr');
       focusSpeaker(null);
-      // A portrait in the middle keeps its face: the narrator steps down to the foot of the screen.
-      narrBox.classList.toggle('is-low', Object.keys(onStage).some(function (k) { return onStage[k].at === 'center'; }));
+      // A portrait in the middle keeps its face, and a picture on screen stays clear: the narrator steps down to the foot.
+      narrBox.classList.toggle('is-low', cgWrap.classList.contains('is-on') || Object.keys(onStage).some(function (k) { return onStage[k].at === 'center'; }));
       narrBox.classList.remove('is-on'); void narrBox.offsetWidth; narrBox.classList.add('is-on');
       log('', text);
       await type(narrText, text, 0, false);
@@ -938,7 +943,7 @@
     (function walk(list) {
       (list || []).forEach(function (s) {
         if (s.bg && !seen[s.bg]) { seen[s.bg] = 1; new Image().src = ART + '/bg/' + s.bg + '.webp'; }
-        if (s.cg && !seen[s.cg]) { seen[s.cg] = 1; new Image().src = ART + '/bg/' + s.cg + '.webp'; }
+        if (s.cg && !seen[s.cg] && s.cg.indexOf('sealed:') !== 0) { seen[s.cg] = 1; new Image().src = ART + '/bg/' + s.cg + '.webp'; }
         if (s.show) { var a = castArt(s.show, s.pose); if (a && !seen[a]) { seen[a] = 1; new Image().src = a; } }
         if (s.music) Music.preload(s.music);
         if (s.choice) s.choice.forEach(function (c) { walk(c.then); });

@@ -1,6 +1,7 @@
-// src/quest/silent-friday/story.ts — "Silent Friday", the guild's first Grand Quest (forensics). Chapters 0-2: the
-// prologue at the guild, the scene of Sir Prince's murder (challenge 1: the drawing's hidden comment), and the girl at
-// Arandelle theme park (challenge 2: the "text file" that is a picture with a second one packed behind it).
+// src/quest/silent-friday/story.ts — "Silent Friday", the guild's first Grand Quest (forensics). Chapters 0-3: the
+// prologue at the guild, the scene of Sir Prince's murder (challenge 1: the drawing's hidden comment), the girl at
+// Arandelle theme park (challenge 2: the "text file" that is a picture with a second one packed behind it), and the
+// Hale fire (challenge 3: a forged drawing whose IHDR hides the rows below it).
 // The story is a spoiler for the challenges: it lives on the server and leaves it one unlocked chapter at a time.
 // Portraits are stand-ins until the quest's own art exists: Varrick wears Kael's, Master Hale Theo's, Sir Prince
 // Roland's; minor parts are silhouettes. `face` is the way each portrait looks as drawn (the stage mirrors it so the
@@ -36,6 +37,8 @@ const CAST: Quest['cast'] = {
   woman: { name: T('A woman', 'Seorang wanita'), face: 'left', voice: 600, art: { '': `${ART}/shadow-women-b.webp` } },
   man: { name: T('A man', 'Seorang pria'), face: 'left', voice: 300, art: { '': `${ART}/shadow-man-b.webp` } },
   crowd: { name: T('Crowd', 'Kerumunan'), voice: 450 },
+  neighbour: { name: T('A neighbour', 'Seorang tetangga'), voice: 330 },
+  neighbour2: { name: T('Another neighbour', 'Tetangga lain'), voice: 590 },
   nina: { name: T('Little girl', 'Gadis kecil'), voice: 980 },
 };
 
@@ -423,6 +426,143 @@ const park: Chapter = {
   ],
 };
 
+// ---- Chapter 3: the fire ------------------------------------------------------------------------------------------
+// The Hale house burns. The city blames The Fool (Hale, they say, paid for the bounty); the killer is the Devil's
+// Right Hand, who silenced Hale and left a forged "Fool" drawing. Challenge 3: the Crimson Guard's copy of that
+// drawing (exhibit7.png) claims 1024 rows in IHDR but holds 1324; the hidden strip is the forger's own note.
+
+const fire: Chapter = {
+  n: 3,
+  title: T('The Devil\'s Right Hand', 'Tangan Kanan Iblis'),
+  sub: T('Chapter III', 'Bab III'),
+  cover: 'house-burnt',
+  pre: [
+    { black: true }, { music: null }, { sfx: 'alarm' }, { wait: 1200 },
+    narr('The bell is still ringing when you wake.', 'Lonceng itu masih berdentang saat kamu terbangun.'),
+    { title: T('The Devil\'s Right Hand', 'Tangan Kanan Iblis'), sub: T('Chapter III', 'Bab III') },
+    { bg: 'desk-night', fx: 'cut' }, { tint: 'red' }, { amb: 'night' }, { black: false },
+    { place: T('Your room', 'Kamarmu'), time: T('Before dawn', 'Menjelang fajar') },
+    narr('Orange light flickers across the ceiling. Somewhere outside, people are shouting.', 'Cahaya oranye berkedip di langit-langit. Di luar sana, orang-orang berteriak.'),
+    narr('You know that colour. It isn\'t lamplight. It\'s fire.', 'Kamu kenal warna itu. Itu bukan cahaya lampu. Itu api.'),
+    { shock: 'small' },
+    { black: true }, { sfx: 'whoosh' }, { bg: 'house-burnt', fx: 'cut' }, { amb: 'fire' }, { particles: 'ash' }, { tint: 'warm' },
+    { music: 'dread', fade: 2000 }, { black: false }, { cam: 'push' },
+    { place: T('The Hale house', 'Rumah keluarga Hale'), time: T('Before dawn', 'Menjelang fajar') },
+    narr('By the time you reach the merchants\' quarter, there is nothing left to save.', 'Saat kamu tiba di kawasan saudagar, sudah tak ada lagi yang bisa diselamatkan.'),
+    narr('Master Hale\'s house stands black against the sky, its beams still glowing like coals.', 'Rumah Tuan Hale berdiri hitam di bawah langit, balok-baloknya masih membara seperti arang.'),
+    { cam: 'reset' },
+    { bg: 'gossip' }, { amb: 'crowd' },
+    say('neighbour', 'The whole family. Him, his wife, and the three little ones.', 'Satu keluarga. Dia, istrinya, dan tiga anaknya yang masih kecil.'),
+    say('neighbour2', 'They say the doors were barred. From the outside.', 'Katanya pintu-pintunya dipalang. Dari luar.', { style: 'whisper' }),
+    say('neighbour', 'It\'s that Fool. Everyone knows Hale put up the gold to hunt him down. This is his answer.',
+      'Ini pasti si Fool itu. Semua orang tahu Hale yang menyediakan emas untuk memburunya. Ini balasannya.'),
+    narr('The words land like a stone. The bounty. Your bounty.', 'Kata-kata itu jatuh seperti batu. Bounty itu. Bounty-mu.'),
+    { shock: 'small' },
+    { choice: [
+      { label: T('Ask who says Hale paid it', 'Tanyakan siapa yang bilang Hale membayarnya'), then: [
+        { you: T('Who says Hale paid the bounty?', 'Siapa yang bilang Hale membayar bounty itu?') },
+        say('neighbour2', 'Everyone! Who else in this city had that much gold, and loved Sir Prince that much?',
+          'Semua orang! Siapa lagi di kota ini yang punya emas sebanyak itu, dan begitu menyayangi Sir Prince?'),
+      ] },
+      { label: T('Keep quiet and listen', 'Diam dan dengarkan'), then: [
+        narr('You keep your head down. In a crowd like this, a guild charter only makes people talk less.',
+          'Kamu menundukkan kepala. Di kerumunan seperti ini, surat izin guild hanya membuat orang makin tutup mulut.'),
+      ] },
+    ] },
+    { bg: 'house-burnt' }, { amb: 'fire' },
+    { show: 'coroner', at: 'left' },
+    say('coroner', 'Master Hale and his wife were found in his study.', 'Tuan Hale dan istrinya ditemukan di ruang kerjanya.'),
+    say('coroner', 'No soot in their mouths. No smoke in their lungs. They were dead before the first flame.',
+      'Tak ada jelaga di mulut mereka. Tak ada asap di paru-paru mereka. Mereka sudah mati sebelum api pertama menyala.', { style: 'whisper' }),
+    { shock: 'big' },
+    say('coroner', 'The children were upstairs. Their door was barred from the outside...', 'Anak-anak ada di lantai atas. Pintu kamar mereka dipalang dari luar...'),
+    say('coroner', '...whoever did this simply left them to burn.', '...siapa pun pelakunya, ia membiarkan mereka terbakar begitu saja.'),
+    { hide: 'all' },
+    narr('Laus heroi pacis. A girl tied up so gently that her skin wasn\'t even marked.', 'Laus heroi pacis. Seorang gadis yang diikat begitu lembut sampai kulitnya tak berbekas sedikit pun.'),
+    narr('And now three children, left behind a barred door.', 'Dan sekarang tiga anak, ditinggal di balik pintu yang dipalang.'),
+    narr('It doesn\'t fit.', 'Ini tidak cocok.'),
+    { sfx: 'armor' }, { music: 'uncanny', fade: 1500 },
+    { show: 'varrick', at: 'right' },
+    say('varrick', 'Citizens of Valeria! Look at what was nailed to this gate!', 'Warga Valeria! Lihat apa yang dipaku di gerbang ini!', { style: 'shout' }),
+    { cg: 'decoy' },
+    say('varrick', 'A child\'s drawing, just like the one found with Sir Prince. The Fool has signed his work again.',
+      'Gambar anak-anak, sama seperti yang ditemukan bersama Sir Prince. The Fool menandatangani perbuatannya lagi.'),
+    say('crowd', 'Hang him! Hang The Fool!', 'Gantung dia! Gantung The Fool!', { style: 'shout' }),
+    { cg: null },
+    narr('The crowd roars. Varrick lets it.', 'Kerumunan meraung marah. Varrick membiarkannya.'),
+    say('varrick', 'You. Guild.', 'Kamu. Guild.'),
+    say('varrick', 'My scribes have copied it into the archive. Exhibit seven. Take it to your Guildmaster and let him confirm what we all know.',
+      'Juru tulisku sudah menyalinnya ke arsip. Barang bukti nomor tujuh. Bawa ke Ketua Guild-mu, biar dia memastikan apa yang sudah kita semua tahu.'),
+    say('varrick', 'Then stay out of my way.', 'Setelah itu, jangan halangi jalanku.', { style: 'whisper' }),
+    narr('He pulls his black glove tight as he turns away.', 'Ia mengencangkan sarung tangan hitamnya sambil berbalik pergi.'),
+    { hide: 'all' },
+    { black: true }, { amb: null }, { particles: null }, { tint: null }, { music: 'investigate', fade: 2000 },
+    { bg: 'guild-night', fx: 'cut' }, { amb: 'room' }, { tint: 'warm' }, { particles: 'dust' }, { black: false },
+    { place: GUILD, time: T('Dawn', 'Fajar') },
+    { show: 'gm', at: 'left' }, { show: 'mira', pose: 'think', at: 'right' },
+    say('mira', 'Three children... Who could do that?', 'Tiga anak... Siapa yang tega melakukan itu?', 'think'),
+    say('gm', 'Lay the three drawings side by side.', 'Jajarkan ketiga gambar itu.', 'read'),
+    { cg: 'drawing' },
+    say('mira', 'The kites: a happy family, a purple kite caught on a pole, a man running too late. Every line means something.',
+      'Layangan: keluarga yang bahagia, layangan ungu tersangkut di tiang, seorang pria yang berlari terlambat. Setiap garis punya arti.', 'think'),
+    { cg: 'angel' },
+    say('mira', 'The angel with the apple. A lie wearing a halo.', 'Malaikat dengan apel. Kebohongan yang memakai lingkaran cahaya.', 'think'),
+    { cg: 'decoy' },
+    say('mira', 'And this one... is just a house on fire. It shows what happened, and nothing more.',
+      'Dan yang ini... cuma rumah yang terbakar. Gambar ini hanya menunjukkan apa yang terjadi, tidak lebih.'),
+    { cg: null },
+    say('gm', 'The Fool speaks in riddles. This speaks like a man who has only heard of him.', 'The Fool berbicara lewat teka-teki. Yang ini berbicara seperti orang yang cuma pernah mendengar tentangnya.'),
+    say('gm', 'And The Fool has never once hurt a child.', 'Dan The Fool tidak pernah sekali pun menyakiti anak.', 'nod'),
+    { choice: [
+      { label: T('"Someone is copying him."', '"Ada yang meniru dia."'), then: [
+        say('gm', 'Then the copy will have seams. Find them.', 'Kalau begitu, tiruannya pasti punya jahitan. Temukan.'),
+      ] },
+      { label: T('"Varrick was quick to name him."', '"Varrick cepat sekali menuduhnya."'), then: [
+        say('gm', 'He was. Twice now.', 'Memang. Sudah dua kali.'),
+        { shock: 'small' },
+      ] },
+    ] },
+    say('mira', 'Exhibit seven, straight from the Crimson Guard\'s archive...', 'Barang bukti nomor tujuh, langsung dari arsip Garda Merah...', 'point'),
+    say('gm', 'Then look at what the Guard\'s scribes left in. And at what they cut out.', 'Kalau begitu, lihat apa yang dibiarkan juru tulis Garda. Dan apa yang mereka potong.', 'read'),
+    { hide: 'all' },
+  ],
+  challenge: {
+    title: T('Exhibit Seven', 'Barang Bukti Nomor Tujuh'),
+    brief: T(
+      'Captain Varrick says this drawing was nailed to the gate of the Hale house, and that The Fool signed it. The Crimson Guard\'s scribes copied it into their archive.\n\nThe Fool never signs his work, and he has never hurt a child. Someone is copying him, and copies have seams.\n\nWhere is the forger going next?',
+      'Kapten Varrick bilang gambar ini dipaku di gerbang rumah keluarga Hale, dan The Fool menandatanganinya. Juru tulis Garda Merah menyalinnya ke arsip mereka.\n\nThe Fool tidak pernah menandatangani perbuatannya, dan ia tidak pernah menyakiti anak. Ada yang meniru dia, dan tiruan selalu punya jahitan.\n\nKe mana si peniru akan pergi berikutnya?'),
+    evidence: [{ file: 'exhibit7.png', as: 'exhibit-7.png', label: T('Exhibit 7 (Crimson Guard archive)', 'Barang bukti 7 (arsip Garda Merah)') }],
+    placeholder: T('Name the place', 'Sebutkan tempatnya'),
+    answers: ['theoldcircus', 'oldcircus', 'thecircus', 'circus'],
+  },
+  post: [
+    { bg: 'desk-night', fx: 'cut' }, { amb: 'room' }, { music: null, fade: 600 }, { tint: null }, { particles: null },
+    { cg: 'sealed:exhibit-full' },
+    narr('Below the drawing, where the Guard\'s copy claimed the picture ended, there is more.', 'Di bawah gambar itu, tepat di tempat salinan Garda mengaku gambarnya berakhir, masih ada lagi.'),
+    { shock: 'big' }, { tint: 'red' }, { music: 'uncanny', fade: 1000 },
+    narr('A note in a grown man\'s hand: "H. talked, before the end. The ledgers and the diary, hidden at the old circus. Get there before the guild does."',
+      'Sebuah catatan dengan tulisan tangan orang dewasa: "H. sempat bicara sebelum mati. Buku besar dan buku harian itu disembunyikan di sirkus tua. Sampai di sana sebelum guild."'),
+    narr('And beside it, pressed into the paper in crimson: a right hand.', 'Dan di sampingnya, tercetak di kertas dengan warna merah tua: sebuah telapak tangan kanan.'),
+    { cg: null }, { tint: 'warm' }, { bg: 'guild-night' }, { particles: 'dust' },
+    { show: 'gm', at: 'left' }, { show: 'mira', pose: 'point', at: 'right' },
+    say('mira', 'A right hand... The Devil\'s Right Hand!', 'Tangan kanan... The Devil\'s Right Hand!', { pose: 'point', react: 'jump' }),
+    say('mira', 'The Fool showed us that name himself. Is he... working for The Fool?', 'The Fool sendiri yang menunjukkan nama itu pada kita. Apa dia... bekerja untuk The Fool?', 'think'),
+    say('gm', 'The Fool told us about his right hand. Whether it was a warning or a boast, I can\'t say.',
+      'The Fool memberi tahu kita tentang tangan kanannya. Entah itu peringatan atau pamer, aku tak bisa memastikan.'),
+    say('gm', 'Either way, Hale knew something worth killing for, and he hid it at the old circus.',
+      'Apa pun itu, Hale tahu sesuatu yang cukup berharga untuk membuatnya dibunuh, dan dia menyembunyikannya di sirkus tua.', 'read'),
+    narr('For a moment you see it again: a black glove, pulled tight in the firelight.', 'Sesaat kamu melihatnya lagi: sarung tangan hitam, dikencangkan di bawah cahaya api.'),
+    say('gm', 'Go now. If we\'re slow, everything Hale died for burns with him.', 'Pergilah sekarang. Kalau kita lambat, semua yang membuat Hale mati akan ikut terbakar bersamanya.', 'nod'),
+    { hide: 'all' },
+    { black: true }, { amb: 'night' }, { particles: null }, { tint: null }, { music: 'dread', fade: 1500 },
+    narr('The old circus has stood empty for fifteen years, at the edge of the city where the lamps run out.',
+      'Sirkus tua itu sudah kosong selama lima belas tahun, di tepi kota tempat lampu-lampu berakhir.'),
+    narr('Tonight, someone has lit a single lantern inside the big top.', 'Malam ini, seseorang menyalakan satu lentera di dalam tenda utama.'),
+    { sfx: 'bell' }, { shock: 'small' },
+    narr('And somewhere in the dark, a bell is ringing.', 'Dan di suatu tempat dalam gelap, sebuah lonceng berdenting.'),
+  ],
+};
+
 export const SILENT_FRIDAY: Quest = {
   id: 'silent-friday',
   art: 'sf',
@@ -430,9 +570,8 @@ export const SILENT_FRIDAY: Quest = {
   tagline: T('The Hero of Peace did not die in his sleep.', 'Pahlawan Perdamaian tidak mati dalam tidurnya.'),
   reward: 800,
   cast: CAST,
-  chapters: [prologue, lantern, park],
+  chapters: [prologue, lantern, park, fire],
   upcoming: [
-    { title: T('The Devil\'s Right Hand', 'Tangan Kanan Iblis'), sub: T('Chapter III', 'Bab III') },
     { title: T('The Fool\'s Circus', 'Sirkus Sang Fool'), sub: T('Chapter IV', 'Bab IV') },
     { title: T('The Little Boy', 'Anak Kecil Itu'), sub: T('Chapter V', 'Bab V') },
     { title: T('The Fool\'s Last Ride', 'Perjalanan Terakhir Sang Fool'), sub: T('Chapter VI', 'Bab VI') },

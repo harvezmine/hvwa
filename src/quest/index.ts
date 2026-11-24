@@ -6,7 +6,9 @@
 //   - answers are checked here, normalised (case, spaces, punctuation and leetspeak do not matter), with a small
 //     per-player throttle on wrong guesses;
 //   - evidence is served from src/quest/<quest>/evidence, as a download, and a challenge's "drop" (a fake archive path
-//     such as /im4ges/foren/themepark/13) answers 404 until its chapter is unlocked.
+//     such as /im4ges/foren/themepark/13) answers 404 until its chapter is unlocked;
+//   - a picture that shows a challenge's answer (a scene step `cg: 'sealed:<name>'`) is not under /static: it is served
+//     from src/quest/<quest>/sealed only to a player who has finished that chapter.
 // Progress is one row per finished chapter (src/db/quest.sql).
 import { Router, type Request, type Response } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
@@ -165,6 +167,16 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
     const e = c?.challenge?.evidence.find((x) => x.as === req.params.file);
     if (!quest || !c || !e || !isUnlocked(c.n, chaptersDone(db, userOf(res).userId, quest.id))) { next(); return; }
     sendEvidence(res, quest, e.file, e.as);
+  });
+
+  router.get('/quests/:quest/sealed/:n/:file', (req, res, next) => {
+    const quest = questById(req.params.quest);
+    const c = quest && chapterOf(quest, req.params.n);
+    const name = /^([a-z0-9-]{1,40})\.webp$/.exec(req.params.file)?.[1];
+    const named = c?.post?.some((s) => 'cg' in s && s.cg === `sealed:${name}`) ?? false;
+    if (!quest || !c || !name || !named || !chaptersDone(db, userOf(res).userId, quest.id).has(c.n)) { next(); return; }
+    res.type('image/webp');
+    res.sendFile(join(here, quest.id, 'sealed', `${name}.webp`));
   });
 
   // A challenge's drop: an "archive" path written on a clue. 404 (as if it did not exist) until the chapter is open.
