@@ -2509,8 +2509,8 @@ html { scrollbar-color: var(--wood-3) var(--bg); }
 }
 .vn::backdrop { background: linear-gradient(180deg, var(--shade), var(--scrim) 70%); }
 .vn-mira {
-  position: absolute; z-index: 1; bottom: 0; right: max(1rem, calc((100vw - 64rem) / 2));
-  height: min(82vh, 44rem); aspect-ratio: 560 / 628; pointer-events: none;
+  position: absolute; z-index: 1; bottom: 6.5rem; right: max(1rem, calc((100vw - 64rem) / 2));
+  height: min(56vh, 30rem); aspect-ratio: 560 / 628; pointer-events: none;
 }
 .vn-stack {
   position: absolute; z-index: 2; left: 50%; bottom: var(--sp-5); translate: -50% 0;
@@ -2554,7 +2554,7 @@ html { scrollbar-color: var(--wood-3) var(--bg); }
 @keyframes vn-enter { from { opacity: 0; translate: 18% 0; } to { opacity: 1; translate: 0 0; } }
 @keyframes choice-nudge { from { left: 0.95rem; } to { left: 1.25rem; } }
 @media (max-width: 640px) {
-  .vn-mira { right: -1.5rem; height: min(62vh, 30rem); }
+  .vn-mira { right: -1.5rem; bottom: 8rem; height: min(44vh, 22rem); }
   .vn-stack { bottom: var(--sp-3); }
   .vn-box { padding: var(--sp-5) var(--sp-4) var(--sp-4); }
   .vn-box .dialogue-text { font-size: var(--fs-md); }
@@ -3174,23 +3174,6 @@ th .nameplate { font-size: 0.85rem; }
   .counter { height: 2.6rem; border-radius: 0; }
 }
 
-/* Mira in the popups: a round portrait and a speech bubble (whisper confirm, flag result). */
-.mira-line { display: flex; flex-direction: row-reverse; align-items: center; gap: var(--sp-3); width: 100%; text-align: left; }
-.mira-cameo {
-  flex: none; width: 4.6rem; height: 4.6rem; border-radius: 50%; object-fit: cover; object-position: 50% 12%;
-  background: radial-gradient(circle at 50% 40%, var(--parch), var(--parch-2));
-  box-shadow: 0 0 0 3px var(--m-gold), 0 0 0 5px var(--wood-2), var(--shadow-sm);
-}
-.mira-say {
-  position: relative; flex: 1 1 auto; margin: 0; padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius); background: var(--parch-2); color: var(--ink);
-  font-family: var(--serif); font-style: italic; line-height: 1.4;
-}
-.mira-say[hidden] { display: none; }
-.mira-say::before { content: ""; position: absolute; right: -0.5rem; top: 50%; translate: 0 -50%; border-top: 0.45rem solid transparent; border-bottom: 0.45rem solid transparent; border-left: 0.55rem solid var(--parch-2); }
-.mira-say-name { display: block; font-family: var(--poster); font-style: normal; font-size: 1.05rem; color: var(--wax-dark); }
-.solve-mira-line { justify-content: center; }
-.solve-mira-line:has(.mira-say:not([hidden])) { justify-content: flex-end; }
 
 /* The guild tour: the page dims, a gold-ringed spotlight follows each stop, Mira's box moves out of its way. */
 .tour {
@@ -3241,7 +3224,6 @@ th .nameplate { font-size: 0.85rem; }
   .tour[open] { animation: tour-fade 260ms var(--ease); }
   .tour-box.is-step .tour-dialogue { animation: dialogue-in 300ms var(--ease-swing); }
   .tour[open] .tour-mira { animation: mira-rise 520ms var(--ease-swing); }
-  .mira-cameo { animation: mira-pop 420ms var(--ease-swing) 120ms backwards; }
 }
 @keyframes mira-breathe { 0%, 100% { scale: 1 1; } 50% { scale: 1.006 1.014; } }
 @keyframes mira-talk { from { translate: 0 0; } to { translate: 0 -3px; } }

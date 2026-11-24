@@ -1,6 +1,6 @@
 # HVWA Range POC — Challenge Solving
 
-Up to date: **2026-11-23**. This is the compact POC: **5 labs, 17 tiers**. Every lab is deliberately vulnerable.
+Up to date: **2026-11-24**. This is the compact POC: **6 labs, 21 tiers**. Every lab is deliberately vulnerable.
 The secure tier is called **Warded (Divine)**: it has no flag and pays no gold; it is the reference you compare
 against with the portal's **View source** and **Diff** links.
 
@@ -11,6 +11,7 @@ against with the portal's **View source** and **Diff** links.
 | r03 Whisper to the Watchtower | Beacon | Command injection | Acolyte · Templar · Inquisitor · Divine | 1.2.0 |
 | r04 The Ink That Writes Back | Postcard | Server-side template injection | Acolyte · Templar · Inquisitor · Divine | 1.2.1 |
 | r05 The Dragon Hoard Heist | Binanse | Stored XSS → session theft → transfer | Inquisitor only | 1.1.0 |
+| r06 The Chosen One | Camelot Court | Cryptography (Cipher Vault board) | Acolyte · Templar · Inquisitor · Divine | 1.0.0 |
 
 Threat names in the portal: **Common** (Acolyte), **Dangerous** (Templar), **Deadly** (Inquisitor), **Warded** (Divine).
 Each tier is a separate instance with its own flag. Divine has no flag.
@@ -303,7 +304,45 @@ the flag and exits quietly on a refusal.
 
 ---
 
-## 7. Reference commands and gates
+## 7. r06 — Camelot Court (cryptography, Cipher Vault board)
+
+King Arthur sealed his dream in a scroll and will not read it aloud. The stone (`POST /stone` or `POST /api/stone`)
+knights you for either proof: the **three words** inside the dream (`{"words":"a-b-c"}`), or a petition **seal whose
+rank is `knight`** (`{"seal":"<hex>"}`). The JSON response carries the flag as `writ`. The tier decides which spell is
+weak; every other surface is AES-256-GCM. The `HVWA{c10s3_but_n0_c1g4r}` in the dream's margin is a decoy.
+
+### Acolyte — repeating-key XOR with a known crib
+
+`GET /api/dream` returns the scroll as hex. It is XOR with a 12-byte repeating key, and every dream starts with
+`"On the seventh night, "` (22 bytes). XOR the first 12 bytes of the scroll with the crib to get the key, then decrypt
+the whole scroll and speak the words after `speaks these words:`.
+
+### Templar — AES-ECB cut-and-paste
+
+`POST /api/petition {"name":...}` seals `petitioner=<name>;rank=peasant` with AES-128-ECB.
+
+1. Seal the name `AAAAAAAAAAAAAAA` (15 × A). Keep its first two blocks, which read `petitioner=AAAAA` and
+   `AAAAAAAAAA;rank=`.
+2. Seal the name `AAAAAknight` followed by ten `\n` (0x0a) bytes. Keep its second block, which reads `knight` plus
+   valid PKCS#7 padding.
+3. Join the three blocks (32 hex characters each) and lay the seal on the stone.
+
+### Inquisitor — CBC padding oracle
+
+The dream is AES-128-CBC with the IV first. `POST /api/oracle {"scrolls":[...]}` takes up to 256 scrolls per request
+and answers `clear` (valid padding) or `clouded` for each. For each block, send the forged previous block with all
+256 guesses for the byte under attack. A `clear` gives `intermediate = guess ^ pad`. At pad 1, rule out a false hit by
+flipping the byte before it. The plaintext is the intermediate bytes XOR the real previous block. The whole dream takes
+about 250 requests, about 1 s on a LAN.
+
+### Divine — the secure reference
+
+Every surface is GCM, and Merlin calls a scroll `clear` only when it is authentic. No oracle, no malleability, no
+keystream reuse.
+
+---
+
+## 8. Reference commands and gates
 
 ```sh
 # The reference solves (instance network, no gate needed):
@@ -312,6 +351,7 @@ node labs/r02-courier/solve/templar.mjs   http://hvwa-i-<id>:8080
 node labs/r03-beacon/solve/inquisitor.mjs http://hvwa-i-<id>:8080
 node labs/r04-postcard/solve/inquisitor.mjs http://hvwa-i-<id>:5000
 node labs/r05-binanse/solve/inquisitor.mjs http://hvwa-i-<id>:8080
+node labs/r06-camelot/solve/inquisitor.mjs http://hvwa-i-<id>:8080
 
 # Full POC proof locally (needs Docker, runtime runc):
 npm run poc:e2e

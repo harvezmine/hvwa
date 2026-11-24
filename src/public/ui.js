@@ -357,17 +357,6 @@
       // Drop the payload so a later swap never re-opens it, and so the toast pass below skips this slip.
       MODAL_ATTRS.forEach(function (a) { carrier.removeAttribute(a); });
       ['data-toast', 'data-toast-variant', 'data-toast-title', 'data-toast-message'].forEach(function (a) { carrier.removeAttribute(a); });
-      // Mira reacts: cheering for a sealed contract, thinking hard for a wrong flag.
-      var miss = variant === 'wrong' || variant === 'decoy';
-      var mira = dialog.querySelector('[data-solve-mira]');
-      if (mira) mira.setAttribute('src', '/static/art/mira-' + (variant === 'solved' ? 'cheer' : miss ? 'think' : 'smile') + '.webp');
-      var say = dialog.querySelector('[data-solve-say]');
-      if (say) {
-        var line = variant === 'solved' ? say.getAttribute('data-solved') : miss ? say.getAttribute('data-wrong') : '';
-        var sayText = say.querySelector('[data-solve-say-text]');
-        if (sayText) sayText.textContent = line || '';
-        say.hidden = !line;
-      }
       dialog.setAttribute('data-variant', variant);
       if (!dialog.open) dialog.showModal();
       if (variant === 'solved') { sound.play('seal'); window.setTimeout(function () { sound.play('coin'); }, 380); }
@@ -1148,4 +1137,16 @@
       tw.say(say.getAttribute(ok ? 'data-ok' : 'data-bad') || '');
     });
   })();
+
+  // Never swap a proxy's error page into a fragment: a gateway error (502/503/504, e.g. Cloudflare while the portal
+  // restarts) or any whole HTML document is not one of our fragments. A poll simply tries again on its next tick.
+  document.addEventListener('htmx:beforeSwap', function (e) {
+    var x = e.detail && e.detail.xhr;
+    if (!x || x.status < 400) return;
+    var head = (x.responseText || '').slice(0, 4000);
+    if (x.status === 502 || x.status === 503 || x.status === 504 || /<!doctype|<html[\s>]/i.test(head)) {
+      e.detail.shouldSwap = false;
+      e.detail.isError = true;
+    }
+  });
 })();

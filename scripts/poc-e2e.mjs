@@ -37,7 +37,7 @@ const CAPACITY = '4';
 const say = (msg) => console.log(`poc:e2e ${msg}`);
 
 // Landing-page markers per lab (distinctive, flag-free). r03's <h1> is all-caps "BEACON".
-const MARKER = Object.freeze({ r01: 'Mercy Clinic', r02: 'Courier', r03: 'BEACON', r04: 'Postcard', r05: 'Binanse' });
+const MARKER = Object.freeze({ r01: 'Mercy Clinic', r02: 'Courier', r03: 'BEACON', r04: 'Postcard', r05: 'Binanse', r06: 'Camelot Court' });
 const FLAG_RE = /HVWA\{[a-z2-7]{26}\}/;
 
 /** Every lab in labs/registry.json (id, levels, port) plus its solve directory, in registry order. */

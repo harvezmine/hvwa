@@ -1,5 +1,5 @@
-// The range lab gate (Plan B): every labs/<id>-<slug>/lab.json validates against Plan A's labManifestSchema, the five
-// POC labs are present with the agreed ids/slugs, app name/scenario/themeId are unique across labs, each lab's files
+// The range lab gate (Plan B): every labs/<id>-<slug>/lab.json validates against Plan A's labManifestSchema, the six
+// range labs are present with the agreed ids/slugs, app name/scenario/themeId are unique across labs, each lab's files
 // exist (Dockerfile, app/, solve scripts for every exploitable level, README, VERSION, a .dockerignore that hides solve/),
 // and labs/registry.json parses (empty before `npm run labs:build`, consistent with the manifests after). No Docker here.
 import { describe, it, expect } from 'vitest';
@@ -15,12 +15,14 @@ const EXPECTED = [
   { id: 'r04', slug: 'postcard', category: 'Template injection', difficulty: 'hard', levels: ['acolyte', 'templar', 'inquisitor', 'divine'] },
   // r05 Binanse is hard-only: a single Inquisitor level, no difficulty choice and no Divine reference.
   { id: 'r05', slug: 'binanse', category: 'Stored XSS', difficulty: 'hard', levels: ['inquisitor'] },
+  // r06 Camelot Court is the first Cipher Vault (crypto track) lab.
+  { id: 'r06', slug: 'camelot', category: 'Cryptography', difficulty: 'medium', track: 'crypto', levels: ['acolyte', 'templar', 'inquisitor', 'divine'] },
 ];
 
 describe('labs/<id>-<slug> manifests', () => {
   const dirs = labDirs();
 
-  it('are exactly the five POC labs (fixture and labs/_* excluded)', () => {
+  it('are exactly the six range labs (fixture and labs/_* excluded)', () => {
     expect(dirs.map((d) => d.name).sort()).toEqual(EXPECTED.map((e) => `${e.id}-${e.slug}`));
     for (const d of dirs) expect(d.name.startsWith('_')).toBe(false);
   });
@@ -31,6 +33,7 @@ describe('labs/<id>-<slug> manifests', () => {
       const parsed = labManifestSchema.safeParse(m);
       expect(parsed.success, `${e.id}: ${JSON.stringify(parsed.error?.issues)}`).toBe(true);
       expect(m).toMatchObject({ id: e.id, slug: e.slug, themeId: e.slug, category: e.category, difficulty: e.difficulty, needsBot: false });
+      expect(m.track ?? 'web', `${e.id} track`).toBe(e.track ?? 'web');
       expect(m.levels).toEqual(e.levels); // POC: four levels per showcase lab; r05 is Inquisitor-only
       expect(m.hints).toHaveLength(3);
     }
@@ -44,7 +47,7 @@ describe('labs/<id>-<slug> manifests', () => {
 });
 
 describe('uniqueness gate (spec §8.1)', () => {
-  it('passes on the five labs: no duplicate id, slug, app, scenario or themeId', () => {
+  it('passes on the six labs: no duplicate id, slug, app, scenario or themeId', () => {
     const manifests = labDirs().map((d) => readManifest(d.path));
     expect(uniquenessIssues(manifests)).toEqual([]);
   });

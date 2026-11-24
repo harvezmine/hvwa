@@ -181,8 +181,6 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'tour.l3': { id: 'Mulai quest dari sini. Guild bakal siapin salinan aplikasi khusus buat kamu. Buka di tab baru, terus mulai berburu!', en: 'Start the quest from here. The guild sets up your very own copy of the app. Open it in a new tab and go hunting!' },
   'tour.l4': { id: 'Buntu? Di sini ada Guildmaster. Serahkan gulungan sihir dari pedagang, dan dia bakal kasih nasihat yang jelas, kelemahannya apa dan gimana cara ngedeketinnya.', en: 'Stuck? The Guildmaster is right here. Hand him a magic scroll from the merchant and he\'ll give you clear counsel on what the weakness is and how to go after it.' },
   'tour.l5': { id: 'Nemu sesuatu yang bentuknya HVWA{...}? Tempel di sini buat klaim bounty kamu. Selamat berburu!', en: 'Found something that looks like HVWA{...}? Paste it here to claim your bounty. Happy hunting!' },
-  'solve.mira_solved': { id: 'Kamu berhasil! Tunggu sebentar, kontraknya langsung aku cap!', en: 'You did it! Hold on, I\'m stamping your contract right now!' },
-  'solve.mira_wrong': { id: 'Hmm, bukan yang ini. Jangan nyerah, kamu sudah dekat!', en: 'Hmm, that\'s not the one. Don\'t give up, you\'re close!' },
   'app.music_credit': { id: 'Musik: "Adventures Begin" oleh Pufino (freetouse.com)', en: 'Music: "Adventures Begin" by Pufino (freetouse.com)' },
   'sound.toggle': { id: 'Musik dan efek suara', en: 'Music and sound effects' },
   'theme.to_light': { id: 'Ganti ke tema terang', en: 'Switch to light theme' },

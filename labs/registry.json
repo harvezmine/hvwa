@@ -347,6 +347,77 @@
       ],
       "version": "1.1.1",
       "image": "sha256:d1ae2b211bf3b67bc2d030587a3bf6ceb8782d256893c90c3cebaca51524a18a"
+    },
+    {
+      "id": "r06",
+      "slug": "camelot",
+      "title": {
+        "en": "The Chosen One: Who Can Tell the King a Dream He Never Told?",
+        "id": "Sang Terpilih: Siapa yang Bisa Menceritakan Mimpi yang Tak Pernah Diceritakan Raja?"
+      },
+      "app": "Camelot Court",
+      "category": "Cryptography",
+      "track": "crypto",
+      "difficulty": "medium",
+      "levels": [
+        "acolyte",
+        "templar",
+        "inquisitor",
+        "divine"
+      ],
+      "port": 8080,
+      "health": "/healthz",
+      "flag": {
+        "placement": "custom"
+      },
+      "resources": {
+        "memoryMiB": 96,
+        "pids": 48
+      },
+      "tmpfs": [
+        {
+          "path": "/tmp",
+          "sizeMiB": 8
+        }
+      ],
+      "needsBot": false,
+      "themeId": "camelot",
+      "scenario": {
+        "en": "King Arthur dreamt, a hooded stranger whispered a riddle, and now the King cannot sleep. He sealed the dream and will not say what is in it.",
+        "id": "King Arthur bermimpi, seorang asing berkerudung membisikkan teka-teki, dan kini Sang Raja tak bisa tidur. Ia menyegel mimpinya dan tak mau mengatakan isinya."
+      },
+      "briefing": {
+        "en": "By royal decree, whoever tells the King his own dream without being told it, or arrives with a knight's seal, may try the sword in the stone. Break the court's weakest spell, then draw Excalibur: the writ of knighthood is the flag.",
+        "id": "Atas titah raja, siapa pun yang bisa menceritakan mimpi Sang Raja tanpa diberi tahu, atau datang membawa segel ksatria, boleh mencoba pedang di batu. Patahkan sihir terlemah istana, lalu cabut Excalibur: surat pengangkatan ksatria adalah flag-nya."
+      },
+      "hints": [
+        {
+          "id": 1,
+          "cost": 10,
+          "text": {
+            "en": "This is cryptography; each tier has one weak spell and the room says which. Common: the dream scroll at /dream is repeating-key XOR with a 12-byte key (twelve knights in turn), and every dream starts with the known words \"On the seventh night, \". XOR those 22 known bytes with the first 22 bytes of the scroll to get the key, then decrypt the whole scroll.",
+            "id": "Ini kriptografi; setiap tier punya satu sihir lemah dan ruangannya memberi tahu yang mana. Common: gulungan mimpi di /dream adalah XOR berkunci berulang dengan kunci 12 byte (dua belas ksatria bergiliran), dan setiap mimpi diawali kata yang sudah diketahui \"On the seventh night, \". XOR-kan 22 byte yang diketahui itu dengan 22 byte pertama gulungan untuk mendapat kuncinya, lalu dekripsi seluruh gulungan."
+          }
+        },
+        {
+          "id": 2,
+          "cost": 20,
+          "text": {
+            "en": "Say the three words from the decrypted dream at /stone (the HVWA{...} in the margin is bait). Dangerous: the petition seal is AES-ECB over petitioner=<name>;rank=peasant, so each 16-byte block is sealed alone. Craft one name that ends a block exactly at \"rank=\", and another that puts \"knight\" plus valid PKCS#7 padding (ten bytes of 0x0a) alone in a block. Glue the blocks together and lay the seal on the stone.",
+            "id": "Ucapkan tiga kata dari mimpi yang sudah didekripsi di /stone (HVWA{...} di pinggir gulungan itu umpan). Dangerous: segel petisi adalah AES-ECB atas petitioner=<nama>;rank=peasant, jadi tiap blok 16 byte disegel sendiri-sendiri. Buat satu nama yang membuat blok berakhir tepat di \"rank=\", dan nama lain yang menaruh \"knight\" ditambah padding PKCS#7 yang valid (sepuluh byte 0x0a) sendirian dalam satu blok. Gabungkan blok-bloknya lalu letakkan segelnya di batu."
+          }
+        },
+        {
+          "id": 3,
+          "cost": 30,
+          "text": {
+            "en": "Deadly: the dream is AES-CBC (IV first) and Merlin at POST /api/oracle says clear for valid padding, clouded for invalid. That is a padding oracle. For each block, send the previous block with its last byte tried 0-255 (one satchel of 256 scrolls), find the guess that makes the padding 0x01, and walk backwards to recover the intermediate bytes; XOR them with the real previous block for the plaintext. Then speak the words at /stone.",
+            "id": "Deadly: mimpinya AES-CBC (IV di depan) dan Merlin di POST /api/oracle menjawab clear untuk padding valid, clouded untuk yang tidak valid. Itu padding oracle. Untuk tiap blok, kirim blok sebelumnya dengan byte terakhir dicoba 0-255 (satu kantong berisi 256 gulungan), cari tebakan yang membuat padding-nya 0x01, lalu mundur untuk memulihkan byte perantara; XOR-kan dengan blok sebelumnya yang asli untuk mendapat plaintext. Lalu ucapkan kata-katanya di /stone."
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "image": "sha256:7d34ddc236683a6397abf5b2c1df6ab609d667c9ad395af4b65729229dffdcc6"
     }
   ]
 }

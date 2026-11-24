@@ -34,7 +34,7 @@ function levelSolved(level: Level, best: Best | undefined): boolean {
 /** A line illustration per lab identity (themeId); platform mapping, no manifest change. */
 const THEME_ICONS: Readonly<Record<string, string>> = Object.freeze({
   'mercy-clinic': 'i-ill-clinic', courier: 'i-ill-courier', beacon: 'i-ill-beacon', postcard: 'i-ill-postcard',
-  binanse: 'i-ill-binanse',
+  binanse: 'i-ill-binanse', camelot: 'i-ill-camelot',
 });
 const themeIcon = (themeId: string) => THEME_ICONS[themeId.replace(/^theme-/, '')] ?? 'i-flask';
 
