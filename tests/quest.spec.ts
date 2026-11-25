@@ -203,6 +203,42 @@ describe('the Silent Friday quest', () => {
     expect(JSON.stringify(right.body.post)).toMatch(/Lucian/);
   });
 
+  it('chapters V and VI: the music box and Hale\'s diary are handed over in turn, and each answer stays out of its scenes until solved', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'reader');
+    const { csrf } = await journal(agent);
+    const wav = `${Q}/evidence/5/music-box.wav`;
+    const pdf = `${Q}/evidence/6/hale-diary.pdf`;
+    await answer(agent, 0, csrf);
+    await answer(agent, 1, csrf, 'arandelle');
+    await answer(agent, 2, csrf, 'the devils right hand');
+    await answer(agent, 3, csrf, 'the old circus');
+    expect((await agent.get(wav)).status).toBe(404);
+    await answer(agent, 4, csrf, 'lucian');
+    const box = await agent.get(wav).buffer(true);
+    expect(box.status).toBe(200);
+    expect((box.body as Buffer).subarray(0, 4).toString()).toBe('RIFF');
+    expect((box.body as Buffer).readUInt16LE(22)).toBe(2); // stereo: the words are in one channel only
+    expect(JSON.stringify((await agent.get(`${Q}/chapter/5`)).body)).not.toMatch(/gallows/i);
+    expect((await answer(agent, 5, csrf, 'the castle square')).body.ok).toBe(false);
+    const five = await answer(agent, 5, csrf, 'The Old Gallows');
+    expect(five.body.ok).toBe(true);
+    expect(JSON.stringify(five.body.post)).toMatch(/old gallows/i);
+    const diary = await agent.get(pdf).buffer(true);
+    expect(diary.status).toBe(200);
+    const bytes = diary.body as Buffer;
+    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    // Two revisions: the update after the first %%EOF rewrites one page; neither city is in plain text.
+    expect(bytes.toString('latin1').split('%%EOF').length - 1).toBe(2);
+    expect(bytes.toString('latin1')).not.toMatch(/frosthaven|ravenmoor/i);
+    const six = await agent.get(`${Q}/chapter/6`);
+    expect(JSON.stringify(six.body)).not.toMatch(/frosthaven/i);
+    expect((await answer(agent, 6, csrf, 'Ravenmoor')).body.ok).toBe(false);
+    const last = await answer(agent, 6, csrf, 'FROSTHAVEN');
+    expect(last.body.ok).toBe(true);
+    expect(JSON.stringify(last.body.post)).toMatch(/Frosthaven/);
+  });
+
   it('progress is per player', async () => {
     const { app } = portalApp();
     const a = await player(app, 'first');
