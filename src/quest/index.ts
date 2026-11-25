@@ -88,15 +88,12 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
     return quest.chapters.find((c) => c.n === n);
   };
 
-  router.get('/quests/:quest', async (req, res, next) => {
-    const quest = questById(req.params.quest);
-    if (!quest) { next(); return; }
-    const user = userOf(res);
-    const t = res.locals.t;
-    const lang: Lang = req.lang;
-    const status = questStatus(db, user.userId, quest);
-    const hero = (avatarOf(db, user.userId) ?? DEFAULT_AVATAR).hero;
-    const boot = {
+  // Everything the stage says in one language: its own words, the cast, the chapter list. The page boots with it, and
+  // the stage asks for it again when the player picks another language at the start of a chapter.
+  const stageWords = (quest: Quest, userId: number, lang: Lang, t: (key: string) => string) => {
+    const status = questStatus(db, userId, quest);
+    return {
+      lang,
       quest: { id: quest.id, art: quest.art, title: localize(quest.title, lang), reward: quest.reward },
       cast: localize(quest.cast, lang),
       chapters: quest.chapters.map((c, i) => ({
@@ -106,10 +103,29 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
         challenge: c.challenge !== undefined,
       })),
       upcoming: localize(quest.upcoming, lang),
+      ui: Object.fromEntries(QUEST_UI.map((k) => [k, t(`quest.${k}`)])),
+    };
+  };
+
+  router.get('/quests/:quest/stage', (req, res, next) => {
+    const quest = questById(req.params.quest);
+    if (!quest) { next(); return; }
+    res.json(stageWords(quest, userOf(res).userId, req.lang, res.locals.t));
+  });
+
+  router.get('/quests/:quest', async (req, res, next) => {
+    const quest = questById(req.params.quest);
+    if (!quest) { next(); return; }
+    const user = userOf(res);
+    const t = res.locals.t;
+    const lang: Lang = req.lang;
+    const status = questStatus(db, user.userId, quest);
+    const hero = (avatarOf(db, user.userId) ?? DEFAULT_AVATAR).hero;
+    const boot = {
+      ...stageWords(quest, user.userId, lang, t),
       csrf: auth.csrfFor(req),
       host: req.get('host') ?? '',
       player: { name: user.username, face: `/static/art/heroes/${hero}-face.webp` },
-      ui: Object.fromEntries(QUEST_UI.map((k) => [k, t(`quest.${k}`)])),
     };
     await sendPage(res, VIEW, {
       pageTitle: `${localize(quest.title, lang) as string} — ${t('quest.grand')}`,
@@ -208,4 +224,5 @@ export const QUEST_UI = [
   'begin', 'continue', 'replay', 'locked', 'soon', 'done', 'auto', 'log', 'skip', 'close', 'next', 'submit', 'evidence',
   'wrong', 'slow', 'solved', 'chapter_done', 'back', 'next_chapter', 'answer', 'grand', 'accepted', 'reward', 'tap',
   'left', 'backlog', 'case', 'error', 'confirm_close', 'gold', 'end', 'resume', 'archive_hint', 'checking', 'sound', 'choose', 'found', 'skip_title', 'skip_go', 'skip_stay', 'clue', 'notes',
+  'close_title', 'close_go', 'close_stay',
 ] as const;

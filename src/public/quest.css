@@ -520,6 +520,11 @@ html.qs-open { overflow: hidden; }
 .qs-skip-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: 1.2rem; letter-spacing: 0.04em; }
 .qs-skip-text { margin: 0; font-family: var(--serif); font-size: 1.06rem; line-height: 1.6; color: #2a1a0c; }
 .qs-skip-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
+/* The language card at the start of a chapter: two equal choices, the current one already lit. */
+.qs-lang { width: min(30rem, 100%); text-align: center; }
+.qs-lang .qs-skip-text { white-space: pre-line; }
+.qs-lang-actions { justify-content: center; }
+.qs-lang-actions .btn { flex: 1 1 11rem; min-height: 2.9rem; }
 
 /* The dark reveal: the edges dim softly like a held breath and let go, the middle of the scene (the speaker, the
    picture) stays readable the whole time. */

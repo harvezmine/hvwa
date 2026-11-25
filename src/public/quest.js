@@ -335,12 +335,23 @@
   syncSound();
   var logPanel = el('div', 'qs-log', dlg);
   var logHead = el('div', 'qs-log-head', logPanel);
-  el('h3', '', logHead).textContent = UI.backlog;
+  var logTitle = el('h3', '', logHead); logTitle.textContent = UI.backlog;
   var logClose = el('button', 'qs-btn', logHead); logClose.type = 'button'; logClose.textContent = UI.close;
   var logList = el('ol', 'qs-log-list', logPanel);
   var endWrap = el('div', 'qs-end-wrap', dlg);
   var skipWrap = el('div', 'qs-skip-wrap', dlg);
   var clueBox = el('div', 'qs-clue', dlg);
+  // A language picked on the stage swaps every word the stage set up front.
+  function relabel() {
+    hint.textContent = UI.tap;
+    [[autoBtn, UI.auto], [skipBtn, UI.skip], [logBtn, UI.log], [soundBtn, UI.sound], [closeBtn, UI.close]].forEach(function (p) {
+      p[0].title = p[1];
+      var s = p[0].querySelector('span');
+      if (s) s.textContent = p[1];
+    });
+    logTitle.textContent = UI.backlog;
+    logClose.textContent = UI.close;
+  }
   clueBox.setAttribute('role', 'status');
   document.body.appendChild(dlg);
 
@@ -1158,7 +1169,12 @@
     if (run) run.alive = false;
     run = null;
     syncSound();
-    play(n, fresh).catch(function () { leave(); });
+    var token = {};
+    opening = token;
+    askLang().then(function (ok) {
+      if (!ok || opening !== token || !dlg.open) return;
+      play(n, fresh).catch(function () { leave(); });
+    });
   }
   function leave() {
     if (run) run.alive = false;
@@ -1169,10 +1185,17 @@
     auto = false; skip = false; ctrlSkip = false;
     autoBtn.setAttribute('aria-pressed', 'false'); skipBtn.setAttribute('aria-pressed', 'false');
     logPanel.classList.remove('is-on');
+    hidePanel(); opening = null;
     if (dlg.open) dlg.close();
     document.documentElement.classList.remove('qs-open');
-    if (changed) window.location.reload();
+    if (changed) {
+      // A ?lang= left in the address would undo a language picked on the stage, so it goes before the reload.
+      var u = new URL(window.location.href);
+      if (u.searchParams.has('lang')) { u.searchParams.delete('lang'); window.location.replace(u.toString()); } else window.location.reload();
+    }
   }
+  // The browser may close the stage on its own (a second Esc in a row): tidy up exactly as if the player had left.
+  dlg.addEventListener('close', function () { if (run || opening || skipWrap.classList.contains('is-on')) leave(); });
 
   // ---- input -----------------------------------------------------------------------------------------------------
   dlg.addEventListener('click', function (e) {
@@ -1183,7 +1206,8 @@
   dlg.addEventListener('cancel', function (e) {
     e.preventDefault();
     if (logPanel.classList.contains('is-on')) { logPanel.classList.remove('is-on'); return; }
-    if (window.confirm(UI.confirm_close)) leave();
+    if (skipWrap.classList.contains('is-on') && panelEsc) { panelEsc(); return; }
+    askClose();
   });
   dlg.addEventListener('keydown', function (e) {
     var inField = e.target.matches && e.target.matches('input, textarea');
@@ -1209,6 +1233,77 @@
     if (auto && !typing && waiter) waiter();
     dlg.focus({ preventScroll: true });
   });
+  // The stage's own small panels (skip, leave, language) share one parchment card over a dimmed scene. Esc takes the
+  // panel's own way out.
+  var panelEsc = null, opening = null;
+  function hidePanel() { skipWrap.classList.remove('is-on'); skipWrap.removeAttribute('data-mode'); panelEsc = null; }
+  function panel(mode, kicker, text, extra) {
+    skipWrap.innerHTML = '';
+    var c = el('section', 'qs-skip' + (extra ? ' ' + extra : ''), skipWrap);
+    c.setAttribute('role', 'alertdialog');
+    var k = el('p', 'qs-skip-kicker', c); k.textContent = kicker; k.id = 'qs-panel-title';
+    var t = el('p', 'qs-skip-text', c); t.textContent = text; t.id = 'qs-panel-text';
+    c.setAttribute('aria-labelledby', k.id); c.setAttribute('aria-describedby', t.id);
+    skipWrap.setAttribute('data-mode', mode);
+    return el('div', 'qs-skip-actions', c);
+  }
+  function showPanel(focusEl) {
+    skipWrap.classList.add('is-on');
+    window.setTimeout(function () { if (focusEl) focusEl.focus({ preventScroll: true }); }, 60);
+  }
+  // Leaving asks on the stage itself, not in the browser's own box. Before a chapter starts there is nothing to lose.
+  function askClose() {
+    if (!dlg.open) return;
+    var mode = skipWrap.getAttribute('data-mode');
+    if (mode === 'lang' || !run) { leave(); return; }
+    if (mode === 'close') return;
+    var acts = panel('close', UI.close_title, UI.confirm_close, 'qs-leave');
+    var stay = el('button', 'btn btn-secondary', acts); stay.type = 'button'; stay.textContent = UI.close_stay;
+    var go = el('button', 'btn btn-primary', acts); go.type = 'button'; go.textContent = UI.close_go;
+    stay.addEventListener('click', function () { hidePanel(); dlg.focus({ preventScroll: true }); });
+    go.addEventListener('click', function () { leave(); });
+    panelEsc = function () { stay.click(); };
+    showPanel(stay);
+  }
+  // Every chapter opens on a language choice, so nobody has to leave the story to switch. Picking the other one asks
+  // the server for the stage's words in it (which also remembers the choice), and the chapter then loads in it.
+  var LANG_OPTS = [{ id: 'en', label: 'English' }, { id: 'id', label: 'Bahasa Indonesia' }];
+  function switchLang(lang) {
+    return fetch('/quests/' + QID + '/stage?lang=' + encodeURIComponent(lang), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('stage'); return r.json(); })
+      .then(function (w) {
+        boot.lang = w.lang; boot.quest = w.quest; boot.cast = w.cast; boot.chapters = w.chapters; boot.upcoming = w.upcoming;
+        UI = boot.ui = w.ui;
+        relabel();
+        changed = true; // the journal behind the stage is still in the old language: reload it on the way out
+      });
+  }
+  function askLang() {
+    return new Promise(function (done) {
+      var acts = panel('lang', 'Language · Bahasa', 'Choose the language for this chapter.\nPilih bahasa untuk bab ini.', 'qs-lang');
+      hint.classList.add('is-gone');
+      acts.classList.add('qs-lang-actions');
+      var current = null;
+      LANG_OPTS.forEach(function (o) {
+        var on = o.id === boot.lang;
+        var b = el('button', 'btn ' + (on ? 'btn-primary' : 'btn-secondary'), acts);
+        b.type = 'button'; b.lang = o.id; b.textContent = o.label; b.setAttribute('aria-pressed', String(on));
+        if (on) current = b;
+        b.addEventListener('click', function () {
+          acts.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+          (on ? Promise.resolve() : switchLang(o.id).catch(function () { /* keep the language we have */ })).then(function () {
+            hidePanel();
+            hint.classList.remove('is-gone');
+            dlg.focus({ preventScroll: true });
+            done(true);
+          });
+        });
+      });
+      panelEsc = function () { done(false); leave(); };
+      showPanel(current || acts.querySelector('button'));
+    });
+  }
+
   // Skip asks first: a short recap of what this part says, then "skip ahead" runs to the case (or the end).
   function askSkip() {
     if (!run || skipAll) return;
@@ -1220,9 +1315,11 @@
     var acts = el('div', 'qs-skip-actions', c);
     var stay = el('button', 'btn btn-secondary', acts); stay.type = 'button'; stay.textContent = UI.skip_stay;
     var go = el('button', 'btn btn-primary', acts); go.type = 'button'; go.textContent = UI.skip_go;
-    stay.addEventListener('click', function () { skipWrap.classList.remove('is-on'); dlg.focus({ preventScroll: true }); });
+    stay.addEventListener('click', function () { hidePanel(); dlg.focus({ preventScroll: true }); });
+    panelEsc = function () { stay.click(); };
+    skipWrap.setAttribute('data-mode', 'skip');
     go.addEventListener('click', function () {
-      skipWrap.classList.remove('is-on');
+      hidePanel();
       skipAll = true; skipBtn.setAttribute('aria-pressed', 'true');
       dlg.focus({ preventScroll: true });
       if (typing) typing.finish();
@@ -1250,7 +1347,7 @@
     if (logPanel.classList.contains('is-on')) logList.scrollTop = logList.scrollHeight;
   });
   logClose.addEventListener('click', function () { logPanel.classList.remove('is-on'); dlg.focus({ preventScroll: true }); });
-  closeBtn.addEventListener('click', function () { if (window.confirm(UI.confirm_close)) leave(); });
+  closeBtn.addEventListener('click', askClose);
 
   // ---- the journal -----------------------------------------------------------------------------------------------
   document.querySelectorAll('[data-quest-chapter]').forEach(function (b) {

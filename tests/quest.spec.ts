@@ -78,6 +78,21 @@ describe('the Silent Friday quest', () => {
     expect(JSON.stringify(id.body)).not.toContain('Hero of Peace');
   });
 
+  it('switches language from the stage: its words come back in the language picked, and the choice is remembered', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'switcher');
+    const en = await agent.get(`${Q}/stage?lang=en`);
+    expect(en.status).toBe(200);
+    expect(en.body.lang).toBe('en');
+    expect(en.body.ui.close_go).toBe('Leave');
+    expect(en.body.chapters[1].title).toBe('? ? ?'); // still locked: the switch gives nothing away
+    const id = await agent.get(`${Q}/stage?lang=id`);
+    expect(id.body.ui.close_go).toBe('Keluar');
+    expect(id.body.cast.prince.role).toBe('Pahlawan Perdamaian');
+    const after = await agent.get(`${Q}/chapter/0`); // no ?lang: the cookie set by the switch decides
+    expect(JSON.stringify(after.body)).toContain('Pahlawan Perdamaian');
+  });
+
   it('hands over the evidence of an unlocked chapter only, as a download of the exact file', async () => {
     const { app } = portalApp();
     const { agent } = await player(app, 'reader');
