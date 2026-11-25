@@ -53,6 +53,9 @@ export type Step =
   | { readonly cam: 'push' | 'reset' }                                     // a slow push-in on the scene, or back
   | { readonly tint: 'warm' | 'cold' | 'red' | 'memory' | null }          // a colour grade over the scene
   | { readonly letterbox: boolean }                                        // cinema bars
+  // A memory: the whole stage is graded (golden: a fond memory, blue: a cold one, sepia: an old wound), with a soft
+  // blurred edge, film grain, a faded paper dialogue box and slower typing, until `flashback: null`.
+  | { readonly flashback: 'golden' | 'blue' | 'sepia' | null }
   | { readonly shake: true }
   | { readonly flash: 'white' | 'red' }
   | { readonly wait: number };                                             // ms

@@ -292,6 +292,7 @@
   var bgFront = bgA;
   var castLayer = el('div', 'qs-cast', cam);
   var tint = el('div', 'qs-tint', scene);
+  el('div', 'qs-memory', scene);   // a flashback's soft edge and grain; graded by .qs[data-flashback]
   el('div', 'qs-vignette', scene);
   var canvas = el('canvas', 'qs-particles', scene);
   var spots = el('div', 'qs-spots', scene);
@@ -538,6 +539,7 @@
     return name.indexOf('sealed:') === 0 ? '/quests/' + QID + '/sealed/' + (run ? run.n : 0) + '/' + name.slice(7) + '.webp' : ART + '/bg/' + name + '.webp';
   }
   function setTint(t) { tint.className = 'qs-tint' + (t ? ' is-' + t : ''); }
+  function setFlashback(f) { if (f) dlg.setAttribute('data-flashback', f); else dlg.removeAttribute('data-flashback'); }
   function setCam(c) { cam.classList.toggle('is-push', c === 'push' && !reduce); }
   function setBars(on) { bars.classList.toggle('is-on', !!on); }
   var placeTimer = 0;
@@ -626,6 +628,7 @@
     var p = new Promise(function (r) { resolve = r; });
     target.classList.add('is-typing');
     var speed = soft ? 34 : 22;
+    if (dlg.hasAttribute('data-flashback')) speed = Math.round(speed * 1.4);   // memories are told more slowly
     function finish() {
       if (done) return;
       done = true;
@@ -950,6 +953,7 @@
     if ('amb' in step) { Amb.set(step.amb); return; }
     if ('particles' in step) { Particles.set(step.particles); return; }
     if ('tint' in step) { setTint(step.tint); return; }
+    if ('flashback' in step) { setFlashback(step.flashback); return; }
     if ('cam' in step) { setCam(step.cam); return; }
     if ('letterbox' in step) { setBars(step.letterbox); await sleep(fast() ? 0 : 500); return; }
     if ('place' in step) { if (!fast()) showPlace(step.place, step.time); return; }
@@ -1009,11 +1013,11 @@
 
   // Resuming mid-chapter: replay the state-only steps up to the saved place, instantly.
   function restore(list, upto) {
-    var st = { bg: null, cg: null, black: true, music: null, amb: null, particles: null, tint: null, cam: null, bars: false };
+    var st = { bg: null, cg: null, black: true, music: null, amb: null, particles: null, tint: null, flashback: null, cam: null, bars: false };
     var cast = {};
     for (var i = 0; i < upto; i++) {
       var s = list[i];
-      ['bg', 'cg', 'black', 'music', 'amb', 'particles', 'tint', 'cam'].forEach(function (k) { if (k in s) st[k] = s[k]; });
+      ['bg', 'cg', 'black', 'music', 'amb', 'particles', 'tint', 'flashback', 'cam'].forEach(function (k) { if (k in s) st[k] = s[k]; });
       if ('letterbox' in s) st.bars = s.letterbox;
       if ('show' in s) cast[s.show] = { pose: s.pose, at: s.at };
       if ('hide' in s) { if (s.hide === 'all') cast = {}; else delete cast[s.hide]; }
@@ -1023,7 +1027,7 @@
     if (st.bg) setBg(st.bg, 'cut');
     if (st.cg) setCg(st.cg);
     Object.keys(cast).forEach(function (id) { show(id, cast[id].pose, cast[id].at); });
-    setBlack(st.black); setTint(st.tint); setCam(st.cam); setBars(st.bars);
+    setBlack(st.black); setTint(st.tint); setFlashback(st.flashback); setCam(st.cam); setBars(st.bars);
     Particles.set(st.particles); Amb.set(st.amb);
     Music.play(st.music, 600);
     skip = false;
@@ -1139,7 +1143,7 @@
     Heart.stop();
     clearText(null);
     hide('all');
-    setCg(null); setTint(null); setCam(null); setBars(false);
+    setCg(null); setTint(null); setFlashback(null); setCam(null); setBars(false);
     Particles.stop();
     choices.classList.remove('is-on'); choices.innerHTML = '';
     spots.classList.remove('is-on'); spots.innerHTML = '';
