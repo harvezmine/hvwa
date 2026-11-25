@@ -213,6 +213,12 @@
   // ---- effects: the guild's own (paper, seal, chime...) plus the quest's ---------------------------------------------
   var QSFX = {
     bell: function (c, o, t) { [[2093, 0.09, 1.6], [2512, 0.05, 1.1], [3346, 0.04, 0.7], [4702, 0.02, 0.4]].forEach(function (p) { osc(c, o, 'sine', p[0], t, p[2], p[1]); osc(c, o, 'sine', p[0] * 1.004, t + 0.12, p[2] * 0.8, p[1] * 0.6); }); },
+    // One lub-dub for the running heartbeat: a heavy low thump, then a lighter one right behind it.
+    beat: function (c, o, t) {
+      osc(c, o, 'sine', 64, t, 0.2, 0.75, 34);
+      band(c, o, t, 0.09, 0.12, 180, 60, 0.8, 0.002, 'lowpass');
+      osc(c, o, 'sine', 54, t + 0.19, 0.18, 0.5, 32);
+    },
     heartbeat: function (c, o, t) { [0, 0.28, 1.05, 1.33].forEach(function (d, i) { osc(c, o, 'sine', i % 2 ? 52 : 62, t + d, 0.22, i % 2 ? 0.35 : 0.5, 38); }); },
     scream: function (c, o, t) {
       band(c, o, t, 1.4, 0.35, 900, 2600, 3, 0.04);
@@ -295,6 +301,7 @@
   el('span', 'qs-bar-top', bars); el('span', 'qs-bar-bottom', bars);
   var black = el('div', 'qs-black is-on', dlg);
   var flash = el('div', 'qs-flash', dlg);
+  var heartEl = el('div', 'qs-heart', dlg);
   var placeCard = el('div', 'qs-place', dlg);
   var placeName = el('p', 'qs-place-name', placeCard), placeTime = el('p', 'qs-place-time', placeCard);
   var titleCard = el('div', 'qs-title', dlg);
@@ -542,6 +549,34 @@
     placeCard.classList.remove('is-on'); void placeCard.offsetWidth; placeCard.classList.add('is-on');
     placeTimer = window.setTimeout(function () { placeCard.classList.remove('is-on'); }, 4200);
   }
+  // The running heartbeat: a lub-dub every second (dread) or twice a second (panic), the picture throbbing with it and
+  // the screen's edges pulsing dark red (that much shows even on a black screen). The music sinks under it. Skipping
+  // keeps it silent; with reduced motion only the edges pulse.
+  var Heart = (function () {
+    var timer = 0, rate = 0;
+    function beat() {
+      if (!fast()) {
+        sfx('beat');
+        if (!reduce) { cam.classList.remove('is-beat'); void cam.offsetWidth; cam.classList.add('is-beat'); }
+        heartEl.classList.remove('is-beat'); void heartEl.offsetWidth; heartEl.classList.add('is-beat');
+      }
+      timer = window.setTimeout(beat, rate);
+    }
+    function set(kind) {
+      var was = !!timer;
+      window.clearTimeout(timer); timer = 0;
+      heartEl.classList.remove('is-on', 'is-fast', 'is-beat'); cam.classList.remove('is-beat');
+      if (!kind) { if (was) Music.duck(false); return; }
+      rate = kind === 'fast' ? 470 : 1000;
+      dlg.style.setProperty('--qs-beat', (kind === 'fast' ? 440 : 820) + 'ms');
+      heartEl.classList.add('is-on');
+      if (kind === 'fast') heartEl.classList.add('is-fast');
+      if (!was) Music.duck(true);
+      beat();
+    }
+    return { set: set, stop: function () { set(null); } };
+  })();
+
   // A reveal lands four ways: 'big' a white flash, a sting and a hard shake (a discovery); 'small' a dark blink and a
   // thud; 'dark' the edges of the screen dim like a held breath, on a heartbeat, while the line it is placed before is
   // read (dread: it does not hold the scene up); 'blood' a red pulse (violence only).
@@ -688,7 +723,15 @@
     note: '<svg viewBox="0 0 120 90" aria-hidden="true"><path d="M12 12h96l-4 66H16Z" class="g-paper"/><path d="M24 34h70M24 48h56M24 62h40" class="g-ink"/><path d="M96 18l6 10-10 2Z" class="g-ink"/></svg>',
     ledger: '<svg viewBox="0 0 120 100" aria-hidden="true"><path d="M60 22C46 14 26 12 10 16v66c16-4 36-2 50 6Z" class="g-paper"/><path d="M60 22c14-8 34-10 50-6v66c-16-4-36-2-50 6Z" class="g-paper"/><path d="M60 22v66" class="g-line"/><path d="M20 32h30M20 44h30M20 56h24M70 32h30M70 44h30M70 56h22" class="g-ink"/><path d="M8 84c18-5 38-3 52 6 14-9 34-11 52-6" class="g-line"/><path d="M86 70l6 10 6-10" class="g-wax"/></svg>',
   };
-  // Tarot signs, drawn in gold on the card's face (viewBox 100 x 100).
+  // Painted items (static/quest/<art>/item/<name>.webp): when a step names one of these, the picture is shown instead
+  // of a drawn glyph. The 22 painted tarot cards (…/tarot/<sign>.webp) likewise replace the drawn card.
+  var ITEM_ART = ['apple', 'bear', 'blindfold', 'dagger', 'diary', 'envelope', 'envelope-black', 'gloves', 'kite', 'knife',
+    'knife-bloody', 'ledger', 'letter', 'lily', 'mask', 'photo', 'poison-apple', 'sword', 'tarot-back'];
+  var TAROT_ART = ['fool', 'magician', 'priestess', 'empress', 'emperor', 'hierophant', 'lovers', 'chariot', 'strength', 'hermit',
+    'wheel', 'justice', 'hanged', 'death', 'temperance', 'devil', 'tower', 'star', 'moon', 'sun', 'judgement', 'world'];
+  function itemArt(glyph) { return ITEM_ART.indexOf(glyph) >= 0 ? ART + '/item/' + glyph + '.webp' : ''; }
+  function tarotArt(sign) { return TAROT_ART.indexOf(sign) >= 0 ? ART + '/tarot/' + sign + '.webp' : ''; }
+  // Tarot signs, drawn in gold on the card's face (viewBox 100 x 100), for a card without a painting.
   var TAROT = {
     fool: '<path class="t-l" d="M22 70c4-22 14-34 28-38 14 4 24 16 28 38"/><path class="t-l" d="M50 32c-2-12-14-18-26-14 8 2 12 8 12 14M50 32c2-12 14-18 26-14-8 2-12 8-12 14M50 32V14"/><circle class="t-f" cx="24" cy="18" r="4"/><circle class="t-f" cx="76" cy="18" r="4"/><circle class="t-f" cx="50" cy="11" r="4"/><path class="t-l" d="M20 72h60M30 86h40"/><path class="t-f" d="M50 46l6 9-6 9-6-9Z"/>',
     emperor: '<path class="t-l" d="M24 44l8-20 10 14 8-18 8 18 10-14 8 20Z"/><path class="t-l" d="M24 44h52M30 52v34M70 52v34M24 52h52M24 86h52M30 68h40"/><circle class="t-f" cx="50" cy="20" r="3"/>',
@@ -707,7 +750,9 @@
     if (step.item) {
       c = el('div', 'qs-item', overlay);
       el('span', 'qs-item-rays', c).setAttribute('aria-hidden', 'true');
-      el('div', 'qs-item-glyph', c).innerHTML = GLYPHS[step.item.glyph] || '';
+      var glyphBox = el('div', 'qs-item-glyph', c);
+      var pix = itemArt(step.item.glyph);
+      if (pix) { var pi = el('img', 'qs-item-pix', glyphBox); pi.alt = ''; pi.src = pix; } else glyphBox.innerHTML = GLYPHS[step.item.glyph] || '';
       el('p', 'qs-item-kicker', c).textContent = UI.found;
       el('h3', 'qs-item-title', c).textContent = step.item.title;
       var p = el('p', 'qs-item-text' + (step.item.hand ? ' is-hand' : ''), c);
@@ -721,9 +766,16 @@
       c = el('div', 'qs-tarot' + (t.reversed ? ' is-reversed' : ''), overlay);
       var faceT = el('div', 'qs-tarot-card', c);
       faceT.setAttribute('aria-hidden', 'true');
-      el('span', 'qs-tarot-n', faceT).textContent = t.n;
-      el('div', 'qs-tarot-sign', faceT).innerHTML = '<svg viewBox="0 0 100 100">' + (TAROT[t.sign] || '') + '</svg>';
-      el('span', 'qs-tarot-plate', faceT).textContent = String(t.name).split(',')[0]; // "Justice, reversed": the card says Justice
+      var paint = tarotArt(t.sign);
+      if (paint) {
+        // The painted card carries its own numeral and name.
+        faceT.classList.add('is-art');
+        var ti = el('img', '', faceT); ti.alt = ''; ti.src = paint;
+      } else {
+        el('span', 'qs-tarot-n', faceT).textContent = t.n;
+        el('div', 'qs-tarot-sign', faceT).innerHTML = '<svg viewBox="0 0 100 100">' + (TAROT[t.sign] || '') + '</svg>';
+        el('span', 'qs-tarot-plate', faceT).textContent = String(t.name).split(',')[0]; // "Justice, reversed": the card says Justice
+      }
       var cap = el('div', 'qs-tarot-cap', c);
       el('h3', 'qs-tarot-name', cap).textContent = t.n + ' · ' + t.name;
       if (t.text) rich(el('p', 'qs-tarot-text', cap), fill(t.text));
@@ -902,6 +954,7 @@
     if ('place' in step) { if (!fast()) showPlace(step.place, step.time); return; }
     if ('sfx' in step) { if (!fast()) sfx(step.sfx); return; }
     if ('shock' in step) { await sleep(shock(step.shock)); return; }
+    if ('heart' in step) { Heart.set(step.heart); return; }
     if ('black' in step) { if (step.black) clearText(null); await sleep(setBlack(step.black)); return; }
     if ('narr' in step) { await line('narr', null, step.narr); return; }
     if ('say' in step) { await line('say', step.say, step.text, step); return; }
@@ -1073,6 +1126,8 @@
         var who = s.show || s.say;
         if (who) { var a = castArt(who, s.pose); if (a && !seen[a]) { seen[a] = 1; new Image().src = a; } }
         if (s.music) Music.preload(s.music);
+        var pic = (s.item && itemArt(s.item.glyph)) || (s.tarot && tarotArt(s.tarot.sign));
+        if (pic && !seen[pic]) { seen[pic] = 1; new Image().src = pic; }
         if (s.choice) s.choice.forEach(function (c) { walk(c.then); });
         if (s.explore) s.explore.spots.forEach(function (c) { walk(c.then); });
       });
@@ -1080,6 +1135,7 @@
   }
 
   function resetStage() {
+    Heart.stop();
     clearText(null);
     hide('all');
     setCg(null); setTint(null); setCam(null); setBars(false);
@@ -1136,6 +1192,7 @@
     if (saved > 0 && saved < ch.pre.length) restore(ch.pre, saved); else saved = 0;
     await steps(ch.pre, true, saved);
     if (run !== me || !me.alive) return;
+    Heart.stop();
     if (ch.challenge) {
       skipAll = false; skipBtn.setAttribute('aria-pressed', 'false');
       var post = await caseFile(ch);
@@ -1150,6 +1207,7 @@
       markDone(n);
     }
     store(placeKey(n), null);
+    Heart.stop();
     if (run !== me || !me.alive) return;
     clearText(null); hide('all');
     skipAll = false; skipBtn.setAttribute('aria-pressed', 'false');
@@ -1181,7 +1239,7 @@
     run = null;
     if (waiter) waiter();
     if (typing) typing.finish();
-    Music.stop(500); Amb.stop(500); Particles.stop();
+    Heart.stop(); Music.stop(500); Amb.stop(500); Particles.stop();
     auto = false; skip = false; ctrlSkip = false;
     autoBtn.setAttribute('aria-pressed', 'false'); skipBtn.setAttribute('aria-pressed', 'false');
     logPanel.classList.remove('is-on');

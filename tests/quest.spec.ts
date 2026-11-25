@@ -235,6 +235,7 @@ describe('the story', () => {
 
   it('names only pictures, portraits, tracks and cast that exist', () => {
     const art = join(pub, 'quest', SILENT_FRIDAY.art);
+    const stage = readFileSync(join(pub, 'quest.js'), 'utf8');
     for (const s of steps) {
       if ('bg' in s && s.bg) expect(existsSync(join(art, 'bg', `${s.bg}.webp`)), s.bg).toBe(true);
       if ('cg' in s && s.cg) {
@@ -249,6 +250,15 @@ describe('the story', () => {
       if ('show' in s) expect(SILENT_FRIDAY.cast[s.show]?.art, s.show).toBeDefined();
       if ('intro' in s) expect(SILENT_FRIDAY.cast[s.intro.who]?.art, s.intro.who).toBeDefined();
       if ('hide' in s && s.hide !== 'all') expect(SILENT_FRIDAY.cast[s.hide], s.hide).toBeDefined();
+      // An item is a painting the stage lists (ITEM_ART) or a glyph it draws; a tarot card is painted or drawn.
+      if ('item' in s) {
+        const painted = existsSync(join(art, 'item', `${s.item.glyph}.webp`)) && stage.includes(`'${s.item.glyph}'`);
+        expect(painted || new RegExp(`\\b${s.item.glyph}: '<svg`).test(stage), s.item.glyph).toBe(true);
+      }
+      if ('tarot' in s) {
+        const painted = existsSync(join(art, 'tarot', `${s.tarot.sign}.webp`));
+        expect(painted || new RegExp(`\\b${s.tarot.sign}: '<path`).test(stage), s.tarot.sign).toBe(true);
+      }
     }
     for (const c of SILENT_FRIDAY.chapters) expect(existsSync(join(art, 'bg', `${c.cover}.webp`)), c.cover).toBe(true);
     for (const m of Object.values(SILENT_FRIDAY.cast)) {

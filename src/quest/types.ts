@@ -44,6 +44,9 @@ export type Step =
   // A reveal: 'big' a white flash, sting and hard shake; 'small' a dark blink; 'dark' the screen closes in like a held
   // breath; 'blood' a red pulse, kept for violence.
   | { readonly shock: 'big' | 'small' | 'dark' | 'blood' }
+  // A heartbeat that keeps going under the lines that follow ('slow' dread, 'fast' panic) until { heart: null }: a
+  // lub-dub, and the whole picture throbs with it while the edges of the screen pulse dark red.
+  | { readonly heart: 'slow' | 'fast' | null }
   | { readonly intro: { readonly who: string; readonly title: Text; readonly text: Text } } // a character card
   | { readonly notes: { readonly title: Text; readonly items: readonly Text[] } }           // the case so far
   | { readonly clue: Text }                                                // a 'new clue' slip, top right, by itself
