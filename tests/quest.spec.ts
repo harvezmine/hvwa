@@ -164,6 +164,30 @@ describe('the Silent Friday quest', () => {
     expect((await agent.get(`${Q}/sealed/2/exhibit-full.webp`)).status).toBe(404);
   });
 
+  it('chapter IV: Hale\'s ledger is handed over once chapter III is done, and the name in it stays out of the scenes until solved', async () => {
+    const { app } = portalApp();
+    const { agent } = await player(app, 'reader');
+    const { csrf } = await journal(agent);
+    const ledger = `${Q}/evidence/4/hale-ledger.xlsx`;
+    await answer(agent, 0, csrf);
+    await answer(agent, 1, csrf, 'arandelle');
+    await answer(agent, 2, csrf, 'the devils right hand');
+    expect((await agent.get(ledger)).status).toBe(404);
+    await answer(agent, 3, csrf, 'the old circus');
+    const file = await agent.get(ledger).buffer(true);
+    expect(file.status).toBe(200);
+    expect(Buffer.compare(file.body as Buffer, readFileSync(join(root, 'src/quest/silent-friday/evidence/ledger.xlsx')))).toBe(0);
+    expect((file.body as Buffer).subarray(0, 2).toString()).toBe('PK'); // a workbook is a zip
+    const ch = await agent.get(`${Q}/chapter/4`);
+    expect(ch.status).toBe(200);
+    expect(ch.body.post).toBeUndefined();
+    expect(JSON.stringify(ch.body)).not.toMatch(/lucian/i);
+    expect((await answer(agent, 4, csrf, 'Varrick')).body.ok).toBe(false);
+    const right = await answer(agent, 4, csrf, 'LUCIAN');
+    expect(right.body.ok).toBe(true);
+    expect(JSON.stringify(right.body.post)).toMatch(/Lucian/);
+  });
+
   it('progress is per player', async () => {
     const { app } = portalApp();
     const a = await player(app, 'first');

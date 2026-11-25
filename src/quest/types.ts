@@ -29,6 +29,9 @@ export type Step =
   | { readonly hide: string }                                              // a cast id, or 'all'
   | { readonly cg: string | null }                                         // a full-screen picture over the scene
   | { readonly item: { readonly glyph: string; readonly title: Text; readonly text: Text; readonly hand?: boolean } }
+  // A tarot card drawn by the stage (no picture needed): its numeral, name and sign, upright or reversed, with a line
+  // written on it (or about it) underneath.
+  | { readonly tarot: { readonly n: string; readonly name: Text; readonly sign: string; readonly reversed?: boolean; readonly text?: Text } }
   | { readonly letter: Text }                                              // a parchment letter, read in full
   | { readonly title: Text; readonly sub?: Text }                          // a chapter title card
   | { readonly accept: { readonly title: Text; readonly reward: number } } // the Grand Quest contract, stamped

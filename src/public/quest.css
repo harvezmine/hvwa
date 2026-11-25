@@ -265,6 +265,32 @@ html.qs-open { overflow: hidden; }
 .g-glow { fill: #e8f4ff; }
 .g-paper { fill: #f6ecd4; stroke: #a58a5c; stroke-width: 2; }
 .g-ink { fill: none; stroke: #23314f; stroke-width: 3; stroke-linecap: round; }
+/* A tarot card, drawn by the stage: a night-blue face in a gold frame, the numeral, the sign and a parchment name
+   plate. Reversed, the whole face turns over, as a real card would lie on the table. The caption under it reads the
+   right way up. */
+.qs-tarot { display: grid; justify-items: center; gap: var(--sp-4); width: min(24rem, 100%); }
+.qs-tarot-card {
+  position: relative; width: clamp(9.5rem, 22vh, 12.5rem); aspect-ratio: 7 / 12; display: grid; grid-template-rows: auto 1fr auto;
+  justify-items: center; padding: 0.7rem 0.65rem 0.8rem; border-radius: 10px; color: #f0d79a;
+  background: radial-gradient(ellipse at 50% 42%, #2c2440 0%, #17121f 62%, #0d0a12 100%);
+  box-shadow: inset 0 0 0 2px #0d0a12, inset 0 0 0 4px #c9a35a, inset 0 0 0 7px #0d0a12, inset 0 0 0 8px rgba(201, 163, 90, 0.55),
+    0 0 0 2px #e9dcbc, 0 22px 50px rgba(0, 0, 0, 0.8), 0 0 60px rgba(240, 200, 120, 0.18);
+}
+.qs-tarot.is-reversed .qs-tarot-card { rotate: 180deg; }
+.qs-tarot-n { margin-top: 0.35rem; font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.12em; }
+.qs-tarot-sign { display: grid; place-items: center; width: 100%; }
+.qs-tarot-sign svg { width: 78%; height: auto; overflow: visible; filter: drop-shadow(0 0 6px rgba(240, 200, 120, 0.35)); }
+.t-l { fill: none; stroke: #e8c97c; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.t-f { fill: #e8c97c; }
+.qs-tarot-plate {
+  justify-self: stretch; padding: 0.28rem 0.3rem; border-radius: 2px; text-align: center; color: #2a1a0c;
+  background: #e8d6ac var(--tex-parch); font-family: var(--display); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.14em;
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qs-tarot-cap { display: grid; gap: var(--sp-2); text-align: center; }
+.qs-tarot-name { margin: 0; font-family: var(--poster); font-weight: 400; font-size: clamp(1.6rem, 3.4vw, 2.1rem); line-height: 1.05; color: #f3e3bd; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9); }
+.qs-tarot-text { margin: 0; font-family: var(--serif); font-style: italic; font-size: var(--fs-md); line-height: 1.5; color: #e9dcc0; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95); }
+.qs-tarot-text .qs-key { color: #f0c46a; font-style: normal; }
 .qs-letter { width: min(36rem, 100%); max-height: 82dvh; overflow: auto; padding: var(--sp-7) var(--sp-7) var(--sp-6); font-family: var(--hand); font-size: clamp(1.3rem, 2.6vw, 1.65rem); line-height: 1.38; color: var(--ink-hand); }
 .qs-letter p { margin: 0 0 var(--sp-3); }
 .qs-letter p:first-child { font-size: 1.1em; }
@@ -283,7 +309,7 @@ html.qs-open { overflow: hidden; }
 .qs-case-wrap, .qs-end-wrap { position: absolute; inset: 0; z-index: 13; display: grid; place-items: center; padding: var(--sp-5); background: radial-gradient(ellipse at 50% 50%, rgba(5, 3, 2, 0.5), rgba(5, 3, 2, 0.82)); opacity: 0; visibility: hidden; transition: opacity 420ms ease, visibility 0s linear 420ms; }
 .qs-case-wrap.is-on, .qs-end-wrap.is-on { opacity: 1; visibility: visible; transition: opacity 420ms ease; }
 .qs-case { width: min(42rem, 100%); max-height: calc(100dvh - 2.5rem); overflow: auto; padding: 2rem 2rem 1.6rem; display: grid; gap: 0.8rem; user-select: text; -webkit-user-select: text; }
-.qs-case-clip { position: absolute; top: -0.7rem; left: 2rem; width: 3.2rem; height: 1.4rem; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, #8d7a58, #5a4a32); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); }
+.qs-case-clip { position: absolute; top: 0; left: 2rem; width: 3.2rem; height: 0.8rem; border-radius: 0 0 3px 3px; background: linear-gradient(180deg, #8d7a58, #5a4a32); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4); }
 .qs-case-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.24em; text-transform: uppercase; color: var(--wax-dark); }
 .qs-case-title { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-xl); letter-spacing: 0.03em; }
 .qs-case-brief p { margin: 0 0 var(--sp-3); font-family: var(--serif); font-size: 1.08rem; line-height: 1.6; }
@@ -304,7 +330,13 @@ html.qs-open { overflow: hidden; }
 .qs-case-msg.is-bad { color: var(--wax-dark); font-style: normal; font-weight: 600; }
 .qs-case-msg.is-ok { color: var(--ink-ok); font-style: normal; font-weight: 700; }
 .qs-case.is-wrong { animation: qs-nope 420ms var(--ease); }
-.qs-case-stamp { animation: qs-stamp 520ms var(--ease-swing) backwards; }
+/* The solved stamp lands inside the folder (the folder scrolls, so anything hanging off its edge would be clipped). */
+.qs-case-stamp {
+  top: 1.2rem; right: 1.3rem; padding: 0.4rem 1rem; white-space: nowrap; rotate: -8deg; font-size: 1rem;
+  background: rgba(232, 214, 172, 0.55); mix-blend-mode: multiply; box-shadow: none;
+  animation: qs-case-stamp 520ms var(--ease-swing) backwards;
+}
+@keyframes qs-case-stamp { from { opacity: 0; scale: 2.2; rotate: 6deg; } 70% { opacity: 1; scale: 0.94; } to { scale: 1; rotate: -8deg; } }
 
 .qs-end { width: min(28rem, 100%); padding: var(--sp-7) var(--sp-6) var(--sp-6); text-align: center; display: grid; gap: var(--sp-2); }
 .qs-end-seal { justify-self: center; width: 3.2rem; height: 3.2rem; margin-top: -3.6rem; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--wax-hi), var(--wax) 55%, var(--wax-dark)); box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.15), 0 6px 12px rgba(0, 0, 0, 0.4); }
@@ -357,6 +389,7 @@ html.qs-open { overflow: hidden; }
 @keyframes qs-ring { 0% { scale: 0.85; opacity: 0.6; } 50% { scale: 1.08; opacity: 1; } 100% { scale: 0.85; opacity: 0.6; } }
 @keyframes qs-rays { to { rotate: 360deg; } }
 @keyframes qs-rise { from { opacity: 0; translate: 0 12px; } }
+@keyframes qs-tarot-turn { from { opacity: 0; transform: perspective(700px) rotateY(-100deg) translateY(18px); } 60% { opacity: 1; } }
 @media (prefers-reduced-motion: no-preference) {
   .qs-bg-img.is-drift { animation: qs-drift 30s ease-in-out infinite alternate; }
   .qs-scene.is-shake { animation: qs-shake 520ms ease-out; }
@@ -368,6 +401,8 @@ html.qs-open { overflow: hidden; }
   .qs-actor.is-jump { animation: qs-hop 520ms ease-out; }
   .qs-overlay.is-on .qs-item, .qs-overlay.is-on .qs-accept, .qs-end-wrap.is-on .qs-end, .qs-case-wrap.is-on .qs-case { animation: qs-card 520ms var(--ease-swing); }
   .qs-overlay.is-on .qs-letter { animation: qs-unroll 1000ms ease-out; }
+  .qs-overlay.is-on .qs-tarot-card { animation: qs-tarot-turn 760ms var(--ease-swing); }
+  .qs-overlay.is-on .qs-tarot-cap { animation: qs-rise 420ms ease-out 380ms backwards; }
   .qs-overlay.is-on .qs-stamp:not(.qs-case-stamp) { animation: qs-stamp 520ms var(--ease-swing) 450ms backwards; }
   .qs-item-rays { animation: qs-rays 24s linear infinite; }
   .qs-cg.is-on img { animation: qs-card 800ms ease-out; }
@@ -400,6 +435,7 @@ html.qs-open { overflow: hidden; }
   .qs-btn { padding: 0 0.6rem; }
   .qs-case-row { flex-direction: column; }
   .qs-case { padding: 1.6rem 1.2rem 1.2rem; }
+  .qs-case-stamp { top: auto; bottom: 0.9rem; right: 0.9rem; padding: 0.3rem 0.65rem; font-size: 0.78rem; }
   .qs-log { inset: var(--sp-3); }
   .qs-cg { padding: 7vh 3vw 18vh; }
   .qs-cg img { max-height: calc(100dvh - 25vh); }
@@ -431,13 +467,41 @@ html.qs-open { overflow: hidden; }
 .qs-intro-role { margin: 0; font-family: var(--display); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-muted); }
 .qs-intro-text { margin: 0.4rem 0 0; padding-top: 0.6rem; border-top: 1px solid rgba(90, 64, 34, 0.35); font-family: var(--serif); font-size: 1.08rem; line-height: 1.6; color: #2a1a0c; }
 
-/* Case notes: what the guild knows so far, a numbered parchment list. */
-.qs-notes { width: min(36rem, 100%); max-height: 84dvh; overflow: auto; padding: 1.8rem 2rem 1.6rem; display: grid; gap: 0.5rem; }
-.qs-notes-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.3em; text-transform: uppercase; color: var(--wax-dark); }
-.qs-notes-title { margin: 0 0 0.4rem; font-family: var(--display); font-weight: 700; font-size: 1.45rem; letter-spacing: 0.03em; }
-.qs-notes-list { margin: 0; padding: 0; list-style: none; counter-reset: note; display: grid; gap: 0.55rem; }
-.qs-notes-list li { counter-increment: note; position: relative; padding: 0.15rem 0 0.15rem 2.3rem; font-family: var(--serif); font-size: 1.06rem; line-height: 1.5; color: #2a1a0c; }
-.qs-notes-list li::before { content: counter(note); position: absolute; left: 0; top: 0.1rem; display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; font-family: var(--display); font-weight: 700; font-size: 0.8rem; color: #fdebd9; background: radial-gradient(circle at 35% 30%, var(--wax-hi), var(--wax) 60%, var(--wax-dark)); }
+/* Case notes: what the guild knows so far, filed in a parchment case folder with a tab, a red stamp and numbered
+   entries. Solid paper (never see-through), so it reads the same over any scene. */
+.qs-notes {
+  position: relative; width: min(38rem, 100%); margin-top: 1.4rem;
+  padding: 1.6rem 2.1rem 1.2rem; display: grid; gap: 0.9rem; color: var(--ink); border-radius: 2px 4px 4px 4px;
+  background-color: #e8d6ac; background-image: linear-gradient(180deg, rgba(255, 248, 225, 0.35), transparent 30%), var(--tex-parch);
+  /* the frame, then a second sheet peeking out below-right, then the drop shadow */
+  box-shadow: 0 0 0 3px var(--wood-2), 0 0 0 5px var(--m-gold), 0 0 0 8px var(--wood-2),
+    12px 14px 0 4px #cdb586, 12px 14px 0 7px var(--wood-2), 0 28px 70px rgba(0, 0, 0, 0.75);
+}
+.qs-notes-tab {
+  position: absolute; left: 1.4rem; top: -1.95rem; margin: 0; padding: 0.42rem 1.1rem 0.5rem; border-radius: 6px 6px 0 0;
+  font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.28em; text-transform: uppercase;
+  color: #f3e3bd; background: linear-gradient(180deg, #5a3a20, var(--wood-2)); box-shadow: 0 0 0 2px var(--m-gold) inset;
+}
+.qs-notes-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: 0.7rem; border-bottom: 2px solid rgba(90, 64, 34, 0.45); }
+.qs-notes-title { margin: 0; font-family: var(--poster); font-weight: 400; font-size: clamp(1.7rem, 3.6vw, 2.2rem); line-height: 1.05; color: #2a1a0c; }
+.qs-notes-stamp {
+  flex: none; padding: 0.3rem 0.65rem; border: 2px solid var(--wax); border-radius: 3px; rotate: -6deg;
+  font-family: var(--display); font-weight: 700; font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--wax); opacity: 0.85; mix-blend-mode: multiply;
+}
+.qs-notes-list { margin: 0; padding: 0; list-style: none; counter-reset: note; display: grid; }
+.qs-notes-list li {
+  counter-increment: note; position: relative; padding: 0.65rem 0 0.65rem 2.6rem;
+  font-family: var(--serif); font-size: 1.08rem; line-height: 1.55; color: #2a1a0c;
+  border-bottom: 1px dashed rgba(90, 64, 34, 0.35);
+}
+.qs-notes-list li:last-child { border-bottom: 0; }
+.qs-notes-list li::before {
+  content: counter(note); position: absolute; left: 0; top: 0.68rem; display: grid; place-items: center; width: 1.75rem; height: 1.75rem;
+  border-radius: 50%; font-family: var(--display); font-weight: 700; font-size: 0.82rem; color: #fdebd9;
+  background: radial-gradient(circle at 35% 30%, var(--wax-hi), var(--wax) 60%, var(--wax-dark)); box-shadow: 0 2px 4px rgba(60, 20, 10, 0.4);
+}
+.qs-notes-foot { margin: 0; padding-top: 0.2rem; text-align: right; font-family: var(--serif); font-style: italic; font-size: 0.88rem; color: var(--ink-muted); }
 
 /* A clue slip: top right, under the controls, it fades by itself. */
 .qs-clue {
@@ -457,12 +521,20 @@ html.qs-open { overflow: hidden; }
 .qs-skip-text { margin: 0; font-family: var(--serif); font-size: 1.06rem; line-height: 1.6; color: #2a1a0c; }
 .qs-skip-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
 
-/* The dark reveal: the edges close in like a held breath, then let go. */
-@keyframes qs-iris { 0% { box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0); } 35% { box-shadow: inset 0 0 0 34vmin rgba(0, 0, 0, 0.9); } 60% { box-shadow: inset 0 0 0 30vmin rgba(0, 0, 0, 0.85); } 100% { box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0); } }
+/* The dark reveal: the edges dim softly like a held breath and let go, the middle of the scene (the speaker, the
+   picture) stays readable the whole time. */
+@keyframes qs-notes-stamp { from { opacity: 0; scale: 2.2; rotate: 8deg; } 70% { opacity: 0.85; scale: 0.94; } to { scale: 1; rotate: -6deg; } }
+@keyframes qs-iris {
+  0% { box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0); }
+  22% { box-shadow: inset 0 0 14vmin 7vmin rgba(0, 0, 0, 0.82); }
+  70% { box-shadow: inset 0 0 14vmin 6vmin rgba(0, 0, 0, 0.75); }
+  100% { box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0); }
+}
 @keyframes qs-slide-in { from { opacity: 0; translate: -18px 0; } }
 @media (prefers-reduced-motion: no-preference) {
-  .qs.is-iris .qs-vignette { animation: qs-iris 1600ms cubic-bezier(0.3, 0, 0.3, 1); }
+  .qs.is-iris .qs-vignette { animation: qs-iris 2600ms cubic-bezier(0.3, 0, 0.3, 1); }
   .qs-overlay.is-on .qs-intro, .qs-overlay.is-on .qs-notes { animation: qs-card 520ms var(--ease-swing); }
+  .qs-overlay.is-on .qs-notes-stamp { animation: qs-notes-stamp 520ms var(--ease-swing) 300ms backwards; }
   .qs-overlay.is-on .qs-intro-art img { animation: qs-slide-in 700ms var(--ease) 120ms backwards; }
   .qs-overlay.is-on .qs-notes-list li { animation: qs-rise 380ms var(--ease) backwards; animation-delay: calc(240ms + var(--i, 0) * 110ms); }
   .qs-skip-wrap.is-on .qs-skip { animation: qs-card 420ms var(--ease-swing); }

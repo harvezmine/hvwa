@@ -225,6 +225,13 @@
       [1244, 1318, 1396, 1480].forEach(function (f, i) { osc(c, o, 'sawtooth', f, t + i * 0.012, 1.1, 0.03, f * 0.96, 0.02); });
       band(c, o, t, 0.9, 0.3, 4000, 900, 1.2, 0.005);
     },
+    // A powder keg: a hard sub punch, a long roar of noise falling away, and debris.
+    boom: function (c, o, t) {
+      osc(c, o, 'sine', 95, t, 1.4, 0.9, 28);
+      band(c, o, t, 2.4, 0.5, 900, 120, 0.7, 0.004, 'lowpass');
+      for (var i = 0; i < 6; i++) band(c, o, t + 0.3 + Math.random() * 1.2, 0.12, 0.05, 2000 + Math.random() * 2000, 0, 2, 0.002);
+    },
+    arrow: function (c, o, t) { band(c, o, t, 0.28, 0.16, 5000, 1200, 2.5, 0.01); osc(c, o, 'sine', 160, t + 0.3, 0.2, 0.45, 70); },
     thud: function (c, o, t) { osc(c, o, 'sine', 120, t, 0.45, 0.6, 40); band(c, o, t, 0.2, 0.12, 300, 0, 1, 0.003, 'lowpass'); },
     murmur: function (c, o, t) { for (var i = 0; i < 7; i++) band(c, o, t + i * 0.35, 1.8, 0.05, 300 + Math.random() * 700, 0, 4, 0.3); },
     cut: function (c, o, t) { band(c, o, t, 0.28, 0.25, 2500, 6000, 1.5, 0.01); osc(c, o, 'triangle', 900, t + 0.05, 0.12, 0.05, 400); },
@@ -525,7 +532,8 @@
     placeTimer = window.setTimeout(function () { placeCard.classList.remove('is-on'); }, 4200);
   }
   // A reveal lands four ways: 'big' a white flash, a sting and a hard shake (a discovery); 'small' a dark blink and a
-  // thud; 'dark' the screen closing in like a held breath, on a heartbeat (dread); 'blood' a red pulse (violence only).
+  // thud; 'dark' the edges of the screen dim like a held breath, on a heartbeat, while the line it is placed before is
+  // read (dread: it does not hold the scene up); 'blood' a red pulse (violence only).
   function shock(kind) {
     if (fast()) return 0;
     var big = kind === 'big', blood = kind === 'blood', dark = kind === 'dark';
@@ -540,7 +548,7 @@
       if (blood) dlg.classList.add('is-pulse');
       if (dark) dlg.classList.add('is-iris');
     }
-    return big || blood ? 650 : dark ? 1000 : 300;
+    return big || blood ? 650 : dark ? 250 : 300;
   }
   var clueTimer = 0;
   function showClue(text) {
@@ -667,6 +675,18 @@
     envelope: '<svg viewBox="0 0 120 90" aria-hidden="true"><rect x="6" y="14" width="108" height="66" rx="4" class="g-dark"/><path d="M6 18 60 54 114 18" class="g-line"/><circle cx="60" cy="52" r="13" class="g-wax"/><path d="M53 50q7 7 14 0" class="g-wax-line"/><circle cx="55" cy="47" r="1.6" class="g-wax-line"/><circle cx="65" cy="47" r="1.6" class="g-wax-line"/></svg>',
     crystal: '<svg viewBox="0 0 120 120" aria-hidden="true"><path d="M60 8 92 44 60 112 28 44Z" class="g-crystal"/><path d="M28 44h64M60 8 48 44l12 68 12-68Z" class="g-line"/><circle cx="60" cy="54" r="6" class="g-glow"/></svg>',
     note: '<svg viewBox="0 0 120 90" aria-hidden="true"><path d="M12 12h96l-4 66H16Z" class="g-paper"/><path d="M24 34h70M24 48h56M24 62h40" class="g-ink"/><path d="M96 18l6 10-10 2Z" class="g-ink"/></svg>',
+    ledger: '<svg viewBox="0 0 120 100" aria-hidden="true"><path d="M60 22C46 14 26 12 10 16v66c16-4 36-2 50 6Z" class="g-paper"/><path d="M60 22c14-8 34-10 50-6v66c-16-4-36-2-50 6Z" class="g-paper"/><path d="M60 22v66" class="g-line"/><path d="M20 32h30M20 44h30M20 56h24M70 32h30M70 44h30M70 56h22" class="g-ink"/><path d="M8 84c18-5 38-3 52 6 14-9 34-11 52-6" class="g-line"/><path d="M86 70l6 10 6-10" class="g-wax"/></svg>',
+  };
+  // Tarot signs, drawn in gold on the card's face (viewBox 100 x 100).
+  var TAROT = {
+    fool: '<path class="t-l" d="M22 70c4-22 14-34 28-38 14 4 24 16 28 38"/><path class="t-l" d="M50 32c-2-12-14-18-26-14 8 2 12 8 12 14M50 32c2-12 14-18 26-14-8 2-12 8-12 14M50 32V14"/><circle class="t-f" cx="24" cy="18" r="4"/><circle class="t-f" cx="76" cy="18" r="4"/><circle class="t-f" cx="50" cy="11" r="4"/><path class="t-l" d="M20 72h60M30 86h40"/><path class="t-f" d="M50 46l6 9-6 9-6-9Z"/>',
+    emperor: '<path class="t-l" d="M24 44l8-20 10 14 8-18 8 18 10-14 8 20Z"/><path class="t-l" d="M24 44h52M30 52v34M70 52v34M24 52h52M24 86h52M30 68h40"/><circle class="t-f" cx="50" cy="20" r="3"/>',
+    hierophant: '<g class="t-l"><circle cx="34" cy="28" r="9"/><path d="M40 35l30 44M62 66l8-5M67 73l7-5"/><circle cx="66" cy="28" r="9"/><path d="M60 35L30 79M38 66l-8-5M33 73l-7-5"/></g><path class="t-l" d="M50 12v20M44 18h12M42 24h16"/>',
+    justice: '<path class="t-l" d="M50 10v80M30 26h40M30 26l-12 26h24ZM70 26l-12 26h24Z"/><path class="t-l" d="M18 52c0 7 24 7 24 0M58 52c0 7 24 7 24 0M40 90h20"/><path class="t-f" d="M50 6l4 6h-8Z"/>',
+    hanged: '<path class="t-l" d="M16 14h68M24 14v76M76 14v76"/><path class="t-l" d="M50 14v18M50 32l0 22M50 32l12 10-12 4"/><circle class="t-l" cx="50" cy="62" r="8"/><path class="t-l" d="M42 50l-8 8M58 50l8 8"/><path class="t-f" d="M44 76h12l-6 8Z"/>',
+    devil: '<path class="t-l" d="M34 30c-8-6-10-16-6-22 2 8 8 12 14 14M66 30c8-6 10-16 6-22-2 8-8 12-14 14"/><path class="t-l" d="M34 30c0 18 6 28 16 28s16-10 16-28c-8-6-24-6-32 0Z"/><path class="t-f" d="M42 38l5 3-5 2ZM58 38l-5 3 5 2Z"/><path class="t-l" d="M50 58v8M22 70h56M30 70c0 8-6 12-6 18M70 70c0 8 6 12 6 18"/><circle class="t-l" cx="40" cy="78" r="4"/><circle class="t-l" cx="60" cy="78" r="4"/>',
+    tower: '<path class="t-l" d="M38 90V34h24v56M34 34h32l-4-10H38Z"/><path class="t-l" d="M46 48h8v10h-8zM46 70h8v10h-8z"/><path class="t-f" d="M70 6L56 26h10L54 44l22-24H66Z"/><path class="t-l" d="M24 56l-8 6M78 52l8 4M28 80l-10 2"/>',
+    lovers: '<path class="t-l" d="M50 40V88M50 60c-12 0-20-8-20-18 8 0 16 6 20 14 4-8 12-14 20-14 0 10-8 18-20 18"/><circle class="t-f" cx="36" cy="44" r="3.5"/><circle class="t-f" cx="64" cy="44" r="3.5"/><path class="t-l" d="M50 30c-10-10-24-12-32-8 10 0 18 4 24 10M50 30c10-10 24-12 32-8-10 0-18 4-24 10"/><circle class="t-l" cx="50" cy="16" r="6"/><path class="t-l" d="M34 88h32"/>',
   };
   async function card(step) {
     clearText(null);
@@ -684,6 +704,20 @@
       p.textContent = step.item.hand ? fill(step.item.text).split('/').join('/​') : fill(step.item.text);
       log(step.item.title, fill(step.item.text));
       sfx('spot');
+    } else if (step.tarot) {
+      // A tarot card: dark face, gold frame, the numeral at the top, the sign, the name plate; turned over if reversed.
+      var t = step.tarot;
+      c = el('div', 'qs-tarot' + (t.reversed ? ' is-reversed' : ''), overlay);
+      var faceT = el('div', 'qs-tarot-card', c);
+      faceT.setAttribute('aria-hidden', 'true');
+      el('span', 'qs-tarot-n', faceT).textContent = t.n;
+      el('div', 'qs-tarot-sign', faceT).innerHTML = '<svg viewBox="0 0 100 100">' + (TAROT[t.sign] || '') + '</svg>';
+      el('span', 'qs-tarot-plate', faceT).textContent = String(t.name).split(',')[0]; // "Justice, reversed": the card says Justice
+      var cap = el('div', 'qs-tarot-cap', c);
+      el('h3', 'qs-tarot-name', cap).textContent = t.n + ' · ' + t.name;
+      if (t.text) rich(el('p', 'qs-tarot-text', cap), fill(t.text));
+      log(t.n + ' · ' + t.name, t.text ? plain(fill(t.text)) : '');
+      sfx('whoosh');
     } else if (step.intro) {
       // A character card: the portrait on the left looking towards the words, name, standing and who they are.
       var who = member(step.intro.who);
@@ -700,15 +734,20 @@
       log(who.name, plain(fill(step.intro.text)));
       sfx('whoosh');
     } else if (step.notes) {
+      // A guild case folder: a tab with the kicker, the title under a red "filed" stamp, numbered entries, and a
+      // reminder that a click moves on.
       c = el('div', 'qs-notes', overlay);
-      el('p', 'qs-notes-kicker', c).textContent = UI.notes;
-      el('h3', 'qs-notes-title', c).textContent = step.notes.title;
+      el('p', 'qs-notes-tab', c).textContent = UI.notes;
+      var head = el('div', 'qs-notes-head', c);
+      el('h3', 'qs-notes-title', head).textContent = step.notes.title;
+      el('span', 'qs-notes-stamp', head).textContent = boot.quest.title;
       var ol = el('ol', 'qs-notes-list', c);
       step.notes.items.forEach(function (it, k) {
         var li = el('li', '', ol);
         li.style.setProperty('--i', String(k));
         rich(li, fill(it));
       });
+      el('p', 'qs-notes-foot', c).textContent = UI.tap;
       log(UI.notes, step.notes.items.map(function (it) { return plain(fill(it)); }).join(' · '));
       sfx('page');
     } else if (step.letter) {
@@ -859,7 +898,7 @@
     if ('show' in step) { await sleep(show(step.show, step.pose, step.at)); return; }
     if ('hide' in step) { await sleep(hide(step.hide)); return; }
     if ('cg' in step) { if (step.cg) clearText(null); await sleep(setCg(step.cg)); return; }
-    if ('item' in step || 'letter' in step || 'accept' in step || 'intro' in step || 'notes' in step) { await card(step); return; }
+    if ('item' in step || 'tarot' in step || 'letter' in step || 'accept' in step || 'intro' in step || 'notes' in step) { await card(step); return; }
     if ('clue' in step) { if (!fast()) showClue(step.clue); else log(UI.clue, plain(fill(step.clue))); return; }
     if ('title' in step) { await titleShow(step); return; }
     if ('choice' in step) {

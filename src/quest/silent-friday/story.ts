@@ -1,11 +1,13 @@
-// src/quest/silent-friday/story.ts — "Silent Friday", the guild's first Grand Quest (forensics). Chapters 0-3: the
+// src/quest/silent-friday/story.ts — "Silent Friday", the guild's first Grand Quest (forensics). Chapters 0-4: the
 // prologue (who Sir Prince was, the night he died, the contract), the scene of his murder (challenge 1: the drawing's
 // hidden comment), the girl at Arandelle theme park (challenge 2: the "text file" that is a picture with a second one
-// packed behind it), and the Hale fire (challenge 3: a forged drawing whose IHDR hides the rows below it).
+// packed behind it), the Hale fire (challenge 3: a forged drawing whose IHDR hides the rows below it), and The Fool's
+// circus (challenge 4: Hale's ledger, a workbook whose real book is a "veryHidden" sheet behind a hidden decoy).
 // The story is a spoiler for the challenges: it lives on the server and leaves it one unlocked chapter at a time.
-// Varrick and Master Hale have their own portraits (static/quest/sf/sprite); Sir Prince still wears Roland's, and
-// minor parts are silhouettes. `face` is the way each portrait looks as drawn (the stage mirrors it so the
-// two sides of a talk face each other); `voice` is the pitch of its talk blips. Key phrases are marked **like this**;
+// Varrick and Master Hale have their own portraits (static/quest/sf/sprite); Sir Prince stays a crowned silhouette
+// for now (shadow-prince, cut from Roland's outline), like the minor parts. `face` is the way each portrait looks as
+// drawn (the stage mirrors it so the two sides of a talk face each other); `voice` is the pitch of its talk blips.
+// Key phrases are marked **like this**;
 // each chapter closes its first half with case notes, and carries a short recap for a player who skips ahead.
 import type { Chapter, Quest, Step, Text } from '../types.js';
 
@@ -31,7 +33,7 @@ const CAST: Quest['cast'] = {
   varrick: { name: T('Captain Varrick', 'Kapten Varrick'), role: T('Crimson Guard', 'Garda Merah'), face: 'right', voice: 180,
     art: { '': `${ART}/varrick-idle.webp`, angry: `${ART}/varrick.webp`, point: `${ART}/varrick-point.webp` } },
   hale: { name: T('Master Hale', 'Tuan Hale'), role: T('Merchant prince', 'Saudagar besar'), face: 'right', voice: 340, art: { '': `${ART}/hale.webp` } },
-  prince: { name: T('Sir Prince', 'Sir Prince'), role: T('The Hero of Peace', 'Pahlawan Perdamaian'), face: 'left', voice: 260, art: { '': '/static/art/heroes/roland.webp' } },
+  prince: { name: T('Sir Prince', 'Sir Prince'), role: T('The Hero of Peace', 'Pahlawan Perdamaian'), face: 'left', voice: 260, art: { '': `${ART}/shadow-prince.webp` } },
   matron: { name: T('Matron Agnes', 'Bu Agnes'), role: T('Little Lantern House', 'Little Lantern House'), face: 'right', voice: 560, art: { '': `${ART}/shadow-women-a.webp` } },
   coroner: { name: T('Coroner', 'Koroner'), face: 'right', voice: 300, art: { '': `${ART}/shadow-man-a.webp` } },
   guard: { name: T('Guard', 'Penjaga'), role: T('Crimson Guard', 'Garda Merah'), face: 'left', voice: 240, art: { '': `${ART}/shadow-man-b.webp` } },
@@ -43,6 +45,9 @@ const CAST: Quest['cast'] = {
   neighbour: { name: T('A neighbour', 'Seorang tetangga'), voice: 330 },
   neighbour2: { name: T('Another neighbour', 'Tetangga lain'), voice: 590 },
   nina: { name: T('Little girl', 'Gadis kecil'), voice: 980 },
+  // Chapter IV. The Fool is never shown: a voice in the pipes, a hand in the smoke, a mask on a rooftop.
+  fool: { name: T('The Fool', 'The Fool'), voice: 300 },
+  chancellor: { name: T('Chancellor Corvin', 'Kanselir Corvin'), role: T('Royal Council', 'Dewan Kerajaan'), voice: 230 },
 };
 
 const GUILD = T('Guild of Valeria', 'Guild Valeria');
@@ -79,15 +84,20 @@ const prologue: Chapter = {
     narr('Friday night. The children\'s kite festival is over and the house is asleep. Sir Prince stays behind in his study, writing letters by lantern light.',
       'Jumat malam. Festival layang-layang anak-anak sudah usai dan seisi rumah tertidur. Sir Prince tinggal di ruang kerjanya, menulis surat di bawah cahaya lentera.'),
     { bg: 'study-night', fx: 'cut' }, { black: false }, { particles: 'dust' }, { show: 'prince', at: 'center' },
-    { sfx: 'door' },
-    say('prince', 'Come in. The door is open.', 'Masuklah. Pintunya tidak dikunci.'),
-    narr('He doesn\'t look up from his letter. Only friends come to this door so late.',
-      'Ia tak mengangkat wajah dari suratnya. Hanya sahabat yang datang ke pintu ini selarut ini.'),
-    { wait: 400 }, { hide: 'prince' }, { sfx: 'bell' }, { bg: 'study-bell', fx: 'cut' }, { cam: 'push' }, { wait: 1100 },
-    say('prince', '...That bell.', '...Lonceng itu.', { style: 'whisper', react: 'shake', off: true }),
-    say('prince', 'No. It can\'t be. You\'re—', 'Tidak. Tidak mungkin. Kau—', { style: 'shout', off: true }),
-    { amb: null }, { shock: 'dark' }, { black: true }, { cam: 'reset' }, { sfx: 'thud' }, { wait: 1400 },
-    narr('The lantern went out.', 'Lentera itu padam.'),
+    say('prince', 'Seven houses... and still not enough beds. Next winter, then.', 'Tujuh rumah... dan ranjangnya masih kurang. Musim dingin depan, kalau begitu.',
+      { style: 'whisper' }),
+    narr('His pen scratches on. The house is asleep, and he is too busy to listen to it.',
+      'Penanya terus menggores. Seisi rumah tertidur, dan ia terlalu sibuk untuk mendengarkannya.'),
+    { hide: 'prince' }, { bg: 'study-bell', fx: 'slow' }, { cam: 'push' }, { amb: null }, { wait: 900 },
+    narr('Behind him, the door opens without a sound. **He doesn\'t turn around.**',
+      'Di belakangnya, pintu terbuka tanpa suara. **Ia tidak menoleh.**'),
+    { sfx: 'bell' }, { wait: 700 },
+    { particles: null }, { black: true }, { cam: 'reset' }, { wait: 900 },
+    narr('The lantern goes out.', 'Lentera itu padam.'),
+    say('prince', 'Who\'s there? ...That bell. Wait.', 'Siapa di sana? ...Lonceng itu. Tunggu.', { style: 'whisper', off: true }),
+    say('prince', 'No. It can\'t be. You\'re—', 'Tidak. Tidak mungkin. Kau—', { style: 'shout', react: 'shake', off: true }),
+    { sfx: 'thud' }, { wait: 1600 },
+    narr('Then nothing at all.', 'Lalu tak ada apa-apa lagi.'),
     { wait: 600 }, { sfx: 'bell' }, { sfx: 'alarm' }, { music: 'dread', fade: 2500 },
     narr('In the morning, every bell in Valeria rang at once.', 'Pagi harinya, seluruh lonceng di Valeria berdentang bersamaan.'),
     { particles: null }, { tint: null }, { bg: 'mourning', fx: 'cut' }, { amb: 'night' }, { black: false },
@@ -152,8 +162,8 @@ const prologue: Chapter = {
       text: T('Cold to the touch. Something flickers deep inside it.', 'Dingin saat disentuh. Ada sesuatu yang berkedip jauh di dalamnya.') } },
     say('mira', 'It\'s strange, though. The courier left it here before sunrise...', 'Tapi aneh. Kurirnya menaruh ini sebelum matahari terbit...', 'think'),
     { music: null, fade: 900 },
+    { shock: 'dark' },
     say('mira', '...**before anyone had even found him.**', '...**sebelum ada yang menemukan jasad beliau.**', { pose: 'think', style: 'whisper' }),
-    { shock: 'dark' }, { wait: 400 },
     say('gm', 'Mira.', 'Mira.'),
     say('mira', '...Sorry. I\'ll stamp the contract.', '...Maaf. Akan kucap kontraknya.'),
     { music: 'investigate', fade: 1500 },
@@ -283,8 +293,8 @@ const lantern: Chapter = {
     say('varrick', 'Sir Prince pulled me out of the gutter when I was eight years old. Whoever did this to him...',
       'Sir Prince memungutku dari selokan waktu umurku delapan tahun. Siapa pun yang melakukan ini padanya...'),
     { cam: 'push' },
-    say('varrick', '...I\'ll find him first. And I\'ll **hang him** with my own hands.', '...akan kutemukan dia lebih dulu. Dan akan **kugantung dia** dengan tanganku sendiri.', 'angry'),
-    { shock: 'dark' }, { cam: 'reset' }, { hide: 'all' },
+    say('varrick', '...I\'ll find him first. And I\'ll **hang him** with my own hands.', '...akan kutemukan dia lebih dulu. Dan akan **kugantung dia** dengan tanganku sendiri.', { pose: 'angry', react: 'shake' }),
+    { cam: 'reset' }, { hide: 'all' },
     { black: true }, { amb: null }, { particles: null }, { music: 'investigate', fade: 2000 },
     narr('Back at the guild, the hall has emptied. Only the lamps are still awake.', 'Kembali di guild, aula sudah kosong. Hanya lampu-lampu yang masih terjaga.'),
     { bg: 'guild-night', fx: 'cut' }, { amb: 'room' }, { particles: 'dust' }, { tint: 'warm' }, { black: false },
@@ -369,9 +379,8 @@ const park: Chapter = {
       { label: T('Watch the jester', 'Perhatikan si badut'), then: [
         narr('A jester on stilts is juggling by the gate. He catches your eye, bows low, and the bells on his hat jingle.',
           'Seorang badut berkaki panjang sedang menjuggling di dekat gerbang. Ia menatapmu, membungkuk dalam-dalam, dan lonceng di topinya berdenting.'),
-        { sfx: 'bell' },
+        { sfx: 'bell' }, { shock: 'dark' },
         narr('Somewhere behind you, another bell answers.', 'Di suatu tempat di belakangmu, lonceng lain menjawab.'),
-        { shock: 'dark' },
         narr('When you turn around, there\'s only the crowd.', 'Saat kamu menoleh, yang ada hanya kerumunan.'),
       ] },
       { label: T('Sit by the lake', 'Duduk di tepi danau'), then: [
@@ -416,8 +425,8 @@ const park: Chapter = {
     { sfx: 'cut' },
     narr('You cut the ropes. For one heartbeat, the chanting stops.', 'Kamu memotong talinya. Untuk sedetik, nyanyiannya berhenti.'),
     { music: null, fade: 400 },
-    say('nina', '...the funny man said you would come.', '...om lucu itu bilang kamu akan datang.', { style: 'whisper' }),
     { shock: 'dark' },
+    say('nina', '...the funny man said you would come.', '...om lucu itu bilang kamu akan datang.', { style: 'whisper' }),
     narr('You untie the cloth from her eyes.', 'Kamu melepaskan kain dari matanya.'),
     { sfx: 'bell' }, { flash: 'white' }, { tint: null }, { bg: 'note', fx: 'cut' },
     narr('The moment it falls away, she goes limp in your arms. Asleep. Still breathing.', 'Begitu kain itu terlepas, tubuhnya lunglai di pelukanmu. Tertidur. Masih bernapas.'),
@@ -498,8 +507,8 @@ const park: Chapter = {
     say('mira', 'Is that... a person?', 'Apakah itu... seseorang?', 'think'),
     narr('The Guildmaster doesn\'t answer. For a long moment, he doesn\'t move at all.', 'Ketua Guild tidak menjawab. Untuk waktu yang lama, ia sama sekali tidak bergerak.'),
     { music: null, fade: 1500 },
-    say('gm', '...I haven\'t heard that name in **fifteen years**.', '...Sudah **lima belas tahun** aku tidak mendengar nama itu.', { style: 'whisper' }),
     { shock: 'dark' },
+    say('gm', '...I haven\'t heard that name in **fifteen years**.', '...Sudah **lima belas tahun** aku tidak mendengar nama itu.', { style: 'whisper' }),
     say('gm', 'Close the door, Mira.', 'Tutup pintunya, Mira.'),
     { sfx: 'door' }, { hide: 'all' },
     { black: true }, { amb: null }, { particles: null }, { tint: null }, { music: 'dread', fade: 1500 },
@@ -559,8 +568,8 @@ const fire: Chapter = {
     say('neighbour2', 'They say the doors were barred. **From the outside.**', 'Katanya pintu-pintunya dipalang. **Dari luar.**', { style: 'whisper' }),
     say('neighbour', 'It\'s that Fool. Everyone knows Hale put up the gold to hunt him down. This is his answer.',
       'Ini pasti si Fool itu. Semua orang tahu Hale yang menyediakan emas untuk memburunya. Ini balasannya.'),
+    { shock: 'small' },
     narr('The words land like a stone. The bounty. **Your bounty.**', 'Kata-kata itu jatuh seperti batu. Bounty itu. **Bounty-mu.**'),
-    { shock: 'dark' },
     clue('The city believes **Hale paid the bounty** on The Fool, and that The Fool burned him for it.', 'Kota percaya **Hale yang membayar bounty** untuk The Fool, dan The Fool membakarnya sebagai balasan.'),
     { choice: [
       { label: T('Ask who says Hale paid it', 'Tanyakan siapa yang bilang Hale membayarnya'), then: [
@@ -677,6 +686,337 @@ const fire: Chapter = {
   ],
 };
 
+// ---- Chapter 4: The Fool's circus ------------------------------------------------------------------------------------
+// The Fool puts three lords on trial before the city, over twelve barrels of powder. A logic riddle shows the healer
+// burned as a witch fifteen years ago was innocent; Varrick has the "Fool" shot before the Chancellor can name him,
+// and the "Fool" is the Marshal on strings. In the panic the player finds Hale's ledger in the carousel. The case:
+// Hale's other book is a sheet Excel will not unhide (state="veryHidden"), behind a plain hidden decoy; one row there
+// names the healer's husband, sent to the border so no one would ask for their daughter: Lucian, The Fool's own name.
+// Sir Prince is only brushed: a "P." in Hale's comment, and a question on the rooftop. The two lords left die in the
+// fire Varrick's men set. Tarot cards are drawn by the stage: 0, IV, V, XI (reversed), XII, XVI, XV.
+
+const circus: Chapter = {
+  n: 4,
+  title: T('The Fool\'s Circus', 'Sirkus Sang Fool'),
+  sub: T('Chapter IV', 'Bab IV'),
+  cover: 'circus-gate',
+  recap: T(
+    'At the old circus, The Fool leaves only a card: **tomorrow at dusk**. By dawn his invitations are under every door, and three lords have vanished. That night he puts **the Marshal, the Inquisitor and the Chancellor** on trial before the city, over barrels of powder. The riddle proves the **Chancellor** honest: the healer burned as a witch fifteen years ago was **innocent**, and they were paid to say so. Before he can name the man who carried the gold, **Varrick** has the archers shoot, and the "Fool" turns out to be the **Marshal on strings**. In the panic you find **Hale\'s ledger** inside the smallest carousel horse and copy it into your crystal. Now: find the name Hale hid.',
+    'Di sirkus tua, The Fool hanya meninggalkan sebuah kartu: **besok saat senja**. Menjelang fajar undangannya ada di bawah setiap pintu, dan tiga bangsawan menghilang. Malam itu ia mengadili **Sang Marsekal, Sang Inkuisitor, dan Sang Kanselir** di depan seluruh kota, di atas tong-tong mesiu. Teka-tekinya membuktikan **Kanselir** yang jujur: tabib yang dibakar sebagai penyihir lima belas tahun lalu **tidak bersalah**, dan mereka dibayar untuk mengatakan sebaliknya. Sebelum Kanselir sempat menyebut nama orang yang membawa emas itu, **Varrick** menyuruh pemanah menembak, dan "Fool" itu ternyata **Sang Marsekal yang digantung tali**. Di tengah kepanikan, kamu menemukan **buku besar Hale** di dalam kuda terkecil komidi putar dan menyalinnya ke kristalmu. Sekarang: temukan nama yang disembunyikan Hale.'),
+  recapPost: T(
+    'The name is **Lucian**: the healer\'s husband, sent to the border so that no one would come asking for their daughter. Beside it Hale wrote: "**P.** signed for this one himself." Varrick catches you, takes the book and draws his knife, but The Fool pulls you out through the smoke. The circus burns with **the Inquisitor and the Chancellor** inside, and the city will blame The Fool. On the rooftops he answers to his name, and leaves you a card: **The Devil, XV**. Tomorrow: the little boy.',
+    'Namanya **Lucian**: suami sang tabib, dikirim ke perbatasan agar tak ada yang datang mencari putri mereka. Di sampingnya Hale menulis: "**P.** menandatangani yang satu ini sendiri." Varrick memergokimu, merampas buku itu, dan menghunus pisaunya, tapi The Fool menarikmu keluar lewat asap. Sirkus terbakar bersama **Sang Inkuisitor dan Sang Kanselir** di dalamnya, dan kota akan menyalahkan The Fool. Di atas atap, ia menjawab ketika namanya dipanggil, dan meninggalkan sebuah kartu untukmu: **Iblis, XV**. Besok: anak kecil itu.'),
+  pre: [
+    { black: true }, { music: null }, { amb: 'night' }, { wait: 700 },
+    { title: T('The Fool\'s Circus', 'Sirkus Sang Fool'), sub: T('Chapter IV', 'Bab IV') },
+    { bg: 'circus-gate', fx: 'slow' }, { tint: 'cold' }, { particles: 'dust' }, { music: 'uncanny', fade: 2200 }, { black: false },
+    { place: T('The old circus, edge of the city', 'Sirkus tua, tepi kota'), time: T('The same night', 'Malam yang sama') },
+    narr('The chain on the gate has been cut clean. By the entrance an old carousel creaks in the wind, its painted horses still grinning after fifteen years.',
+      'Rantai di gerbang sudah dipotong rapi. Di dekat pintu masuk, sebuah komidi putar tua berderit tertiup angin, kuda-kuda catnya masih menyeringai setelah lima belas tahun.'),
+    { cam: 'push' },
+    narr('Inside the big top, a single lantern stands in the middle of the ring. Beneath it, someone has left **a card**.',
+      'Di dalam tenda utama, sebuah lentera berdiri sendirian di tengah arena. Di bawahnya, seseorang meninggalkan **sebuah kartu**.'),
+    { cam: 'reset' },
+    { tarot: { n: '0', name: T('The Fool', 'The Fool'), sign: 'fool', text: T(
+      'On the back, in a neat hand: "Not tonight, little detective. **Tomorrow at dusk**, when the whole city is watching."',
+      'Di baliknya, dengan tulisan rapi: "Jangan malam ini, detektif kecil. **Besok saat senja**, ketika seluruh kota ikut menonton."') } },
+    { sfx: 'armor' },
+    narr('Torchlight spills through the gate behind you. Crimson cloaks, a dozen of them.', 'Cahaya obor tumpah dari gerbang di belakangmu. Jubah merah tua, selusin jumlahnya.'),
+    say('varrick', 'Every wagon. Every crate. Tear up the boards if you have to. **Nobody leaves with anything.**',
+      'Setiap kereta. Setiap peti. Bongkar lantainya kalau perlu. **Tak seorang pun keluar membawa apa pun.**', { style: 'shout', off: true }),
+    narr('You slip out through a split in the canvas before the first torch reaches the ring. The card is still in your hand.',
+      'Kamu menyelinap keluar lewat sobekan kanvas sebelum obor pertama mencapai arena. Kartu itu masih di tanganmu.'),
+    { black: true }, { particles: null }, { music: null, fade: 1500 }, { tint: null }, { wait: 600 },
+
+    // Dawn: the invitation is everywhere.
+    { bg: 'city-cards', fx: 'cut' }, { amb: 'crowd' }, { tint: 'cold' }, { black: false },
+    { place: T('Valeria', 'Valeria'), time: T('Dawn', 'Fajar') },
+    narr('By sunrise the same card is everywhere: under every door in Valeria, nailed to every lamppost, even pinned inside the Crimson Guard\'s own barracks.',
+      'Saat matahari terbit, kartu yang sama ada di mana-mana: di bawah setiap pintu di Valeria, dipaku di setiap tiang lampu, bahkan disematkan di dalam barak Garda Merah sendiri.'),
+    { letter: T(
+      'Good people of Valeria,\n\nTonight at dusk, at the old circus, I will perform the last act of the Hero of Peace.\n\nCome and hear what the angel hid.\n\nNo children, please. This show is not for them.',
+      'Warga Valeria yang baik,\n\nMalam ini saat senja, di sirkus tua, aku akan mementaskan babak terakhir Sang Pahlawan Perdamaian.\n\nDatanglah, dan dengarkan apa yang disembunyikan sang malaikat.\n\nTolong jangan bawa anak-anak. Pertunjukan ini bukan untuk mereka.') },
+    narr('Unsigned, as always. It doesn\'t need a name. **What the angel hid**: you think of the drawing from Arandelle, an angel holding out an apple.',
+      'Tanpa tanda tangan, seperti biasa. Ia tak butuh nama. **Apa yang disembunyikan sang malaikat**: kamu teringat gambar dari Arandelle, malaikat yang menyodorkan sebutir apel.'),
+    { show: 'woman', at: 'left' },
+    say('woman', 'Three lords gone in one week. The Marshal, the Inquisitor, the Chancellor. The Guard says they went hunting.',
+      'Tiga bangsawan hilang dalam seminggu. Sang Marsekal, Sang Inkuisitor, Sang Kanselir. Kata Garda, mereka pergi berburu.'),
+    { show: 'man', at: 'right' },
+    say('man', 'Hunting? All three, together? The Marshal can barely sit a horse.', 'Berburu? Bertiga, bersama-sama? Sang Marsekal saja hampir tak sanggup naik kuda.'),
+    say('woman', 'And now this. "What the angel hid." What is that supposed to mean?', 'Lalu sekarang ini. "Apa yang disembunyikan sang malaikat." Maksudnya apa coba?', { style: 'whisper' }),
+    { hide: 'all' },
+    clue('Three lords vanished this week: **the Marshal, the Inquisitor and the Chancellor**.', 'Tiga bangsawan menghilang minggu ini: **Sang Marsekal, Sang Inkuisitor, dan Sang Kanselir**.'),
+
+    // The guild.
+    { black: true }, { bg: 'guild-noon', fx: 'cut' }, { amb: 'hall' }, { tint: 'warm' }, { particles: 'dust' }, { music: 'investigate', fade: 2000 }, { black: false },
+    { place: GUILD, time: T('Morning', 'Pagi') },
+    { show: 'gm', at: 'left' }, { show: 'mira', pose: 'think', at: 'right' },
+    say('mira', 'The Crimson Guard tore the old circus apart all night. Wagons, crates, floorboards. They found **nothing**.',
+      'Garda Merah membongkar sirkus tua itu semalaman. Kereta, peti, papan lantai. Mereka **tidak menemukan apa-apa**.', 'think'),
+    say('gm', 'The note in Exhibit 7 wanted Hale\'s books found before we got there. Then the Guard spent the night looking for them.',
+      'Catatan di Barang Bukti 7 ingin buku-buku Hale ditemukan sebelum kita sampai. Lalu Garda menghabiskan semalaman mencarinya.', 'read'),
+    say('gm', 'Draw your own line between those two.', 'Tarik sendiri garis di antara keduanya.'),
+    say('mira', 'And tonight Varrick lets the whole city walk in?', 'Lalu malam ini Varrick membiarkan seluruh kota masuk?', 'think'),
+    say('gm', 'He wants an audience when The Fool hangs. A trap with a crowd for a witness.', 'Dia ingin ada penonton saat The Fool digantung. Jebakan, dengan kerumunan sebagai saksinya.', 'nod'),
+    say('gm', 'The Fool wants that same crowd, for a different reason. **Both of them want witnesses.** Be ours.',
+      'The Fool menginginkan kerumunan yang sama, dengan alasan berbeda. **Keduanya butuh saksi.** Jadilah saksi kita.'),
+    { choice: [
+      { label: T('"And if The Fool shows himself?"', '"Kalau The Fool menampakkan diri?"'), then: [
+        say('gm', 'Then our bounty is standing in that tent. But a man who kills in the dark doesn\'t send invitations unless he has something to say. **Listen first.**',
+          'Berarti bounty kita sedang berdiri di tenda itu. Tapi orang yang membunuh dalam gelap tak akan mengirim undangan kalau tak ada yang ingin ia katakan. **Dengarkan dulu.**'),
+      ] },
+      { label: T('"No children. He even thought of that."', '"Tanpa anak-anak. Dia bahkan memikirkan itu."'), then: [
+        say('mira', 'A murderer who worries about children. I don\'t understand him at all.', 'Pembunuh yang mengkhawatirkan anak-anak. Aku sama sekali tak mengerti dia.', 'think'),
+        say('gm', 'Neither does Varrick. **That is what frightens him.**', 'Varrick juga tidak. **Itulah yang membuatnya takut.**', 'nod'),
+      ] },
+    ] },
+    say('mira', 'Be careful tonight. Please.', 'Hati-hati malam ini. Kumohon.', 'smile'),
+    { hide: 'all' },
+
+    // Dusk at the gate.
+    { black: true }, { music: null, fade: 1200 }, { particles: null },
+    { bg: 'circus-gate', fx: 'cut' }, { amb: 'crowd' }, { tint: 'warm' }, { particles: 'dust' }, { black: false }, { music: 'uncanny', fade: 2500 },
+    { place: T('The old circus', 'Sirkus tua'), time: T('Dusk', 'Senja') },
+    narr('Half the city has come. Lanterns burn along the old strings again, and the crowd pushes through the gate as if the last fifteen years never happened.',
+      'Separuh kota datang. Lentera-lentera menyala lagi di sepanjang tali tua, dan kerumunan berdesakan melewati gerbang seolah lima belas tahun terakhir tak pernah terjadi.'),
+    narr('Crimson Guards line the fences. Up in the stands, you count **archers**.', 'Garda Merah berjajar di sepanjang pagar. Di tribun atas, kamu menghitung **para pemanah**.'),
+    narr('At the gate, a figure in a patched clown\'s coat hands out sweets, and turns every child away.',
+      'Di gerbang, sosok bermantel badut penuh tambalan membagikan permen, dan menyuruh setiap anak pulang.'),
+    say('nina', 'He gave me a sweet and said go home and hug somebody.', 'Dia kasih aku permen, terus bilang pulang sana, peluk seseorang.'),
+    say('nina', '...He said you\'d be here, though.', '...Tapi katanya kamu bakal ada di sini.', { style: 'whisper' }),
+    narr('When you look up, the clown is gone.', 'Saat kamu menoleh, badut itu sudah lenyap.'),
+    { explore: { prompt: T('Before the show', 'Sebelum pertunjukan'), spots: [
+      { label: T('The carousel', 'Komidi putar'), then: [
+        narr('The old carousel by the gate. Three painted horses, and one of them is much smaller than the other two.',
+          'Komidi putar tua di dekat gerbang. Tiga kuda bercat, dan salah satunya jauh lebih kecil dari dua yang lain.'),
+        narr('A brass plate on the rail, polished when nothing else here is: **"For my three. — H."**',
+          'Sebuah plakat kuningan di pagarnya, mengilap padahal semua yang lain di sini kusam: **"Untuk ketiga anakku. — H."**'),
+        clue('A carousel at the gate with three horses, and a brass plate: **"For my three. — H."**', 'Komidi putar di gerbang dengan tiga kuda, dan sebuah plakat kuningan: **"Untuk ketiga anakku. — H."**'),
+      ] },
+      { label: T('The old wagons', 'Kereta-kereta tua'), then: [
+        narr('Circus wagons ring the tent, their paint peeling. Nobody has lived in them for fifteen years, yet they smell of **fresh lamp oil**.',
+          'Kereta-kereta sirkus mengelilingi tenda, catnya mengelupas. Tak ada yang tinggal di sana selama lima belas tahun, tapi baunya seperti **minyak lampu yang masih baru**.'),
+      ] },
+      { label: T('Captain Varrick', 'Kapten Varrick'), then: [
+        { show: 'varrick', at: 'right' },
+        say('varrick', 'Guild. Stay where I can see you. Tonight the whole city watches The Fool hang.',
+          'Guild. Tetap di tempat yang bisa kulihat. Malam ini seluruh kota akan menyaksikan The Fool digantung.', 'point'),
+        narr('He isn\'t watching the stage. He\'s watching **the gate**.', 'Ia tidak memperhatikan panggung. Ia memperhatikan **gerbang**.'),
+        { hide: 'varrick' },
+      ] },
+    ] } },
+
+    // The show.
+    { bg: 'big-top', fx: 'slow' }, { particles: 'dust' },
+    narr('Every bench is full. In the ring, three chairs stand under white sheets, a card pinned to each. High above them, on the old trapeze platform, a figure in a Fool\'s mask stands perfectly still.',
+      'Setiap bangku penuh. Di arena, tiga kursi berdiri di bawah kain putih, masing-masing dengan sebuah kartu tersemat. Jauh di atasnya, di panggung trapeze tua, sosok bertopeng Fool berdiri diam tak bergerak.'),
+    { amb: null }, { music: null, fade: 800 }, { wait: 900 },
+    { sfx: 'bell' }, { shock: 'small' },
+    narr('A bell rings once. Every lantern in the tent goes out but the three over the chairs.', 'Sebuah lonceng berdenting sekali. Semua lentera di tenda padam, kecuali tiga di atas kursi-kursi itu.'),
+    { wait: 500 }, { sfx: 'boom' }, { shock: 'big' }, { amb: 'crowd' },
+    narr('Outside, an empty wagon **explodes**. The canvas glows orange and the crowd screams.', 'Di luar, sebuah kereta kosong **meledak**. Kanvas tenda menyala oranye dan kerumunan menjerit.'),
+    { music: 'uncanny', fade: 600 },
+    say('fool', 'Good evening, Valeria!', 'Selamat malam, Valeria!', { style: 'shout' }),
+    narr('The voice comes from everywhere at once, out of the old speaking pipes that run up the tent poles.', 'Suara itu datang dari segala arah sekaligus, keluar dari pipa-pipa pengeras suara tua yang menjalar di tiang-tiang tenda.'),
+    say('fool', 'That was an empty wagon. Under your benches there are **twelve more**, and they are not empty. If I fall tonight, they will not need me to light them.',
+      'Tadi itu kereta kosong. Di bawah bangku kalian ada **dua belas lagi**, dan semuanya tidak kosong. Kalau aku jatuh malam ini, mereka tak butuh aku untuk menyulutnya.'),
+    say('fool', 'So, Captain. Tell your archers to rest their arms.', 'Jadi, Kapten. Suruh para pemanahmu menurunkan busur.'),
+    { show: 'varrick', at: 'right', pose: 'angry' },
+    say('varrick', 'Hold! Nobody looses an arrow!', 'Tahan! Jangan ada yang melepas panah!', { pose: 'angry', style: 'shout' }),
+    { hide: 'varrick' },
+    say('fool', 'Fifteen years ago, a healer at Little Lantern House asked where the little girls were going.',
+      'Lima belas tahun lalu, seorang tabib di Little Lantern House bertanya ke mana anak-anak perempuan itu pergi.', { style: 'whisper' }),
+    say('fool', 'Fifteen years ago, **she burned as a witch**.', 'Lima belas tahun lalu, **ia dibakar sebagai penyihir**.'),
+    { sfx: 'murmur' },
+    say('fool', 'Three seats for three honest men. Say good evening, my lords.', 'Tiga kursi untuk tiga orang jujur. Ucapkan selamat malam, Tuan-tuan.'),
+    narr('Under the sheets, shapes jerk and moan through their gags.', 'Di balik kain-kain itu, sosok-sosok menyentak dan mengerang dari balik sumpalan mulut mereka.'),
+    { tarot: { n: 'IV', name: T('The Emperor, reversed', 'Kaisar, terbalik'), sign: 'emperor', reversed: true, text: T(
+      'Pinned to the first chair. **The Marshal**, who signed the order that sent a man to the border.',
+      'Tersemat di kursi pertama. **Sang Marsekal**, yang menandatangani perintah pengiriman seorang pria ke perbatasan.') } },
+    { tarot: { n: 'V', name: T('The Hierophant, reversed', 'Hierofan, terbalik'), sign: 'hierophant', reversed: true, text: T(
+      'The second chair. **The Inquisitor**, who named her a witch.', 'Kursi kedua. **Sang Inkuisitor**, yang menyebutnya penyihir.') } },
+    { tarot: { n: 'XI', name: T('Justice, reversed', 'Keadilan, terbalik'), sign: 'justice', reversed: true, text: T(
+      'The third. **The Chancellor**, who carried the council\'s vote.', 'Yang ketiga. **Sang Kanselir**, yang menggiring suara dewan.') } },
+    say('fool', 'Tonight each of my guests wrote one sentence for you. **Only one of them told the truth.** Help me find him.',
+      'Malam ini setiap tamuku menulis satu kalimat untuk kalian. **Hanya satu di antara mereka yang jujur.** Bantu aku menemukannya.'),
+    say('fool', 'The Marshal writes: "The healer was a witch. **The Chancellor is lying.**"', 'Sang Marsekal menulis: "Tabib itu memang penyihir. **Sang Kanselir berbohong.**"'),
+    say('fool', 'The Inquisitor writes: "**The Marshal is telling the truth.**"', 'Sang Inkuisitor menulis: "**Sang Marsekal berkata jujur.**"'),
+    say('fool', 'The Chancellor writes: "The healer was no witch. **We were paid to say she was.**"', 'Sang Kanselir menulis: "Tabib itu bukan penyihir. **Kami dibayar untuk mengatakan bahwa ia penyihir.**"'),
+    say('fool', 'Well, guild? You\'re the one with the contract. **Who told the truth?**', 'Nah, guild? Kalian yang memegang kontraknya. **Siapa yang jujur?**'),
+    { choice: [
+      { label: T('The Marshal', 'Sang Marsekal'), then: [
+        { you: T('The Marshal.', 'Sang Marsekal.') },
+        say('fool', 'Then the Inquisitor, who swears the Marshal is honest, is honest too. **Two** honest lords on one council? Valeria was never so lucky.',
+          'Kalau begitu Sang Inkuisitor, yang bersumpah Sang Marsekal jujur, ikut jujur juga. **Dua** bangsawan jujur di satu dewan? Valeria tak pernah seberuntung itu.'),
+        say('fool', 'If either of those two tells the truth, so does the other. Only one man can stand alone: **the Chancellor**.',
+          'Kalau salah satu dari mereka jujur, yang lain ikut jujur. Hanya satu orang yang bisa berdiri sendiri: **Sang Kanselir**.'),
+      ] },
+      { label: T('The Inquisitor', 'Sang Inkuisitor'), then: [
+        { you: T('The Inquisitor.', 'Sang Inkuisitor.') },
+        say('fool', 'Then the Marshal he vouches for is honest too, and that makes **two**. Valeria was never so lucky.',
+          'Kalau begitu Sang Marsekal yang ia bela ikut jujur juga, dan jadinya **dua**. Valeria tak pernah seberuntung itu.'),
+        say('fool', 'If either of those two tells the truth, so does the other. Only one man can stand alone: **the Chancellor**.',
+          'Kalau salah satu dari mereka jujur, yang lain ikut jujur. Hanya satu orang yang bisa berdiri sendiri: **Sang Kanselir**.'),
+      ] },
+      { label: T('The Chancellor', 'Sang Kanselir'), then: [
+        { you: T('The Chancellor. If the Marshal were honest, so would be the Inquisitor who backs him: that\'s two. If the Inquisitor were honest, the Marshal would be too. Only the Chancellor can be the one.',
+          'Sang Kanselir. Kalau Sang Marsekal jujur, Sang Inkuisitor yang membelanya juga jujur: jadi dua. Kalau Sang Inkuisitor jujur, Sang Marsekal juga. Hanya Sang Kanselir yang mungkin.') },
+        say('fool', 'Bravo! The guild can count. **The Chancellor** told the truth.', 'Bravo! Guild bisa berhitung. **Sang Kanselir** yang jujur.'),
+      ] },
+    ] },
+    { sfx: 'murmur' },
+    narr('The tent goes very quiet. **The healer was no witch.** Someone paid to have her burned.',
+      'Tenda itu mendadak sunyi. **Tabib itu bukan penyihir.** Seseorang membayar agar ia dibakar.'),
+    say('fool', 'Paid by whom, Chancellor? Speak up. The whole city is listening.', 'Dibayar oleh siapa, Kanselir? Bicaralah yang keras. Seluruh kota sedang mendengarkan.'),
+    say('chancellor', 'I never knew whose gold it was! I swear it! Only the man who brought it to us...', 'Aku tak pernah tahu emas siapa itu! Aku bersumpah! Aku hanya tahu orang yang mengantarkannya pada kami...',
+      { style: 'shout', off: true }),
+    say('chancellor', 'It was Var—', 'Orangnya Var—', { style: 'shout', off: true }),
+    { show: 'varrick', at: 'right', pose: 'point' },
+    say('varrick', 'He\'s lighting the fuse! **ARCHERS!**', 'Dia menyulut sumbunya! **PEMANAH!**', { pose: 'point', style: 'shout' }),
+    { hide: 'varrick' }, { sfx: 'arrow' }, { shock: 'blood' },
+    narr('The arrow takes the masked figure on the platform in the chest. It folds over the rail like a rag doll and drops into the sawdust.',
+      'Panah itu menembus dada sosok bertopeng di atas panggung. Tubuhnya terlipat di pagar seperti boneka kain, lalu jatuh ke serbuk gergaji.'),
+    { sfx: 'thud' }, { sfx: 'scream' }, { bg: null }, { particles: null }, { wait: 700 },
+    narr('The crowd screams and braces for the fire.', 'Kerumunan menjerit dan bersiap menyambut ledakan.'),
+    { wait: 1400 },
+    narr('**Nothing explodes.**', '**Tak ada yang meledak.**'),
+    { cg: 'marshal-unmasked' },
+    narr('Varrick tears the mask away. Under it is a grey moustache, a gag, and a face the whole city knows: **Marshal Aldric.** Strings run from his wrists up into the dark.',
+      'Varrick merenggut topeng itu. Di baliknya ada kumis kelabu, sumpalan mulut, dan wajah yang dikenal seluruh kota: **Marsekal Aldric.** Tali-tali menjulur dari pergelangan tangannya ke dalam gelap.'),
+    { tarot: { n: 'XII', name: T('The Hanged Man', 'Orang yang Digantung'), sign: 'hanged', text: T(
+      'It slips from the Marshal\'s sleeve as they turn him over. **He was never The Fool.** He was the puppet.',
+      'Kartu itu terjatuh dari lengan baju Sang Marsekal saat tubuhnya dibalik. **Ia tak pernah menjadi The Fool.** Ia hanya bonekanya.') } },
+    { cg: null },
+    say('fool', 'You shot a man in a mask without asking his name.', 'Kalian memanah orang bertopeng tanpa bertanya siapa namanya.', { style: 'whisper' }),
+    say('fool', '**That is how Valeria has always done it.**', '**Begitulah cara Valeria sejak dulu.**'),
+    { shock: 'dark' },
+    { cg: 'three-fools' }, { sfx: 'whoosh' },
+    narr('The fall has pulled the strings tight. All three sheets slide off at once.', 'Jatuhnya tubuh itu menarik tali-tali hingga tegang. Ketiga kain putih tersingkap bersamaan.'),
+    narr('Underneath are three Fool costumes, and they are **dancing**. Two of them jerk and twist with men sewn inside. The third, in the Marshal\'s chair, dances just as well. **It is empty.**',
+      'Di baliknya ada tiga kostum Fool, dan semuanya **menari**. Dua di antaranya menyentak dan meliuk dengan orang terjahit di dalamnya. Yang ketiga, di kursi Sang Marsekal, menari sama lincahnya. **Kostum itu kosong.**'),
+    say('fool', 'The show is over, my friends. Go home. Hug somebody.', 'Pertunjukan sudah selesai, kawan-kawan. Pulanglah. Peluk seseorang.', { style: 'whisper' }),
+    { sfx: 'alarm' },
+    say('crowd', 'Run! Get out! **Get out!**', 'Lari! Keluar! **Keluar!**', { style: 'shout' }),
+    say('varrick', 'Seal the tent! He\'s close, find the pipes!', 'Tutup tendanya! Dia dekat, cari pipanya!', { style: 'shout', off: true }),
+    { cg: null },
+    narr('But Varrick doesn\'t run for the pipes. Through the stampede you see his crimson cloak cut the other way: **towards the gate**.',
+      'Tapi Varrick tidak berlari ke arah pipa. Di tengah orang-orang yang berhamburan, kamu melihat jubah merah tuanya bergerak ke arah lain: **menuju gerbang**.'),
+    narr('**Towards the carousel.**', '**Menuju komidi putar.**'),
+
+    // The carousel.
+    { black: true }, { bg: 'carousel', fx: 'cut' }, { amb: 'night' }, { music: 'dread', fade: 1500 }, { tint: 'cold' }, { black: false },
+    { place: T('The carousel', 'Komidi putar'), time: T('A minute ahead of him', 'Satu menit lebih dulu darinya') },
+    narr('You cut through the performers\' tunnel under the stands and come out a minute ahead of him.',
+      'Kamu memotong lewat terowongan pemain di bawah tribun dan keluar satu menit lebih dulu darinya.'),
+    narr('"For my three." Three horses. And the smallest one would have been for the youngest.', '"Untuk ketiga anakku." Tiga kuda. Dan yang paling kecil tentu untuk si bungsu.'),
+    { cam: 'push' },
+    narr('Its belly is hollow. Inside, wrapped in oilcloth: **a ledger**.', 'Perutnya berongga. Di dalamnya, terbungkus kain minyak: **sebuah buku besar**.'),
+    { cam: 'reset' },
+    { item: { glyph: 'ledger', title: T('Master Hale\'s ledger', 'Buku besar Tuan Hale'), text: T(
+      'The northern road, fifteen years ago. Caravans, salt, cloth... and lanterns.', 'Jalur utara, lima belas tahun lalu. Kafilah, garam, kain... dan lentera.') } },
+    narr('There\'s no time to read it here. You press the guild\'s **memory crystal** to the pages and let it drink in every line.',
+      'Tak ada waktu untuk membacanya di sini. Kamu menempelkan **kristal memori** guild ke halaman-halamannya dan membiarkannya menyerap setiap baris.'),
+    { item: { glyph: 'crystal', title: T('Memory crystal', 'Kristal memori'), text: T('A copy of Hale\'s ledger, page by page.', 'Salinan buku besar Hale, halaman demi halaman.') } },
+    { notes: { title: T('The Fool\'s circus', 'Sirkus Sang Fool'), items: [
+      T('The Fool put **three lords** on trial over barrels of powder: the Marshal, the Inquisitor and the Chancellor.',
+        'The Fool mengadili **tiga bangsawan** di atas tong-tong mesiu: Sang Marsekal, Sang Inkuisitor, dan Sang Kanselir.'),
+      T('Only the **Chancellor** told the truth: the healer burned as a witch fifteen years ago was **innocent**, and they were **paid** to say otherwise.',
+        'Hanya **Sang Kanselir** yang jujur: tabib yang dibakar sebagai penyihir lima belas tahun lalu **tidak bersalah**, dan mereka **dibayar** untuk mengatakan sebaliknya.'),
+      T('Before he could name the man who brought the gold, **Varrick** had the archers shoot.', 'Sebelum Kanselir sempat menyebut nama orang yang membawa emas itu, **Varrick** menyuruh pemanah menembak.'),
+      T('The "Fool" they shot was the **Marshal**, gagged and hung on strings. The real Fool was only a voice in the pipes.',
+        '"Fool" yang dipanah ternyata **Sang Marsekal**, disumpal dan digantung dengan tali. The Fool yang asli hanya suara dari pipa.'),
+      T('Hale hid his **ledger** in the smallest carousel horse. It says: "Lanterns are entered in **the other book**."',
+        'Hale menyembunyikan **buku besarnya** di kuda terkecil komidi putar. Di dalamnya tertulis: "Lentera dicatat di **buku yang lain**."'),
+    ] } },
+  ],
+  challenge: {
+    title: T('The Other Book', 'Buku yang Lain'),
+    brief: T(
+      'Master Hale\'s ledger for the northern road, copied into your memory crystal. On its face it is an honest merchant\'s book: salt, cloth, lamp oil. And lanterns, at three hundred gold apiece.\n\nHale kept the lanterns in another book. Someone went looking for it before you. Maybe they gave up too soon.\n\nOne of the lanterns was the healer\'s daughter. Her father was sent away so that no one would come asking for her. What was his name?',
+      'Buku besar Tuan Hale untuk jalur utara, disalin ke kristal memorimu. Sekilas ini buku saudagar yang jujur: garam, kain, minyak lampu. Dan lentera, tiga ratus emas per buah.\n\nHale mencatat lentera-lentera itu di buku yang lain. Seseorang sudah mencarinya sebelum kamu. Mungkin ia menyerah terlalu cepat.\n\nSalah satu lentera itu adalah putri sang tabib. Ayahnya dikirim pergi agar tak ada yang datang mencarinya. Siapa nama ayahnya?'),
+    evidence: [{ file: 'ledger.xlsx', as: 'hale-ledger.xlsx', label: T('Master Hale\'s ledger (memory crystal copy)', 'Buku besar Tuan Hale (salinan kristal memori)') }],
+    placeholder: T('His name', 'Namanya'),
+    answers: ['lucian'],
+  },
+  post: [
+    { bg: 'carousel', fx: 'cut' }, { amb: 'night' }, { music: null, fade: 600 }, { tint: 'cold' }, { particles: 'dust' },
+    narr('The healer\'s girl. Six years old. **The north. Did not come back.**', 'Putri sang tabib. Enam tahun. **Ke utara. Tidak kembali.**'),
+    narr('And her father\'s name, the one Hale swore never to write again: **Lucian**.', 'Dan nama ayahnya, yang Hale bersumpah tak akan ditulisnya lagi: **Lucian**.'),
+    narr('Pinned to the row, a note in Hale\'s cramped hand: "**P.** signed for this one himself."', 'Tersemat di baris itu, catatan dengan tulisan Hale yang sempit: "**P.** menandatangani yang satu ini sendiri."'),
+    { shock: 'small' },
+    narr('P. You turn the letter over in your head, and you don\'t like any of the answers.', 'P. Kamu membolak-balik huruf itu di kepalamu, dan tak satu pun jawabannya kamu sukai.'),
+    { sfx: 'armor' }, { music: 'dread', fade: 800 },
+    { show: 'varrick', at: 'right' },
+    say('varrick', 'You found the little horse. Clever.', 'Kau menemukan kuda kecil itu. Pintar.', { style: 'whisper' }),
+    say('varrick', 'Have you read it?', 'Sudah kau baca?'),
+    { choice: [
+      { label: T('"Every page."', '"Setiap halaman."'), then: [
+        { you: T('Every page.', 'Setiap halaman.') },
+        say('varrick', 'Honest. The guild always was. **It never once saved one of you.**', 'Jujur. Guild memang selalu begitu. **Tapi itu tak pernah sekali pun menyelamatkan kalian.**', 'angry'),
+      ] },
+      { label: T('"I only just found it."', '"Aku baru saja menemukannya."'), then: [
+        { you: T('I only just found it. I haven\'t opened it.', 'Aku baru saja menemukannya. Belum kubuka sama sekali.') },
+        say('varrick', 'Your hands are shaking. **Men who haven\'t read it don\'t shake.**', 'Tanganmu gemetar. **Orang yang belum membacanya tidak akan gemetar.**', 'angry'),
+      ] },
+    ] },
+    say('varrick', 'Give it here.', 'Serahkan.', 'point'),
+    narr('He takes the ledger and tucks it under his cloak. Then he swings the iron gate of the carousel yard shut behind him, and **bolts it**.',
+      'Ia merampas buku besar itu dan menyelipkannya di balik jubah. Lalu ia menutup gerbang besi halaman komidi putar di belakangnya, dan **menguncinya**.'),
+    { sfx: 'door' },
+    say('varrick', 'The Fool killed the Marshal tonight. The whole city saw it. **One more body won\'t surprise anyone.**',
+      'The Fool membunuh Sang Marsekal malam ini. Seluruh kota melihatnya. **Satu mayat lagi tak akan mengejutkan siapa pun.**', { pose: 'angry', style: 'whisper' }),
+    { shock: 'dark' },
+    narr('Steel slides out of a sheath. A **black glove** tightens around the hilt.', 'Baja meluncur keluar dari sarungnya. Sebuah **sarung tangan hitam** mengencang di gagangnya.'),
+    { sfx: 'bell' }, { wait: 600 },
+    say('varrick', '...That bell.', '...Lonceng itu.', { pose: 'angry', react: 'shake' }),
+    { sfx: 'whoosh' }, { hide: 'all' }, { flash: 'white' }, { particles: 'ash' },
+    narr('Something rolls between your feet and bursts. **White smoke** swallows the carousel.', 'Sesuatu menggelinding di antara kakimu lalu pecah. **Asap putih** menelan komidi putar itu.'),
+    say('varrick', 'FOOL!', 'FOOL!', { style: 'shout', off: true }),
+    say('fool', 'This way, little detective. Mind your head.', 'Lewat sini, detektif kecil. Awas kepalamu.', { style: 'whisper' }),
+    narr('A gloved hand closes on your collar and pulls you down, through a trapdoor you never saw, into the dark.',
+      'Sebuah tangan bersarung mencengkeram kerahmu dan menarikmu turun, lewat pintu jebakan yang tak pernah kamu lihat, ke dalam gelap.'),
+    { black: true }, { particles: null }, { amb: null }, { tint: null }, { music: null, fade: 1200 }, { wait: 1000 },
+
+    // The rooftops.
+    { bg: 'rooftop-fire', fx: 'cut' }, { amb: 'fire' }, { particles: 'embers' }, { tint: 'warm' }, { music: 'musicbox', fade: 2500 }, { black: false },
+    { place: T('The rooftops of the old quarter', 'Atap-atap kota tua'), time: T('Midnight', 'Tengah malam') },
+    narr('From the rooftops of the old quarter, you watch the circus burn.', 'Dari atap-atap kota tua, kamu menyaksikan sirkus itu terbakar.'),
+    { tarot: { n: 'XVI', name: T('The Tower', 'Menara'), sign: 'tower', text: T(
+      'Varrick\'s men "searched" the big top with torches. **The Inquisitor and the Chancellor were still inside**, tied to their chairs.',
+      'Anak buah Varrick "menggeledah" tenda utama dengan obor. **Sang Inkuisitor dan Sang Kanselir masih di dalam**, terikat di kursi mereka.') } },
+    narr('By morning, the city will say The Fool burned them.', 'Besok pagi, seluruh kota akan bilang The Fool yang membakar mereka.'),
+    narr('He sits beside you on the ridge of the roof, mask on, one leg stretched out stiff in front of him. **It doesn\'t bend.**',
+      'Ia duduk di sampingmu di punggung atap, masih bertopeng, satu kakinya terjulur kaku di depannya. **Kaki itu tidak bisa ditekuk.**'),
+    say('fool', 'I left them tied for the Guard to find. Alive. I didn\'t need them dead.', 'Kutinggalkan mereka terikat agar ditemukan Garda. Hidup-hidup. Aku tak butuh mereka mati.', { style: 'whisper' }),
+    say('fool', 'I needed them **heard**. He needed them **quiet**.', 'Aku butuh mereka **didengar**. Dia butuh mereka **diam**.'),
+    { choice: [
+      { label: T('Say his name', 'Sebut namanya'), then: [] },
+      { label: T('"Why me? Why the guild?"', '"Kenapa aku? Kenapa guild?"'), then: [
+        { you: T('Why me? Why the guild?', 'Kenapa aku? Kenapa guild?') },
+        say('fool', 'Because the Guard writes "heart attack", and the city believes it. **You** were paid to find the truth, and you can\'t be bought twice.',
+          'Karena Garda menulis "serangan jantung", dan kota memercayainya. **Kamu** dibayar untuk menemukan kebenaran, dan kamu tak bisa dibeli dua kali.'),
+      ] },
+    ] },
+    { you: T('...Lucian.', '...Lucian.') },
+    { wait: 900 },
+    say('fool', '...Fifteen years since anyone said that name out loud.', '...Sudah lima belas tahun tak ada yang mengucapkan nama itu.', { style: 'whisper' }),
+    say('fool', 'She was my wife. The healer. And the girl in that book...', 'Dia istriku. Sang tabib. Dan gadis di buku itu...', { style: 'whisper' }),
+    say('fool', 'I have been looking for her for fifteen years.', 'Sudah lima belas tahun aku mencarinya.'),
+    { you: T('Who paid them? The ledger says "P."', 'Siapa yang membayar mereka? Di buku itu tertulis "P."') },
+    say('fool', 'Ask yourself who in Valeria could make the Inquisition, the Council and the Army all say yes **in the same week**.',
+      'Tanyakan pada dirimu sendiri: siapa di Valeria yang sanggup membuat Inkuisisi, Dewan, dan Angkatan Perang mengiyakan **dalam minggu yang sama**.'),
+    say('fool', 'Then ask yourself why nobody ever asked.', 'Lalu tanyakan kenapa tak seorang pun pernah bertanya.'),
+    { shock: 'small' },
+    { tarot: { n: 'XV', name: T('The Devil', 'Iblis'), sign: 'devil', text: T(
+      'He presses it into your hand. "For his right hand. Keep it." XV: fifteen. On the back: "**Now you know half. Tomorrow: the little boy.**"',
+      'Ia menyelipkannya ke tanganmu. "Untuk tangan kanannya. Simpan baik-baik." XV: lima belas. Di baliknya: "**Sekarang kau tahu separuhnya. Besok: anak kecil itu.**"') } },
+    { sfx: 'bell' },
+    narr('When you look up, the roof beside you is empty.', 'Saat kamu mengangkat wajah, atap di sampingmu sudah kosong.'),
+    narr('Far below, the big top falls in on itself in a long, slow roar of sparks.', 'Jauh di bawah sana, tenda utama runtuh ke dalam dirinya sendiri dalam gemuruh percikan api yang panjang dan lambat.'),
+    { music: null, fade: 3000 }, { particles: null }, { black: true },
+  ],
+};
+
 export const SILENT_FRIDAY: Quest = {
   id: 'silent-friday',
   art: 'sf',
@@ -684,9 +1024,8 @@ export const SILENT_FRIDAY: Quest = {
   tagline: T('The Hero of Peace did not die in his sleep.', 'Pahlawan Perdamaian tidak mati dalam tidurnya.'),
   reward: 800,
   cast: CAST,
-  chapters: [prologue, lantern, park, fire],
+  chapters: [prologue, lantern, park, fire, circus],
   upcoming: [
-    { title: T('The Fool\'s Circus', 'Sirkus Sang Fool'), sub: T('Chapter IV', 'Bab IV') },
     { title: T('The Little Boy', 'Anak Kecil Itu'), sub: T('Chapter V', 'Bab V') },
     { title: T('The Fool\'s Last Ride', 'Perjalanan Terakhir Sang Fool'), sub: T('Chapter VI', 'Bab VI') },
   ],
