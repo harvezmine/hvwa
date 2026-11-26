@@ -225,6 +225,12 @@
       band(c, o, t, 0.09, 0.12, 180, 60, 0.8, 0.002, 'lowpass');
       osc(c, o, 'sine', 54, t + 0.19, 0.18, 0.5, 32);
     },
+    // A quick-time moment opens: a low hit and a tone that climbs, the body bracing.
+    qte: function (c, o, t) { osc(c, o, 'sine', 70, t, 0.7, 0.6, 38); osc(c, o, 'sawtooth', 220, t, 0.55, 0.025, 660, 0.05); band(c, o, t, 0.4, 0.12, 300, 2200, 1.2, 0.02); },
+    // A quick-time moment won: air let out, a bright release.
+    release: function (c, o, t) { band(c, o, t, 0.6, 0.18, 2600, 500, 0.8, 0.01); osc(c, o, 'sine', 880, t + 0.02, 0.5, 0.05, 1320); osc(c, o, 'sine', 1320, t + 0.08, 0.45, 0.03, 1760); },
+    // A miss: a dull knock and a short scrape.
+    miss: function (c, o, t) { osc(c, o, 'sine', 95, t, 0.3, 0.55, 45); band(c, o, t, 0.18, 0.12, 900, 300, 2, 0.003); },
     // Crows: three hoarse caws, falling in pitch, from somewhere above.
     crows: function (c, o, t) {
       [0, 0.42, 0.95].forEach(function (d, i) {
@@ -333,6 +339,7 @@
   var spots = el('div', 'qs-spots', scene);
   var cgWrap = el('div', 'qs-cg', scene);
   var cgImg = el('img', '', cgWrap); cgImg.alt = '';
+  var seekWrap = el('div', 'qs-seek', scene);   // a picture searched with the eye ({ seek })
   var bars = el('div', 'qs-bars', dlg);
   el('span', 'qs-bar-top', bars); el('span', 'qs-bar-bottom', bars);
   var black = el('div', 'qs-black is-on', dlg);
@@ -774,7 +781,7 @@
       clearText('narr');
       focusSpeaker(null);
       // A portrait in the middle keeps its face, and a picture on screen stays clear: the narrator steps down to the foot.
-      narrBox.classList.toggle('is-low', cgWrap.classList.contains('is-on') || Object.keys(onStage).some(function (k) { return onStage[k].at === 'center'; }));
+      narrBox.classList.toggle('is-low', cgWrap.classList.contains('is-on') || seekWrap.classList.contains('is-on') || Object.keys(onStage).some(function (k) { return onStage[k].at === 'center'; }));
       narrBox.classList.remove('is-on'); void narrBox.offsetWidth; narrBox.classList.add('is-on');
       log('', text);
       await type(narrText, text, 0, false);
@@ -1060,6 +1067,7 @@
     if ('tint' in step) { setTint(step.tint); return; }
     if ('flashback' in step) { setFlashback(step.flashback); return; }
     if ('qte' in step) { clearText(null); await qte(step.qte); return; }
+    if ('seek' in step) { clearText(null); await seek(step.seek, me); return; }
     if ('tremble' in step) { setTremble(step.tremble); return; }
     if ('tears' in step) { setTears(step.tears); return; }
     if ('maskview' in step) { setMaskView(step.maskview); await sleep(fast() ? 0 : 900); return; }
@@ -1259,6 +1267,7 @@
         if (pic && !seen[pic]) { seen[pic] = 1; new Image().src = pic; }
         if (s.choice) s.choice.forEach(function (c) { walk(c.then); });
         if (s.explore) s.explore.spots.forEach(function (c) { walk(c.then); });
+        if (s.seek) { var sp = picture(s.seek.pic); if (!seen[sp]) { seen[sp] = 1; new Image().src = sp; } s.seek.marks.forEach(function (m) { walk(m.then); }); }
       });
     })(ch.pre);
   }
@@ -1270,6 +1279,7 @@
     setCg(null); setTint(null); setFlashback(null); setCam(null); setBars(false);
     setTremble(null); setTears(false); setMaskView(false);
     if (qteNow) qteNow.finish();
+    if (seekNow) seekNow.end();
     Particles.stop();
     choices.classList.remove('is-on'); choices.innerHTML = '';
     spots.classList.remove('is-on'); spots.innerHTML = '';
@@ -1386,6 +1396,98 @@
   // The browser may close the stage on its own (a second Esc in a row): tidy up exactly as if the player had left.
   dlg.addEventListener('close', function () { if (run || opening || skipWrap.classList.contains('is-on')) leave(); });
 
+  // ---- a picture searched with the eye ({ seek }) ---------------------------------------------------------------------
+  // The picture fills the stage; the player clicks where something is wrong. Each mark is a circle (`at` and radius `r`
+  // as fractions of the picture's width). A find is ringed in red ink and its lines play over the picture; a miss
+  // leaves a small cross. After three misses in a row, or on the hint button, the next mark glows; a second hint on
+  // the same mark simply shows it. Skipping plays every mark's lines in order.
+  var seekNow = null;
+  async function seek(sk, me) {
+    var marks = sk.marks, found = marks.map(function () { return false; });
+    if (fast()) {
+      for (var j = 0; j < marks.length; j++) if (marks[j].then) await steps(marks[j].then, false, 0, me);
+      return;
+    }
+    seekWrap.innerHTML = '';
+    var head = el('p', 'qs-seek-head', seekWrap);
+    var headText = el('span', '', head); headText.textContent = sk.prompt;
+    var left = el('span', 'qs-seek-left', head);
+    var frame = el('div', 'qs-seek-frame', seekWrap);
+    var img = el('img', 'qs-seek-img', frame); img.alt = sk.prompt;
+    var layer = el('div', 'qs-seek-marks', frame);
+    var hintBtn = el('button', 'qs-seek-hint', seekWrap); hintBtn.type = 'button'; hintBtn.textContent = UI.hint;
+    var src = picture(sk.pic);
+    await picReady(src);
+    img.src = src;
+    seekWrap.classList.add('is-on');
+    sfx('paper');
+    var count = 0, misses = 0, hinted = -1, ended = false;
+    function update() { left.textContent = UI.left.replace('{n}', String(marks.length - count)); }
+    update();
+    function nextOpen() { return found.indexOf(false); }
+    function ring(k, cls) {
+      var m = marks[k], d = el('span', 'qs-seek-ring' + (cls ? ' ' + cls : ''), layer);
+      d.style.left = (m.at[0] * 100) + '%'; d.style.top = (m.at[1] * 100) + '%'; d.style.width = (m.r * 200) + '%';
+      return d;
+    }
+    function pulse(k) {
+      layer.querySelectorAll('.qs-seek-ring.is-hint').forEach(function (n) { n.remove(); });
+      ring(k, 'is-hint'); sfx('spot');
+    }
+    var picked = null;
+    function choose(k) {
+      if (!picked) return;
+      var r = picked; picked = null; r(k);
+    }
+    frame.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!picked) return;
+      var box = img.getBoundingClientRect();
+      var fx = (e.clientX - box.left) / box.width, fy = (e.clientY - box.top) / box.width;
+      for (var k = 0; k < marks.length; k++) {
+        if (found[k]) continue;
+        var dx = fx - marks[k].at[0], dy = fy - marks[k].at[1] * box.height / box.width;
+        if (Math.sqrt(dx * dx + dy * dy) <= marks[k].r) { choose(k); return; }
+      }
+      // A miss: a small cross where you looked, a knock, and after three in a row the next seam glows.
+      var x = el('span', 'qs-seek-miss', layer);
+      x.style.left = (fx * 100) + '%'; x.style.top = ((e.clientY - box.top) / box.height * 100) + '%';
+      window.setTimeout(function () { x.remove(); }, 900);
+      sfx('miss');
+      frame.classList.remove('is-miss'); void frame.offsetWidth; frame.classList.add('is-miss');
+      misses++;
+      if (misses % 3 === 0) { hinted = nextOpen(); pulse(hinted); }
+    });
+    hintBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var k = nextOpen();
+      if (k < 0) return;
+      if (hinted === k) { choose(k); return; }   // asked twice: just show it
+      hinted = k; pulse(k);
+    });
+    seekNow = { end: function () { ended = true; choose(-1); seekWrap.classList.remove('is-on'); seekWrap.innerHTML = ''; seekNow = null; } };
+    while (!ended && run === me && me.alive && count < marks.length) {
+      var k = await new Promise(function (r) { picked = r; });
+      if (k < 0 || ended) break;
+      found[k] = true; count++; misses = 0; hinted = -1;
+      layer.querySelectorAll('.qs-seek-ring.is-hint').forEach(function (n) { n.remove(); });
+      var done = ring(k, 'is-found');
+      el('span', 'qs-seek-label', done).textContent = marks[k].label;
+      sfx('seal');
+      update();
+      seekWrap.classList.add('is-busy');
+      if (marks[k].then) await steps(marks[k].then, false, 0, me);
+      clearText(null);
+      seekWrap.classList.remove('is-busy');
+    }
+    if (ended || run !== me) return;
+    await sleep(900);
+    seekWrap.classList.remove('is-on');
+    await sleep(500);
+    seekWrap.innerHTML = '';
+    seekNow = null;
+  }
+
   // ---- quick-time moments ({ qte }) ------------------------------------------------------------------------------------
   // The body does something and the player does it with him: 'mash' (press again and again; it drains if you stop),
   // 'alternate' (left, right, left: shouldering through a crowd), 'hold' (hold, and let go inside the line: pulling a
@@ -1407,6 +1509,23 @@
       var held = kind === 'hold' || kind === 'still';
       qteWrap.innerHTML = '';
       qteWrap.setAttribute('data-kind', kind);
+      qteWrap.classList.remove('is-won', 'is-lost');
+      // The world narrows while the body works: the scene dims and drains (CSS .qs[data-qte]); one rising hit.
+      dlg.setAttribute('data-qte', kind);
+      sfx('qte');
+      var nextBeat = 0, nextCreak = 0, cueMax = 1;
+      // A strain: a short rough tone whose pitch climbs with the gauge (the effort audible).
+      function strain(level) {
+        if (!soundOn()) return;
+        var c = ac(); if (!c) return;
+        var t = c.currentTime + 0.01, f = 140 + level * 360;
+        osc(c, S.output(), 'sawtooth', f, t, 0.09, 0.035, f * 0.9, 0.005);
+        band(c, S.output(), t, 0.07, 0.05, 500 + level * 1500, 0, 2, 0.002);
+      }
+      function kick() {
+        card.classList.remove('is-kick'); void card.offsetWidth; card.classList.add('is-kick');
+        qteWrap.classList.remove('is-kick'); void qteWrap.offsetWidth; qteWrap.classList.add('is-kick');
+      }
       var card = el('div', 'qs-qte-card', qteWrap);
       var prompt = el('p', 'qs-qte-prompt', card); prompt.textContent = q.prompt; prompt.setAttribute('aria-live', 'polite');
       var track = el('div', 'qs-qte-track', card);
@@ -1437,26 +1556,28 @@
       mark.hidden = kind !== 'timing';
       function jolt() {
         card.classList.remove('is-miss'); void card.offsetWidth; card.classList.add('is-miss');
-        sfx('thud');
+        sfx('miss');
+        if (!reduce) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); }
+        flash.className = 'qs-flash is-red is-soft'; void flash.offsetWidth; flash.classList.add('is-on');
       }
       function hit() { card.classList.remove('is-hit'); void card.offsetWidth; card.classList.add('is-hit'); }
       function press(which) {
         if (done) return;
-        if (kind === 'mash') { v = Math.min(1, v + (q.step || 0.07)); hit(); sfx('tick'); }
+        if (kind === 'mash') { v = Math.min(1, v + (q.step || 0.07)); hit(); kick(); strain(v); }
         else if (kind === 'alternate') {
           if (which && which !== side) { jolt(); return; }
-          v = Math.min(1, v + 0.075); side = side === 'left' ? 'right' : 'left'; hit(); sfx('tick');
+          v = Math.min(1, v + 0.075); side = side === 'left' ? 'right' : 'left'; hit(); kick(); strain(v * 0.7);
           qteWrap.setAttribute('data-next', side);
         } else if (kind === 'timing') {
           if (m >= zone[0] && m <= zone[1]) {
-            pips.children[round].classList.add('is-on'); round++; sfx('pick'); hit();
+            pips.children[round].classList.add('is-on'); round++; sfx('thud'); hit(); kick();
             if (round >= rounds) { win(); return; }
             var c = 0.2 + Math.random() * 0.6, w = Math.max(0.1, 0.16 - round * 0.02); zone = [c - w / 2, c + w / 2]; placeZone();
           } else jolt();
         } else if (kind === 'dodge') {
           if (!want) return;
           if (which === want) {
-            pips.children[round].classList.add('is-on'); round++; sfx('whoosh'); hit();
+            pips.children[round].classList.add('is-on'); round++; sfx('whoosh'); hit(); kick();
             if (round >= rounds) { win(); return; }
             nextCue();
           } else { jolt(); nextCue(); }
@@ -1466,7 +1587,8 @@
       // A dodge: a new arrow, with a little less time each round.
       function nextCue() {
         var k = Object.keys(DIRS), pick = k[Math.floor(Math.random() * k.length)];
-        want = pick; cueLeft = Math.max(0.55, (q.time || 1300) / 1000 - round * 0.08);
+        want = pick; cueLeft = cueMax = Math.max(0.55, (q.time || 1300) / 1000 - round * 0.08);
+        sfx('tick');
         cue.textContent = DIRS[pick];
         cue.classList.remove('is-new'); void cue.offsetWidth; cue.classList.add('is-new');
       }
@@ -1485,29 +1607,51 @@
           // A hopeless struggle drains harder the longer it lasts, and never lets the gauge reach the end.
           var drain = hopeless ? 0.3 + age / 1000 * 0.45 : (kind === 'mash' ? 0.2 : 0.12);
           v = Math.max(0, v - drain * dt);
-          if (hopeless) v = Math.min(v, 0.82);
+          if (hopeless) {
+            v = Math.min(v, 0.82);
+            card.style.setProperty('--strain', String(Math.min(1, age / (q.time || 5200))));
+            card.classList.add('is-strain');
+          }
         } else if (kind === 'hold') {
+          // The bandage creaks tighter while it is pulled.
+          if (holding && now >= nextCreak) { nextCreak = now + 130; strain(v * 0.8); }
           if (holding) { v += 0.5 * dt; if (v > 1) { holding = false; card.classList.remove('is-holding'); jolt(); v = 0; } }
         } else if (kind === 'timing') {
           m += dir * dt * (0.75 + round * 0.25);
-          if (m > 1) { m = 1; dir = -1; } else if (m < 0) { m = 0; dir = 1; }
+          if (m > 1) { m = 1; dir = -1; sfx('tick'); } else if (m < 0) { m = 0; dir = 1; sfx('tick'); }
           mark.style.left = (m * 100) + '%';
         } else if (kind === 'still') {
           // Holding still: the danger takes `time` ms to pass.
           if (holding) { v += dt / ((q.time || 3500) / 1000); if (v >= 1) { win(); return; } }
+          // The heart: slow while you wait to hide, faster and faster while the danger is right there.
+          if (now >= nextBeat) { nextBeat = now + (holding ? 820 - v * 420 : 1000); sfx('beat'); kick(); }
         } else if (kind === 'dodge') {
-          if (want) { cueLeft -= dt; if (cueLeft <= 0) { jolt(); nextCue(); } }
+          if (want) { cueLeft -= dt; cue.style.setProperty('--left', String(Math.max(0, cueLeft / cueMax))); if (cueLeft <= 0) { jolt(); nextCue(); } }
         }
         fill.style.width = (Math.max(0, Math.min(1, kind === 'timing' || kind === 'dodge' ? round / rounds : v)) * 100) + '%';
-        if (hopeless && age >= (q.time || 5200)) { finish(); return; }
+        if (hopeless && age >= (q.time || 5200)) {
+          // Held: the struggle ends against your will.
+          sfx('thud'); qteWrap.classList.add('is-lost');
+          flash.className = 'qs-flash is-dark'; void flash.offsetWidth; flash.classList.add('is-on');
+          done = true; window.setTimeout(finish, 500); return;
+        }
         raf = window.requestAnimationFrame(frame);
       }
-      function win() { if (done) return; fill.style.width = '100%'; sfx('spot'); card.classList.add('is-won'); window.setTimeout(finish, 450); done = true; }
+      function win() {
+        if (done) return;
+        done = true;
+        fill.style.width = '100%';
+        sfx('release');
+        card.classList.add('is-won'); qteWrap.classList.add('is-won');
+        flash.className = 'qs-flash is-white is-soft'; void flash.offsetWidth; flash.classList.add('is-on');
+        window.setTimeout(finish, 520);
+      }
       function finish() {
         done = true; window.cancelAnimationFrame(raf); window.clearTimeout(autoT);
         qteNow = null;
         qteWrap.classList.remove('is-on');
         qteWrap.removeAttribute('data-kind');
+        dlg.removeAttribute('data-qte');
         dlg.focus({ preventScroll: true });   // the key that had focus is about to go
         window.setTimeout(function () { qteWrap.innerHTML = ''; resolve(); }, 260);
       }

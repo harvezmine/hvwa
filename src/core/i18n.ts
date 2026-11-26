@@ -109,6 +109,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'quest.clue': { id: 'Petunjuk baru', en: 'New clue' },
   'quest.notes': { id: 'Catatan kasus', en: 'Case notes' },
   'quest.text': { id: 'Teks', en: 'Text' },
+  'quest.hint': { id: 'Petunjuk', en: 'Hint' },
   'quest.qte_mash': { id: 'Tekan Spasi (atau ketuk) berulang-ulang', en: 'Press Space (or tap) again and again' },
   'quest.qte_alternate': { id: 'Tekan ← dan → bergantian (atau ketuk kiri dan kanan)', en: 'Press ← and → in turn (or tap left and right)' },
   'quest.qte_hold': { id: 'Tahan Spasi (atau tekan lama), lepaskan di dalam garis', en: 'Hold Space (or press and hold), let go inside the line' },

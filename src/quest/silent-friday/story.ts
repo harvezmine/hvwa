@@ -698,15 +698,28 @@ const fire: Chapter = {
       'Layangan: keluarga yang bahagia, layangan ungu tersangkut di tiang, seorang pria yang berlari terlambat. **Setiap garis punya arti.**', 'think'),
     { cg: 'angel' },
     say('mira', 'The angel with the apple. A lie wearing a halo.', 'Malaikat dengan apel. Kebohongan yang memakai lingkaran cahaya.', 'think'),
-    { cg: 'decoy' },
-    say('mira', 'And this one... is just a house on fire. **It shows what happened, and nothing more.**',
-      'Dan yang ini... cuma rumah yang terbakar. **Gambar ini hanya menunjukkan apa yang terjadi, tidak lebih.**'),
     { cg: null },
+    say('gm', 'Now the one from the Hale gate. A copy always has seams. Find them.', 'Sekarang yang dari gerbang rumah Hale. Tiruan selalu punya jahitan. Temukan.', 'read'),
+    // The forgery, searched: something copied, something wrong, something missing.
+    { seek: { pic: 'decoy', prompt: T('Find the three seams in the copy', 'Temukan tiga jahitan pada tiruan ini'), marks: [
+      { at: [0.27, 0.55], r: 0.11, label: T('Copied', 'Disalin'), then: [
+        say('mira', 'This boy... the blue shirt, the same messy hair. He\'s the boy from the angel drawing.', 'Bocah ini... baju biru dan rambut acak-acakan yang sama. Dia bocah dari gambar malaikat itu.', 'think'),
+        say('gm', 'The Fool never draws the same face twice. Somebody traced him.', 'The Fool tak pernah menggambar wajah yang sama dua kali. Ada yang menjiplaknya.'),
+      ] },
+      { at: [0.75, 0.55], r: 0.2, label: T('Wrong', 'Keliru'), then: [
+        say('mira', 'The house has one floor. But the coroner said the children were upstairs, behind a barred door.', 'Rumahnya cuma satu lantai, padahal kata koroner anak-anak itu ada di lantai atas, di balik pintu yang dipalang.', 'think'),
+        say('gm', 'Whoever drew this never stood in front of that house. He drew what he was told.', 'Siapa pun yang menggambar ini tak pernah berdiri di depan rumah itu. Ia hanya menggambar apa yang diceritakan kepadanya.'),
+      ] },
+      { at: [0.38, 0.18], r: 0.17, label: T('Missing', 'Hilang'), then: [
+        say('mira', 'No kite in the sky, and no apple anywhere. Every drawing The Fool sent us hid one or the other.', 'Tak ada layangan di langit, tak ada apel di mana pun. Setiap gambar kiriman The Fool selalu menyembunyikan salah satunya.', 'think'),
+        say('mira', 'This one hides nothing. **It shows what happened, and nothing more.**', 'Yang ini tak menyembunyikan apa-apa. **Gambar ini hanya menunjukkan apa yang terjadi, tidak lebih.**'),
+      ] },
+    ] } },
     say('gm', 'The Fool speaks in riddles. This speaks like a man who has only **heard** of him.', 'The Fool berbicara lewat teka-teki. Yang ini berbicara seperti orang yang cuma pernah **mendengar** tentangnya.'),
     say('gm', 'And The Fool has **never once hurt a child**.', 'Dan The Fool **tidak pernah sekali pun menyakiti anak**.', 'nod'),
     { choice: [
       { label: T('"Someone is copying him."', '"Ada yang meniru dia."'), then: [
-        say('gm', 'Then the copy will have seams. Find them.', 'Kalau begitu, tiruannya pasti punya jahitan. Temukan.'),
+        say('gm', 'And every copy is made by somebody\'s hand. Find out whose.', 'Dan setiap tiruan dibuat oleh tangan seseorang. Cari tahu tangan siapa.'),
       ] },
       { label: T('"Varrick was quick to name him."', '"Varrick cepat sekali menuduhnya."'), then: [
         say('gm', 'He was. Twice now.', 'Memang. Sudah dua kali.'),

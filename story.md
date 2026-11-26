@@ -1190,10 +1190,25 @@ _Ia mengencangkan **sarung tangan hitamnya** sambil berbalik pergi._
 
 **Mira**: Malaikat dengan apel. Kebohongan yang memakai lingkaran cahaya.
 
-`[Gambar: decoy]`
+**Ketua Guild**: Sekarang yang dari gerbang rumah Hale. Tiruan selalu punya jahitan. Temukan.
 
-**Mira**: Dan yang ini... cuma rumah yang terbakar. **Gambar ini hanya menunjukkan apa yang terjadi, tidak lebih.**
+🔎 **Temukan tiga jahitan pada tiruan ini** (Latar: decoy)
 
+- **Disalin**
+> **Mira**: Bocah ini... baju biru dan rambut acak-acakan yang sama. Dia bocah dari gambar malaikat itu.
+> 
+> **Ketua Guild**: The Fool tak pernah menggambar wajah yang sama dua kali. Ada yang menjiplaknya.
+> 
+- **Keliru**
+> **Mira**: Rumahnya cuma satu lantai, padahal kata koroner anak-anak itu ada di lantai atas, di balik pintu yang dipalang.
+> 
+> **Ketua Guild**: Siapa pun yang menggambar ini tak pernah berdiri di depan rumah itu. Ia hanya menggambar apa yang diceritakan kepadanya.
+> 
+- **Hilang**
+> **Mira**: Tak ada layangan di langit, tak ada apel di mana pun. Setiap gambar kiriman The Fool selalu menyembunyikan salah satunya.
+> 
+> **Mira**: Yang ini tak menyembunyikan apa-apa. **Gambar ini hanya menunjukkan apa yang terjadi, tidak lebih.**
+> 
 **Ketua Guild**: The Fool berbicara lewat teka-teki. Yang ini berbicara seperti orang yang cuma pernah **mendengar** tentangnya.
 
 **Ketua Guild**: Dan The Fool **tidak pernah sekali pun menyakiti anak**.
@@ -1202,7 +1217,7 @@ _Ia mengencangkan **sarung tangan hitamnya** sambil berbalik pergi._
 
 > **1. "Ada yang meniru dia."**
 >
-> **Ketua Guild**: Kalau begitu, tiruannya pasti punya jahitan. Temukan.
+> **Ketua Guild**: Dan setiap tiruan dibuat oleh tangan seseorang. Cari tahu tangan siapa.
 > 
 > **2. "Varrick cepat sekali menuduhnya."**
 >

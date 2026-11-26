@@ -224,5 +224,5 @@ export const QUEST_UI = [
   'begin', 'continue', 'replay', 'locked', 'soon', 'done', 'auto', 'log', 'skip', 'close', 'next', 'submit', 'evidence',
   'wrong', 'slow', 'solved', 'chapter_done', 'back', 'next_chapter', 'answer', 'grand', 'accepted', 'reward', 'tap',
   'left', 'backlog', 'case', 'error', 'confirm_close', 'gold', 'end', 'resume', 'archive_hint', 'checking', 'sound', 'choose', 'found', 'skip_title', 'skip_go', 'skip_stay', 'clue', 'notes',
-  'close_title', 'close_go', 'close_stay', 'text', 'qte_mash', 'qte_alternate', 'qte_hold', 'qte_timing', 'qte_still', 'qte_dodge', 'qte_again',
+  'close_title', 'close_go', 'close_stay', 'text', 'hint', 'qte_mash', 'qte_alternate', 'qte_hold', 'qte_timing', 'qte_still', 'qte_dodge', 'qte_again',
 ] as const;

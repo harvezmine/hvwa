@@ -257,6 +257,7 @@ describe('the story', () => {
       steps.push(s);
       if ('choice' in s) s.choice.forEach((c) => walk(c.then));
       if ('explore' in s) s.explore.spots.forEach((c) => walk(c.then));
+      if ('seek' in s) s.seek.marks.forEach((m) => walk(m.then ?? []));
     }
   })(SILENT_FRIDAY.chapters.flatMap((c) => [...c.pre, ...(c.post ?? [])]));
   const texts: Text[] = [];
@@ -282,6 +283,7 @@ describe('the story', () => {
         if (sealed) expect(existsSync(join(art, 'bg', `${s.cg.slice(7)}.webp`)), s.cg).toBe(false);
       }
       if ('music' in s && s.music) expect(existsSync(join(art, 'music', `${s.music}.mp3`)), s.music).toBe(true);
+      if ('seek' in s) expect(existsSync(join(art, 'bg', `${s.seek.pic}.webp`)), s.seek.pic).toBe(true);
       if ('say' in s) expect(SILENT_FRIDAY.cast[s.say], s.say).toBeDefined();
       if ('show' in s) expect(SILENT_FRIDAY.cast[s.show]?.art, s.show).toBeDefined();
       if ('intro' in s) expect(SILENT_FRIDAY.cast[s.intro.who]?.art, s.intro.who).toBeDefined();

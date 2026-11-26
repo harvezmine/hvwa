@@ -66,6 +66,10 @@ export type Step =
   // won, over after `time` ms.
   | { readonly qte: { readonly kind: 'mash' | 'alternate' | 'hold' | 'timing' | 'still' | 'dodge'; readonly prompt: Text; readonly rounds?: number;
       readonly step?: number; readonly hopeless?: boolean; readonly time?: number } }
+  // A picture searched with the eye: click where something is wrong. Each mark is a circle (`at` [x, y] as fractions of
+  // the picture, radius `r` as a fraction of its width); a find is ringed in red and its `then` lines play over it.
+  | { readonly seek: { readonly pic: string; readonly prompt: Text;
+      readonly marks: readonly { readonly at: readonly [number, number]; readonly r: number; readonly label: Text; readonly then?: readonly Step[] }[] } }
   | { readonly tremble: 'soft' | 'hard' | null }
   | { readonly tears: boolean }
   | { readonly maskview: boolean }
