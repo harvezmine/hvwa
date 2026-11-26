@@ -750,6 +750,12 @@ _Dari balik jendela kamu melihat Hale mendekat, tangannya menutupi telinga Varri
 
 **Kapten Varrick** _(berbisik, suara dari luar layar)_: ...Siapa lagi yang sudah kau beri tahu?
 
+_Mata Varrick beralih ke jendela. Kamu merapatkan tubuh ke dinding di bawahnya dan menahan napas._
+
+🎮 **Aksi (still):** Jangan bergerak
+
+_Setelah lama sekali, ia kembali menghadap Hale._
+
 **Tuan Hale** _(berbisik, suara dari luar layar)_: Tidak ada. Tapi kalau dia mati karena itu, Varrick, berarti aku—
 
 **Kapten Varrick** _(berbisik, suara dari luar layar)_: Tidak di sini. Tidak sekarang. Apa pun yang kau kira kau temukan, itu ikut dikubur bersamanya. **Namanya tetap bersih.**
@@ -885,6 +891,8 @@ _Sebuah jeritan membelah musik._
 **Kerumunan** _(berteriak)_: Panggil garda!
 
 _Orang-orang berdesakan menuju komidi putar, dan kerumunan itu menyeretmu ikut serta._
+
+🎮 **Aksi (alternate):** Terobos sampai ke komidi putar
 
 `[Latar: girl]`
 
@@ -1443,6 +1451,8 @@ _Suara itu keluar dari corong-corong kuningan di tiang tenda, seakan datang dari
 
 **The Fool** _(suara dari luar layar)_: Kereta tadi kosong. Dua belas tong di bawah bangku kalian tidak. Kalau malam ini ada satu saja panah yang terlepas, tong-tong itu tak perlu kusulut sendiri.
 
+🗝️ **Barang: Di bawah bangkumu** — Sebuah tong kecil yang menghitam oleh minyak, dengan tanda tanya dicoret cat merah di sisinya.
+
 **The Fool** _(suara dari luar layar)_: Kapten, tahan pemanahmu.
 
 **Kapten Varrick**: Tahan! Jangan ada yang menembak!
@@ -1584,6 +1594,10 @@ _Di tengah asap, satu jubah merah bergerak melawan arus kerumunan. Bukan ke arah
 
 _Ke arah komidi putar._
 
+_Kamu menyusulnya ke dalam asap, melawan arus orang-orang yang berlari ke arah sebaliknya._
+
+🎮 **Aksi (dodge):** Tembus tenda yang terbakar
+
 `[layar gelap]`
 
 `[Latar: carousel]`
@@ -1682,6 +1696,10 @@ _Sesuatu pecah di dekat kakimu, dan halaman itu langsung dipenuhi **asap putih**
 _Sebuah tangan bersarung mencengkeram kerahmu dan menarikmu turun lewat pintu rahasia yang tak pernah kamu lihat, masuk ke dalam gelap._
 
 **The Fool** _(berbisik, suara dari luar layar)_: Jangan bersuara.
+
+_Derap sepatu bot melintas di atas kepalamu, lalu berhenti._
+
+🎮 **Aksi (still):** Jangan bersuara sedikit pun
 
 _Di atasmu, sebilah pedang menghantam papan, tepat di tempat kepalamu berada sedetik sebelumnya._
 
@@ -1934,7 +1952,7 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 `[Gambar: pinned-pov]`
 
-**Lucian** _(dalam hati)_: Pagi yang kelabu. Sebatang pinus yang tumbang semalam menindih kakiku.
+**Lucian** _(dalam hati)_: Pagi yang kelabu. Sebatang pinus yang tumbang semalam menindih kedua kakiku.
 
 **Lucian** _(dalam hati)_: Perkemahan itu sunyi sekali. Kupanggil nama anak buahku satu per satu, dan **tak seorang pun menjawab.**
 
@@ -2026,6 +2044,8 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 **Lucian** _(dalam hati)_: Semuanya menatap batu jalan.
 
+**Lucian** _(dalam hati)_: Seorang ibu menutup mata anak laki-lakinya dengan tangan, sementara matanya sendiri tetap tertuju ke tanah.
+
 **Tobin** _(berbisik, suara dari luar layar)_: Separuh dari mereka pernah dirawat Nyonya, Tuan. Tapi tak ada yang bersuara. Satu pun tidak.
 
 **Lucian** _(dalam hati)_: Kemarin pun mereka tidak mendongak. Mereka membiarkannya terjadi sambil menatap tanah, lalu pulang dan menutup jendela rapat-rapat.
@@ -2092,7 +2112,7 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 `[layar gelap]`
 
-`[Latar: cross-bare]`
+`[Latar: cross-distant]`
 
 📍 **Alun-alun kastel** · Malam itu
 
@@ -2215,6 +2235,18 @@ _Di bawah atap gedung arsip, di balik rak-rak berisi kertas yang sudah dilupakan
 > 
 
 _Ia memalang pintu lantai di belakangmu. Kamu mendengar gerendelnya dikunci dua kali._
+
+`[detak jantung berhenti]`
+
+`[layar gelap]`
+
+_Di jalan terdengar derap sepatu bot. Sebuah patroli berjubah merah berbelok di tikungan membawa lentera, dan kamu mundur ke balik ambang pintu._
+
+`[detak jantung]`
+
+🎮 **Aksi (still):** Tetap diam di dalam bayangan
+
+_Cahaya lentera itu lewat hanya sejengkal dari wajahmu, lalu menjauh._
 
 `[detak jantung berhenti]`
 

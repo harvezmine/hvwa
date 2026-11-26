@@ -1216,7 +1216,7 @@ const boy: Chapter = {
     // mask goes on, the same voice tells the last of it years later, as The Fool (style 'recall').
     // Thirty-five years ago: the orchard on the hill.
     { black: true }, { music: null }, { letterbox: true }, { wait: 900 },
-    { bg: 'orchard-past', fx: 'cut' }, { flashback: 'golden' }, { particles: 'fireflies' }, { amb: 'park' }, { music: 'musicbox', fade: 2500 }, { black: false },
+    { bg: 'orchard-past', fx: 'cut' }, { flashback: 'golden' }, { particles: 'fireflies' }, { amb: 'park' }, { music: 'memory', fade: 2500 }, { black: false },
     { place: T('A hill orchard outside Valeria', 'Kebun apel di bukit luar Valeria'), time: T('Thirty-five years ago', 'Tiga puluh lima tahun lalu') },
     think('lucianKid', 'The sun is going down behind somebody else\'s orchard. My brother keeps watch on the farmhouse, and I stand on my toes and still can\'t reach the branches.',
       'Matahari mulai turun di balik kebun apel milik orang lain. Kakak terus mengawasi rumah petani, sementara aku berjinjit sekuat tenaga dan tetap saja tak sampai ke dahannya.'),
@@ -1310,7 +1310,7 @@ const boy: Chapter = {
     { sfx: 'thud' }, { shock: 'dark' }, { heart: null }, { tremble: null }, { amb: null }, { wait: 1400 },
     think('lucian', 'I hear them die. I can\'t see a thing, and I hear every one of them.', 'Aku mendengar mereka mati. Mataku tak bisa melihat apa-apa, tapi suara mereka terdengar semuanya, satu per satu.'),
     { wait: 900 }, { cg: 'pinned-pov' }, { amb: 'night' }, { black: false },
-    think('lucian', 'Grey morning. A pine torn down in the fight lies across my leg.', 'Pagi yang kelabu. Sebatang pinus yang tumbang semalam menindih kakiku.'),
+    think('lucian', 'Grey morning. A pine torn down in the fight lies across both my legs.', 'Pagi yang kelabu. Sebatang pinus yang tumbang semalam menindih kedua kakiku.'),
     think('lucian', 'The camp is very quiet. I call my men by name, one after another, and **nobody answers.**', 'Perkemahan itu sunyi sekali. Kupanggil nama anak buahku satu per satu, dan **tak seorang pun menjawab.**'),
     { tremble: 'soft' },
     think('lucian', 'I set both hands against the trunk and push.', 'Kutempelkan kedua tanganku ke batang pohon itu, lalu mendorongnya sekuat tenaga.'),
@@ -1335,7 +1335,7 @@ const boy: Chapter = {
     say('tobin', 'Sir... Sir Lucian? You\'re alive? They said... your brother had your name read out in the square, with the fallen.', 'Tuan... Sir Lucian? Anda masih hidup? Kata mereka... kakak Anda sudah mengumumkan nama Anda di alun-alun, bersama para prajurit yang gugur.', { style: 'shout' }),
     say('tobin', 'You have to come home, sir. Now. They\'ve taken her. The lady. They\'re saying witch.', 'Anda harus pulang, Tuan. Sekarang juga. Nyonya ditangkap. Katanya dia penyihir.'),
     { heart: 'slow' }, { tremble: 'soft' },
-    { cg: 'arrest' }, { flashback: 'sepia' },
+    { cg: 'arrest' }, { flashback: 'sepia' }, { sfx: 'scream' },
     think('lucian', 'I don\'t want to see it, and I see it anyway: crimson cloaks at the door of Little Lantern House, and a needle still in her hand when they take her by the arms.',
       'Aku tak mau membayangkannya, tapi bayangan itu datang juga: jubah-jubah merah di depan pintu Little Lantern House, dan jarum jahit masih di tangannya ketika lengannya dicengkeram.'),
     think('lucian', 'And under the kitchen table, our girl with her kite held against her chest, and a gloved hand reaching in for her.', 'Lalu di kolong meja dapur, putri kami memeluk layangannya erat-erat, dan sebuah tangan bersarung terulur ke arahnya.'),
@@ -1368,7 +1368,7 @@ const boy: Chapter = {
     think('lucian', 'A wooden cross stands on the old scaffold, and the fire has already climbed halfway up it.', 'Di atas panggung tua berdiri sebuah salib kayu, dan api sudah merambat sampai separuh tingginya.'),
     think('lucian', 'The crows on its arms lift off all at once, as if even they can\'t bear the smoke any longer.', 'Gagak-gagak di lengannya terbang serentak, seakan mereka pun sudah tak tahan lagi dengan asapnya.'),
     think('lucian', 'I know the purple dress before I let myself know anything else.', 'Aku mengenali gaun ungu itu, jauh sebelum aku sanggup menerima hal lain.'),
-    { tears: true },
+    { tears: true }, { music: 'lament', fade: 5000 },
     think('lucian', 'Caught on the arm of the cross above her, its string snapped, hangs a small purple kite.', 'Di lengan salib, tepat di atas kepalanya, tersangkut sebuah layangan ungu kecil dengan tali yang putus.'),
     think('lucian', '**One day.** I was one day late.', '**Satu hari.** Aku terlambat satu hari.'),
     { amb: 'pyre' }, { tremble: 'soft' },
@@ -1376,6 +1376,7 @@ const boy: Chapter = {
     think('lucian', 'I look at the faces around me: the baker, the woman from the well, the smith\'s boy she sat up with for three nights when the fever took him.',
       'Kutatap wajah-wajah di sekelilingku: si tukang roti, perempuan dari sumur, anak si pandai besi yang tiga malam ia jaga waktu demamnya tinggi.'),
     think('lucian', 'Every one of them is looking at the cobbles.', 'Semuanya menatap batu jalan.'),
+    think('lucian', 'A mother has her hand over her little boy\'s eyes. Her own stay on the ground.', 'Seorang ibu menutup mata anak laki-lakinya dengan tangan, sementara matanya sendiri tetap tertuju ke tanah.'),
     say('tobin', 'Half of them were nursed by her, sir. Nobody said a word. Not one of them.', 'Separuh dari mereka pernah dirawat Nyonya, Tuan. Tapi tak ada yang bersuara. Satu pun tidak.', { style: 'whisper', off: true }),
     think('lucian', 'They didn\'t look up yesterday either. They let it happen with their eyes on the ground, and then they went home and shut their windows.',
       'Kemarin pun mereka tidak mendongak. Mereka membiarkannya terjadi sambil menatap tanah, lalu pulang dan menutup jendela rapat-rapat.'),
@@ -1389,10 +1390,10 @@ const boy: Chapter = {
     think('lucian', 'His arms are locked around my chest. I fight him all the way into the alley, and he doesn\'t let go.', 'Lengannya mengunci dadaku. Aku meronta sepanjang jalan sampai ke dalam gang, dan ia tetap tidak melepaskanku.'),
     { heart: 'slow' }, { tremble: 'soft' },
     think('lucian', 'Behind us the fire keeps crackling, and the guard with the pipe never even turns around.', 'Di belakang kami api terus berderak, dan penjaga yang memegang pipa itu bahkan tidak menoleh.'),
-    { heart: null }, { tremble: null }, { tint: null }, { tears: false }, { particles: null }, { amb: null }, { wait: 1600 },
+    { heart: null }, { tremble: null }, { tint: null }, { tears: false }, { particles: null }, { amb: null }, { wait: 900 },
 
     // Below the manor hill.
-    { bg: 'street-past', fx: 'cut' }, { flashback: 'sepia' }, { particles: 'dust' }, { amb: 'night' }, { music: 'musicbox', fade: 2500 }, { black: false },
+    { bg: 'street-past', fx: 'cut' }, { flashback: 'sepia' }, { particles: 'dust' }, { amb: 'night' }, { music: 'grief', fade: 3000 }, { black: false },
     { place: T('Below the manor hill', 'Di kaki bukit kediaman Prince'), time: T('The same day', 'Hari yang sama') },
     think('lucian', 'I walk without knowing where, but my feet seem to know. They bring me to the bottom of the street that climbs to my brother\'s house.', 'Aku berjalan tanpa tahu ke mana, tapi kakiku rupanya tahu. Mereka membawaku ke ujung jalan yang menanjak ke rumah kakakku.'),
     think('lucian', 'Something tugs at the hem of my coat.', 'Ada yang menarik ujung mantelku.'),
@@ -1420,7 +1421,7 @@ const boy: Chapter = {
     { black: true }, { maskview: false }, { music: null, fade: 1500 }, { wait: 1100 },
 
     // That night: the kite. The last of it is told years later, by the man the mask made.
-    { bg: 'cross-bare', fx: 'slow' }, { flashback: 'sepia' }, { amb: 'night' }, { black: false },
+    { bg: 'cross-distant', fx: 'slow' }, { flashback: 'sepia' }, { amb: 'night' }, { music: 'musicbox', fade: 3000 }, { black: false },
     { place: T('The castle square', 'Alun-alun kastel'), time: T('That night', 'Malam itu') },
     recall('fool', 'By night the square was empty. They had swept away what the fire left, and the cross stood bare, but the kite was still caught on its arm.', 'Malamnya alun-alun sudah kosong. Sisa api sudah mereka sapu, dan salib itu berdiri tanpa apa-apa, tapi layangan itu masih tersangkut di lengannya.'),
     { qte: { kind: 'timing', prompt: T('Climb the scaffold, one step at a time', 'Naiki panggung itu, selangkah demi selangkah'), rounds: 3 } },

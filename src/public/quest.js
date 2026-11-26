@@ -264,8 +264,26 @@
     spot: function (c, o, t) { osc(c, o, 'sine', 1568, t, 0.25, 0.04); osc(c, o, 'sine', 2349, t + 0.06, 0.3, 0.03); },
     pick: function (c, o, t) { osc(c, o, 'triangle', 660, t, 0.08, 0.06, 990); band(c, o, t, 0.12, 0.08, 1800, 3600, 2, 0.002); },
   };
+  // Recorded effects (static/quest/<art>/sfx/<file>.mp3): an effect listed here plays one of its recordings, picked at
+  // random so a second scream is not the first one again; if a file cannot play, the synthesized one stands in.
+  var SFX_FILES = { scream: ['scream-1', 'scream-2', 'scream-3'] };
+  var sfxCache = {};
+  function sfxFile(name) {
+    var list = SFX_FILES[name];
+    if (!list) return false;
+    var f = list[Math.floor(Math.random() * list.length)];
+    var a = sfxCache[f] || (sfxCache[f] = new Audio(ART + '/sfx/' + f + '.mp3'));
+    if (a.error) return false;
+    try { a.currentTime = 0; } catch (e) { /* not loaded yet */ }
+    a.volume = 0.8;
+    var p = a.play();
+    if (p && p.catch) p.catch(function () { /* blocked or missing: stay silent */ });
+    return true;
+  }
+  function preloadSfx() { Object.keys(SFX_FILES).forEach(function (k) { SFX_FILES[k].forEach(function (f) { if (!sfxCache[f]) { sfxCache[f] = new Audio(ART + '/sfx/' + f + '.mp3'); sfxCache[f].preload = 'auto'; } }); }); }
   function sfx(name) {
     if (!soundOn()) return;
+    if (sfxFile(name)) return;
     if (QSFX[name]) {
       var c = ac();
       if (!c) return;
@@ -1021,13 +1039,21 @@
     });
   }
 
-  async function exec(step) {
-    if (!run || !run.alive) return;
+  // Every beat belongs to the run that started it (`me`). Leaving and opening a chapter again starts a new run; an old
+  // loop still waiting on a pause must not wake up and play its steps (a black screen, a backdrop) over the new one.
+  async function exec(step, me) {
+    me = me || run;
+    if (!run || run !== me || !me.alive) return;
     // A line already read does not linger over a change of scene: a new backdrop, black, a picture or a title clear
     // the text; a portrait stepping on or off clears only the narrator.
     if ('bg' in step || 'black' in step || ('cg' in step && step.cg) || 'title' in step) clearText(null);
     else if ('show' in step || 'hide' in step) clearText('box');
-    if ('bg' in step) { if (step.bg) await picReady(ART + '/bg/' + step.bg + '.webp'); await sleep(setBg(step.bg, step.fx)); return; }
+    if ('bg' in step) {
+      if (step.bg) await picReady(ART + '/bg/' + step.bg + '.webp');
+      // Under a black screen nobody sees a crossfade: cut, so the dark lasts only as long as the scene wants.
+      await sleep(setBg(step.bg, black.classList.contains('is-on') ? 'cut' : step.fx));
+      return;
+    }
     if ('music' in step) { Music.play(step.music, fast() ? 150 : (step.fade || 1400)); return; }
     if ('amb' in step) { Amb.set(step.amb); return; }
     if ('particles' in step) { Particles.set(step.particles); return; }
@@ -1056,14 +1082,14 @@
     if ('choice' in step) {
       var i = await pick(step.choice.map(function (c) { return { label: c.label }; }));
       log('', '› ' + step.choice[i].label);
-      await steps(step.choice[i].then, false);
+      await steps(step.choice[i].then, false, 0, me);
       return;
     }
     if ('explore' in step) {
       var ex = step.explore;
       var seen = ex.spots.map(function () { return false; });
       var onPicture = ex.spots.every(function (s) { return s.at; });
-      while (run && run.alive && seen.indexOf(false) >= 0) {
+      while (run === me && me.alive && seen.indexOf(false) >= 0) {
         clearText(null);
         focusSpeaker(null);
         var k;
@@ -1075,7 +1101,7 @@
           k = await pick(ex.spots.map(function (s, j) { return { label: s.label, visited: seen[j] }; }), ex.prompt + ' · ' + UI.left.replace('{n}', left));
         }
         log('', '› ' + ex.spots[k].label);
-        await steps(ex.spots[k].then, false);
+        await steps(ex.spots[k].then, false, 0, me);
         seen[k] = true;
       }
       bgFront.classList.remove('is-still');
@@ -1086,12 +1112,13 @@
     if ('wait' in step) { await sleep(fast() ? 0 : step.wait); return; }
   }
 
-  async function steps(list, top, from) {
+  async function steps(list, top, from, me) {
+    me = me || run;
     for (var i = from || 0; i < list.length; i++) {
-      if (!run || !run.alive) return;
-      if (top) store(placeKey(run.n), i);
+      if (!run || run !== me || !me.alive) return;
+      if (top) store(placeKey(me.n), i);
       // One broken beat must never close the whole stage: it is logged and the scene goes on.
-      try { await exec(list[i]); } catch (e) { if (window.console) console.error('quest step', i, e); }
+      try { await exec(list[i], me); } catch (e) { if (window.console) console.error('quest step', i, e); }
     }
   }
   // A picture is put on stage only once it has arrived (or after a short wait on a slow line), so a crossfade never
@@ -1219,6 +1246,7 @@
     store(placeKey(n), null);
   }
   function preloadChapter(ch) {
+    preloadSfx();
     var seen = {};
     (function walk(list) {
       (list || []).forEach(function (s) {
@@ -1293,7 +1321,7 @@
     resetStage();
     var saved = fresh || ch.done ? 0 : Number(load(placeKey(n)) || 0);
     if (saved > 0 && saved < ch.pre.length) restore(ch.pre, saved); else saved = 0;
-    await steps(ch.pre, true, saved);
+    await steps(ch.pre, true, saved, me);
     if (run !== me || !me.alive) return;
     Heart.stop();
     if (ch.challenge) {
@@ -1301,7 +1329,7 @@
       var post = await caseFile(ch);
       phase = 'post';
       if (run !== me || !me.alive) return;
-      await steps(post, false);
+      await steps(post, false, 0, me);
     } else if (!ch.done) {
       await fetch('/quests/' + QID + '/chapter/' + n, {
         method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1543,6 +1571,16 @@
     else if (e.key === 'm' || e.key === 'M') soundBtn.click();
   });
   dlg.addEventListener('keyup', function (e) { if (e.key === 'Control') ctrlSkip = false; });
+  // When the button that had focus goes away (a spot, a choice, a quick-time key), focus falls to <body> and the keys
+  // would stop reaching the stage: take focus back and hand the key on, so Space never "freezes" a scene.
+  ['keydown', 'keyup'].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      if (!dlg.open || dlg.contains(e.target)) return;
+      dlg.focus({ preventScroll: true });
+      var copy = new KeyboardEvent(type, { key: e.key, code: e.code, repeat: e.repeat, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, bubbles: true, cancelable: true });
+      if (!dlg.dispatchEvent(copy)) e.preventDefault();
+    });
+  });
   window.addEventListener('blur', function () { ctrlSkip = false; });
   autoBtn.addEventListener('click', function () {
     auto = !auto; autoBtn.setAttribute('aria-pressed', String(auto));
