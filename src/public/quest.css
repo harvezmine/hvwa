@@ -128,6 +128,39 @@ html.qs-open { overflow: hidden; }
 }
 @keyframes qs-grain { 0% { translate: 0 0; } 20% { translate: -4% 3%; } 40% { translate: 3% -5%; } 60% { translate: -6% -2%; } 80% { translate: 5% 4%; } 100% { translate: 0 0; } }
 
+/* Point of view (.qs[data-tremble|data-tears|data-maskview]): what the body does to the picture. */
+.qs-tears { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; transition: opacity 1400ms ease;
+  -webkit-backdrop-filter: blur(5px) brightness(1.08); backdrop-filter: blur(5px) brightness(1.08);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 55%, rgba(0, 0, 0, 0.55) 20%, #000 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 55%, rgba(0, 0, 0, 0.55) 20%, #000 75%); }
+.qs[data-tears] .qs-tears { opacity: 1; }
+/* Black everywhere but two soft eyeholes: each mask layer hides its own hole, and only what both keep is drawn. */
+.qs-maskview { position: absolute; inset: 0; z-index: 8; pointer-events: none; opacity: 0; transition: opacity 900ms ease-in-out; background: #000;
+  -webkit-mask-image: radial-gradient(ellipse 17vw 15vh at 36% 46%, transparent 62%, #000 100%), radial-gradient(ellipse 17vw 15vh at 64% 46%, transparent 62%, #000 100%);
+  mask-image: radial-gradient(ellipse 17vw 15vh at 36% 46%, transparent 62%, #000 100%), radial-gradient(ellipse 17vw 15vh at 64% 46%, transparent 62%, #000 100%);
+  -webkit-mask-composite: source-in; mask-composite: intersect; }
+.qs[data-maskview] .qs-maskview { opacity: 0.96; }
+@media (prefers-reduced-motion: no-preference) {
+  .qs[data-tremble="soft"] .qs-scene:not(.is-shake):not(.is-shake-big) { animation: qs-tremble 1.9s linear infinite; }
+  .qs[data-tremble="hard"] .qs-scene:not(.is-shake):not(.is-shake-big) { animation: qs-tremble-hard 0.9s linear infinite; }
+  .qs[data-tremble="hard"] .qs-box.is-on .dialogue-text { animation: qs-tremble-text 0.45s steps(2) infinite; }
+  .qs[data-tears] .qs-tears { animation: qs-tears 5.5s ease-in-out infinite; }
+}
+@keyframes qs-tremble { 0%, 100% { translate: 0 0; } 13% { translate: -2px 1px; } 27% { translate: 1px -2px; } 41% { translate: 2px 1px; } 58% { translate: -1px 2px; } 72% { translate: 2px -1px; } 86% { translate: -2px -1px; } }
+@keyframes qs-tremble-hard { 0%, 100% { translate: 0 0; rotate: 0deg; } 11% { translate: -5px 3px; rotate: -0.15deg; } 23% { translate: 4px -4px; } 37% { translate: -3px -2px; rotate: 0.12deg; } 49% { translate: 5px 2px; } 63% { translate: -4px 4px; rotate: -0.1deg; } 77% { translate: 3px -3px; } 89% { translate: -2px 1px; rotate: 0.08deg; } }
+@keyframes qs-tremble-text { 0% { translate: 0 0; } 50% { translate: 0.6px -0.4px; } }
+@keyframes qs-tears { 0%, 100% { opacity: 0.55; } 45% { opacity: 1; } 70% { opacity: 0.8; } }
+
+/* A thought (style 'inner'): no voice, so no paper: dark glass, pale italic ink. A memory told years later
+   (style 'recall'): the same voice, steadier, on a darker red. Written as .qs[class] so they outrank a flashback's paper. */
+.qs[class] .qs-box.is-inner, .qs[class] .qs-box.is-recall { filter: none; background: linear-gradient(180deg, rgba(18, 14, 12, 0.92), rgba(10, 8, 7, 0.95)); }
+.qs[class] .qs-box.is-recall { background: linear-gradient(180deg, rgba(34, 8, 10, 0.92), rgba(14, 4, 5, 0.96)); }
+.qs[class] .qs-box.is-inner::after, .qs[class] .qs-box.is-recall::after { box-shadow: none; }
+.qs[class] .qs-box.is-inner::before, .qs[class] .qs-box.is-recall::before { border-color: rgba(201, 155, 69, 0.25); }
+.qs[class] .qs-box.is-inner .dialogue-text { font-style: italic; color: #efe3cc; }
+.qs[class] .qs-box.is-recall .dialogue-text { font-style: normal; color: #ecdcbc; letter-spacing: 0.01em; }
+.qs[class] .qs-box.is-inner .qs-key, .qs[class] .qs-box.is-recall .qs-key { color: #e8836f; }
+.qs[class] .qs-box.is-inner .qs-more, .qs[class] .qs-box.is-recall .qs-more { color: #e9d9b8; }
+
 .qs-tint.is-memory { opacity: 1; -webkit-backdrop-filter: sepia(0.75) saturate(0.6) contrast(0.92) brightness(0.95); backdrop-filter: sepia(0.75) saturate(0.6) contrast(0.92) brightness(0.95); }
 
 .qs-particles { width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 1200ms ease-in-out; }
@@ -199,7 +232,7 @@ html.qs-open { overflow: hidden; }
 .qs-narr::after { top: 100%; }
 .qs-narr.is-on { opacity: 1; }
 .qs-narr.is-low { top: auto; bottom: max(1.5rem, env(safe-area-inset-bottom)); translate: -50% 0; }
-.qs-narr-text { margin: 0; font-family: var(--serif); font-style: normal; font-weight: 400; font-size: clamp(1.12rem, 2vw, 1.38rem); line-height: 1.7; letter-spacing: 0.012em; color: var(--qs-ink-light); text-shadow: 0 1px 2px #000; }
+.qs-narr-text { margin: 0; font-family: var(--serif); font-style: normal; font-weight: 400; font-size: calc(clamp(1.22rem, 2.15vw, 1.5rem) * var(--qs-fs, 1)); line-height: 1.7; letter-spacing: 0.012em; color: var(--qs-ink-light); text-shadow: 0 1px 2px #000; }
 .qs-narr-more { position: absolute; right: 1.1rem; bottom: 0.85rem; width: 0.45rem; height: 0.45rem; rotate: 45deg; background: var(--qs-gold); opacity: 0; }
 .qs-narr .qs-narr-text:not(.is-typing) ~ .qs-narr-more { opacity: 1; }
 
@@ -217,9 +250,9 @@ html.qs-open { overflow: hidden; }
 .qs-box[data-side="right"] .qs-name { right: 1.4rem; left: auto; }
 .qs-box .dialogue-speaker { font-size: 1.45rem; }
 .qs-box .dialogue-role[hidden] { display: none; }
-.qs-box .dialogue-text { font-size: clamp(1.08rem, 1.85vw, 1.32rem); line-height: 1.6; min-height: calc(2 * 1.6em); color: #2a1a0c; }
+.qs-box .dialogue-text { font-size: calc(clamp(1.18rem, 2vw, 1.45rem) * var(--qs-fs, 1)); line-height: 1.6; min-height: calc(2 * 1.6em); color: #2a1a0c; }
 .qs-box.is-new .qs-name { animation: qs-name 380ms var(--ease-swing); }
-.qs-box.is-shout .dialogue-text { font-weight: 700; font-size: clamp(1.18rem, 2.1vw, 1.5rem); letter-spacing: 0.01em; }
+.qs-box.is-shout .dialogue-text { font-weight: 700; font-size: calc(clamp(1.28rem, 2.25vw, 1.62rem) * var(--qs-fs, 1)); letter-spacing: 0.01em; }
 .qs-box.is-whisper .dialogue-text { font-style: italic; color: #5b4630; }
 .qs-box.is-jolt { animation: qs-jolt 380ms ease-out; }
 .qs-more { animation: qs-bob 1s ease-in-out infinite; }
@@ -245,7 +278,7 @@ html.qs-open { overflow: hidden; }
   position: relative; display: flex; align-items: center; gap: 0.9rem; width: 100%; min-height: 3.3rem; padding: 0.55rem 1.1rem 0.55rem 0.7rem;
   border: 1px solid rgba(201, 155, 69, 0.5); border-radius: 3px; cursor: pointer; text-align: left;
   background: linear-gradient(90deg, rgba(48, 30, 16, 0.96), rgba(28, 17, 9, 0.96)), var(--tex-wood);
-  color: #f2e4c6; font-family: var(--serif); font-size: 1.12rem; line-height: 1.3;
+  color: #f2e4c6; font-family: var(--serif); font-size: calc(1.2rem * var(--qs-fs, 1)); line-height: 1.3;
   box-shadow: inset 0 1px 0 rgba(255, 230, 180, 0.08), 0 6px 18px rgba(0, 0, 0, 0.55);
   transition: translate 200ms var(--ease), border-color 200ms ease, box-shadow 200ms ease, opacity 300ms ease, color 200ms ease;
 }
@@ -296,7 +329,7 @@ html.qs-open { overflow: hidden; }
 .qs-item-pix { display: block; width: 8.5rem; height: 8.5rem; object-fit: contain; filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.35)); }
 .qs-item-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-label); letter-spacing: 0.3em; text-transform: uppercase; color: var(--wax-dark); }
 .qs-item-title { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--fs-lg); letter-spacing: 0.04em; }
-.qs-item-text { margin: 0; font-family: var(--serif); font-style: italic; color: var(--ink-muted); font-size: var(--fs-md); }
+.qs-item-text { margin: 0; font-family: var(--serif); font-style: italic; color: var(--ink-muted); font-size: calc(var(--fs-md) * var(--qs-fs, 1)); }
 .qs-item-text.is-hand { font-family: var(--hand); font-style: normal; font-size: clamp(1.4rem, 4vw, 1.9rem); color: var(--ink-hand); overflow-wrap: break-word; user-select: text; -webkit-user-select: text; }
 .g-dark { fill: #1b1310; stroke: #3a2a20; stroke-width: 2; }
 .g-line { fill: none; stroke: #6b5440; stroke-width: 2; }
@@ -478,7 +511,7 @@ html.qs-open { overflow: hidden; }
   .qs-box.has-face { padding-left: 5.2rem; }
   .qs-box.has-face .qs-face { width: 3.6rem; height: 3.6rem; left: 0.9rem; }
   .qs-narr { padding: 1.4rem 1.2rem 1.3rem; }
-  .qs-narr-text { font-size: 1.06rem; line-height: 1.65; }
+  .qs-narr-text { font-size: calc(1.14rem * var(--qs-fs, 1)); line-height: 1.65; }
   .qs-btn span { display: none; }
   .qs-btn { padding: 0 0.6rem; }
   .qs-case-row { flex-direction: column; }
@@ -487,7 +520,7 @@ html.qs-open { overflow: hidden; }
   .qs-log { inset: var(--sp-3); }
   .qs-cg { padding: 7vh 3vw 18vh; }
   .qs-cg img { max-height: calc(100dvh - 25vh); }
-  .qs-choice { font-size: 1.02rem; }
+  .qs-choice { font-size: calc(1.08rem * var(--qs-fs, 1)); }
   .qs-place { top: 3.6rem; }
   .qs-spots-head { font-size: 0.98rem; top: 3.6rem; }
 }
@@ -599,3 +632,43 @@ html.qs-open { overflow: hidden; }
   .qs-intro-body { padding: 1.2rem 1.2rem 1.2rem; }
   .qs-clue { top: 3.4rem; }
 }
+
+/* Quick-time moments ({ qte }): a dark card low in the middle, a gauge, and one or two big keys (touch-sized). */
+.qs-qte { position: absolute; inset: 0; z-index: 11; display: grid; place-items: end center; padding: 0 1rem max(9vh, 4.5rem); pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
+.qs-qte.is-on { opacity: 1; pointer-events: auto; }
+.qs-qte-card { width: min(34rem, calc(100vw - 2rem)); padding: 1.1rem 1.4rem 0.9rem; border-radius: 6px; text-align: center;
+  background: linear-gradient(180deg, rgba(20, 12, 10, 0.9), rgba(8, 5, 4, 0.94)); box-shadow: 0 0 0 1px rgba(201, 155, 69, 0.55), 0 18px 50px rgba(0, 0, 0, 0.7); }
+.qs-qte-prompt { margin: 0 0 0.8rem; font-family: var(--display); font-size: calc(clamp(1.1rem, 2.1vw, 1.38rem) * var(--qs-fs, 1)); letter-spacing: 0.04em; color: #f1e4c8; }
+.qs-qte-track { position: relative; height: 14px; border-radius: 7px; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(201, 155, 69, 0.35); overflow: hidden; }
+.qs-qte-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #6e1010, #c2412b 70%, #f0a24a); }
+.qs-qte-zone { position: absolute; top: 0; bottom: 0; background: rgba(243, 217, 138, 0.22); box-shadow: inset 0 0 0 2px rgba(243, 217, 138, 0.85); z-index: 1; }
+.qs-qte-mark { position: absolute; top: -3px; bottom: -3px; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.8); z-index: 2; }
+.qs-qte[data-kind="timing"] .qs-qte-fill { opacity: 0.35; }
+.qs-qte-pips { display: flex; justify-content: center; gap: 0.45rem; min-height: 0.6rem; margin-top: 0.55rem; }
+.qs-qte-pip { width: 0.6rem; height: 0.6rem; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(243, 217, 138, 0.7); }
+.qs-qte-pip.is-on { background: #f3d98a; }
+.qs-qte-keys { display: flex; justify-content: center; gap: 1.2rem; margin-top: 0.7rem; }
+.qs-qte-key { width: 4.2rem; height: 4.2rem; border-radius: 50%; border: 0; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  font-size: 1.5rem; color: #f1e4c8; background: radial-gradient(circle at 40% 35%, #5a2a1c, #2a120c 70%); box-shadow: 0 0 0 2px rgba(201, 155, 69, 0.75), 0 6px 14px rgba(0, 0, 0, 0.6); transition: scale 90ms ease, box-shadow 150ms ease; }
+.qs-qte-key:active { scale: 0.92; }
+.qs-qte-key:focus-visible { outline: 3px solid #f3d98a; outline-offset: 3px; }
+.qs-qte[data-kind="alternate"][data-next="left"] .qs-qte-key[data-k="left"], .qs-qte[data-kind="alternate"][data-next="right"] .qs-qte-key[data-k="right"] { box-shadow: 0 0 0 3px #f3d98a, 0 0 18px rgba(243, 217, 138, 0.6); }
+.qs-qte-card.is-holding .qs-qte-key { box-shadow: 0 0 0 3px #f3d98a, 0 0 22px rgba(240, 120, 60, 0.7); scale: 0.95; }
+.qs-qte-hint { margin: 0.6rem 0 0; font-family: var(--display); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(241, 228, 200, 0.62); }
+.qs-qte-card.is-won { box-shadow: 0 0 0 2px #f3d98a, 0 0 30px rgba(243, 217, 138, 0.45); }
+@media (prefers-reduced-motion: no-preference) {
+  .qs-qte.is-on .qs-qte-card { animation: qs-card 320ms var(--ease-swing); }
+  .qs-qte-card.is-miss { animation: qs-nope 360ms ease-out; }
+  .qs-qte-card.is-hit .qs-qte-track { animation: qs-qte-hit 160ms ease-out; }
+}
+@keyframes qs-qte-hit { 50% { box-shadow: inset 0 0 0 1px rgba(243, 217, 138, 0.9), 0 0 10px rgba(240, 120, 60, 0.6); } }
+/* 'dodge': the arrow to press, big, above the keys; 'still': the gauge is the danger passing, so it reads cold. */
+.qs-qte-cue { margin: 0.5rem 0 0; font-size: 2.6rem; line-height: 1; color: #f3d98a; text-shadow: 0 0 14px rgba(240, 150, 60, 0.7); }
+.qs-qte-cue[hidden] { display: none; }
+.qs-qte[data-kind="dodge"] .qs-qte-key { width: 3.8rem; height: 3.8rem; }
+.qs-qte[data-kind="still"] .qs-qte-fill { background: linear-gradient(90deg, #1d2a3e, #4b6a8e 70%, #a9c2dc); }
+@media (prefers-reduced-motion: no-preference) {
+  .qs-qte-cue.is-new { animation: qs-qte-cue 220ms var(--ease-swing); }
+  .qs-qte[data-kind="still"] .qs-qte-card.is-holding { animation: qs-tremble 1.9s linear infinite; }
+}
+@keyframes qs-qte-cue { from { scale: 1.6; opacity: 0; } }

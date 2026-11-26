@@ -244,7 +244,7 @@ Alur setiap bab: adegan pembuka (`pre`) → catatan kasus → **tantangan forens
 8. **Tantangan Kotak Musik** → **tiang gantungan tua**.
 9. Jumat subuh kartu baru: "Hakimnya: putra Sang Pahlawan. Di mana? Tanyakan padanya."
 10. Alun-alun tengah hari: Rowan menolak pemanah Varrick ("Ini hakku."), dan kota berpihak padanya. Pemanah tetap naik ke atap "hanya untuk berjaga".
-11. Malam sebelumnya: Marta bertanya, "Anda yakin dia orang jahat?" Rowan tidak menjawab.
+11. Menjelang pengadilan: Rowan mengasah pedang ayahnya. Ia akan membiarkan The Fool bicara sampai habis, lalu menuntaskan apa yang membuatnya pulang. Tak ada yang menggiringnya untuk ragu (dualitas dibiarkan terbuka).
 
 **Bab VI — Perjalanan Terakhir Sang Fool.**
 1. Alun-alun penuh lentera. Tiang gantungan dengan tali kosong dan layangan ungu di palangnya: "Itu bukan tiang biasa."
@@ -419,7 +419,7 @@ Beberapa poin perlu kusesuaikan supaya tidak menimbulkan plot hole atau bentrok 
 ---
 
 <a id="naskah-lengkap"></a>
-# Naskah lengkap
+# Silent Friday
 
 _Pahlawan Perdamaian tidak mati dalam tidurnya._
 
@@ -1790,7 +1790,7 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 ## Bab 5: Anak Kecil Itu _(Bab V)_
 
-> **Ringkasan:** Tiga puluh lima tahun lalu, dua kakak-beradik miskin mencuri apel di sebuah bukit. Si sulung, **Prince**, selalu menggigit apelnya lebih dulu "siapa tahu busuk", dan bersumpah akan selalu menjaga adiknya, **Lucian**. Enam belas tahun lalu Lucian, yang sudah menjadi ksatria, memergoki anak pungut kakaknya memasukkan seorang anak yang tertidur ke kereta garam. Sir Prince bersumpah atas makam ibu mereka akan menghentikan semuanya dalam satu musim. Beberapa minggu kemudian, Sang Marsekal mengirim pasukan Lucian ke **Greymarch**, hutan perbatasan yang belum pernah ditinggalkan satu patroli pun dalam keadaan hidup. Semua anak buahnya tewas, kakinya remuk tertimpa pohon pinus, dan ia keluar dari sana seorang diri. Di jalan pulang, pengawalnya, **Tobin**, menemukannya: kakaknya sudah mengumumkan Lucian gugur, dan istrinya ditangkap dengan tuduhan sihir. Lucian tiba sehari terlambat. Yang menyambutnya hanya gagak di kayu salib, layangan ungu yang tersangkut di atas jasad istrinya, dan orang-orang yang lewat sambil menunduk. Di kaki bukit rumah kakaknya, seorang bocah memberinya apel yang sudah digigit: **Rowan**, keponakannya sendiri. Lucian memungut topeng festival dari selokan, lalu memakainya. Kini Rowan sudah pulang dan bersumpah akan menggantung The Fool. **Oswin**, juru tulis yang membuat gambar tiruan di rumah Hale, menyebut nama **Varrick** dan bekas luka bakar di balik sarung tangannya. Esok subuhnya Oswin ditemukan tergantung di Jembatan Kincir, dengan **sebatang tangkai apel** di bawah kakinya. Lewat Nina, The Fool mengirimi Rowan kartu **Matahari** ("Jumat. Kau yang jadi hakimnya."), **halaman yang disobek dari buku besar Sir Prince** (lima anak untuk "jalur utara", nama Nina paling atas, dan guild membatalkan "adopsinya"), serta **sebuah kotak musik**. Sekarang: temukan lagu kedua di dalam kotak musik itu.
+> **Ringkasan:** Tiga puluh lima tahun lalu, dua kakak-beradik miskin mencuri apel di sebuah bukit. Si sulung, **Prince**, selalu menggigit apelnya lebih dulu "siapa tahu busuk", dan bersumpah akan selalu menjaga adiknya, **Lucian**. Enam belas tahun lalu Lucian, yang sudah menjadi ksatria, memergoki anak pungut kakaknya memasukkan seorang anak yang tertidur ke kereta garam. Sir Prince bersumpah atas makam ibu mereka akan menghentikan semuanya dalam satu musim. Beberapa minggu kemudian, Sang Marsekal mengirim pasukan Lucian ke **Greymarch**, hutan perbatasan yang belum pernah ditinggalkan satu patroli pun dalam keadaan hidup. Semua anak buahnya tewas, kakinya remuk tertimpa pohon pinus, dan ia keluar dari sana seorang diri. Di jalan pulang, pengawalnya, **Tobin**, menemukannya: kakaknya sudah mengumumkan Lucian gugur, dan istrinya ditangkap dengan tuduhan sihir. Lucian tiba sehari terlambat, tepat saat sisa jasad istrinya dibakar di kayu salib di alun-alun kastel. Sebuah layangan ungu tersangkut di atasnya, sementara kerumunan di sekelilingnya diam dan hanya menatap batu jalan. Di kaki bukit rumah kakaknya, seorang bocah memberinya apel yang sudah digigit: **Rowan**, keponakannya sendiri. Lucian memungut topeng festival dari selokan, lalu memakainya. Kini Rowan sudah pulang dan bersumpah akan menggantung The Fool. **Oswin**, juru tulis yang membuat gambar tiruan di rumah Hale, menyebut nama **Varrick** dan bekas luka bakar di balik sarung tangannya. Esok subuhnya Oswin ditemukan tergantung di Jembatan Kincir, dengan **sebatang tangkai apel** di bawah kakinya. Lewat Nina, The Fool mengirimi Rowan kartu **Matahari** ("Jumat. Kau yang jadi hakimnya."), **halaman yang disobek dari buku besar Sir Prince** (lima anak untuk "jalur utara", nama Nina paling atas, dan guild membatalkan "adopsinya"), serta **sebuah kotak musik**. Sekarang: temukan lagu kedua di dalam kotak musik itu.
 
 `[layar gelap]`
 
@@ -1798,9 +1798,9 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 📍 **Kebun apel di bukit luar Valeria** · Tiga puluh lima tahun lalu
 
-_Dua bocah berjongkok di bawah pohon terakhir kebun milik orang lain, saat senja mulai turun. Si sulung terus mengawasi rumah petani, sementara si bungsu belum sampai meraih dahan._
+**Lucian** _(dalam hati)_: Matahari mulai turun di balik kebun apel milik orang lain. Kakak terus mengawasi rumah petani, sementara aku berjinjit sekuat tenaga dan tetap saja tak sampai ke dahannya.
 
-_Si sulung memetik sebutir apel, menggigitnya sedikit, mengunyah, lalu mengangguk sebelum menyodorkannya._
+**Lucian** _(dalam hati)_: Kakak memetik satu, menggigitnya sedikit, mengunyah, lalu mengangguk sebelum memberikannya padaku, seperti biasanya.
 
 **Lucian**: Kenapa Kakak selalu gigit duluan?
 
@@ -1808,7 +1808,7 @@ _Si sulung memetik sebutir apel, menggigitnya sedikit, mengunyah, lalu menganggu
 
 🗝️ **Barang: Sebutir apel** — Merah, hasil curian, agak masam, dan ada bekas gigitan kecil di sisinya.
 
-_Ia memutar lepas tangkai apelnya sendiri, lalu menyelipkannya ke saku._
+**Lucian** _(dalam hati)_: Tangkai apelnya sendiri ia putar sampai lepas, lalu ia simpan di saku seolah barang berharga.
 
 **Prince**: Yang memetik, dia yang simpan tangkainya. Biar ingat itu punya siapa.
 
@@ -1820,11 +1820,11 @@ _Ia memutar lepas tangkai apelnya sendiri, lalu menyelipkannya ke saku._
 
 **Seorang petani** _(berteriak)_: Maling! **MALING!**
 
-_Mereka berlari menuruni bukit sambil tertawa. Waktu si kecil tertinggal, si besar berbalik menjemputnya, menggendongnya di punggung, lalu terus berlari._
+**Lucian** _(dalam hati)_: Kami lari menuruni bukit sambil tertawa. Kakiku terlalu pendek sampai aku tertinggal, tapi Kakak berbalik, mengangkatku ke punggungnya, lalu terus berlari.
 
 **Prince**: Pegangan yang kencang. **Ada aku.**
 
-_Nama bocah yang lebih tua itu Prince. Umurnya enam belas tahun, dan belum ada seorang pun yang menyebutnya pahlawan._
+**Lucian** _(dalam hati)_: Namanya Prince. Umurnya enam belas tahun, dan setahuku tak ada satu hal pun di dunia ini yang tak bisa ia lakukan.
 
 `[layar gelap]`
 
@@ -1832,19 +1832,19 @@ _Nama bocah yang lebih tua itu Prince. Umurnya enam belas tahun, dan belum ada s
 
 📍 **Dermaga sungai** · Enam belas tahun lalu
 
-_Dua puluh tahun kemudian, si bungsu sudah menjadi ksatria Valeria. Ia punya istri, seorang putri, dan seorang kakak yang dijuluki Pahlawan Perdamaian oleh seluruh kerajaan._
+**Lucian** _(dalam hati)_: Dua puluh tahun kemudian, lambang Valeria tersemat di dadaku. Aku punya istri, seorang putri yang tak bisa diam, dan seorang kakak yang dijuluki Pahlawan Perdamaian oleh seluruh kerajaan.
 
 **Sang tabib** _(berbisik)_: Sudah tiga anak perempuan bulan ini, Lucian. Katanya "diadopsi keluarga baik-baik dari utara", tapi tak satu pun pernah berkirim kabar.
 
 **Sang tabib**: Kakakmu yang membiayai Little Lantern House, dan semua suratnya dia yang tanda tangan. **Tanyakan padanya.**
 
-_Lucian tidak bertanya. Lewat tengah malam, ia malah pergi sendirian ke dermaga._
+**Lucian** _(dalam hati)_: Aku tidak sanggup menanyakannya. Lewat tengah malam aku malah turun sendirian ke dermaga, hanya untuk membuktikan bahwa istriku keliru.
 
-_Kereta-kereta garam untuk perjalanan musim dingin ke utara sedang dimuat di bawah cahaya satu lentera. Seorang pemuda bersarung tangan mengangkat sebuah buntalan dari gerobak, lalu membaringkannya di dalam kereta dengan hati-hati, seolah isinya mudah pecah._
+**Lucian** _(dalam hati)_: Kereta-kereta garam untuk jalur musim dingin sedang dimuat di bawah cahaya satu lentera. Seorang pemuda bersarung tangan mengangkat sebuah buntalan dari gerobak dan membaringkannya di kereta dengan hati-hati, seperti orang membawa barang yang mudah pecah.
 
-_Buntalan itu punya sepasang kaki telanjang. **Seorang anak yang sedang tidur.**_
+**Lucian** _(dalam hati)_: Buntalan itu punya sepasang kaki telanjang. **Seorang anak yang sedang tidur.**
 
-_Lucian kenal pemuda itu. Anak jalanan yang dulu dipungut kakaknya, kini sudah dewasa, pendiam, dan tak pernah melepas sarung tangannya._
+**Lucian** _(dalam hati)_: Aku kenal pemuda itu: anak jalanan yang dulu dipungut kakakku, kini sudah dewasa, pendiam, dan tak pernah melepas sarung tangannya. Aku sendiri yang mengajarinya memegang pedang.
 
 `[layar gelap]`
 
@@ -1852,9 +1852,9 @@ _Lucian kenal pemuda itu. Anak jalanan yang dulu dipungut kakaknya, kini sudah d
 
 📍 **Ruang kerja Sir Prince** · Malam itu
 
-_Ruang kerja yang sama, meja yang sama, enam belas tahun sebelum sebuah lonceng berbunyi di ruangan ini._
+**Lucian** _(dalam hati)_: Ruang kerja yang sama, meja yang sama. Sudah ratusan kali aku duduk di seberangnya, tapi malam ini aku tak bisa memaksa diriku duduk.
 
-_Seorang pelayan meletakkan teh, menunduk, lalu keluar._
+**Lucian** _(dalam hati)_: Seorang pelayan mengantarkan teh, menunduk sepanjang waktu, lalu pergi.
 
 **Sir Prince**: Itu adopsi, Lucian. Keluarga-keluarga di utara bisa memberi mereka makan lebih layak daripada panti mana pun.
 
@@ -1864,7 +1864,7 @@ _Seorang pelayan meletakkan teh, menunduk, lalu keluar._
 
 **Lucian**: Kalau begitu hentikan, Kak. Kalau tidak, aku sendiri yang akan membawanya ke Dewan.
 
-_Ada sesuatu yang melintas di wajah kakaknya begitu mendengar kata "Dewan". Bukan rasa takut, lebih mirip rasa kasihan._
+**Lucian** _(dalam hati)_: Ada yang melintas di wajahnya begitu aku menyebut "Dewan", dan itu bukan rasa takut. Kalau aku tidak mengenalnya sebaik ini, aku akan menyebutnya rasa kasihan.
 
 **Sir Prince**: Beri aku waktu satu musim. Akan kututup semuanya. Aku bersumpah atas makam ibu kita.
 
@@ -1872,11 +1872,11 @@ _Ada sesuatu yang melintas di wajah kakaknya begitu mendengar kata "Dewan". Buka
 
 **Lucian**: ...Belum. Tak pernah.
 
-_Sir Prince mengambil sebutir apel dari mangkuk di mejanya, menggigitnya sekali, lalu menyodorkannya ke seberang meja._
+**Lucian** _(dalam hati)_: Ia mengambil sebutir apel dari mangkuk di mejanya, menggigitnya sekali, lalu menyodorkannya padaku, persis seperti waktu aku berumur enam tahun.
 
 **Sir Prince**: Masih bagus.
 
-_Lucian menerimanya. Seumur hidup, ia belum pernah sekali pun menolak apel dari kakaknya._
+**Lucian** _(dalam hati)_: Aku menerimanya. Seumur hidup, belum pernah sekali pun aku menolak apel dari kakakku.
 
 `[layar gelap]`
 
@@ -1886,13 +1886,13 @@ _Lucian menerimanya. Seumur hidup, ia belum pernah sekali pun menolak apel dari 
 
 🗝️ **Barang: Surat perintah** — "Atas perintah Marsekal Valeria: Sir Lucian beserta sebelas prajurit diberangkatkan ke perbatasan utara, segera, untuk berpatroli selama satu musim."
 
-_Surat perintah memang selalu datang untuk para ksatria. Ia tidak bertanya-tanya kenapa yang satu ini datang sekarang._
+**Lucian** _(dalam hati)_: Surat perintah memang selalu datang untuk para ksatria, jadi aku tidak bertanya kenapa yang satu ini datang sekarang.
 
 **Sir Prince**: Cuma satu musim. Aku sendiri yang akan menjaga mereka. Mereka keluargaku juga.
 
 **Sang tabib** _(berbisik)_: Pulanglah sebelum layangannya rusak. Dia mau menerbangkannya tiap hari sampai kamu pulang.
 
-_Seorang gadis kecil berkuncir menjatuhkan layangan ungunya di atas batu, lalu mengulurkan sebutir apel dengan kedua tangan. Apel itu sudah digigitnya sedikit._
+**Lucian** _(dalam hati)_: Putriku menjatuhkan layangan ungunya di atas batu, lalu mengulurkan sebutir apel dengan kedua tangan. Apel itu sudah digigitnya sedikit.
 
 **Putrinya**: Biar tahu apelnya enak atau nggak!
 
@@ -1900,13 +1900,13 @@ _Seorang gadis kecil berkuncir menjatuhkan layangan ungunya di atas batu, lalu m
 
 **Putrinya**: Ayah, dong!
 
-_Lucian tertawa, lalu menatap kakaknya dari atas kepala gadis itu._
+**Lucian** _(dalam hati)_: Aku tertawa, lalu menatap kakakku dari atas kepala putriku.
 
 **Lucian**: Jaga mereka, Kak.
 
 **Sir Prince**: **Pasti.**
 
-_Ia berkuda ke utara tanpa menoleh ke belakang. Ia tidak punya alasan untuk itu._
+**Lucian** _(dalam hati)_: Aku berkuda ke utara tanpa menoleh ke belakang. Untuk apa menoleh?
 
 `[layar gelap]`
 
@@ -1914,33 +1914,45 @@ _Ia berkuda ke utara tanpa menoleh ke belakang. Ia tidak punya alasan untuk itu.
 
 📍 **Greymarch, perbatasan utara** · Berbulan-bulan kemudian
 
-_Surat perintah itu menyebut satu musim patroli. Tak ada yang bilang bahwa sudah sepuluh tahun tak satu pun patroli pulang dari Greymarch._
+**Lucian** _(dalam hati)_: Surat perintah itu menyebut satu musim patroli. Tak ada yang memberi tahu kami bahwa sudah sepuluh tahun tak satu pun patroli pulang dari Greymarch.
 
 **Sersan** _(berbisik)_: Anak-anak bilang hutan ini suka menelan patroli, Tuan.
 
 **Lucian**: Kalau begitu kita jangan keluar dari jalan, dan api unggun jangan sampai padam.
 
-_Api unggun itu tidak menolong. Pada malam kesembilan, sesuatu keluar dari sela-sela pepohonan, dan jumlahnya tak terhitung._
+**Lucian** _(dalam hati)_: Pada malam kesembilan, semua api unggun di perkemahan padam bersamaan, seolah ada sesuatu yang meniupnya.
+
+`[layar gelap]`
 
 `[detak jantung cepat]`
 
-**Sersan** _(berteriak)_: Tuan! Di kiri Anda! **TUAN**—
+**Sersan** _(berteriak, suara dari luar layar)_: Tuan! Di kiri Anda! **TUAN**—
 
 `[detak jantung berhenti]`
 
-`[Gambar: lucian-pinned]`
+**Lucian** _(dalam hati)_: Aku mendengar mereka mati. Mataku tak bisa melihat apa-apa, tapi suara mereka terdengar semuanya, satu per satu.
 
-_Saat ia sadar, pagi sudah kelabu. Sebatang pinus yang tumbang dalam pertarungan semalam menindih kakinya._
+`[Gambar: pinned-pov]`
 
-_Di sekelilingnya, perkemahan itu sunyi sekali. Ia memanggil anak buahnya satu per satu, dan tak seorang pun menjawab._
+**Lucian** _(dalam hati)_: Pagi yang kelabu. Sebatang pinus yang tumbang semalam menindih kakiku.
 
-_Butuh waktu sampai tengah hari untuk menyeret dirinya keluar. Ia mendengar tulangnya patah sebelum merasakan sakitnya._
+**Lucian** _(dalam hati)_: Perkemahan itu sunyi sekali. Kupanggil nama anak buahku satu per satu, dan **tak seorang pun menjawab.**
 
-_Ia merobek jubahnya menjadi perban, mengikat kakinya ke gagang tombak yang patah, lalu berdiri._
+**Lucian** _(dalam hati)_: Kutempelkan kedua tanganku ke batang pohon itu, lalu mendorongnya sekuat tenaga.
 
-_Dua belas orang masuk ke Greymarch. Hanya satu yang keluar, dengan kaki yang tak akan pernah bisa ditekuk lagi._
+🎮 **Aksi (mash):** Dorong batang pinus itu dari kakimu
 
-_Sepanjang jalan menuju jalan besar, satu pikiran terus menemaninya: tak ada yang mengirim dua belas orang ke Greymarch untuk berpatroli. Orang dikirim ke sana supaya dilupakan._
+**Lucian** _(dalam hati)_: Butuh waktu sampai tengah hari untuk menyeret tubuhku keluar dari bawahnya. Aku mendengar tulangku patah sebelum merasakan sakitnya.
+
+**Lucian** _(dalam hati)_: Kurobek jubahku menjadi perban, lalu kuluruskan kakiku di sepanjang gagang tombak yang patah.
+
+🎮 **Aksi (hold):** Tarik perbannya kencang-kencang
+
+**Lucian** _(dalam hati)_: Setelah itu aku berdiri, karena tak ada lagi yang tersisa untuk melarangku.
+
+**Lucian** _(dalam hati)_: Dua belas orang masuk ke Greymarch, dan aku keluar seorang diri dengan kaki yang tak akan pernah bisa ditekuk lagi.
+
+**Lucian** _(dalam hati)_: Sepanjang jalan, satu pikiran terus berjalan di sampingku: tak ada yang mengirim dua belas orang ke Greymarch untuk berpatroli. Orang dikirim ke sana supaya dilupakan.
 
 `[layar gelap]`
 
@@ -1948,125 +1960,153 @@ _Sepanjang jalan menuju jalan besar, satu pikiran terus menemaninya: tak ada yan
 
 📍 **Jalan menuju selatan** · Lima hari kemudian
 
-_Pada hari kelima, seekor kuda datang dari arah selatan, dipacu sampai hampir mati. Penunggangnya nyaris jatuh dari pelana begitu melihat siapa yang terpincang-pincang ke arahnya._
+**Lucian** _(dalam hati)_: Pada hari kelima, seekor kuda datang dari arah selatan, dipacu sampai hampir mati. Penunggangnya nyaris jatuh dari pelana begitu melihatku.
+
+**Lucian** _(dalam hati)_: Itu Tobin, pengawalku, dan ia menatapku seperti melihat hantu.
 
 **Tobin** _(berteriak)_: Tuan... Sir Lucian? Anda masih hidup? Kata mereka... kakak Anda sudah mengumumkan nama Anda di alun-alun, bersama para prajurit yang gugur.
 
 **Tobin**: Anda harus pulang, Tuan. Sekarang juga. Nyonya ditangkap. Katanya dia penyihir.
 
+`[detak jantung]`
+
 `[Gambar: arrest]`
 
-_Jubah-jubah merah di depan pintu Little Lantern House. Jarum jahit masih di tangannya ketika lengannya dicengkeram._
+**Lucian** _(dalam hati)_: Aku tak mau membayangkannya, tapi bayangan itu datang juga: jubah-jubah merah di depan pintu Little Lantern House, dan jarum jahit masih di tangannya ketika lengannya dicengkeram.
 
-_Di kolong meja dapur, seorang gadis kecil memeluk layangan ungu di dadanya, dan sebuah tangan bersarung terulur ke arahnya._
+**Lucian** _(dalam hati)_: Lalu di kolong meja dapur, putri kami memeluk layangannya erat-erat, dan sebuah tangan bersarung terulur ke arahnya.
 
 **Tobin**: Sidangnya hari Jumat, pas festival. Saya sudah memacu kuda secepat mungkin, Tuan.
+
+**Lucian** _(dalam hati)_: **Jumat.** Kuhitung hari dengan jari, dua kali, seolah jawabannya bisa berubah.
 
 **Lucian**: Di mana putriku?
 
 **Tobin** _(berbisik)_: ...Tak ada yang mau bilang, Tuan.
 
-_Lucian mengambil kuda Tobin, dan sejak itu ia tak berhenti lagi._
+`[detak jantung berhenti]`
+
+**Lucian** _(dalam hati)_: Kuambil kudanya, dan sejak itu aku tak berhenti lagi.
 
 `[layar gelap]`
-
-`[Latar: cross-distant]`
-
-📍 **Jalan masuk ke Valeria** · Menjelang fajar
-
-`[Gambar: cross-distant]`
-
-_Dari bukit terakhir sebelum gerbang, ia sudah bisa melihatnya: sebuah salib berdiri di atas alun-alun kastel, hitam di bawah awan, dikelilingi burung-burung yang berputar._
-
-_Sisa perjalanan itu tak lagi ia ingat._
-
-`[layar gelap]`
-
-`[Latar: square-crows]`
 
 📍 **Alun-alun kastel** · Pagi setelah festival
 
-`[Gambar: square-crows]`
+`[detak jantung]`
 
-_Ia terlambat sehari._
+**Lucian** _(dalam hati)_: Gerbang kota, lalu jalan-jalan yang masih dihiasi umbul-umbul festival. Aku tidak ingat kapan melewati semuanya.
 
-_Umbul-umbul festival masih terbentang di atas alun-alun, dan topeng-topeng kertas yang terinjak berserakan di selokan. Di atas panggung tua itu berdiri sebuah salib kayu, dan gagak-gagak sudah sibuk di lengannya sejak fajar._
+**Lucian** _(dalam hati)_: Ada asap di atas alun-alun kastel, dan orang-orang berdesakan begitu rapat sampai aku harus mendorong mereka untuk lewat.
 
-_Ia mengenali gaun ungu itu, jauh sebelum ia sanggup menerima apa pun yang lain._
+🎮 **Aksi (alternate):** Terobos kerumunan itu
 
-_Di lengan salib tepat di atas kepalanya, tersangkut sebuah layangan ungu kecil dengan tali yang putus._
-
-_Orang-orang melintasi alun-alun sambil menenteng keranjang roti, mata mereka tertuju ke batu jalan. Kemarin pun mereka tidak mendongak._
-
-**Tobin** _(berbisik, suara dari luar layar)_: Separuh dari mereka pernah dirawat Nyonya, Tuan. Tapi tak ada yang bersuara. Satu pun tidak.
-
-_Di kaki panggung, dua penjaga sedang berbagi pipa tembakau. Salah satunya tertawa entah karena apa._
+**Lucian** _(dalam hati)_: Tak ada yang balas mendorong, tak ada juga yang menoleh. Orang sebanyak ini, tapi suasananya sunyi sekali.
 
 `[detak jantung cepat]`
 
-_Ia tak ingat kapan menghunus pisaunya. Yang ia ingat hanya lengan Tobin yang mendekapnya dan menyeretnya mundur ke sebuah gang._
+**Lucian** _(dalam hati)_: Semoga itu orang lain. Siapa saja. **Asal jangan dia.**
 
-**Tobin** _(berteriak, suara dari luar layar)_: Jangan, Tuan! Bagi mereka Anda sudah mati! Begitu Anda menampakkan wajah, Anda akan digantung di sebelah Nyonya, lalu siapa yang akan mencari Nona kecil?
+`[Latar: pyre-reveal]`
 
 `[detak jantung berhenti]`
 
-_Penjaga yang memegang pipa itu bahkan tidak menoleh._
+**Lucian** _(dalam hati)_: Di atas panggung tua berdiri sebuah salib kayu, dan api sudah merambat sampai separuh tingginya.
 
-_Kelak Valeria akan punya nama untuk hari itu, dan bahkan saat itu pun hanya berani menyebutnya sambil berbisik: **Silent Friday**._
+**Lucian** _(dalam hati)_: Gagak-gagak di lengannya terbang serentak, seakan mereka pun sudah tak tahan lagi dengan asapnya.
+
+**Lucian** _(dalam hati)_: Aku mengenali gaun ungu itu, jauh sebelum aku sanggup menerima hal lain.
+
+**Lucian** _(dalam hati)_: Di lengan salib, tepat di atas kepalanya, tersangkut sebuah layangan ungu kecil dengan tali yang putus.
+
+**Lucian** _(dalam hati)_: **Satu hari.** Aku terlambat satu hari.
+
+`[Gambar: crowd-silent]`
+
+**Lucian** _(dalam hati)_: Kutatap wajah-wajah di sekelilingku: si tukang roti, perempuan dari sumur, anak si pandai besi yang tiga malam ia jaga waktu demamnya tinggi.
+
+**Lucian** _(dalam hati)_: Semuanya menatap batu jalan.
+
+**Tobin** _(berbisik, suara dari luar layar)_: Separuh dari mereka pernah dirawat Nyonya, Tuan. Tapi tak ada yang bersuara. Satu pun tidak.
+
+**Lucian** _(dalam hati)_: Kemarin pun mereka tidak mendongak. Mereka membiarkannya terjadi sambil menatap tanah, lalu pulang dan menutup jendela rapat-rapat.
+
+**Lucian** _(dalam hati)_: Di kaki panggung, dua penjaga sedang berbagi pipa tembakau. Salah satunya tertawa entah karena apa.
+
+`[detak jantung cepat]`
+
+**Lucian** _(dalam hati)_: Aku tidak ingat kapan pisau itu sudah ada di tanganku.
 
 `[layar gelap]`
+
+**Tobin** _(berteriak, suara dari luar layar)_: Jangan, Tuan! Bagi mereka Anda sudah mati! Begitu Anda menampakkan wajah, Anda akan dinaikkan ke sana di samping Nyonya, lalu siapa yang akan mencari Nona kecil?
+
+🎮 **Aksi (mash, tak bisa dimenangkan):** Lepaskan diri
+
+**Lucian** _(dalam hati)_: Lengannya mengunci dadaku. Aku meronta sepanjang jalan sampai ke dalam gang, dan ia tetap tidak melepaskanku.
+
+`[detak jantung]`
+
+**Lucian** _(dalam hati)_: Di belakang kami api terus berderak, dan penjaga yang memegang pipa itu bahkan tidak menoleh.
+
+`[detak jantung berhenti]`
 
 `[Latar: street-past]`
 
 📍 **Di kaki bukit kediaman Prince** · Hari yang sama
 
-_Ia berjalan tanpa tahu ke mana, dan langkahnya membawanya ke ujung jalan yang menanjak menuju rumah kakaknya._
+**Lucian** _(dalam hati)_: Aku berjalan tanpa tahu ke mana, tapi kakiku rupanya tahu. Mereka membawaku ke ujung jalan yang menanjak ke rumah kakakku.
 
-_Ada yang menarik ujung mantelnya. Seorang bocah, kira-kira empat tahun, mengulurkan sebutir apel dengan kedua tangan, sementara di belakangnya seorang pelayan bergegas menghampiri._
+**Lucian** _(dalam hati)_: Ada yang menarik ujung mantelku.
 
-`[Gambar: apple-gift]`
+`[Gambar: apple-pov]`
 
 **Marta** _(berteriak, suara dari luar layar)_: Tuan Muda! Jangan dekat-dekat orang asing—
 
 **Seorang bocah**: Om-nya sedih. Kata Ayah, orang yang sedih harus dikasih makan.
 
-_Putra kakaknya. Terakhir kali ia melihat anak itu, ia bahkan belum bisa berjalan._
+**Lucian** _(dalam hati)_: Itu putra kakakku. Terakhir kali aku melihatnya, ia bahkan belum bisa berjalan.
 
 🗝️ **Barang: Sebutir apel** — Merah, masih hangat dari genggaman tangan kecil, dengan bekas gigitan mungil di sisinya.
 
-_Lama sekali ia menatap apel itu._
+**Lucian** _(dalam hati)_: Putriku selalu begitu, menggigit sedikit dulu "biar tahu enak atau nggak". Aku yang mengajarinya, dan dulu sekali, di sebuah kebun apel, ada seseorang yang mengajariku.
 
-_Putrinya juga selalu begitu, menggigit sedikit dulu "biar tahu enak atau nggak". Lucian yang mengajarinya. Dan jauh sebelum mereka berdua, ada bocah enam belas tahun di kebun apel yang bersumpah akan selalu menjaganya._
+**Lucian** _(dalam hati)_: Kugenggam apel itu dengan kedua tangan, dan tanganku tak mau berhenti gemetar.
 
-_Pelayan itu menarik tangan si bocah. Sesaat ia menatap wajah orang asing itu lekat-lekat, dan Lucian membiarkannya._
+**Lucian** _(dalam hati)_: Pelayan itu menarik tangan si bocah. Sesaat ia menatap wajahku lekat-lekat, dan aku membiarkannya.
 
 **Seorang bocah**: Dadah, Om sedih!
 
-_Di selokan dekat kakinya tergeletak sebuah topeng yang terjatuh saat festival, putih dengan bintang hitam di salah satu matanya._
+`[Gambar: mask-gutter]`
+
+**Lucian** _(dalam hati)_: Di selokan dekat kakiku tergeletak sebuah topeng yang terjatuh waktu festival, putih dengan bintang hitam di salah satu matanya.
 
 🗝️ **Barang: Topeng festival** — Putih, bintang hitam di salah satu mata, sedikit kotor oleh lumpur di tepinya.
 
-_Ia memungutnya, menyeka lumpurnya dengan ibu jari, lalu memakainya._
+**Lucian** _(dalam hati)_: Sir Lucian sudah gugur di Greymarch. Begitu kata seisi kota, dan kakakku sendiri yang pertama mengumumkannya di alun-alun.
 
-_Sir Lucian sudah gugur di Greymarch, begitu kata seisi kota. Pria bertopeng ini tak punya nama sama sekali._
+**Lucian** _(dalam hati)_: Aku memungutnya, lalu menyeka lumpurnya dengan ibu jari.
 
-_Ia menengadah ke arah jendela-jendela yang terang di rumah kakaknya di atas bukit._
+**Lucian** _(dalam hati)_: Dari balik lubang mata topeng itu, kulihat jendela-jendela rumah kakakku yang terang di atas bukit.
 
-**Lucian** _(berbisik)_: Tunggu saja, Kak. Akan tiba waktunya.
+**Lucian** _(berbisik, suara dari luar layar)_: Tunggu saja, Kak. Akan tiba waktunya.
 
 `[layar gelap]`
 
-`[Latar: kite-beam]`
+`[Latar: cross-bare]`
 
 📍 **Alun-alun kastel** · Malam itu
 
-_Petang itu mereka membakar sisa jasadnya. Menjelang malam alun-alun sudah kosong dan salib itu berdiri tanpa apa-apa, tapi layangan itu masih tersangkut di lengannya._
+**The Fool** _(mengenang)_: Malamnya alun-alun sudah kosong. Sisa api sudah mereka sapu, dan salib itu berdiri tanpa apa-apa, tapi layangan itu masih tersangkut di lengannya.
 
-_Seorang pria bertopeng festival menaiki panggung itu selangkah demi selangkah dengan kaki yang dibebat, lalu melepaskan layangan itu dengan tangan gemetar._
+🎮 **Aksi (timing):** Naiki panggung itu, selangkah demi selangkah
 
-_Para penjaga di ujung alun-alun mengira ia pemabuk sisa festival, lalu tertawa._
+**The Fool** _(mengenang)_: Aku menaiki panggung itu selangkah demi selangkah dengan kaki yang dibebat, dan lama sekali baru layangan itu bisa kulepaskan, karena tanganku tak mau berhenti gemetar.
 
-_Layangan itu akan ia bawa selama lima belas tahun. Dan butuh lima belas tahun pula sebelum ia kembali mendaki bukit rumah kakaknya, membawa lonceng, bukan pisau._
+**The Fool** _(mengenang)_: Para penjaga di ujung alun-alun mengira aku pemabuk sisa festival, lalu tertawa. Kubiarkan saja. Pemabuk bertopeng bukan siapa-siapa, dan orang yang bukan siapa-siapa bisa pergi ke mana pun ia mau.
+
+**The Fool** _(mengenang)_: Kelak Valeria menemukan nama untuk hari itu, dan bahkan saat itu pun hanya berani menyebutnya sambil berbisik: **Silent Friday**.
+
+**The Fool** _(mengenang)_: Layangan itu kubawa selama lima belas tahun. Butuh lima belas tahun pula sebelum aku kembali mendaki bukit rumah kakakku, membawa lonceng, bukan pisau.
 
 `[layar gelap]`
 
@@ -2282,7 +2322,7 @@ Di mana The Fool akan menunggu?
 
 ### Setelah tantangan terpecahkan
 
-> **Ringkasan setelah tantangan:** Lagu kedua itu ternyata kata-kata yang digambar lewat suara: **tiang gantungan tua** di alun-alun kastel, tempat sang tabib disalib lima belas tahun lalu. Malam itu The Fool menunggu di atas atap sambil memegang layangan ungu yang sudah pudar. Lagu di kotak musik itu lagu istrinya; seisi alun-alun hafal lagu itu, tapi tak seorang pun ikut bersenandung. "Kalau di rumahku ada anak kecil, aku pun akan menutup jendela. Justru itu yang tak bisa kumaafkan." Besok layangan itu akan ia kembalikan ke tempat ia menemukannya. Jumat subuh, kartu-kartu baru terselip di bawah setiap pintu: malam ini The Fool akan diadili, dan hakimnya putra Sang Pahlawan. Rowan menolak urusan ini diselesaikan oleh pemanah Varrick, dan kota berpihak padanya. Meski begitu, Varrick tetap menyebar pemanah di atap-atap, "hanya untuk berjaga". Menjelang pengadilan, Marta bertanya kepada Rowan apakah ia yakin orang yang ia buru itu memang orang jahat. Rowan tidak menjawab.
+> **Ringkasan setelah tantangan:** Lagu kedua itu ternyata kata-kata yang digambar lewat suara: **tiang gantungan tua** di alun-alun kastel, tempat sang tabib disalib lima belas tahun lalu. Malam itu The Fool menunggu di atas atap sambil memegang layangan ungu yang sudah pudar. Lagu di kotak musik itu lagu istrinya; seisi alun-alun hafal lagu itu, tapi tak seorang pun ikut bersenandung. "Kalau di rumahku ada anak kecil, aku pun akan menutup jendela. Justru itu yang tak bisa kumaafkan." Besok layangan itu akan ia kembalikan ke tempat ia menemukannya. Jumat subuh, kartu-kartu baru terselip di bawah setiap pintu: malam ini The Fool akan diadili, dan hakimnya putra Sang Pahlawan. Rowan menolak urusan ini diselesaikan oleh pemanah Varrick, dan kota berpihak padanya. Meski begitu, Varrick tetap menyebar pemanah di atap-atap, "hanya untuk berjaga". Menjelang pengadilan, Rowan mengasah pedang ayahnya: ia akan membiarkan The Fool mengatakan semua yang ingin ia katakan, lalu melakukan apa yang membuatnya pulang.
 
 `[Latar: guild-night]`
 
@@ -2408,9 +2448,13 @@ _Sepanjang sore, kamu menghitung jubah merah yang satu per satu naik ke atap-ata
 
 _Di kediaman keluarga Prince, batu asah menggesek bilah pedang, berulang-ulang._
 
-**Marta** _(berbisik)_: Tuan Muda, orang yang Anda buru itu... Anda yakin dia orang jahat?
+_Marta meletakkan secangkir teh di sampingnya, tapi Rowan tidak menyentuhnya._
 
-_Rowan tidak menjawab. Suara batu asah itu berhenti sejenak, lalu terdengar lagi._
+**Rowan**: Dulu Ayah bilang, hakim harus tidur cukup semalam sebelum mengadili. Sejak dari pegunungan, aku belum tidur sama sekali.
+
+**Rowan**: Apa pun yang mau dia katakan malam ini, akan kubiarkan dia bicara sampai habis. Setelah itu, akan kulakukan apa yang membuatku pulang.
+
+_Marta membawa pergi teh yang sudah dingin tanpa berkata apa-apa. Batu asah itu kembali bergesek._
 
 _Di kejauhan, entah di sudut kota yang mana, sebuah lonceng berdenting sekali._
 

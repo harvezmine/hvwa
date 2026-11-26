@@ -22,7 +22,8 @@ export type Step =
   | { readonly black: boolean }                                            // fade the whole stage to/from black
   | { readonly narr: Text }                                                // the narrator: a box in the middle of the screen
   | { readonly say: string; readonly text: Text; readonly pose?: string; readonly at?: Spot; readonly as?: Text;
-      readonly style?: 'shout' | 'whisper'; readonly react?: 'shake' | 'jump';
+      // inner: a thought nobody hears (the point-of-view character); recall: the same voice years later, telling it
+      readonly style?: 'shout' | 'whisper' | 'inner' | 'recall'; readonly react?: 'shake' | 'jump';
       readonly off?: boolean }                                             // a cast line (off: heard, not shown)
   | { readonly you: Text }                                                 // the player's own line (their adventurer)
   | { readonly show: string; readonly pose?: string; readonly at: Spot }   // bring a portrait on stage
@@ -56,6 +57,18 @@ export type Step =
   // A memory: the whole stage is graded (golden: a fond memory, blue: a cold one, sepia: an old wound), with a soft
   // blurred edge, film grain, a faded paper dialogue box and slower typing, until `flashback: null`.
   | { readonly flashback: 'golden' | 'blue' | 'sepia' | null }
+  // Point of view: the picture trembles under the lines that follow ('soft' unease, 'hard' a body out of control) until
+  // { tremble: null }; tears blur it in slow swells; a mask narrows the world to two eyeholes.
+  // A quick-time moment: the player does with his hands what the body on screen does. 'mash' press again and again;
+  // 'alternate' left and right in turn; 'hold' hold and let go inside the line; 'timing' press while the mark is in
+  // the line, `rounds` times; 'still' hold for `time` ms while danger passes (hiding); 'dodge' press each arrow as it
+  // shows, `rounds` times, `time` ms per arrow (running). Misses only retry. `hopeless`: a struggle that cannot be
+  // won, over after `time` ms.
+  | { readonly qte: { readonly kind: 'mash' | 'alternate' | 'hold' | 'timing' | 'still' | 'dodge'; readonly prompt: Text; readonly rounds?: number;
+      readonly step?: number; readonly hopeless?: boolean; readonly time?: number } }
+  | { readonly tremble: 'soft' | 'hard' | null }
+  | { readonly tears: boolean }
+  | { readonly maskview: boolean }
   | { readonly shake: true }
   | { readonly flash: 'white' | 'red' }
   | { readonly wait: number };                                             // ms
