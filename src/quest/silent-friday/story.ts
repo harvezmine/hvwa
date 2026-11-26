@@ -340,7 +340,12 @@ const lantern: Chapter = {
     { shock: 'small' },
     say('varrick', '...Who else have you told?', '...Siapa lagi yang sudah kau beri tahu?', { style: 'whisper', off: true }),
     narr('Varrick\'s eyes go to the window. You flatten yourself against the wall beneath it and stop breathing.', 'Mata Varrick beralih ke jendela. Kamu merapatkan tubuh ke dinding di bawahnya dan menahan napas.'),
-    { qte: { kind: 'still', prompt: T('Don\'t move', 'Jangan bergerak'), time: 3200 } },
+    { qte: { kind: 'still', prompt: T('Don\'t move', 'Jangan bergerak'), time: 3200,
+      end: T('You were seen.', 'Kamu terlihat.'), fail: [
+        narr('Your sleeve scrapes the sill. On the balcony, both men fall silent.', 'Lengan bajumu menggesek ambang jendela. Di balkon, kedua pria itu langsung terdiam.'),
+        { black: true },
+        narr('A gloved hand closes on your collar from behind. By morning the guild has one adventurer fewer, and nobody asks why.', 'Sebuah tangan bersarung mencengkeram kerahmu dari belakang. Esok paginya guild kehilangan satu petualang, dan tak ada yang bertanya kenapa.'),
+      ] } },
     narr('After a long moment, he turns back to Hale.', 'Setelah lama sekali, ia kembali menghadap Hale.'),
     say('hale', 'No one. But if he died for it, Varrick, then I\'m—', 'Tidak ada. Tapi kalau dia mati karena itu, Varrick, berarti aku—', { style: 'whisper', off: true }),
     say('varrick', 'Not here. Not now. Whatever you think you found, it goes in the ground with him. **His name stays clean.**',
@@ -410,6 +415,13 @@ const lantern: Chapter = {
 // ---- Chapter 2: the theme park ------------------------------------------------------------------------------------
 
 const ARCHIVE = '/im4ges/foren/themepark/13';
+// On Nina's paper the address is written in ROT13 (the 13 at its end is the hint); {host13} is the site's own host,
+// shifted the same way by the stage.
+const rot13 = (s: string): string => s.replace(/[a-z]/gi, (c) => {
+  const base = c <= 'Z' ? 65 : 97;
+  return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+});
+const ARCHIVE13 = rot13(ARCHIVE);
 
 const park: Chapter = {
   n: 2,
@@ -459,7 +471,12 @@ const park: Chapter = {
     say('crowd', 'Over there! By the carousel!', 'Di sana! Dekat komidi putar!', { style: 'shout' }),
     say('crowd', 'Someone get the guard!', 'Panggil garda!', { style: 'shout' }),
     narr('People surge towards the carousel, and the crowd carries you with it.', 'Orang-orang berdesakan menuju komidi putar, dan kerumunan itu menyeretmu ikut serta.'),
-    { qte: { kind: 'alternate', prompt: T('Push through to the carousel', 'Terobos sampai ke komidi putar') } },
+    { qte: { kind: 'alternate', prompt: T('Push through to the carousel', 'Terobos sampai ke komidi putar'),
+      end: T('Too late.', 'Terlambat.'), fail: [
+        narr('The crowd closes in front of you like a wall.', 'Kerumunan itu menutup di depanmu seperti tembok.'),
+        { black: true },
+        narr('When you finally reach the carousel, there is only a cut rope on the boards. Nobody saw where the girl was taken.', 'Saat akhirnya kamu sampai di komidi putar, yang tersisa hanya tali terpotong di atas papan. Tak ada yang melihat ke mana anak itu dibawa.'),
+      ] } },
     { sfx: 'murmur' }, { bg: 'girl', fx: 'slow' }, { music: 'musicbox', fade: 1800 }, { tint: 'cold' }, { cam: 'push' },
     narr('In the middle of the crowd stands a little girl. Her wrists are bound with rope, and a cloth covers her eyes.',
       'Di tengah kerumunan berdiri seorang gadis kecil. Pergelangan tangannya diikat tali, dan matanya ditutup kain.'),
@@ -498,7 +515,7 @@ const park: Chapter = {
     narr('The moment it falls away, she goes limp in your arms. Asleep. Still breathing.', 'Begitu kain itu terlepas, tubuhnya lunglai di pelukanmu. Tertidur. Masih bernapas.'),
     narr('Something slips out from inside the blindfold: a scrap of paper, folded small.', 'Sesuatu terselip keluar dari balik penutup mata itu: secarik kertas, dilipat kecil.'),
     { sfx: 'paper' },
-    { item: { glyph: 'note', hand: true, title: T('A scrap of paper', 'Secarik kertas'), text: T(`{host}${ARCHIVE}`, `{host}${ARCHIVE}`) } },
+    { item: { glyph: 'letter', hand: true, title: T('A scrap of paper', 'Secarik kertas'), text: T(`{host13}${ARCHIVE13}`, `{host13}${ARCHIVE13}`) } },
     { music: 'uncanny', fade: 2000 }, { sfx: 'armor' },
     { show: 'guard', at: 'left' },
     say('guard', 'Make way! Crimson Guard! Make way!', 'Minggir! Garda Merah! Minggir!', { style: 'shout' }),
@@ -538,21 +555,21 @@ const park: Chapter = {
       'Karena memang lelucon. The Fool tidak membunuh diam-diam lalu menghilang. Dia **tampil**. Dia ingin penonton.'),
     say('gm', 'And he tied that girl up as gently as a father tucking in his child. Remember that.',
       'Dan dia mengikat anak itu selembut seorang ayah menyelimuti anaknya. Ingat itu baik-baik.', 'nod'),
-    say('mira', 'The paper! It\'s an address in the archive. Something\'s stored there.', 'Kertas itu! Itu alamat arsip. Ada sesuatu yang disimpan di sana.', { pose: 'point', react: 'jump' }),
+    say('mira', 'The paper! The letters are all wrong, but it\'s shaped like an address. And that number at the end... thirteen.', 'Kertas itu! Hurufnya kacau semua, tapi bentuknya seperti alamat. Dan angka di ujungnya... tiga belas.', { pose: 'point', react: 'jump' }),
     say('gm', 'Then open it. Carefully. **Nothing The Fool leaves behind is what it seems.**', 'Kalau begitu buka. Hati-hati. **Tak ada satu pun peninggalan The Fool yang seperti kelihatannya.**', 'read'),
     { hide: 'all' },
     { notes: { title: T('Arandelle', 'Arandelle'), items: [
       T('The Fool struck at Sir Prince\'s memorial, and **hurt no one**: Nina was tied gently.', 'The Fool beraksi di peringatan Sir Prince, dan **tak melukai siapa pun**: Nina diikat dengan lembut.'),
       T('Her chant, **Laus heroi pacis**, praises the Hero of Peace... like a joke.', 'Nyanyiannya, **Laus heroi pacis**, memuji Pahlawan Perdamaian... seperti lelucon.'),
-      T('Hidden in her blindfold: **an archive address**.', 'Tersembunyi di penutup matanya: **sebuah alamat arsip**.'),
+      T('Hidden in her blindfold: **an address with its letters shifted**, ending in **13**.', 'Tersembunyi di penutup matanya: **sebuah alamat yang hurufnya digeser**, berakhiran **13**.'),
       T('Varrick asked about **a drawing** before asking whether she was alive.', 'Varrick menanyakan **gambar** sebelum menanyakan apakah anak itu masih hidup.'),
     ] } },
   ],
   challenge: {
     title: T('The Address on the Paper', 'Alamat di Secarik Kertas'),
     brief: T(
-      'The note hidden in Nina\'s blindfold reads:\n\n{host}' + ARCHIVE + '\n\nSomething is stored at that address. Nothing The Fool leaves behind is what it seems.\n\nThe Fool hid a picture. What is its name?',
-      'Catatan yang tersembunyi di penutup mata Nina bertuliskan:\n\n{host}' + ARCHIVE + '\n\nAda sesuatu yang disimpan di alamat itu. Tak ada satu pun peninggalan The Fool yang seperti kelihatannya.\n\nThe Fool menyembunyikan sebuah gambar. Apa namanya?'),
+      'The note hidden in Nina\'s blindfold reads:\n\n{host13}' + ARCHIVE13 + '\n\nThe letters spell nothing yet. Something is stored at that address. Nothing The Fool leaves behind is what it seems.\n\nThe Fool hid a picture. What is its name?',
+      'Catatan yang tersembunyi di penutup mata Nina bertuliskan:\n\n{host13}' + ARCHIVE13 + '\n\nHuruf-hurufnya belum membentuk kata apa pun. Ada sesuatu yang disimpan di alamat itu. Tak ada satu pun peninggalan The Fool yang seperti kelihatannya.\n\nThe Fool menyembunyikan sebuah gambar. Apa namanya?'),
     evidence: [],
     placeholder: T('The picture\'s name', 'Nama gambar itu'),
     answers: ['thedevilsrighthand', 'devilsrighthand', 'thedevilrighthand'],
@@ -1041,7 +1058,13 @@ const circus: Chapter = {
     narr('Through the smoke, one crimson cloak is moving against the crowd. Not towards the fire, but **towards the gate**.', 'Di tengah asap, satu jubah merah bergerak melawan arus kerumunan. Bukan ke arah api, melainkan **ke arah gerbang**.'),
     narr('Towards the carousel.', 'Ke arah komidi putar.'),
     narr('You go after it, into the smoke, against a crowd running the other way.', 'Kamu menyusulnya ke dalam asap, melawan arus orang-orang yang berlari ke arah sebaliknya.'),
-    { qte: { kind: 'dodge', prompt: T('Get through the burning tent', 'Tembus tenda yang terbakar'), rounds: 5 } },
+    { qte: { kind: 'dodge', prompt: T('Get through the burning tent', 'Tembus tenda yang terbakar'), rounds: 5,
+      end: T('Ash.', 'Abu.'), fail: [
+        { sfx: 'boom' }, { shock: 'big' },
+        narr('A burning pole comes down across your path.', 'Sebatang tiang yang terbakar roboh menghalangi jalanmu.'),
+        { black: true },
+        narr('The last thing you hear is the canvas roaring over your head.', 'Hal terakhir yang kamu dengar adalah kanvas yang menderu terbakar di atas kepalamu.'),
+      ] } },
 
     // The carousel.
     { black: true }, { bg: 'carousel', fx: 'cut' }, { amb: 'night' }, { music: 'dread', fade: 1500 }, { tint: 'cold' }, { black: false },
@@ -1120,7 +1143,12 @@ const circus: Chapter = {
     say('fool', 'Don\'t speak.', 'Jangan bersuara.', { style: 'whisper', off: true }),
     { sfx: 'armor' },
     narr('Boots cross the boards over your head, and stop.', 'Derap sepatu bot melintas di atas kepalamu, lalu berhenti.'),
-    { qte: { kind: 'still', prompt: T('Don\'t make a sound', 'Jangan bersuara sedikit pun'), time: 3800 } },
+    { qte: { kind: 'still', prompt: T('Don\'t make a sound', 'Jangan bersuara sedikit pun'), time: 3800,
+      end: T('One sound was enough.', 'Satu suara sudah cukup.'), fail: [
+        narr('A board creaks under your knee.', 'Sebilah papan berderit di bawah lututmu.'),
+        { sfx: 'cut' }, { shock: 'blood' }, { black: true },
+        narr('This time the blade finds the gap.', 'Kali ini pedangnya menemukan celah itu.'),
+      ] } },
     { sfx: 'cut' },
     narr('Above you, a blade bites into the boards where your head was a moment ago.', 'Di atasmu, sebilah pedang menghantam papan, tepat di tempat kepalamu berada sedetik sebelumnya.'),
     { black: true }, { particles: null }, { amb: null }, { tint: null }, { music: null, fade: 1200 }, { wait: 1000 },
@@ -1292,7 +1320,7 @@ const boy: Chapter = {
     // Weeks later: the gate.
     { bg: 'gate-farewell', fx: 'cut' }, { flashback: 'golden' }, { amb: 'crowd' }, { particles: 'dust' }, { music: 'musicbox', fade: 2500 }, { black: false },
     { place: T('The city gate', 'Gerbang kota'), time: T('A few weeks later, at dawn', 'Beberapa minggu kemudian, saat fajar') },
-    { item: { glyph: 'note', title: T('Orders', 'Surat perintah'), text: T('"By order of the Marshal of Valeria: Sir Lucian and eleven men to the northern border, at once, for one season of patrol."', '"Atas perintah Marsekal Valeria: Sir Lucian beserta sebelas prajurit diberangkatkan ke perbatasan utara, segera, untuk berpatroli selama satu musim."') } },
+    { item: { glyph: 'letter', title: T('Orders', 'Surat perintah'), text: T('"By order of the Marshal of Valeria: Sir Lucian and eleven men to the northern border, at once, for one season of patrol."', '"Atas perintah Marsekal Valeria: Sir Lucian beserta sebelas prajurit diberangkatkan ke perbatasan utara, segera, untuk berpatroli selama satu musim."') } },
     think('lucian', 'Orders come for knights all the time, so I don\'t ask myself why this one came now.', 'Surat perintah memang selalu datang untuk para ksatria, jadi aku tidak bertanya kenapa yang satu ini datang sekarang.'),
     { show: 'prince', at: 'left' }, { show: 'healer', at: 'right' },
     say('prince', 'One season. I\'ll look after them myself; they\'re my family too.', 'Cuma satu musim. Aku sendiri yang akan menjaga mereka. Mereka keluargaku juga.'),
@@ -1327,11 +1355,21 @@ const boy: Chapter = {
     think('lucian', 'The camp is very quiet. I call my men by name, one after another, and **nobody answers.**', 'Perkemahan itu sunyi sekali. Kupanggil nama anak buahku satu per satu, dan **tak seorang pun menjawab.**'),
     { tremble: 'soft' },
     think('lucian', 'I set both hands against the trunk and push.', 'Kutempelkan kedua tanganku ke batang pohon itu, lalu mendorongnya sekuat tenaga.'),
-    { qte: { kind: 'mash', prompt: T('Push the pine off your leg', 'Dorong batang pinus itu dari kakimu'), step: 0.055 } },
+    { qte: { kind: 'mash', prompt: T('Push the pine off your leg', 'Dorong batang pinus itu dari kakimu'), step: 0.075, limit: 9000,
+      end: T('The Greymarch keeps him.', 'Greymarch menahannya selamanya.'), fail: [
+        think('lucian', 'My arms give out. The cold comes up out of the ground and into my chest.', 'Lenganku menyerah. Dingin merambat naik dari tanah sampai ke dadaku.'),
+        { black: true },
+        think('lucian', 'Nobody comes looking. Nobody was ever meant to.', 'Tak ada yang datang mencari. Sejak awal memang tak seorang pun dimaksudkan untuk mencari.'),
+      ] } },
     { sfx: 'thud' }, { shock: 'small' },
     think('lucian', 'It takes me until noon to drag myself out from under it. I hear the bone go before I feel it.', 'Butuh waktu sampai tengah hari untuk menyeret tubuhku keluar dari bawahnya. Aku mendengar tulangku patah sebelum merasakan sakitnya.'),
     think('lucian', 'I tear my cloak into strips and lay the leg along the shaft of a broken spear.', 'Kurobek jubahku menjadi perban, lalu kuluruskan kakiku di sepanjang gagang tombak yang patah.'),
-    { qte: { kind: 'hold', prompt: T('Pull the bandage tight', 'Tarik perbannya kencang-kencang') } },
+    { qte: { kind: 'hold', prompt: T('Pull the bandage tight', 'Tarik perbannya kencang-kencang'),
+      end: T('Three steps.', 'Tiga langkah.'), fail: [
+        think('lucian', 'The knot slips. Three steps, and the leg folds under me.', 'Simpulnya lepas. Tiga langkah, lalu kakiku terlipat di bawah tubuhku.'),
+        { sfx: 'thud' }, { black: true },
+        think('lucian', 'I lie in the pine needles and listen to the crows come down.', 'Aku terbaring di atas daun-daun pinus, mendengar gagak-gagak mulai turun.'),
+      ] } },
     think('lucian', 'Then I stand, because there\'s nobody left to tell me not to.', 'Setelah itu aku berdiri, karena tak ada lagi yang tersisa untuk melarangku.'),
     { cg: null }, { tremble: null },
     think('lucian', 'Twelve of us rode into the Greymarch, and I walk out alone, on a leg that will never bend again.', 'Dua belas orang masuk ke Greymarch, dan aku keluar seorang diri dengan kaki yang tak akan pernah bisa ditekuk lagi.'),
@@ -1369,7 +1407,11 @@ const boy: Chapter = {
     think('lucian', 'The gate, and then the festival streets, still hung with bunting. I don\'t remember riding through any of it.', 'Gerbang kota, lalu jalan-jalan yang masih dihiasi umbul-umbul festival. Aku tidak ingat kapan melewati semuanya.'),
     { amb: 'pyre' }, { sfx: 'crows' },
     think('lucian', 'There\'s smoke over the castle square, and the people are packed so tight that I have to push my way through.', 'Ada asap di atas alun-alun kastel, dan orang-orang berdesakan begitu rapat sampai aku harus mendorong mereka untuk lewat.'),
-    { qte: { kind: 'alternate', prompt: T('Push through the crowd', 'Terobos kerumunan itu') } },
+    { qte: { kind: 'alternate', prompt: T('Push through the crowd', 'Terobos kerumunan itu'),
+      end: T('He never saw her face again.', 'Ia tak pernah melihat wajahnya lagi.'), fail: [
+        think('lucian', 'The crowd pushes back. An elbow, a basket, a shoulder, and I am further away than before.', 'Kerumunan itu mendorong balik. Siku, keranjang, bahu orang, dan aku malah makin jauh dari depan.'),
+        think('lucian', 'By the time I reach the front, there is nothing left on the cross to find.', 'Saat aku tiba di depan, tak ada lagi yang tersisa di salib itu.'),
+      ] } },
     { tremble: 'soft' },
     think('lucian', 'Nobody pushes back, and nobody turns around. A crowd this size, and it is so quiet.', 'Tak ada yang balas mendorong, tak ada juga yang menoleh. Orang sebanyak ini, tapi suasananya sunyi sekali.'),
     { heart: 'fast' },
@@ -1437,7 +1479,13 @@ const boy: Chapter = {
     { bg: 'cross-distant', fx: 'slow' }, { flashback: 'sepia' }, { amb: 'night' }, { music: 'musicbox', fade: 3000 }, { black: false },
     { place: T('The castle square', 'Alun-alun kastel'), time: T('That night', 'Malam itu') },
     recall('fool', 'By night the square was empty. They had swept away what the fire left, and the cross stood bare, but the kite was still caught on its arm.', 'Malamnya alun-alun sudah kosong. Sisa api sudah mereka sapu, dan salib itu berdiri tanpa apa-apa, tapi layangan itu masih tersangkut di lengannya.'),
-    { qte: { kind: 'timing', prompt: T('Climb the scaffold, one step at a time', 'Naiki panggung itu, selangkah demi selangkah'), rounds: 3 } },
+    { qte: { kind: 'timing', prompt: T('Climb the scaffold, one step at a time', 'Naiki panggung itu, selangkah demi selangkah'), rounds: 3,
+      end: T('Recognised.', 'Dikenali.'), fail: [
+        { sfx: 'thud' },
+        recall('fool', 'On the third step the leg gave way, and I went down onto the boards hard enough for the guards to stop laughing.', 'Di anak tangga ketiga kakiku menyerah, dan aku jatuh menghantam papan cukup keras sampai para penjaga berhenti tertawa.'),
+        { black: true },
+        recall('fool', 'They came over with a lantern to see who the drunk really was.', 'Mereka mendekat membawa lentera, ingin tahu siapa sebenarnya si pemabuk itu.'),
+      ] } },
     recall('fool', 'I climbed the scaffold one step at a time on a splinted leg, and it took me a long while to work the kite loose. My hands wouldn\'t keep still.', 'Aku menaiki panggung itu selangkah demi selangkah dengan kaki yang dibebat, dan lama sekali baru layangan itu bisa kulepaskan, karena tanganku tak mau berhenti gemetar.'),
     recall('fool', 'The guards at the far end of the square took me for a drunk left over from the festival, and laughed. I let them. A drunk in a mask is nobody, and nobody can go anywhere he likes.', 'Para penjaga di ujung alun-alun mengira aku pemabuk sisa festival, lalu tertawa. Kubiarkan saja. Pemabuk bertopeng bukan siapa-siapa, dan orang yang bukan siapa-siapa bisa pergi ke mana pun ia mau.'),
     recall('fool', 'Valeria found a name for that day eventually, and even then it only ever said it under its breath: **Silent Friday**.', 'Kelak Valeria menemukan nama untuk hari itu, dan bahkan saat itu pun hanya berani menyebutnya sambil berbisik: **Silent Friday**.'),
@@ -1536,7 +1584,13 @@ const boy: Chapter = {
     { heart: null }, { hide: 'all' }, { black: true }, { amb: 'night' }, { particles: null },
     narr('Out in the street, boots. A crimson patrol turns the corner with a lantern, and you step back into a doorway.', 'Di jalan terdengar derap sepatu bot. Sebuah patroli berjubah merah berbelok di tikungan membawa lentera, dan kamu mundur ke balik ambang pintu.'),
     { sfx: 'armor' }, { heart: 'slow' },
-    { qte: { kind: 'still', prompt: T('Keep still in the shadow', 'Tetap diam di dalam bayangan'), time: 3500 } },
+    { qte: { kind: 'still', prompt: T('Keep still in the shadow', 'Tetap diam di dalam bayangan'), time: 3500,
+      end: T('Caught in the light.', 'Tertangkap cahaya.'), fail: [
+        narr('Your heel scrapes the step.', 'Tumitmu menggesek anak tangga.'),
+        { sfx: 'armor' },
+        narr('The lantern swings towards the doorway and stops on your face.', 'Lentera itu berayun ke arah ambang pintu dan berhenti tepat di wajahmu.'),
+        { black: true },
+      ] } },
     narr('The lantern passes a hand\'s breadth from your face, and moves on.', 'Cahaya lentera itu lewat hanya sejengkal dari wajahmu, lalu menjauh.'),
     { heart: null },
 
@@ -1581,7 +1635,7 @@ const boy: Chapter = {
     narr('Behind Rowan, the old maid sets her lamp down on the table very carefully, as if it might break.', 'Di belakang Rowan, pelayan tua itu meletakkan lampunya di meja pelan-pelan sekali, seakan lampu itu bisa pecah.'),
     narr('Folded small under the music box\'s cylinder there is something else: a page, torn neatly out of a ledger.',
       'Di bawah silinder kotak musik itu ada benda lain yang dilipat kecil: selembar halaman yang disobek rapi dari sebuah buku besar.'),
-    { item: { glyph: 'note', title: T('A torn ledger page', 'Halaman buku besar yang disobek'), text: T(
+    { item: { glyph: 'letter', title: T('A torn ledger page', 'Halaman buku besar yang disobek'), text: T(
       'Torn out neatly along one edge. Five names under one heading: "The north road. Next week."', 'Disobek rapi di salah satu sisinya. Ada lima nama di bawah satu judul: "Jalur utara. Minggu depan."') } },
     say('rowan', 'Only the guild has ever read his riddles.', 'Selama ini cuma guild yang bisa membaca teka-tekinya.', { style: 'whisper' }),
     { hide: 'all' },

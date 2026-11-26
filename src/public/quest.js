@@ -33,7 +33,10 @@
   }
   function sleep(ms) { return new Promise(function (r) { window.setTimeout(r, ms); }); }
   function fill(text) {
-    return String(text).replace(/\{name\}/g, boot.player.name).replace(/\{host\}/g, boot.host);
+    return String(text).replace(/\{name\}/g, boot.player.name).replace(/\{host13\}/g, rot13(boot.host)).replace(/\{host\}/g, boot.host);
+  }
+  function rot13(s) {
+    return String(s).replace(/[a-z]/gi, function (c) { var b = c <= 'Z' ? 65 : 97; return String.fromCharCode((c.charCodeAt(0) - b + 13) % 26 + b); });
   }
   function store(k, v) { try { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, String(v)); } catch (e) { /* storage blocked */ } }
   function load(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
@@ -113,7 +116,7 @@
     function duck(on) { if (cur && !cur.paused) fadeTo(cur, on ? VOL * 0.35 : VOL, on ? 120 : 1400); }
     function stop(ms) { silence(ms); name = null; cur = null; }
     function preload(n) { if (n) player(n).load(); }
-    return { play: play, resume: resume, silence: silence, stop: stop, preload: preload, duck: duck };
+    return { play: play, resume: resume, silence: silence, stop: stop, preload: preload, duck: duck, current: function () { return name; } };
   })();
 
   // ---- ambience: a place's sound bed, synthesized (no files) --------------------------------------------------------
@@ -213,7 +216,7 @@
     function pause(ms) { stopCur(ms || 400); }
     function resume() { if (!cur) start(); }
     function stop(ms) { name = null; stopCur(ms || 600); }
-    return { set: set, pause: pause, resume: resume, stop: stop };
+    return { set: set, pause: pause, resume: resume, stop: stop, current: function () { return name; } };
   })();
 
   // ---- effects: the guild's own (paper, seal, chime...) plus the quest's ---------------------------------------------
@@ -653,7 +656,7 @@
   // the screen's edges pulsing dark red (that much shows even on a black screen). The music sinks under it. Skipping
   // keeps it silent; with reduced motion only the edges pulse.
   var Heart = (function () {
-    var timer = 0, rate = 0;
+    var timer = 0, rate = 0, now = null;
     function beat() {
       if (!fast()) {
         sfx('beat');
@@ -666,6 +669,7 @@
       var was = !!timer;
       window.clearTimeout(timer); timer = 0;
       heartEl.classList.remove('is-on', 'is-fast', 'is-beat'); cam.classList.remove('is-beat');
+      now = kind || null;
       if (!kind) { if (was) Music.duck(false); return; }
       rate = kind === 'fast' ? 470 : 1000;
       dlg.style.setProperty('--qs-beat', (kind === 'fast' ? 440 : 820) + 'ms');
@@ -674,7 +678,7 @@
       if (!was) Music.duck(true);
       beat();
     }
-    return { set: set, stop: function () { set(null); } };
+    return { set: set, stop: function () { set(null); }, kind: function () { return now; } };
   })();
 
   // A reveal lands four ways: 'big' a white flash, a sting and a hard shake (a discovery); 'small' a dark blink and a
@@ -1066,7 +1070,22 @@
     if ('particles' in step) { Particles.set(step.particles); return; }
     if ('tint' in step) { setTint(step.tint); return; }
     if ('flashback' in step) { setFlashback(step.flashback); return; }
-    if ('qte' in step) { clearText(null); await qte(step.qte); return; }
+    if ('qte' in step) {
+      // A timed moment can be lost: its short bad ending plays, then the card offers it again from where it began.
+      for (;;) {
+        clearText(null);
+        var snap = stageSnap();
+        var result = await qte(step.qte);
+        if (result !== 'fail' || run !== me) return;
+        await steps(step.qte.fail, false, 0, me);
+        if (run !== me || !me.alive) return;
+        clearText(null);
+        await badEnd(step.qte.end);
+        if (run !== me || !me.alive) return;
+        stageRestore(snap);
+        await sleep(900);
+      }
+    }
     if ('seek' in step) { clearText(null); await seek(step.seek, me); return; }
     if ('tremble' in step) { setTremble(step.tremble); return; }
     if ('tears' in step) { setTears(step.tears); return; }
@@ -1188,7 +1207,7 @@
       el('h3', 'qs-case-title', f).textContent = c.title;
       var brief = el('div', 'qs-case-brief', f);
       c.brief.split('\n\n').forEach(function (para) { linkify(el('p', '', brief), fill(para)); });
-      if (/\{host\}/.test(c.brief)) el('p', 'qs-case-note', f).textContent = UI.archive_hint;
+      if (/\{host(?:13)?\}/.test(c.brief)) el('p', 'qs-case-note', f).textContent = UI.archive_hint;
       if (c.evidence.length) {
         var ev = el('div', 'qs-case-evidence', f);
         el('p', 'qs-case-label', ev).textContent = UI.evidence;
@@ -1267,6 +1286,7 @@
         if (pic && !seen[pic]) { seen[pic] = 1; new Image().src = pic; }
         if (s.choice) s.choice.forEach(function (c) { walk(c.then); });
         if (s.explore) s.explore.spots.forEach(function (c) { walk(c.then); });
+        if (s.qte && s.qte.fail) walk(s.qte.fail);
         if (s.seek) { var sp = picture(s.seek.pic); if (!seen[sp]) { seen[sp] = 1; new Image().src = sp; } s.seek.marks.forEach(function (m) { walk(m.then); }); }
       });
     })(ch.pre);
@@ -1279,6 +1299,7 @@
     setCg(null); setTint(null); setFlashback(null); setCam(null); setBars(false);
     setTremble(null); setTears(false); setMaskView(false);
     if (qteNow) qteNow.finish();
+    if (badWrap) { badWrap.classList.remove('is-on'); badWrap.innerHTML = ''; }
     if (seekNow) seekNow.end();
     Particles.stop();
     choices.classList.remove('is-on'); choices.innerHTML = '';
@@ -1498,23 +1519,48 @@
   // press, and after `time` ms the scene goes on regardless. Skipping and auto play it for you. Keys: Space/Enter (or
   // the arrows for 'alternate' and 'dodge'); every control is also a button for touch.
   var qteNow = null;
+  // A quick-time moment, v3: no buttons. The stage shows the keys to press as keycaps, the whole screen is the touch
+  // target (tap, hold, or the left/right half and the left/middle/right third for arrows), and a gauge shows the
+  // effort. With `fail` steps the moment is timed: run out of time (or miss too often, or let go while hiding) and it
+  // resolves 'fail'; the caller then plays the short bad ending and offers a retry. Without them a miss just goes
+  // again. Resolves 'win' or 'fail'; skipping, Ctrl and auto play it for you ('win').
+  var QTE_LIMIT = { mash: 7000, alternate: 7500, hold: 8000, timing: 11000, still: 0, dodge: 0 };
   function qte(q) {
-    if (fast()) return Promise.resolve();
+    if (fast()) return Promise.resolve('win');
     return new Promise(function (resolve) {
-      var kind = q.kind, hopeless = !!q.hopeless;
-      var v = 0, side = 'left', holding = false, done = false, round = 0, rounds = q.rounds || 3;
+      var kind = q.kind, hopeless = !!q.hopeless, timed = !!(q.fail && q.fail.length) && !hopeless;
+      var v = 0, side = 'left', holding = false, started = false, done = false, round = 0, rounds = q.rounds || 3, misses = 0;
       var zone = kind === 'hold' ? [0.68, 0.86] : [0.42, 0.58], m = 0, dir = 1;
-      var t0 = performance.now(), last = t0, raf = 0, autoT = 0;
+      var t0 = performance.now(), last = t0, raf = 0, autoT = 0, nextBeat = 0, nextCreak = 0, nextTick = 0, cueMax = 1;
+      var limit = timed ? (q.limit || QTE_LIMIT[kind] || 0) : 0;
       var DIRS = { left: '←', up: '↑', right: '→' }, want = null, cueLeft = 0;
       var held = kind === 'hold' || kind === 'still';
       qteWrap.innerHTML = '';
       qteWrap.setAttribute('data-kind', kind);
-      qteWrap.classList.remove('is-won', 'is-lost');
-      // The world narrows while the body works: the scene dims and drains (CSS .qs[data-qte]); one rising hit.
+      qteWrap.classList.remove('is-won', 'is-lost', 'is-late');
       dlg.setAttribute('data-qte', kind);
       sfx('qte');
-      var nextBeat = 0, nextCreak = 0, cueMax = 1;
-      // A strain: a short rough tone whose pitch climbs with the gauge (the effort audible).
+      var stage = el('div', 'qs-qte-stage', qteWrap);
+      var prompt = el('p', 'qs-qte-prompt', stage); prompt.textContent = q.prompt; prompt.setAttribute('aria-live', 'assertive');
+      var gauge = el('div', 'qs-qte-gauge', stage);
+      var zoneEl = el('span', 'qs-qte-zone', gauge), fill = el('span', 'qs-qte-fill', gauge), mark = el('span', 'qs-qte-mark', gauge);
+      var pips = el('div', 'qs-qte-pips', stage);
+      if (kind === 'timing' || kind === 'dodge') for (var i = 0; i < rounds; i++) el('span', 'qs-qte-pip', pips);
+      var keys = el('div', 'qs-qte-keys', stage); keys.setAttribute('aria-hidden', 'true');
+      var caps = {};
+      function cap(k, label) { var c = el('kbd', 'qs-qte-cap' + (label.length > 1 ? ' is-wide' : ''), keys); c.textContent = label; caps[k] = c; return c; }
+      if (kind === 'alternate') { cap('left', '←'); cap('right', '→'); }
+      else if (kind === 'dodge') { var cue = cap('cue', '·'); cue.classList.add('is-cue'); }
+      else cap('one', UI.qte_space);
+      var verb = el('p', 'qs-qte-verb', stage); verb.textContent = UI['qte_' + kind] || '';
+      el('p', 'qs-qte-touch', stage).textContent = UI.qte_touch;
+      var timer = el('div', 'qs-qte-timer', stage), timerFill = el('span', '', timer);
+      timer.hidden = !limit && kind !== 'still';
+      function placeZone() { zoneEl.style.left = (zone[0] * 100) + '%'; zoneEl.style.width = ((zone[1] - zone[0]) * 100) + '%'; }
+      if (kind === 'hold' || kind === 'timing') placeZone(); else zoneEl.hidden = true;
+      mark.hidden = kind !== 'timing';
+      if (kind === 'still' && timed) verb.textContent = UI.qte_still;
+      // ---- feedback
       function strain(level) {
         if (!soundOn()) return;
         var c = ac(); if (!c) return;
@@ -1522,118 +1568,128 @@
         osc(c, S.output(), 'sawtooth', f, t, 0.09, 0.035, f * 0.9, 0.005);
         band(c, S.output(), t, 0.07, 0.05, 500 + level * 1500, 0, 2, 0.002);
       }
-      function kick() {
-        card.classList.remove('is-kick'); void card.offsetWidth; card.classList.add('is-kick');
-        qteWrap.classList.remove('is-kick'); void qteWrap.offsetWidth; qteWrap.classList.add('is-kick');
-      }
-      var card = el('div', 'qs-qte-card', qteWrap);
-      var prompt = el('p', 'qs-qte-prompt', card); prompt.textContent = q.prompt; prompt.setAttribute('aria-live', 'polite');
-      var track = el('div', 'qs-qte-track', card);
-      var zoneEl = el('span', 'qs-qte-zone', track);
-      var fill = el('span', 'qs-qte-fill', track);
-      var mark = el('span', 'qs-qte-mark', track);
-      var pips = el('div', 'qs-qte-pips', card);
-      if (kind === 'timing' || kind === 'dodge') for (var i = 0; i < rounds; i++) el('span', 'qs-qte-pip', pips);
-      var cue = el('p', 'qs-qte-cue', card); cue.hidden = kind !== 'dodge'; cue.setAttribute('aria-live', 'assertive');
-      var keys = el('div', 'qs-qte-keys', card);
-      var btns = kind === 'alternate' ? [['left', '←'], ['right', '→']] : kind === 'dodge' ? [['left', '←'], ['up', '↑'], ['right', '→']]
-        : [['one', held ? '▮' : '●']];
-      var buttons = {};
-      btns.forEach(function (b) {
-        var x = el('button', 'qs-qte-key', keys); x.type = 'button'; x.textContent = b[1]; x.setAttribute('data-k', b[0]);
-        x.setAttribute('aria-label', q.prompt + (b[0] === 'one' ? '' : ' ' + b[1]));
-        buttons[b[0]] = x;
-        if (held) {
-          x.addEventListener('pointerdown', function (e) { e.preventDefault(); down(); });
-          x.addEventListener('pointerup', function () { up(); });
-          x.addEventListener('pointerleave', function () { if (holding) up(); });
-        } else x.addEventListener('click', function (e) { e.stopPropagation(); press(b[0] === 'one' ? null : b[0]); });
-      });
-      var hintEl = el('p', 'qs-qte-hint', card);
-      hintEl.textContent = UI['qte_' + kind] || '';
-      function placeZone() { zoneEl.style.left = (zone[0] * 100) + '%'; zoneEl.style.width = ((zone[1] - zone[0]) * 100) + '%'; }
-      if (kind === 'hold' || kind === 'timing') placeZone(); else zoneEl.hidden = true;
-      mark.hidden = kind !== 'timing';
+      function press1(c) { if (!c) return; c.classList.remove('is-press'); void c.offsetWidth; c.classList.add('is-press'); }
+      function kick() { stage.classList.remove('is-kick'); void stage.offsetWidth; stage.classList.add('is-kick'); }
       function jolt() {
-        card.classList.remove('is-miss'); void card.offsetWidth; card.classList.add('is-miss');
+        stage.classList.remove('is-miss'); void stage.offsetWidth; stage.classList.add('is-miss');
         sfx('miss');
         if (!reduce) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); }
         flash.className = 'qs-flash is-red is-soft'; void flash.offsetWidth; flash.classList.add('is-on');
       }
-      function hit() { card.classList.remove('is-hit'); void card.offsetWidth; card.classList.add('is-hit'); }
+      function strike() { misses++; jolt(); if (timed && misses >= 3) lose(); }
+      // ---- input
       function press(which) {
         if (done) return;
-        if (kind === 'mash') { v = Math.min(1, v + (q.step || 0.07)); hit(); kick(); strain(v); }
+        started = true;
+        if (kind === 'mash') { v = Math.min(1, v + (q.step || 0.07)); press1(caps.one); kick(); strain(v); }
         else if (kind === 'alternate') {
-          if (which && which !== side) { jolt(); return; }
-          v = Math.min(1, v + 0.075); side = side === 'left' ? 'right' : 'left'; hit(); kick(); strain(v * 0.7);
+          if (which !== side) { press1(caps[which]); jolt(); return; }
+          press1(caps[side]); v = Math.min(1, v + 0.075); side = side === 'left' ? 'right' : 'left'; kick(); strain(v * 0.7);
           qteWrap.setAttribute('data-next', side);
         } else if (kind === 'timing') {
+          press1(caps.one);
           if (m >= zone[0] && m <= zone[1]) {
-            pips.children[round].classList.add('is-on'); round++; sfx('thud'); hit(); kick();
+            pips.children[round].classList.add('is-on'); round++; sfx('thud'); kick();
             if (round >= rounds) { win(); return; }
             var c = 0.2 + Math.random() * 0.6, w = Math.max(0.1, 0.16 - round * 0.02); zone = [c - w / 2, c + w / 2]; placeZone();
-          } else jolt();
+          } else strike();
         } else if (kind === 'dodge') {
           if (!want) return;
+          press1(caps.cue);
           if (which === want) {
-            pips.children[round].classList.add('is-on'); round++; sfx('whoosh'); hit(); kick();
+            pips.children[round].classList.add('is-on'); round++; sfx('whoosh'); kick();
             if (round >= rounds) { win(); return; }
             nextCue();
-          } else { jolt(); nextCue(); }
+          } else { strike(); if (!done) nextCue(); }
         }
         if (!hopeless && v >= 1) win();
       }
-      // A dodge: a new arrow, with a little less time each round.
       function nextCue() {
         var k = Object.keys(DIRS), pick = k[Math.floor(Math.random() * k.length)];
         want = pick; cueLeft = cueMax = Math.max(0.55, (q.time || 1300) / 1000 - round * 0.08);
+        caps.cue.textContent = DIRS[pick];
+        caps.cue.classList.remove('is-new'); void caps.cue.offsetWidth; caps.cue.classList.add('is-new');
         sfx('tick');
-        cue.textContent = DIRS[pick];
-        cue.classList.remove('is-new'); void cue.offsetWidth; cue.classList.add('is-new');
       }
-      function down() { if (done || !held) return; holding = true; card.classList.add('is-holding'); }
+      function down() {
+        if (done || !held || holding) return;
+        holding = true; started = true; stage.classList.add('is-holding'); caps.one.classList.add('is-down');
+      }
       function up() {
         if (done || !held || !holding) return;
-        holding = false; card.classList.remove('is-holding');
-        if (kind === 'still') { if (v < 1) { jolt(); v = 0; prompt.textContent = UI.qte_again + ' · ' + q.prompt; } return; }
+        holding = false; stage.classList.remove('is-holding'); caps.one.classList.remove('is-down');
+        if (kind === 'still') {
+          if (v < 1) { if (timed) { lose(); return; } jolt(); v = 0; prompt.textContent = UI.qte_again + ' · ' + q.prompt; }
+          return;
+        }
         if (v >= zone[0] && v <= zone[1]) win(); else { jolt(); v = 0; prompt.textContent = UI.qte_again + ' · ' + q.prompt; }
       }
+      // The whole screen is the control on touch; a mouse works the same way.
+      function where(e) {
+        var r = qteWrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+        if (kind === 'alternate') return x < 0.5 ? 'left' : 'right';
+        if (kind === 'dodge') return x < 1 / 3 ? 'left' : x < 2 / 3 ? 'up' : 'right';
+        return null;
+      }
+      function onDown(e) {
+        if (e.target.closest && e.target.closest('.qs-bar')) return;
+        e.preventDefault(); e.stopPropagation();
+        if (held) down(); else press(where(e));
+      }
+      function onUp(e) { e.stopPropagation(); if (held) up(); }
+      qteWrap.addEventListener('pointerdown', onDown);
+      qteWrap.addEventListener('pointerup', onUp);
+      qteWrap.addEventListener('pointercancel', onUp);
+      qteWrap.addEventListener('click', function (e) { e.stopPropagation(); });
+      // ---- the clock
       function frame(now) {
         var dt = Math.min(0.1, (now - last) / 1000); last = now;
-        if (fast()) { finish(); return; }   // skipped while it was on
+        if (fast()) { finish('win'); return; }
+        if (done) return;
         var age = now - t0;
         if (kind === 'mash' || kind === 'alternate') {
-          // A hopeless struggle drains harder the longer it lasts, and never lets the gauge reach the end.
           var drain = hopeless ? 0.3 + age / 1000 * 0.45 : (kind === 'mash' ? 0.2 : 0.12);
           v = Math.max(0, v - drain * dt);
           if (hopeless) {
             v = Math.min(v, 0.82);
-            card.style.setProperty('--strain', String(Math.min(1, age / (q.time || 5200))));
-            card.classList.add('is-strain');
+            stage.style.setProperty('--strain', String(Math.min(1, age / (q.time || 5200))));
+            stage.classList.add('is-strain');
           }
         } else if (kind === 'hold') {
-          // The bandage creaks tighter while it is pulled.
           if (holding && now >= nextCreak) { nextCreak = now + 130; strain(v * 0.8); }
-          if (holding) { v += 0.5 * dt; if (v > 1) { holding = false; card.classList.remove('is-holding'); jolt(); v = 0; } }
+          if (holding) { v += 0.5 * dt; if (v > 1) { holding = false; stage.classList.remove('is-holding'); caps.one.classList.remove('is-down'); jolt(); v = 0; } }
         } else if (kind === 'timing') {
           m += dir * dt * (0.75 + round * 0.25);
           if (m > 1) { m = 1; dir = -1; sfx('tick'); } else if (m < 0) { m = 0; dir = 1; sfx('tick'); }
           mark.style.left = (m * 100) + '%';
         } else if (kind === 'still') {
-          // Holding still: the danger takes `time` ms to pass.
           if (holding) { v += dt / ((q.time || 3500) / 1000); if (v >= 1) { win(); return; } }
-          // The heart: slow while you wait to hide, faster and faster while the danger is right there.
           if (now >= nextBeat) { nextBeat = now + (holding ? 820 - v * 420 : 1000); sfx('beat'); kick(); }
+          // Hiding has its own clock: get still before the danger arrives.
+          if (timed && !started) {
+            var wait = 1 - age / (q.limit || 2600);
+            timerFill.style.width = (Math.max(0, wait) * 100) + '%';
+            if (wait <= 0) { lose(); return; }
+          } else timerFill.style.width = '0%';
         } else if (kind === 'dodge') {
-          if (want) { cueLeft -= dt; cue.style.setProperty('--left', String(Math.max(0, cueLeft / cueMax))); if (cueLeft <= 0) { jolt(); nextCue(); } }
+          if (want) {
+            cueLeft -= dt;
+            caps.cue.style.setProperty('--left', String(Math.max(0, cueLeft / cueMax)));
+            if (cueLeft <= 0) { strike(); if (!done) nextCue(); }
+          }
         }
         fill.style.width = (Math.max(0, Math.min(1, kind === 'timing' || kind === 'dodge' ? round / rounds : v)) * 100) + '%';
+        if (limit) {
+          var leftT = 1 - age / limit;
+          timerFill.style.width = (Math.max(0, leftT) * 100) + '%';
+          qteWrap.classList.toggle('is-late', leftT < 0.3);
+          if (leftT < 0.3 && now >= nextTick) { nextTick = now + 380; sfx('tick'); }
+          if (leftT <= 0) { lose(); return; }
+        }
         if (hopeless && age >= (q.time || 5200)) {
-          // Held: the struggle ends against your will.
           sfx('thud'); qteWrap.classList.add('is-lost');
           flash.className = 'qs-flash is-dark'; void flash.offsetWidth; flash.classList.add('is-on');
-          done = true; window.setTimeout(finish, 500); return;
+          done = true; window.setTimeout(function () { finish('win'); }, 500); return;
         }
         raf = window.requestAnimationFrame(frame);
       }
@@ -1642,18 +1698,28 @@
         done = true;
         fill.style.width = '100%';
         sfx('release');
-        card.classList.add('is-won'); qteWrap.classList.add('is-won');
+        qteWrap.classList.add('is-won');
         flash.className = 'qs-flash is-white is-soft'; void flash.offsetWidth; flash.classList.add('is-on');
-        window.setTimeout(finish, 520);
+        window.setTimeout(function () { finish('win'); }, 560);
       }
-      function finish() {
-        done = true; window.cancelAnimationFrame(raf); window.clearTimeout(autoT);
+      function lose() {
+        if (done) return;
+        done = true;
+        sfx('sting'); qteWrap.classList.add('is-lost');
+        flash.className = 'qs-flash is-red'; void flash.offsetWidth; flash.classList.add('is-on');
+        window.setTimeout(function () { finish('fail'); }, 650);
+      }
+      var finished = false;
+      function finish(result) {
+        if (finished) return;
+        finished = true; done = true;
+        window.cancelAnimationFrame(raf); window.clearTimeout(autoT);
         qteNow = null;
         qteWrap.classList.remove('is-on');
         qteWrap.removeAttribute('data-kind');
         dlg.removeAttribute('data-qte');
-        dlg.focus({ preventScroll: true });   // the key that had focus is about to go
-        window.setTimeout(function () { qteWrap.innerHTML = ''; resolve(); }, 260);
+        dlg.focus({ preventScroll: true });
+        window.setTimeout(function () { qteWrap.innerHTML = ''; resolve(result || 'win'); }, 260);
       }
       qteNow = {
         key: function (e) {
@@ -1661,19 +1727,57 @@
             if (e.repeat && !held) return;
             var arrow = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up' }[e.key];
             if ((kind === 'alternate' && arrow && arrow !== 'up') || (kind === 'dodge' && arrow)) press(arrow);
-            else if (e.key === ' ' || e.key === 'Enter') { if (held) { if (!holding) down(); } else if (kind !== 'alternate' && kind !== 'dodge') press(null); }
+            else if (e.key === ' ' || e.key === 'Enter') { if (held) down(); else if (kind !== 'alternate' && kind !== 'dodge') press(null); }
           } else if (e.type === 'keyup' && (e.key === ' ' || e.key === 'Enter')) up();
         },
-        finish: finish,
+        finish: function () { finish('win'); },
       };
       qteWrap.setAttribute('data-next', 'left');
       qteWrap.classList.add('is-on');
       if (kind === 'dodge') window.setTimeout(function () { if (!done) nextCue(); }, 700);
       raf = window.requestAnimationFrame(frame);
-      // Watching on auto, the moment plays itself out.
       if (auto && !hopeless) autoT = window.setTimeout(win, 1400);
-      window.setTimeout(function () { var f = keys.querySelector('button'); if (f) f.focus({ preventScroll: true }); }, 60);
     });
+  }
+  // A short bad ending: the screen holds a card ("Bad end" and one line) and offers the moment again.
+  var badWrap = null;
+  function badEnd(text) {
+    if (fast()) return Promise.resolve(true);
+    return new Promise(function (resolve) {
+      if (!badWrap) badWrap = el('div', 'qs-badend', dlg);
+      badWrap.innerHTML = '';
+      var c = el('section', 'qs-badend-card', badWrap);
+      c.setAttribute('role', 'alertdialog');
+      el('p', 'qs-badend-kicker', c).textContent = UI.qte_end;
+      if (text) el('p', 'qs-badend-text', c).textContent = text;
+      var again = el('button', 'qs-badend-go', c); again.type = 'button'; again.textContent = UI.qte_retry;
+      badWrap.classList.add('is-on');
+      sfx('bell');
+      again.addEventListener('click', function (e) {
+        e.stopPropagation();
+        badWrap.classList.remove('is-on');
+        window.setTimeout(function () { badWrap.innerHTML = ''; }, 400);
+        dlg.focus({ preventScroll: true });
+        resolve(true);
+      });
+      window.setTimeout(function () { again.focus({ preventScroll: true }); }, 60);
+    });
+  }
+  // What the stage looks and sounds like right now, so a retried moment starts where it was.
+  function stageSnap() {
+    var src = bgFront.getAttribute('src') || '';
+    return { black: black.classList.contains('is-on'), tint: tint.className, flashback: dlg.getAttribute('data-flashback'),
+      tremble: dlg.getAttribute('data-tremble'), tears: dlg.hasAttribute('data-tears'), music: Music.current(), amb: Amb.current(),
+      heart: Heart.kind(), bg: bgFront.classList.contains('is-on') ? src.replace(/^.*\/bg\//, '').replace(/\.webp$/, '') : null };
+  }
+  function stageRestore(st) {
+    clearText(null);
+    Heart.set(st.heart);
+    tint.className = st.tint;
+    setFlashback(st.flashback); setTremble(st.tremble); setTears(st.tears);
+    Music.play(st.music, 600); Amb.set(st.amb);
+    if (st.bg) setBg(st.bg, 'cut');
+    setBlack(st.black);
   }
   // While a quick-time moment is on, its keys are its own (Esc still leaves, Ctrl still skips it).
   dlg.addEventListener('keydown', function (e) {
@@ -1688,7 +1792,7 @@
   // ---- input -----------------------------------------------------------------------------------------------------
   dlg.addEventListener('click', function (e) {
     if (skipWrap.classList.contains('is-on')) return;
-    if (e.target.closest('.qs-bar, .qs-choices, .qs-spots, .qs-qte, .qs-case-wrap, .qs-end-wrap, .qs-log, .qs-skip-wrap, a, button, input')) return;
+    if (e.target.closest('.qs-bar, .qs-choices, .qs-spots, .qs-qte, .qs-badend, .qs-case-wrap, .qs-end-wrap, .qs-log, .qs-skip-wrap, a, button, input')) return;
     advance();
   });
   dlg.addEventListener('cancel', function (e) {
@@ -1708,7 +1812,7 @@
     }
     // Space and Enter belong to a control only while its panel is showing; anywhere else they advance the scene.
     if (skipWrap.classList.contains('is-on') && !(e.target.matches && e.target.matches('button'))) { e.preventDefault(); return; }
-    var control = e.target.closest && e.target.closest('.qs-choices.is-on, .qs-spots.is-on, .qs-case-wrap.is-on, .qs-end-wrap.is-on, .qs-log.is-on, .qs-skip-wrap.is-on') && e.target.matches('button, a');
+    var control = e.target.closest && e.target.closest('.qs-choices.is-on, .qs-spots.is-on, .qs-badend.is-on, .qs-case-wrap.is-on, .qs-end-wrap.is-on, .qs-log.is-on, .qs-skip-wrap.is-on') && e.target.matches('button, a');
     if ((e.key === ' ' || e.key === 'Enter') && !control) { e.preventDefault(); advance(); }
     else if (e.key === 'a' || e.key === 'A') autoBtn.click();
     else if (e.key === 'l' || e.key === 'L') logBtn.click();

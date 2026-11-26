@@ -633,73 +633,81 @@ html.qs-open { overflow: hidden; }
   .qs-clue { top: 3.4rem; }
 }
 
-/* Quick-time moments ({ qte }): a dark card low in the middle, a gauge, and one or two big keys (touch-sized). */
-.qs-qte { position: absolute; inset: 0; z-index: 11; display: grid; place-items: end center; padding: 0 1rem max(9vh, 4.5rem); pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
-.qs-qte.is-on { opacity: 1; pointer-events: auto; }
-.qs-qte-card { width: min(34rem, calc(100vw - 2rem)); padding: 1.1rem 1.4rem 0.9rem; border-radius: 6px; text-align: center;
-  background: linear-gradient(180deg, rgba(20, 12, 10, 0.9), rgba(8, 5, 4, 0.94)); box-shadow: 0 0 0 1px rgba(201, 155, 69, 0.55), 0 18px 50px rgba(0, 0, 0, 0.7); }
-.qs-qte-prompt { margin: 0 0 0.8rem; font-family: var(--display); font-size: calc(clamp(1.1rem, 2.1vw, 1.38rem) * var(--qs-fs, 1)); letter-spacing: 0.04em; color: #f1e4c8; }
-.qs-qte-track { position: relative; height: 14px; border-radius: 7px; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 1px rgba(201, 155, 69, 0.35); overflow: hidden; }
-.qs-qte-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #6e1010, #c2412b 70%, #f0a24a); }
-.qs-qte-zone { position: absolute; top: 0; bottom: 0; background: rgba(243, 217, 138, 0.22); box-shadow: inset 0 0 0 2px rgba(243, 217, 138, 0.85); z-index: 1; }
-.qs-qte-mark { position: absolute; top: -3px; bottom: -3px; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.8); z-index: 2; }
-.qs-qte[data-kind="timing"] .qs-qte-fill { opacity: 0.35; }
-.qs-qte-pips { display: flex; justify-content: center; gap: 0.45rem; min-height: 0.6rem; margin-top: 0.55rem; }
-.qs-qte-pip { width: 0.6rem; height: 0.6rem; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(243, 217, 138, 0.7); }
-.qs-qte-pip.is-on { background: #f3d98a; }
-.qs-qte-keys { display: flex; justify-content: center; gap: 1.2rem; margin-top: 0.7rem; }
-.qs-qte-key { width: 4.2rem; height: 4.2rem; border-radius: 50%; border: 0; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none;
-  font-size: 1.5rem; color: #f1e4c8; background: radial-gradient(circle at 40% 35%, #5a2a1c, #2a120c 70%); box-shadow: 0 0 0 2px rgba(201, 155, 69, 0.75), 0 6px 14px rgba(0, 0, 0, 0.6); transition: scale 90ms ease, box-shadow 150ms ease; }
-.qs-qte-key:active { scale: 0.92; }
-.qs-qte-key:focus-visible { outline: 3px solid #f3d98a; outline-offset: 3px; }
-.qs-qte[data-kind="alternate"][data-next="left"] .qs-qte-key[data-k="left"], .qs-qte[data-kind="alternate"][data-next="right"] .qs-qte-key[data-k="right"] { box-shadow: 0 0 0 3px #f3d98a, 0 0 18px rgba(243, 217, 138, 0.6); }
-.qs-qte-card.is-holding .qs-qte-key { box-shadow: 0 0 0 3px #f3d98a, 0 0 22px rgba(240, 120, 60, 0.7); scale: 0.95; }
-.qs-qte-hint { margin: 0.6rem 0 0; font-family: var(--display); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(241, 228, 200, 0.62); }
-.qs-qte-card.is-won { box-shadow: 0 0 0 2px #f3d98a, 0 0 30px rgba(243, 217, 138, 0.45); }
-@media (prefers-reduced-motion: no-preference) {
-  .qs-qte.is-on .qs-qte-card { animation: qs-card 320ms var(--ease-swing); }
-  .qs-qte-card.is-miss { animation: qs-nope 360ms ease-out; }
-  .qs-qte-card.is-hit .qs-qte-track { animation: qs-qte-hit 160ms ease-out; }
-}
-@keyframes qs-qte-hit { 50% { box-shadow: inset 0 0 0 1px rgba(243, 217, 138, 0.9), 0 0 10px rgba(240, 120, 60, 0.6); } }
-/* 'dodge': the arrow to press, big, above the keys; 'still': the gauge is the danger passing, so it reads cold. */
-.qs-qte-cue { margin: 0.5rem 0 0; font-size: 2.6rem; line-height: 1; color: #f3d98a; text-shadow: 0 0 14px rgba(240, 150, 60, 0.7); }
-.qs-qte-cue[hidden] { display: none; }
-.qs-qte[data-kind="dodge"] .qs-qte-key { width: 3.8rem; height: 3.8rem; }
-.qs-qte[data-kind="still"] .qs-qte-fill { background: linear-gradient(90deg, #1d2a3e, #4b6a8e 70%, #a9c2dc); }
-@media (prefers-reduced-motion: no-preference) {
-  .qs-qte-cue.is-new { animation: qs-qte-cue 220ms var(--ease-swing); }
-  .qs-qte[data-kind="still"] .qs-qte-card.is-holding { animation: qs-tremble 1.9s linear infinite; }
-}
-@keyframes qs-qte-cue { from { scale: 1.6; opacity: 0; } }
-
-/* Quick-time intensity: while one is on (.qs[data-qte]) the scene drains and dims, the edges close in; every press
-   kicks the card; a miss flashes the edges red; a win lets go in a soft white flash. */
+/* Quick-time moments ({ qte }), v3: no buttons. While one is on (.qs[data-qte]) the scene drains and dims and the
+   edges close in; low in the middle stand the words, a long thin gauge, the keys to press drawn as keycaps, and a
+   timer that burns down (red and ticking near the end). The whole screen takes taps and holds. */
 .qs-scene { transition: filter 450ms ease; }
-.qs[data-qte] .qs-scene { filter: saturate(0.65) brightness(0.78) contrast(1.1); }
-.qs-qte { background: radial-gradient(ellipse 80% 70% at 50% 45%, transparent 30%, rgba(0, 0, 0, 0.72) 100%); }
+.qs[data-qte] .qs-scene { filter: saturate(0.6) brightness(0.72) contrast(1.12); }
 .qs-flash.is-soft.is-on { animation: qs-flash-soft 480ms ease-out forwards; }
 .qs-flash.is-red.is-soft { background: radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(150, 0, 0, 0.95) 100%); }
 .qs-flash.is-white.is-soft { background: radial-gradient(ellipse at 50% 60%, rgba(255, 250, 235, 0.9), rgba(255, 250, 235, 0.3) 70%); }
 @keyframes qs-flash-soft { 0% { opacity: 0.55; } 100% { opacity: 0; } }
-.qs-qte-fill { box-shadow: 0 0 10px rgba(240, 110, 50, 0.65); transition: width 70ms linear; }
-.qs-qte-cue { position: relative; display: inline-grid; place-items: center; width: 4.4rem; height: 4.4rem; margin: 0.5rem auto 0; border-radius: 50%; }
-.qs-qte-cue::before { content: ""; position: absolute; inset: 0; border-radius: 50%; --left: 1;
-  background: conic-gradient(#f3d98a calc(var(--left) * 360deg), rgba(255, 255, 255, 0.08) 0);
-  -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%); mask: radial-gradient(circle, transparent 60%, #000 62%); }
-.qs-qte-cue[hidden] { display: none; }
+.qs-qte { position: absolute; inset: 0; z-index: 11; display: grid; place-items: end center; padding: 0 1rem max(10vh, 4.5rem);
+  background: radial-gradient(ellipse 85% 75% at 50% 50%, transparent 25%, rgba(0, 0, 0, 0.78) 100%);
+  pointer-events: none; opacity: 0; transition: opacity 260ms ease; touch-action: none; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.qs-qte.is-on { opacity: 1; pointer-events: auto; }
+.qs-qte-stage { display: grid; justify-items: center; gap: 0.75rem; width: min(40rem, calc(100vw - 2rem)); text-align: center; }
+.qs-qte-prompt { margin: 0; font-family: var(--display); font-weight: 700; font-size: calc(clamp(1.35rem, 3vw, 2.1rem) * var(--qs-fs, 1)); letter-spacing: 0.12em; text-transform: uppercase;
+  color: #fff3dc; text-shadow: 0 0 18px rgba(240, 120, 50, 0.55), 0 3px 12px #000; }
+.qs-qte-gauge { position: relative; width: 100%; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(243, 217, 138, 0.35), 0 0 22px rgba(0, 0, 0, 0.6); }
+.qs-qte-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 5px; background: linear-gradient(90deg, #7a1010, #d2482a 65%, #ffbb5c); box-shadow: 0 0 14px rgba(240, 110, 50, 0.75); transition: width 70ms linear; }
+.qs-qte[data-kind="still"] .qs-qte-fill { background: linear-gradient(90deg, #1d2a3e, #4b6a8e 70%, #a9c2dc); box-shadow: 0 0 14px rgba(120, 160, 210, 0.6); }
+.qs-qte[data-kind="timing"] .qs-qte-fill, .qs-qte[data-kind="dodge"] .qs-qte-fill { opacity: 0.45; }
+.qs-qte-zone { position: absolute; top: -5px; bottom: -5px; z-index: 1; border-radius: 3px; background: rgba(243, 217, 138, 0.18); box-shadow: inset 0 0 0 2px rgba(243, 217, 138, 0.9), 0 0 12px rgba(243, 217, 138, 0.4); }
+.qs-qte-zone[hidden], .qs-qte-mark[hidden], .qs-qte-timer[hidden] { display: none; }
+.qs-qte-mark { position: absolute; top: -8px; bottom: -8px; z-index: 2; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px #fff; }
+.qs-qte-pips { display: flex; gap: 0.5rem; }
+.qs-qte-pip { width: 0.7rem; height: 0.7rem; rotate: 45deg; box-shadow: inset 0 0 0 1.5px rgba(243, 217, 138, 0.8); }
+.qs-qte-pip.is-on { background: #f3d98a; box-shadow: 0 0 10px rgba(243, 217, 138, 0.8); }
+.qs-qte-keys { display: flex; justify-content: center; gap: 1rem; margin-top: 0.35rem; }
+/* A keycap: a raised key with a lit face; pressed, it sinks. */
+.qs-qte-cap { position: relative; display: inline-grid; place-items: center; min-width: 3.6rem; height: 3.4rem; padding: 0 1rem; border-radius: 9px;
+  font-family: var(--display); font-weight: 700; font-size: 1.5rem; letter-spacing: 0.08em; color: #2a1608;
+  background: linear-gradient(180deg, #fff3d6, #e7c98c 55%, #c99d53); border: 1px solid #8a6328;
+  box-shadow: 0 6px 0 #6b4a1c, 0 9px 18px rgba(0, 0, 0, 0.65), inset 0 2px 0 rgba(255, 255, 255, 0.7); transition: translate 70ms ease, box-shadow 70ms ease; }
+.qs-qte-cap.is-wide { min-width: 11rem; font-size: 1.05rem; letter-spacing: 0.32em; }
+.qs-qte-cap.is-down, .qs-qte-cap.is-press { translate: 0 5px; box-shadow: 0 1px 0 #6b4a1c, 0 3px 8px rgba(0, 0, 0, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.5), 0 0 26px rgba(255, 190, 90, 0.75); }
+.qs-qte[data-kind="alternate"][data-next="left"] .qs-qte-cap:first-child, .qs-qte[data-kind="alternate"][data-next="right"] .qs-qte-cap:last-child { outline: 3px solid rgba(255, 220, 140, 0.95); outline-offset: 4px; }
+.qs-qte-cap.is-cue { width: 5rem; height: 5rem; min-width: 0; padding: 0; border-radius: 50%; font-size: 2.4rem; --left: 1; }
+.qs-qte-cap.is-cue::after { content: ""; position: absolute; inset: -9px; border-radius: 50%;
+  background: conic-gradient(#ffcf6a calc(var(--left) * 360deg), rgba(255, 255, 255, 0.08) 0);
+  -webkit-mask: radial-gradient(circle, transparent 64%, #000 66%); mask: radial-gradient(circle, transparent 64%, #000 66%); }
+.qs-qte-verb { margin: 0.2rem 0 0; font-family: var(--display); font-weight: 700; font-size: calc(0.88rem * var(--qs-fs, 1)); letter-spacing: 0.26em; text-transform: uppercase; color: #f3d98a; text-shadow: 0 2px 8px #000; }
+.qs-qte-touch { display: none; margin: 0; font-size: 0.78rem; color: rgba(241, 228, 200, 0.7); }
+@media (pointer: coarse) { .qs-qte-touch { display: block; } }
+.qs-qte-timer { width: 70%; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.qs-qte-timer span { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #f3d98a, #fff4dc); box-shadow: 0 0 8px rgba(243, 217, 138, 0.8); }
+.qs-qte.is-late .qs-qte-timer span { background: linear-gradient(90deg, #8b1010, #ff4a2a); box-shadow: 0 0 10px rgba(255, 60, 40, 0.9); }
+.qs-qte.is-late .qs-qte-prompt { color: #ffd2c0; }
 @media (prefers-reduced-motion: no-preference) {
-  .qs-qte-key { animation: qs-qte-invite 1.1s ease-in-out infinite; }
-  .qs-qte-card.is-kick { animation: qs-qte-kick 130ms ease-out; }
-  .qs-qte-card.is-holding .qs-qte-key, .qs-qte[data-kind="alternate"] .qs-qte-key[data-k] { animation: none; }
-  .qs-qte-card.is-strain { animation: qs-tremble-hard calc(0.5s - var(--strain, 0) * 0.3s) linear infinite; }
-  .qs-qte.is-won .qs-qte-card { animation: qs-qte-won 500ms ease-out forwards; }
-  .qs-qte.is-lost .qs-qte-card { animation: qs-qte-lost 500ms ease-in forwards; }
+  .qs-qte.is-on .qs-qte-stage { animation: qs-qte-in 360ms var(--ease-swing); }
+  .qs-qte-cap:not(.is-down):not(.is-press) { animation: qs-qte-invite 1.1s ease-in-out infinite; }
+  .qs-qte-stage.is-kick .qs-qte-gauge { animation: qs-qte-kick 140ms ease-out; }
+  .qs-qte-stage.is-miss { animation: qs-nope 360ms ease-out; }
+  .qs-qte-stage.is-holding .qs-qte-gauge { animation: qs-tremble 1.6s linear infinite; }
+  .qs-qte-stage.is-strain { animation: qs-tremble-hard calc(0.5s - var(--strain, 0) * 0.3s) linear infinite; }
+  .qs-qte-cap.is-cue.is-new { animation: qs-qte-cue 240ms var(--ease-swing); }
+  .qs-qte.is-late .qs-qte-timer { animation: qs-qte-late 380ms ease-in-out infinite; }
+  .qs-qte.is-won .qs-qte-stage { animation: qs-qte-won 560ms ease-out forwards; }
+  .qs-qte.is-lost .qs-qte-stage { animation: qs-qte-lost 600ms ease-in forwards; }
 }
-@keyframes qs-qte-invite { 0%, 100% { box-shadow: 0 0 0 2px rgba(201, 155, 69, 0.75), 0 0 0 0 rgba(243, 217, 138, 0.0), 0 6px 14px rgba(0, 0, 0, 0.6); } 50% { box-shadow: 0 0 0 2px rgba(201, 155, 69, 0.9), 0 0 0 9px rgba(243, 217, 138, 0.16), 0 6px 14px rgba(0, 0, 0, 0.6); } }
-@keyframes qs-qte-kick { 40% { translate: 0 4px; scale: 1.02; } }
-@keyframes qs-qte-won { 0% { scale: 1; opacity: 1; } 35% { scale: 1.07; } 100% { scale: 1.12; opacity: 0; } }
-@keyframes qs-qte-lost { 0% { scale: 1; opacity: 1; } 100% { scale: 0.9; opacity: 0; translate: 0 14px; } }
+@keyframes qs-qte-in { from { opacity: 0; translate: 0 18px; scale: 0.96; } }
+@keyframes qs-qte-invite { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.18) drop-shadow(0 0 10px rgba(255, 200, 110, 0.6)); } }
+@keyframes qs-qte-kick { 40% { scale: 1.03 1.6; } }
+@keyframes qs-qte-cue { from { scale: 1.6; opacity: 0; } }
+@keyframes qs-qte-late { 50% { opacity: 0.45; } }
+@keyframes qs-qte-won { 0% { scale: 1; opacity: 1; } 35% { scale: 1.08; } 100% { scale: 1.14; opacity: 0; } }
+@keyframes qs-qte-lost { 0% { scale: 1; opacity: 1; } 100% { scale: 0.88; opacity: 0; translate: 0 18px; filter: blur(3px); } }
+/* A short bad ending: a card on black, "Bad end", one line, and the moment offered again. */
+.qs-badend { position: absolute; inset: 0; z-index: 13; display: grid; place-items: center; padding: 1rem; background: rgba(0, 0, 0, 0.88); opacity: 0; visibility: hidden; transition: opacity 600ms ease, visibility 0s linear 600ms; }
+.qs-badend.is-on { opacity: 1; visibility: visible; transition-delay: 0s; }
+.qs-badend-card { display: grid; justify-items: center; gap: 1rem; max-width: 34rem; text-align: center; }
+.qs-badend-kicker { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(1.8rem, 5vw, 3rem); letter-spacing: 0.3em; text-transform: uppercase; color: #c2271d; text-shadow: 0 0 24px rgba(194, 39, 29, 0.55); }
+.qs-badend-text { margin: 0; font-family: var(--serif); font-style: italic; font-size: calc(1.15rem * var(--qs-fs, 1)); line-height: 1.6; color: #e9dcc0; }
+.qs-badend-go { min-height: 2.9rem; padding: 0 1.6rem; border: 1px solid rgba(201, 155, 69, 0.7); border-radius: 3px; cursor: pointer; font-family: var(--display); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.2em; text-transform: uppercase; color: #f2e4c6; background: rgba(40, 22, 12, 0.95); }
+.qs-badend-go:hover, .qs-badend-go:focus-visible { outline: none; border-color: var(--qs-gold-hi); box-shadow: 0 0 0 2px var(--qs-gold-hi); }
+@media (prefers-reduced-motion: no-preference) { .qs-badend.is-on .qs-badend-card { animation: qs-qte-in 700ms ease-out 200ms backwards; } }
+@media (max-width: 720px) { .qs-qte-cap.is-wide { min-width: 8rem; } .qs-qte { padding-bottom: max(7vh, 3.5rem); } }
 
 /* A picture searched with the eye ({ seek }): the picture large on a dark stage, a prompt on top, the hint button
    below; finds are ringed in red ink with a label, misses leave a cross that fades. */

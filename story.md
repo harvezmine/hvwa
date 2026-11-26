@@ -754,6 +754,15 @@ _Mata Varrick beralih ke jendela. Kamu merapatkan tubuh ke dinding di bawahnya d
 
 🎮 **Aksi (still):** Jangan bergerak
 
+> **Jika gagal (akhir buruk: Kamu terlihat.):**
+>
+> _Lengan bajumu menggesek ambang jendela. Di balkon, kedua pria itu langsung terdiam._
+> 
+> `[layar gelap]`
+> 
+> _Sebuah tangan bersarung mencengkeram kerahmu dari belakang. Esok paginya guild kehilangan satu petualang, dan tak ada yang bertanya kenapa._
+> 
+
 _Setelah lama sekali, ia kembali menghadap Hale._
 
 **Tuan Hale** _(berbisik, suara dari luar layar)_: Tidak ada. Tapi kalau dia mati karena itu, Varrick, berarti aku—
@@ -894,6 +903,15 @@ _Orang-orang berdesakan menuju komidi putar, dan kerumunan itu menyeretmu ikut s
 
 🎮 **Aksi (alternate):** Terobos sampai ke komidi putar
 
+> **Jika gagal (akhir buruk: Terlambat.):**
+>
+> _Kerumunan itu menutup di depanmu seperti tembok._
+> 
+> `[layar gelap]`
+> 
+> _Saat akhirnya kamu sampai di komidi putar, yang tersisa hanya tali terpotong di atas papan. Tak ada yang melihat ke mana anak itu dibawa._
+> 
+
 `[Latar: girl]`
 
 _Di tengah kerumunan berdiri seorang gadis kecil. Pergelangan tangannya diikat tali, dan matanya ditutup kain._
@@ -943,7 +961,7 @@ _Begitu kain itu terlepas, tubuhnya lunglai di pelukanmu. Tertidur. Masih bernap
 
 _Sesuatu terselip keluar dari balik penutup mata itu: secarik kertas, dilipat kecil._
 
-🗝️ **Barang: Secarik kertas** (di tangan) — {host}/im4ges/foren/themepark/13
+🗝️ **Barang: Secarik kertas** (di tangan) — {host13}/vz4trf/sbera/gurzrcnex/13
 
 **Penjaga** _(berteriak)_: Minggir! Garda Merah! Minggir!
 
@@ -994,23 +1012,23 @@ _Lalu kenapa terdengar seperti tawa?_
 
 **Ketua Guild**: Dan dia mengikat anak itu selembut seorang ayah menyelimuti anaknya. Ingat itu baik-baik.
 
-**Mira**: Kertas itu! Itu alamat arsip. Ada sesuatu yang disimpan di sana.
+**Mira**: Kertas itu! Hurufnya kacau semua, tapi bentuknya seperti alamat. Dan angka di ujungnya... tiga belas.
 
 **Ketua Guild**: Kalau begitu buka. Hati-hati. **Tak ada satu pun peninggalan The Fool yang seperti kelihatannya.**
 
 📓 **Catatan kasus: Arandelle**
 - The Fool beraksi di peringatan Sir Prince, dan **tak melukai siapa pun**: Nina diikat dengan lembut.
 - Nyanyiannya, **Laus heroi pacis**, memuji Pahlawan Perdamaian... seperti lelucon.
-- Tersembunyi di penutup matanya: **sebuah alamat arsip**.
+- Tersembunyi di penutup matanya: **sebuah alamat yang hurufnya digeser**, berakhiran **13**.
 - Varrick menanyakan **gambar** sebelum menanyakan apakah anak itu masih hidup.
 
 ### 🧩 Tantangan: Alamat di Secarik Kertas
 
 Catatan yang tersembunyi di penutup mata Nina bertuliskan:
 
-{host}/im4ges/foren/themepark/13
+{host13}/vz4trf/sbera/gurzrcnex/13
 
-Ada sesuatu yang disimpan di alamat itu. Tak ada satu pun peninggalan The Fool yang seperti kelihatannya.
+Huruf-hurufnya belum membentuk kata apa pun. Ada sesuatu yang disimpan di alamat itu. Tak ada satu pun peninggalan The Fool yang seperti kelihatannya.
 
 The Fool menyembunyikan sebuah gambar. Apa namanya?
 
@@ -1613,6 +1631,15 @@ _Kamu menyusulnya ke dalam asap, melawan arus orang-orang yang berlari ke arah s
 
 🎮 **Aksi (dodge):** Tembus tenda yang terbakar
 
+> **Jika gagal (akhir buruk: Abu.):**
+>
+> _Sebatang tiang yang terbakar roboh menghalangi jalanmu._
+> 
+> `[layar gelap]`
+> 
+> _Hal terakhir yang kamu dengar adalah kanvas yang menderu terbakar di atas kepalamu._
+> 
+
 `[layar gelap]`
 
 `[Latar: carousel]`
@@ -1715,6 +1742,15 @@ _Sebuah tangan bersarung mencengkeram kerahmu dan menarikmu turun lewat pintu ra
 _Derap sepatu bot melintas di atas kepalamu, lalu berhenti._
 
 🎮 **Aksi (still):** Jangan bersuara sedikit pun
+
+> **Jika gagal (akhir buruk: Satu suara sudah cukup.):**
+>
+> _Sebilah papan berderit di bawah lututmu._
+> 
+> `[layar gelap]`
+> 
+> _Kali ini pedangnya menemukan celah itu._
+> 
 
 _Di atasmu, sebilah pedang menghantam papan, tepat di tempat kepalamu berada sedetik sebelumnya._
 
@@ -1975,11 +2011,29 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 🎮 **Aksi (mash):** Dorong batang pinus itu dari kakimu
 
+> **Jika gagal (akhir buruk: Greymarch menahannya selamanya.):**
+>
+> **Lucian** _(dalam hati)_: Lenganku menyerah. Dingin merambat naik dari tanah sampai ke dadaku.
+> 
+> `[layar gelap]`
+> 
+> **Lucian** _(dalam hati)_: Tak ada yang datang mencari. Sejak awal memang tak seorang pun dimaksudkan untuk mencari.
+> 
+
 **Lucian** _(dalam hati)_: Butuh waktu sampai tengah hari untuk menyeret tubuhku keluar dari bawahnya. Aku mendengar tulangku patah sebelum merasakan sakitnya.
 
 **Lucian** _(dalam hati)_: Kurobek jubahku menjadi perban, lalu kuluruskan kakiku di sepanjang gagang tombak yang patah.
 
 🎮 **Aksi (hold):** Tarik perbannya kencang-kencang
+
+> **Jika gagal (akhir buruk: Tiga langkah.):**
+>
+> **Lucian** _(dalam hati)_: Simpulnya lepas. Tiga langkah, lalu kakiku terlipat di bawah tubuhku.
+> 
+> `[layar gelap]`
+> 
+> **Lucian** _(dalam hati)_: Aku terbaring di atas daun-daun pinus, mendengar gagak-gagak mulai turun.
+> 
 
 **Lucian** _(dalam hati)_: Setelah itu aku berdiri, karena tak ada lagi yang tersisa untuk melarangku.
 
@@ -2032,6 +2086,13 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 **Lucian** _(dalam hati)_: Ada asap di atas alun-alun kastel, dan orang-orang berdesakan begitu rapat sampai aku harus mendorong mereka untuk lewat.
 
 🎮 **Aksi (alternate):** Terobos kerumunan itu
+
+> **Jika gagal (akhir buruk: Ia tak pernah melihat wajahnya lagi.):**
+>
+> **Lucian** _(dalam hati)_: Kerumunan itu mendorong balik. Siku, keranjang, bahu orang, dan aku malah makin jauh dari depan.
+> 
+> **Lucian** _(dalam hati)_: Saat aku tiba di depan, tak ada lagi yang tersisa di salib itu.
+> 
 
 **Lucian** _(dalam hati)_: Tak ada yang balas mendorong, tak ada juga yang menoleh. Orang sebanyak ini, tapi suasananya sunyi sekali.
 
@@ -2134,6 +2195,15 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 **The Fool** _(mengenang)_: Malamnya alun-alun sudah kosong. Sisa api sudah mereka sapu, dan salib itu berdiri tanpa apa-apa, tapi layangan itu masih tersangkut di lengannya.
 
 🎮 **Aksi (timing):** Naiki panggung itu, selangkah demi selangkah
+
+> **Jika gagal (akhir buruk: Dikenali.):**
+>
+> **The Fool** _(mengenang)_: Di anak tangga ketiga kakiku menyerah, dan aku jatuh menghantam papan cukup keras sampai para penjaga berhenti tertawa.
+> 
+> `[layar gelap]`
+> 
+> **The Fool** _(mengenang)_: Mereka mendekat membawa lentera, ingin tahu siapa sebenarnya si pemabuk itu.
+> 
 
 **The Fool** _(mengenang)_: Aku menaiki panggung itu selangkah demi selangkah dengan kaki yang dibebat, dan lama sekali baru layangan itu bisa kulepaskan, karena tanganku tak mau berhenti gemetar.
 
@@ -2260,6 +2330,15 @@ _Di jalan terdengar derap sepatu bot. Sebuah patroli berjubah merah berbelok di 
 `[detak jantung]`
 
 🎮 **Aksi (still):** Tetap diam di dalam bayangan
+
+> **Jika gagal (akhir buruk: Tertangkap cahaya.):**
+>
+> _Tumitmu menggesek anak tangga._
+> 
+> _Lentera itu berayun ke arah ambang pintu dan berhenti tepat di wajahmu._
+> 
+> `[layar gelap]`
+> 
 
 _Cahaya lentera itu lewat hanya sejengkal dari wajahmu, lalu menjauh._
 

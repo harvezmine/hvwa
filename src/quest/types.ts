@@ -65,7 +65,10 @@ export type Step =
   // shows, `rounds` times, `time` ms per arrow (running). Misses only retry. `hopeless`: a struggle that cannot be
   // won, over after `time` ms.
   | { readonly qte: { readonly kind: 'mash' | 'alternate' | 'hold' | 'timing' | 'still' | 'dodge'; readonly prompt: Text; readonly rounds?: number;
-      readonly step?: number; readonly hopeless?: boolean; readonly time?: number } }
+      readonly step?: number; readonly hopeless?: boolean; readonly time?: number;
+      // With `fail` the moment is timed (`limit` ms; for 'still', the time to get still): lose it and the `fail` steps
+      // play as a short bad ending, `end` is its one line, and the player tries the moment again.
+      readonly limit?: number; readonly fail?: readonly Step[]; readonly end?: Text } }
   // A picture searched with the eye: click where something is wrong. Each mark is a circle (`at` [x, y] as fractions of
   // the picture, radius `r` as a fraction of its width); a find is ringed in red and its `then` lines play over it.
   | { readonly seek: { readonly pic: string; readonly prompt: Text;

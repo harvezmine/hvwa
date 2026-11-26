@@ -258,6 +258,7 @@ describe('the story', () => {
       if ('choice' in s) s.choice.forEach((c) => walk(c.then));
       if ('explore' in s) s.explore.spots.forEach((c) => walk(c.then));
       if ('seek' in s) s.seek.marks.forEach((m) => walk(m.then ?? []));
+      if ('qte' in s && s.qte.fail) walk(s.qte.fail);
     }
   })(SILENT_FRIDAY.chapters.flatMap((c) => [...c.pre, ...(c.post ?? [])]));
   const texts: Text[] = [];
