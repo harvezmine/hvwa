@@ -117,8 +117,8 @@ html.qs-open { overflow: hidden; }
 .qs[data-flashback="golden"] .qs-memory { background: radial-gradient(ellipse at 50% 40%, rgba(255, 214, 150, 0.16), rgba(90, 50, 10, 0.42) 92%); }
 .qs[data-flashback="blue"] .qs-cam, .qs[data-flashback="blue"] .qs-cg { filter: saturate(0.4) contrast(0.92) brightness(0.88) hue-rotate(-10deg); }
 .qs[data-flashback="blue"] .qs-memory { background: radial-gradient(ellipse at 50% 40%, rgba(120, 150, 200, 0.1), rgba(8, 16, 34, 0.55) 92%); }
-.qs[data-flashback="sepia"] .qs-cam, .qs[data-flashback="sepia"] .qs-cg { filter: sepia(0.85) saturate(0.45) contrast(0.88) brightness(0.92); }
-.qs[data-flashback="sepia"] .qs-memory { background: radial-gradient(ellipse at 50% 40%, rgba(200, 170, 120, 0.08), rgba(30, 20, 10, 0.55) 92%); }
+.qs[data-flashback="sepia"] .qs-cam, .qs[data-flashback="sepia"] .qs-cg { filter: sepia(0.8) saturate(0.5) contrast(0.95) brightness(1.08); }
+.qs[data-flashback="sepia"] .qs-memory { background: radial-gradient(ellipse at 50% 40%, rgba(200, 170, 120, 0.06), rgba(30, 20, 10, 0.42) 92%); }
 .qs[data-flashback] .qs-box { filter: sepia(0.5) saturate(0.7); }
 .qs[data-flashback] .qs-box .dialogue-text { font-style: italic; color: #4a3622; }
 .qs[data-flashback] .qs-narr { background: linear-gradient(180deg, rgba(34, 26, 18, 0.86), rgba(20, 15, 10, 0.9)); }

@@ -478,22 +478,51 @@
     var f = member(id).face || 'left';
     img.classList.toggle('is-flip', (at === 'left' && f === 'left') || (at === 'right' && f === 'right'));
   }
+  // The stage holds two portraits at most, one per side. Whoever steps onto an occupied side takes it over (the one
+  // they replace remembers that side and walks back onto it the next time they speak), and a lone portrait in the
+  // middle steps aside to the other side when someone joins it. A three-way talk is a fixed partner and a turn-taking
+  // other side, never three faces in the frame.
+  var bench = {};
+  function other(side) { return side === 'left' ? 'right' : 'left'; }
+  function occupant(side, except) {
+    return Object.keys(onStage).filter(function (k) { return k !== except && onStage[k].at === side; })[0];
+  }
+  function moveTo(id, at) {
+    var s = onStage[id];
+    if (!s || s.at === at) return;
+    s.wrap.setAttribute('data-at', at); s.at = at; facing(s.img, id, at);
+  }
+  function makeRoom(id, at) {
+    var others = Object.keys(onStage).filter(function (k) { return k !== id; });
+    if (!others.length) return at || 'center';
+    if (!at || at === 'center') {
+      var mid = occupant('center', id);
+      if (mid) { moveTo(mid, 'left'); return 'right'; }
+      at = occupant('left', id) ? 'right' : 'left';
+    }
+    var mid2 = occupant('center', id);
+    if (mid2) moveTo(mid2, other(at));
+    var held = occupant(at, id);
+    if (held) { bench[held] = at; hide(held); }
+    return at;
+  }
   function show(id, pose, at) {
     var src = castArt(id, pose);
     if (!src) return 0;
     var s = onStage[id];
     if (s) {
-      if (at && at !== s.at) { s.wrap.setAttribute('data-at', at); s.at = at; facing(s.img, id, at); }
+      if (at && at !== s.at) { at = makeRoom(id, at); moveTo(id, at); }
       if (src !== s.img.getAttribute('src')) {
         s.img.setAttribute('src', src);
         s.img.classList.remove('is-pop'); void s.img.offsetWidth; s.img.classList.add('is-pop');
       }
       return 0;
     }
+    at = makeRoom(id, bench[id] && (!at || at === 'center') ? bench[id] : at);
+    delete bench[id];
     var wrap = el('div', 'qs-actor', castLayer);
     var img = el('img', 'qs-sprite', wrap);
     img.alt = ''; img.src = src;
-    at = at || 'center';
     wrap.setAttribute('data-at', at);
     wrap.setAttribute('data-cast', id);
     if (/shadow-/.test(src)) wrap.classList.add('is-shadow');
@@ -504,6 +533,7 @@
     return fast() ? 0 : 380;
   }
   function hide(id) {
+    if (id === 'all') bench = {};
     var ids = id === 'all' ? Object.keys(onStage) : [id];
     ids.forEach(function (k) {
       var s = onStage[k];
