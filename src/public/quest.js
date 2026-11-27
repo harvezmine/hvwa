@@ -838,7 +838,7 @@
   };
   // Painted items (static/quest/<art>/item/<name>.webp): when a step names one of these, the picture is shown instead
   // of a drawn glyph. The 22 painted tarot cards (…/tarot/<sign>.webp) likewise replace the drawn card.
-  var ITEM_ART = ['apple', 'bear', 'blindfold', 'dagger', 'diary', 'envelope', 'envelope-black', 'gloves', 'kite', 'knife',
+  var ITEM_ART = ['apple', 'bear', 'blindfold', 'dagger', 'diary', 'envelope', 'envelope-black', 'gloves', 'kite', 'knife', 'poster',
     'knife-bloody', 'ledger', 'letter', 'lily', 'mask', 'photo', 'poison-apple', 'sword', 'tarot-back',
     'musicbox', 'crystal', 'stem', 'barrel', 'drawing', 'scepter'];
   var TAROT_ART = ['fool', 'magician', 'priestess', 'empress', 'emperor', 'hierophant', 'lovers', 'chariot', 'strength', 'hermit',
