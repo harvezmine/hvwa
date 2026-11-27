@@ -35,6 +35,8 @@ export type Step =
   | { readonly tarot: { readonly n: string; readonly name: Text; readonly sign: string; readonly reversed?: boolean; readonly text?: Text } }
   | { readonly letter: Text }                                              // a parchment letter, read in full
   | { readonly title: Text; readonly sub?: Text }                          // a chapter title card
+  // End credits rolling up over black: one line each; '-' is a gap and a line starting '# ' a heading. A click skips.
+  | { readonly credits: readonly Text[] }
   | { readonly accept: { readonly title: Text; readonly reward: number } } // the Grand Quest contract, stamped
   | { readonly choice: readonly { readonly label: Text; readonly then: readonly Step[] }[] }
   // Places to search: with `at` ([x, y] as fractions of the backdrop) each is a glowing spot on the picture itself.

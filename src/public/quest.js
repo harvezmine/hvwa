@@ -355,6 +355,8 @@
   el('span', 'qs-title-orn', titleCard);
   var titleSub = el('p', 'qs-title-sub', titleCard), titleMain = el('h2', 'qs-title-main', titleCard);
   el('span', 'qs-title-rule', titleCard);
+  // End credits: lines rolling up over black, at reading pace; a click lets them go.
+  var creditsBox = el('div', 'qs-credits', dlg), creditsRoll = el('div', 'qs-credits-roll', creditsBox);
   var narrBox = el('div', 'qs-narr', dlg);
   var narrText = el('p', 'qs-narr-text', narrBox);
   narrText.setAttribute('aria-live', 'polite');
@@ -964,6 +966,36 @@
     await sleep(fast() ? 0 : 1000);
   }
 
+  async function creditsShow(step) {
+    clearText(null);
+    creditsRoll.innerHTML = '';
+    step.credits.forEach(function (t) {
+      if (!t || t === '-') el('span', 'qs-credits-gap', creditsRoll);
+      else if (t.indexOf('# ') === 0) el('h3', 'qs-credits-head', creditsRoll).textContent = t.slice(2);
+      else el('p', 'qs-credits-line', creditsRoll).textContent = t;
+    });
+    var still = fast() || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    var ms = fast() ? 300 : Math.max(16000, step.credits.length * 1900);
+    creditsRoll.style.transition = 'none';
+    creditsRoll.style.transform = still ? 'translateY(-50%)' : 'translateY(0)';
+    creditsRoll.classList.toggle('is-still', !!still);
+    creditsBox.classList.add('is-on');
+    void creditsRoll.offsetHeight;
+    if (!still) {
+      creditsRoll.style.transition = 'transform ' + ms + 'ms linear';
+      creditsRoll.style.transform = 'translateY(' + -(creditsBox.clientHeight + creditsRoll.offsetHeight) + 'px)';
+    }
+    await new Promise(function (r) {
+      var t = window.setTimeout(done, ms);
+      function done() { window.clearTimeout(t); if (waiter === done) waiter = null; r(); }
+      waiter = done;
+    });
+    creditsBox.classList.remove('is-on');
+    await sleep(fast() ? 0 : 1200);
+    creditsRoll.style.transition = 'none';
+    creditsRoll.innerHTML = '';
+  }
+
   // Choices: wooden plaques with a number key each; the picked one glows, the others fall away.
   function menu(options, head, done) {
     narrBox.classList.remove('is-on'); // the narrator steps aside for the question
@@ -1057,7 +1089,7 @@
     if (!run || run !== me || !me.alive) return;
     // A line already read does not linger over a change of scene: a new backdrop, black, a picture or a title clear
     // the text; a portrait stepping on or off clears only the narrator.
-    if ('bg' in step || 'black' in step || ('cg' in step && step.cg) || 'title' in step) clearText(null);
+    if ('bg' in step || 'black' in step || ('cg' in step && step.cg) || 'title' in step || 'credits' in step) clearText(null);
     else if ('show' in step || 'hide' in step) clearText('box');
     if ('bg' in step) {
       if (step.bg) await picReady(ART + '/bg/' + step.bg + '.webp');
@@ -1106,6 +1138,7 @@
     if ('item' in step || 'tarot' in step || 'letter' in step || 'accept' in step || 'intro' in step || 'notes' in step) { await card(step); return; }
     if ('clue' in step) { if (!fast()) showClue(step.clue); else log(UI.clue, plain(fill(step.clue))); return; }
     if ('title' in step) { await titleShow(step); return; }
+    if ('credits' in step) { await creditsShow(step); return; }
     if ('choice' in step) {
       var i = await pick(step.choice.map(function (c) { return { label: c.label }; }));
       log('', '› ' + step.choice[i].label);

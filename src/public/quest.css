@@ -217,6 +217,14 @@ html.qs-open { overflow: hidden; }
 .qs-title-main { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(2.2rem, 7vw, 5rem); letter-spacing: 0.08em; color: #f6ead0; text-shadow: 0 0 34px rgba(243, 217, 138, 0.25); }
 .qs-title-rule { width: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--qs-gold), transparent); transition: width 1600ms var(--ease) 300ms; }
 .qs-title.is-on .qs-title-rule { width: min(24rem, 60vw); }
+.qs-credits { position: absolute; inset: 0; z-index: 8; overflow: hidden; background: #000; pointer-events: none; opacity: 0; transition: opacity 1200ms ease-in-out; }
+.qs-credits.is-on { opacity: 1; }
+.qs-credits-roll { position: absolute; top: 100%; left: 50%; width: min(34rem, 86vw); margin-left: calc(min(34rem, 86vw) / -2); display: grid; gap: var(--sp-3); text-align: center; will-change: transform; }
+.qs-credits-roll.is-still { top: 50%; }
+.qs-credits-head { margin: var(--sp-4) 0 var(--sp-1); font-family: var(--display); font-weight: 700; font-size: var(--fs-sm); letter-spacing: 0.42em; text-transform: uppercase; color: #b89a62; }
+.qs-credits-head:first-child { font-size: clamp(1.6rem, 5vw, 3rem); letter-spacing: 0.08em; text-transform: none; color: #f6ead0; text-shadow: 0 0 34px rgba(243, 217, 138, 0.25); }
+.qs-credits-line { margin: 0; font-family: var(--display); font-size: var(--fs-md, 1.05rem); line-height: 1.6; color: #e9dcc0; }
+.qs-credits-gap { display: block; height: 3.5rem; }
 
 /* The narrator: a framed box in the middle of the screen, upright type for reading at length. */
 .qs-narr {
