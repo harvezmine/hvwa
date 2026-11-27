@@ -8,7 +8,9 @@
 //   - evidence is served from src/quest/<quest>/evidence, as a download, and a challenge's "drop" (a fake archive path
 //     such as /im4ges/foren/themepark/13) answers 404 until its chapter is unlocked;
 //   - a picture that shows a challenge's answer (a scene step `cg: 'sealed:<name>'`) is not under /static: it is served
-//     from src/quest/<quest>/sealed only to a player who has finished that chapter.
+//     from src/quest/<quest>/sealed only to a player who has finished that chapter;
+//   - the Guildmaster's counsel on a case is heard for a magic scroll (src/quest/counsel.ts), and a line nobody has
+//     paid for never leaves the server.
 // Progress is one row per finished chapter (src/db/quest.sql).
 import { Router, type Request, type Response } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
@@ -20,6 +22,9 @@ import type { RangeContext } from '../range/types.js';
 import { userOf } from '../range/user.js';
 import { avatarOf, DEFAULT_AVATAR } from '../range/avatar.js';
 import { localize, type Chapter, type Quest } from './types.js';
+import { counselView, hearCounsel } from './counsel.js';
+import { SCROLLS } from '../range/shop.js';
+import { parseTier } from '../core/hints.js';
 import { SILENT_FRIDAY } from './silent-friday/story.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -65,7 +70,7 @@ function sendEvidence(res: Response, quest: Quest, file: string, as: string): vo
   res.sendFile(join(evidenceDir(quest), file));
 }
 
-function chapterView(quest: Quest, c: Chapter, done: boolean, lang: Lang) {
+function chapterView(db: DatabaseSync, userId: number, quest: Quest, c: Chapter, done: boolean, lang: Lang) {
   const ch = c.challenge;
   return {
     n: c.n, title: localize(c.title, lang), sub: localize(c.sub, lang), done,
@@ -73,6 +78,7 @@ function chapterView(quest: Quest, c: Chapter, done: boolean, lang: Lang) {
     challenge: ch === undefined ? undefined : {
       title: localize(ch.title, lang), brief: localize(ch.brief, lang), placeholder: localize(ch.placeholder, lang),
       evidence: ch.evidence.map((e) => ({ label: localize(e.label, lang), name: e.as, href: `/quests/${quest.id}/evidence/${c.n}/${encodeURIComponent(e.as)}` })),
+      counsel: counselView(db, userId, quest, c, lang),
     },
     post: done && c.post ? localize(c.post, lang) : undefined,
     recapPost: done && c.recapPost ? localize(c.recapPost, lang) : undefined,
@@ -104,6 +110,7 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
       })),
       upcoming: localize(quest.upcoming, lang),
       ui: Object.fromEntries(QUEST_UI.map((k) => [k, t(`quest.${k}`)])),
+      scrolls: Object.fromEntries(SCROLLS.map((s) => [s.kind, t(`scroll.${s.kind}.name`)])),
     };
   };
 
@@ -142,9 +149,30 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
     const quest = questById(req.params.quest);
     const c = quest && chapterOf(quest, req.params.n);
     if (!quest || !c) { next(); return; }
-    const done = chaptersDone(db, userOf(res).userId, quest.id);
+    const userId = userOf(res).userId;
+    const done = chaptersDone(db, userId, quest.id);
     if (!isUnlocked(c.n, done)) { res.status(404).json({ ok: false, error: 'locked' }); return; }
-    res.json(chapterView(quest, c, done.has(c.n), req.lang));
+    res.json(chapterView(db, userId, quest, c, done.has(c.n), req.lang));
+  });
+
+  // The Guildmaster's counsel on an open case: the player hands over a scroll of the counsel's tier (src/quest/counsel.ts).
+  // A case already solved takes no more scrolls; what was heard on it stays in its file.
+  router.post('/quests/:quest/chapter/:n/counsel', (req, res, next) => {
+    const quest = questById(req.params.quest);
+    const c = quest && chapterOf(quest, req.params.n);
+    if (!quest || !c?.challenge?.counsel?.length) { next(); return; }
+    if (!auth.formOk(req)) { res.status(403).json({ ok: false, error: 'csrf' }); return; }
+    const userId = userOf(res).userId;
+    const done = chaptersDone(db, userId, quest.id);
+    if (!isUnlocked(c.n, done)) { res.status(404).json({ ok: false, error: 'locked' }); return; }
+    const tier = parseTier(req.body?.tier);
+    if (tier === undefined) { res.status(400).json({ ok: false, error: 'unknown_tier' }); return; }
+    const heardBefore = counselView(db, userId, quest, c, req.lang)?.tiers.find((x) => x.tier === tier)?.text !== undefined;
+    if (done.has(c.n) && !heardBefore) { res.status(409).json({ ok: false, error: 'solved' }); return; }
+    const r = hearCounsel(db, userId, quest, c, tier, req.lang, ctx.now());
+    const bag = counselView(db, userId, quest, c, req.lang)?.bag;
+    if (!r.ok) { res.status(r.error === 'no_scroll' ? 402 : 400).json({ ok: false, error: r.error, kind: r.kind, bag }); return; }
+    res.json({ ok: true, tier, text: r.text, used: r.used, bag });
   });
 
   router.post('/quests/:quest/chapter/:n', (req, res, next) => {
@@ -224,5 +252,6 @@ export const QUEST_UI = [
   'begin', 'continue', 'replay', 'locked', 'soon', 'done', 'auto', 'log', 'skip', 'close', 'next', 'submit', 'evidence',
   'wrong', 'slow', 'solved', 'chapter_done', 'back', 'next_chapter', 'answer', 'grand', 'accepted', 'reward', 'tap',
   'left', 'backlog', 'case', 'error', 'confirm_close', 'gold', 'end', 'resume', 'archive_hint', 'checking', 'sound', 'choose', 'found', 'skip_title', 'skip_go', 'skip_stay', 'clue', 'notes',
-  'close_title', 'close_go', 'close_stay', 'text', 'hint', 'qte_mash', 'qte_alternate', 'qte_hold', 'qte_timing', 'qte_still', 'qte_dodge', 'qte_again', 'qte_space', 'qte_touch', 'qte_end', 'qte_retry',
+  'close_title', 'close_go', 'close_stay', 'text', 'hint', 'counsel_title', 'counsel_intro', 'counsel_more', 'counsel_all', 'counsel_n', 'counsel_have',
+  'counsel_ask', 'counsel_yes', 'counsel_no', 'counsel_need', 'counsel_shop', 'counsel_heard', 'counsel_reading', 'counsel_solved', 'qte_mash', 'qte_alternate', 'qte_hold', 'qte_timing', 'qte_still', 'qte_dodge', 'qte_again', 'qte_space', 'qte_touch', 'qte_end', 'qte_retry',
 ] as const;

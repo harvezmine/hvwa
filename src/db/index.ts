@@ -39,6 +39,8 @@ export const MIGRATIONS: readonly Migration[] = Object.freeze([
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'purse.sql'), 'utf8')),
   // 9: the story quests' chapter progress (src/quest).
   (db: DatabaseSync) => db.exec(readFileSync(join(here, 'quest.sql'), 'utf8')),
+  // 10: the Guildmaster's counsel heard on a story quest's case, paid with a scroll (src/quest/counsel.ts).
+  (db: DatabaseSync) => db.exec(readFileSync(join(here, 'quest-counsel.sql'), 'utf8')),
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

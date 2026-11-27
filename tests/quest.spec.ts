@@ -239,6 +239,45 @@ describe('the Silent Friday quest', () => {
     expect(JSON.stringify(last.body.post)).toMatch(/Frosthaven/);
   });
 
+  it('the Guildmaster counsel costs a scroll of its tier, once, and its words stay on the server until heard', async () => {
+    const { app } = portalApp();
+    const { agent, userId } = await player(app, 'stuck');
+    const db = app.locals.db;
+    const give = (kind: string) => db.prepare('INSERT INTO range_scrolls (user_id, kind, cost, bought_at) VALUES (?, ?, 10, 1)').run(userId, kind);
+    const left = (kind: string) => Number((db.prepare('SELECT COUNT(*) AS n FROM range_scrolls WHERE user_id = ? AND kind = ? AND used_at = 0').get(userId, kind) as { n: number }).n);
+    const hear = (tier: unknown, csrf: string) => agent.post(`${Q}/chapter/1/counsel`).set('Accept', 'application/json').send({ _csrf: csrf, tier });
+    const { csrf } = await journal(agent);
+    expect((await hear(1, csrf)).status).toBe(404); // chapter I is still locked
+    await answer(agent, 0, csrf);
+    const lines = SILENT_FRIDAY.chapters[1]!.challenge!.counsel!;
+    const view = (await agent.get(`${Q}/chapter/1`)).body.challenge.counsel;
+    expect(view.tiers.map((x: { kind: string }) => x.kind)).toEqual(['insight', 'revelation', 'oracle']);
+    expect(view.tiers.some((x: { text?: string }) => x.text !== undefined)).toBe(false);
+    expect(JSON.stringify(view)).not.toContain(lines[0]!.en.slice(0, 30));
+    expect((await hear(1, 'forged')).status).toBe(403);
+    expect((await hear(9, csrf)).status).toBe(400);
+    const poor = await hear(1, csrf);
+    expect(poor.status).toBe(402);
+    expect(poor.body).toMatchObject({ ok: false, error: 'no_scroll', kind: 'insight' });
+    give('insight'); give('insight'); give('oracle');
+    const heard = await hear(1, csrf);
+    expect(heard.body).toMatchObject({ ok: true, tier: 1, used: true, text: lines[0]!.en });
+    expect(heard.body.bag).toMatchObject({ insight: 1, oracle: 1 });
+    expect((await hear('1', csrf)).body).toMatchObject({ ok: true, used: false }); // heard already: no second scroll
+    expect(left('insight')).toBe(1);
+    expect((await hear(2, csrf)).body).toMatchObject({ ok: false, error: 'no_scroll', kind: 'revelation' }); // tiers do not stand in for each other
+    const again = (await agent.get(`${Q}/chapter/1`)).body.challenge.counsel;
+    expect(again.tiers[0].text).toBe(lines[0]!.en);
+    expect(again.tiers[1].text).toBeUndefined();
+    expect(JSON.stringify(again)).not.toContain(lines[2]!.en.slice(0, 30));
+    expect((db.prepare('SELECT used_lab FROM range_scrolls WHERE user_id = ? AND used_at > 0').get(userId) as { used_lab: string }).used_lab).toBe('quest:silent-friday:1');
+    // A solved case takes no more scrolls, and keeps what was heard on it.
+    await answer(agent, 1, csrf, 'theme park arandelle');
+    expect((await hear(3, csrf)).status).toBe(409);
+    expect(left('oracle')).toBe(1);
+    expect((await hear(1, csrf)).body).toMatchObject({ ok: true, used: false });
+  });
+
   it('progress is per player', async () => {
     const { app } = portalApp();
     const a = await player(app, 'first');
@@ -328,6 +367,18 @@ describe('the story', () => {
       expect(c.challenge.answers.length).toBeGreaterThan(0);
       for (const a of c.challenge.answers) expect(normalise(a)).toBe(a);
       expect(c.post?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it('every case carries three counsel lines, each in both languages, and none gives the answer away', () => {
+    for (const c of SILENT_FRIDAY.chapters) {
+      if (!c.challenge) continue;
+      const lines = c.challenge.counsel ?? [];
+      expect(lines.length, `chapter ${c.n}`).toBe(3);
+      for (const line of lines) {
+        expect(line.en.trim() && line.id.trim()).toBeTruthy();
+        for (const a of c.challenge.answers) for (const lang of ['en', 'id'] as const) expect(normalise(line[lang])).not.toContain(a);
+      }
     }
   });
 });

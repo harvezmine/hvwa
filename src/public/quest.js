@@ -1194,6 +1194,149 @@
       } else p.appendChild(document.createTextNode(ln));
     });
   }
+  // The Guildmaster's counsel, inside the case file: three sealed scrolls (Insight, Revelation, Oracle), one per tier.
+  // Pressing one asks first, since the scroll is used up; the server checks the bag and only then sends the words,
+  // which unroll below as a note in his hand. On a solved case only what was already heard is shown.
+  var ROMAN = ['I', 'II', 'III'];
+  function richText(p, text) {
+    String(text).split('`').forEach(function (part, i) {
+      if (!part) return;
+      if (i % 2) el('code', 'qs-counsel-code', p).textContent = part;
+      else p.appendChild(document.createTextNode(part));
+    });
+  }
+  function counselBox(f, counsel) {
+    var done = run.chapter.done;
+    var heardAny = counsel.tiers.some(function (x) { return x.text !== undefined; });
+    if (done && !heardAny) return;
+    var box = el('section', 'qs-counsel', f);
+    box.setAttribute('data-testid', 'quest-counsel');
+    var head = el('div', 'qs-counsel-head', box);
+    var gm = member('gm');
+    var face = el('span', 'qs-counsel-face', head); face.setAttribute('aria-hidden', 'true');
+    if (gm.art && gm.art['']) { var img = el('img', '', face); img.src = gm.art['']; img.alt = ''; img.decoding = 'async'; }
+    var hw = el('div', 'qs-counsel-who', head);
+    el('p', 'qs-case-label', hw).textContent = UI.counsel_title;
+    var say = el('p', 'qs-counsel-say', hw); say.setAttribute('aria-live', 'polite');
+    var allHeard = function () { return counsel.tiers.every(function (x) { return x.text !== undefined; }); };
+    var greet = function () { say.textContent = allHeard() ? UI.counsel_all : heardAny ? UI.counsel_more : UI.counsel_intro; };
+    greet();
+
+    var seals = el('ol', 'qs-counsel-seals', box);
+    var ask = el('div', 'qs-counsel-ask', box); ask.hidden = true; ask.setAttribute('role', 'status');
+    var notes = el('div', 'qs-counsel-notes', box);
+    var cards = {};
+    var bag = counsel.bag || {};
+    var scrollName = function (kind) { return (boot.scrolls && boot.scrolls[kind]) || kind; };
+
+    function note(x, fresh) {
+      var n = el('article', 'qs-counsel-note' + (fresh ? ' is-fresh' : ''), notes);
+      n.setAttribute('data-kind', x.kind); n.id = 'qs-counsel-' + x.tier;
+      el('span', 'qs-counsel-wax', n).setAttribute('aria-hidden', 'true');
+      var tl = el('p', 'qs-counsel-tier', n);
+      tl.textContent = UI.counsel_n.replace('{n}', ROMAN[x.tier - 1]) + ' · ' + scrollName(x.kind);
+      richText(el('p', 'qs-counsel-text', n), x.text);
+      // Keep the notes in tier order, whatever order they were heard in.
+      Array.prototype.slice.call(notes.children).sort(function (a, b) { return a.id < b.id ? -1 : 1; }).forEach(function (k) { notes.appendChild(k); });
+      return n;
+    }
+    function paint(x) {
+      var b = cards[x.tier];
+      if (!b) return;
+      var heard = x.text !== undefined;
+      b.classList.toggle('is-heard', heard);
+      b.setAttribute('aria-pressed', heard ? 'true' : 'false');
+      b.querySelector('.qs-seal-count').textContent = heard ? UI.counsel_heard : UI.counsel_have.replace('{n}', bag[x.kind] || 0);
+      b.classList.toggle('is-empty', !heard && !(bag[x.kind] > 0));
+    }
+    function closeAsk() { ask.hidden = true; ask.innerHTML = ''; Object.keys(cards).forEach(function (k) { cards[k].classList.remove('is-armed'); }); }
+    function hear(x, btn, go) {
+      if (go.disabled) return;
+      go.disabled = true; btn.classList.add('is-busy');
+      ask.innerHTML = ''; el('p', 'qs-counsel-ask-text', ask).textContent = UI.counsel_reading;
+      fetch('/quests/' + QID + '/chapter/' + run.n + '/counsel', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ _csrf: boot.csrf, tier: x.tier }),
+      }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'error' }; }); }).then(function (j) {
+        btn.classList.remove('is-busy');
+        if (j.bag) bag = j.bag;
+        if (!j.ok) {
+          sfx('error');
+          paint(x);
+          if (j.error === 'no_scroll') { offer(x, btn); return; }
+          ask.innerHTML = ''; el('p', 'qs-counsel-ask-text is-bad', ask).textContent = j.error === 'solved' ? UI.counsel_solved : UI.error;
+          return;
+        }
+        x.text = j.text; heardAny = true;
+        closeAsk(); paint(x);
+        Object.keys(cards).forEach(function (k) { paint(counsel.tiers[k - 1]); });
+        sfx('seal'); window.setTimeout(function () { sfx('scroll'); }, reduce ? 0 : 380);
+        var n = note(x, true);
+        greet();
+        window.setTimeout(function () { n.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); }, 60);
+      }, function () { btn.classList.remove('is-busy'); go.disabled = false; ask.innerHTML = ''; el('p', 'qs-counsel-ask-text is-bad', ask).textContent = UI.error; });
+    }
+    function offer(x, btn) {
+      ask.innerHTML = ''; ask.hidden = false;
+      ask.setAttribute('data-kind', x.kind);
+      Object.keys(cards).forEach(function (k) { cards[k].classList.toggle('is-armed', cards[k] === btn); });
+      var have = bag[x.kind] > 0;
+      el('p', 'qs-counsel-ask-text', ask).textContent = (have ? UI.counsel_ask : UI.counsel_need).replace('{scroll}', scrollName(x.kind));
+      var row = el('div', 'qs-counsel-ask-row', ask);
+      if (have) {
+        var go = el('button', 'btn btn-primary btn-sm', row); go.type = 'button'; go.textContent = UI.counsel_yes;
+        go.addEventListener('click', function () { hear(x, btn, go); });
+        window.setTimeout(function () { go.focus({ preventScroll: true }); }, 30);
+      } else {
+        var shop = el('a', 'btn btn-primary btn-sm', row); shop.textContent = UI.counsel_shop;
+        shop.href = '/shop?need=' + encodeURIComponent(x.kind); shop.target = '_blank'; shop.rel = 'noopener';
+      }
+      var no = el('button', 'btn btn-ghost btn-sm', row); no.type = 'button'; no.textContent = UI.counsel_no;
+      no.addEventListener('click', function () { closeAsk(); btn.focus({ preventScroll: true }); });
+      sfx('paper');
+    }
+
+    counsel.tiers.forEach(function (x) {
+      if (x.text !== undefined) note(x, false);
+      if (done && x.text === undefined) return;
+      var li = el('li', '', seals);
+      var b = el('button', 'qs-seal', li); b.type = 'button'; b.setAttribute('data-kind', x.kind);
+      b.setAttribute('data-testid', 'quest-counsel-' + x.tier);
+      el('span', 'scroll-icon scroll-icon-md', b).setAttribute('data-kind', x.kind);
+      var t = el('span', 'qs-seal-text', b);
+      el('b', 'qs-seal-tier', t).textContent = UI.counsel_n.replace('{n}', ROMAN[x.tier - 1]);
+      el('span', 'qs-seal-name', t).textContent = scrollName(x.kind);
+      el('small', 'qs-seal-count', t);
+      cards[x.tier] = b;
+      paint(x);
+      b.addEventListener('click', function () {
+        if (x.text !== undefined) {
+          var n = document.getElementById('qs-counsel-' + x.tier);
+          if (n) { n.classList.remove('is-flash'); void n.offsetWidth; n.classList.add('is-flash'); n.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' }); }
+          return;
+        }
+        if (b.classList.contains('is-armed')) { closeAsk(); return; }
+        offer(x, b);
+      });
+    });
+    if (done) seals.hidden = true;
+
+    // A scroll bought in another tab (the merchant opens in one) shows up here when the player comes back.
+    function refresh() {
+      if (!box.isConnected) { window.removeEventListener('focus', refresh); return; }
+      fetch('/quests/' + QID + '/chapter/' + run.n, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+          var cs = j && j.challenge && j.challenge.counsel;
+          if (!cs) return;
+          bag = cs.bag || bag;
+          counsel.tiers.forEach(paint);
+          var armed = seals.querySelector('.qs-seal.is-armed');
+          if (armed && !ask.hidden) { var tier = Number(armed.getAttribute('data-testid').slice(-1)); offer(counsel.tiers[tier - 1], armed); }
+        }, function () { /* offline: keep the counts */ });
+    }
+    window.addEventListener('focus', refresh);
+  }
+
   function caseFile(ch) {
     var c = run.chapter.challenge;
     return new Promise(function (resolve) {
@@ -1220,6 +1363,7 @@
           el('small', '', t).textContent = e.name;
         });
       }
+      if (c.counsel) counselBox(f, c.counsel);
       var form = el('form', 'qs-case-form', f);
       var lab = el('label', 'qs-case-label', form); lab.textContent = UI.answer; lab.htmlFor = 'qs-answer';
       var row = el('div', 'qs-case-row', form);
@@ -1875,7 +2019,7 @@
       .then(function (r) { if (!r.ok) throw new Error('stage'); return r.json(); })
       .then(function (w) {
         boot.lang = w.lang; boot.quest = w.quest; boot.cast = w.cast; boot.chapters = w.chapters; boot.upcoming = w.upcoming;
-        UI = boot.ui = w.ui;
+        UI = boot.ui = w.ui; boot.scrolls = w.scrolls;
         relabel();
         changed = true; // the journal behind the stage is still in the old language: reload it on the way out
       });

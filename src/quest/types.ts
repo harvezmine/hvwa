@@ -101,6 +101,12 @@ export interface Challenge {
   readonly answers: readonly string[];
   /** A path outside the quest (for example a hidden "archive") that serves evidence once this chapter is unlocked. */
   readonly drop?: { readonly path: string; readonly files: readonly { readonly file: string; readonly as: string }[] };
+  /**
+   * The Guildmaster's counsel on this case, in order: counsel N is heard by handing him a magic scroll of tier N
+   * (src/range/shop.ts SCROLLS: Insight, Revelation, Oracle). Each says more than the one before, none says the answer.
+   * A line stays on the server until the player has heard it (src/quest/counsel.ts).
+   */
+  readonly counsel?: readonly Text[];
 }
 
 export interface Chapter {
