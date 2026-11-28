@@ -265,6 +265,8 @@
     arrow: function (c, o, t) { band(c, o, t, 0.28, 0.16, 5000, 1200, 2.5, 0.01); osc(c, o, 'sine', 160, t + 0.3, 0.2, 0.45, 70); },
     thud: function (c, o, t) { osc(c, o, 'sine', 120, t, 0.45, 0.6, 40); band(c, o, t, 0.2, 0.12, 300, 0, 1, 0.003, 'lowpass'); },
     murmur: function (c, o, t) { for (var i = 0; i < 7; i++) band(c, o, t + i * 0.35, 1.8, 0.05, 300 + Math.random() * 700, 0, 4, 0.3); },
+    glitch: function (c, o, t) { for (var i = 0; i < 4; i++) { var d = i * (0.025 + Math.random() * 0.03); band(c, o, t + d, 0.03, 0.16, 300 + Math.random() * 5000, 0, 0.6, 0.001); osc(c, o, 'square', 60 + Math.random() * 900, t + d, 0.025, 0.035); } },
+    clash: function (c, o, t) { [1720, 2890, 4370, 6150].forEach(function (f, i) { osc(c, o, 'sine', f, t, 0.55 - i * 0.1, 0.06 - i * 0.012, f * 0.996); }); band(c, o, t, 0.07, 0.35, 2500, 9000, 1.1, 0.001); },
     cut: function (c, o, t) { band(c, o, t, 0.28, 0.25, 2500, 6000, 1.5, 0.01); osc(c, o, 'triangle', 900, t + 0.05, 0.12, 0.05, 400); },
     door: function (c, o, t) { osc(c, o, 'sawtooth', 120, t, 0.5, 0.04, 85); band(c, o, t, 0.6, 0.05, 400, 900, 3); osc(c, o, 'sine', 70, t + 0.55, 0.3, 0.45, 45); },
     armor: function (c, o, t) { [0, 0.33, 0.6, 0.9].forEach(function (d) { osc(c, o, 'square', 1800 + Math.random() * 600, t + d, 0.06, 0.03); band(c, o, t + d, 0.12, 0.12, 150, 0, 1, 0.005); }); },
@@ -343,6 +345,10 @@
   var cgWrap = el('div', 'qs-cg', scene);
   var cgImg = el('img', '', cgWrap); cgImg.alt = '';
   var seekWrap = el('div', 'qs-seek', scene);   // a picture searched with the eye ({ seek })
+  var glitchWrap = el('div', 'qs-glitch', scene); // a mind coming apart ({ glitch })
+  var glitchR = el('div', 'qs-glitch-r', glitchWrap), glitchC = el('div', 'qs-glitch-c', glitchWrap);
+  var glitchNoise = el('canvas', 'qs-glitch-noise', glitchWrap);
+  el('div', 'qs-glitch-lines', glitchWrap);
   var bars = el('div', 'qs-bars', dlg);
   el('span', 'qs-bar-top', bars); el('span', 'qs-bar-bottom', bars);
   var black = el('div', 'qs-black is-on', dlg);
@@ -638,6 +644,48 @@
   // A point-of-view scene's body: the whole picture trembles under the lines that follow ('soft' unease, 'hard' a body
   // that can't hold still) until { tremble: null }; tears blur it in slow swells; a mask narrows it to two eyeholes.
   // Reduced motion keeps the tears and the mask but never the trembling.
+  // A mind coming apart: the picture tears into slices that slide out of place, its colours split red from cyan, static
+  // and scanlines crawl over it, the frame now and then flips to its negative, and the line on screen shivers. 'soft' is
+  // the hum of it under a scene; 'hard' is the break. Off with { glitch: null }. Reduced motion keeps only a still split.
+  var Glitch = (function () {
+    var level = null, timer = 0, nctx = null;
+    glitchNoise.width = 480; glitchNoise.height = 270;
+    function source() { return cgWrap.classList.contains('is-on') && cgImg.getAttribute('src') ? cgImg.src : bgFront.src; }
+    function slice(e, hard) {
+      var top = Math.random() * 92, h = (hard ? 3 : 1.5) + Math.random() * (hard ? 20 : 8);
+      e.style.clipPath = 'inset(' + top.toFixed(1) + '% 0 ' + Math.max(0, 100 - top - h).toFixed(1) + '% 0)';
+      e.style.transform = 'translateX(' + ((Math.random() - 0.5) * (hard ? 70 : 20)).toFixed(1) + 'px)';
+    }
+    function noise() {
+      nctx = nctx || glitchNoise.getContext('2d');
+      if (!nctx) return;
+      var img = nctx.createImageData(480, 270), d = img.data;
+      for (var i = 0; i < d.length; i += 4) { var v = Math.random() * 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+      nctx.putImageData(img, 0, 0);
+    }
+    function tick() {
+      if (!level) return;
+      var hard = level === 'hard', src = source();
+      [glitchR, glitchC].forEach(function (e) { if (e.getAttribute('data-src') !== src) { e.style.backgroundImage = 'url("' + src + '")'; e.setAttribute('data-src', src); } });
+      slice(glitchR, hard); slice(glitchC, hard); noise();
+      if (hard && Math.random() < 0.1) {
+        dlg.classList.add('is-glitch-flip');
+        window.setTimeout(function () { dlg.classList.remove('is-glitch-flip'); }, 60 + Math.random() * 50);
+        sfx('glitch');
+      } else if (Math.random() < (hard ? 0.22 : 0.05)) sfx('glitch');
+      timer = window.setTimeout(tick, hard ? 50 + Math.random() * 90 : 110 + Math.random() * 220);
+    }
+    return {
+      set: function (l) {
+        window.clearTimeout(timer);
+        dlg.classList.remove('is-glitch-flip');
+        level = l || null;
+        if (level) dlg.setAttribute('data-glitch', level); else dlg.removeAttribute('data-glitch');
+        if (level && !reduce && !fast()) tick();
+      },
+      kind: function () { return level; },
+    };
+  })();
   function setTremble(t) { if (t && !reduce) dlg.setAttribute('data-tremble', t); else dlg.removeAttribute('data-tremble'); }
   function setTears(on) { if (on) dlg.setAttribute('data-tears', ''); else dlg.removeAttribute('data-tears'); }
   function setMaskView(on) { if (on) dlg.setAttribute('data-maskview', ''); else dlg.removeAttribute('data-maskview'); }
@@ -840,7 +888,8 @@
   // of a drawn glyph. The 22 painted tarot cards (…/tarot/<sign>.webp) likewise replace the drawn card.
   var ITEM_ART = ['apple', 'bear', 'blindfold', 'dagger', 'diary', 'envelope', 'envelope-black', 'gloves', 'kite', 'knife', 'poster',
     'knife-bloody', 'ledger', 'letter', 'lily', 'mask', 'photo', 'poison-apple', 'sword', 'tarot-back',
-    'musicbox', 'crystal', 'stem', 'barrel', 'drawing', 'scepter'];
+    'musicbox', 'crystal', 'stem', 'barrel', 'drawing', 'scepter',
+    'half-mask', 'letter-knife', 'teacup', 'signet-ring', 'stick-blade', 'stick-broken', 'bell', 'gold-purse', 'burned-hand', 'ledger-page', 'note-copy'];
   var TAROT_ART = ['fool', 'magician', 'priestess', 'empress', 'emperor', 'hierophant', 'lovers', 'chariot', 'strength', 'hermit',
     'wheel', 'justice', 'hanged', 'death', 'temperance', 'devil', 'tower', 'star', 'moon', 'sun', 'judgement', 'world'];
   function itemArt(glyph) { return ITEM_ART.indexOf(glyph) >= 0 ? ART + '/item/' + glyph + '.webp' : ''; }
@@ -975,7 +1024,7 @@
       else el('p', 'qs-credits-line', creditsRoll).textContent = t;
     });
     var still = fast() || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    var ms = fast() ? 300 : Math.max(16000, step.credits.length * 1900);
+    var ms = fast() ? 300 : Math.max(16000, step.credits.length * 3200);
     creditsRoll.style.transition = 'none';
     creditsRoll.style.transform = still ? 'translateY(-50%)' : 'translateY(0)';
     creditsRoll.classList.toggle('is-still', !!still);
@@ -1120,6 +1169,7 @@
     }
     if ('seek' in step) { clearText(null); await seek(step.seek, me); return; }
     if ('tremble' in step) { setTremble(step.tremble); return; }
+    if ('glitch' in step) { Glitch.set(step.glitch); return; }
     if ('tears' in step) { setTears(step.tears); return; }
     if ('maskview' in step) { setMaskView(step.maskview); await sleep(fast() ? 0 : 900); return; }
     if ('cam' in step) { setCam(step.cam); return; }
@@ -1195,11 +1245,11 @@
 
   // Resuming mid-chapter: replay the state-only steps up to the saved place, instantly.
   function restore(list, upto) {
-    var st = { bg: null, cg: null, black: true, music: null, amb: null, particles: null, tint: null, flashback: null, cam: null, bars: false, tremble: null, tears: false, maskview: false };
+    var st = { bg: null, cg: null, black: true, music: null, amb: null, particles: null, tint: null, flashback: null, cam: null, bars: false, tremble: null, tears: false, maskview: false, glitch: null };
     var cast = {};
     for (var i = 0; i < upto; i++) {
       var s = list[i];
-      ['bg', 'cg', 'black', 'music', 'amb', 'particles', 'tint', 'flashback', 'cam', 'tremble', 'tears', 'maskview'].forEach(function (k) { if (k in s) st[k] = s[k]; });
+      ['bg', 'cg', 'black', 'music', 'amb', 'particles', 'tint', 'flashback', 'cam', 'tremble', 'tears', 'maskview', 'glitch'].forEach(function (k) { if (k in s) st[k] = s[k]; });
       if ('letterbox' in s) st.bars = s.letterbox;
       if ('show' in s) cast[s.show] = { pose: s.pose, at: s.at };
       if ('hide' in s) { if (s.hide === 'all') cast = {}; else delete cast[s.hide]; }
@@ -1210,7 +1260,7 @@
     if (st.cg) setCg(st.cg);
     Object.keys(cast).forEach(function (id) { show(id, cast[id].pose, cast[id].at); });
     setBlack(st.black); setTint(st.tint); setFlashback(st.flashback); setCam(st.cam); setBars(st.bars);
-    setTremble(st.tremble); setTears(st.tears); setMaskView(st.maskview);
+    setTremble(st.tremble); setTears(st.tears); setMaskView(st.maskview); Glitch.set(st.glitch);
     Particles.set(st.particles); Amb.set(st.amb);
     Music.play(st.music, 600);
     skip = false;
@@ -1474,7 +1524,7 @@
     clearText(null);
     hide('all');
     setCg(null); setTint(null); setFlashback(null); setCam(null); setBars(false);
-    setTremble(null); setTears(false); setMaskView(false);
+    setTremble(null); setTears(false); setMaskView(false); Glitch.set(null);
     if (qteNow) qteNow.finish();
     if (badWrap) { badWrap.classList.remove('is-on'); badWrap.innerHTML = ''; }
     if (seekNow) seekNow.end();
@@ -1694,14 +1744,15 @@
   // passes; let go early and you are nearly heard) and 'dodge' (running: an arrow shows, press it before it is gone,
   // `rounds` times). `hopeless` is a struggle that cannot be won: the gauge is pulled back faster than anyone can
   // press, and after `time` ms the scene goes on regardless. Skipping and auto play it for you. Keys: Space/Enter (or
-  // the arrows for 'alternate' and 'dodge'); every control is also a button for touch.
+  // the arrows for 'alternate' and 'dodge'); every control is also a button for touch. 'parry' (a sword fight) reads like
+  // 'dodge', but each arrow is a blow coming in: meet it and steel rings, sparks flash and the stage jolts.
   var qteNow = null;
   // A quick-time moment, v3: no buttons. The stage shows the keys to press as keycaps, the whole screen is the touch
   // target (tap, hold, or the left/right half and the left/middle/right third for arrows), and a gauge shows the
   // effort. With `fail` steps the moment is timed: run out of time (or miss too often, or let go while hiding) and it
   // resolves 'fail'; the caller then plays the short bad ending and offers a retry. Without them a miss just goes
   // again. Resolves 'win' or 'fail'; skipping, Ctrl and auto play it for you ('win').
-  var QTE_LIMIT = { mash: 7000, alternate: 7500, hold: 8000, timing: 11000, still: 0, dodge: 0 };
+  var QTE_LIMIT = { mash: 7000, alternate: 7500, hold: 8000, timing: 11000, still: 0, dodge: 0, parry: 0 };
   function qte(q) {
     if (fast()) return Promise.resolve('win');
     return new Promise(function (resolve) {
@@ -1711,7 +1762,7 @@
       var t0 = performance.now(), last = t0, raf = 0, autoT = 0, nextBeat = 0, nextCreak = 0, nextTick = 0, cueMax = 1;
       var limit = timed ? (q.limit || QTE_LIMIT[kind] || 0) : 0;
       var DIRS = { left: '←', up: '↑', right: '→' }, want = null, cueLeft = 0;
-      var held = kind === 'hold' || kind === 'still';
+      var held = kind === 'hold' || kind === 'still', arrows = kind === 'dodge' || kind === 'parry';
       qteWrap.innerHTML = '';
       qteWrap.setAttribute('data-kind', kind);
       qteWrap.classList.remove('is-won', 'is-lost', 'is-late');
@@ -1722,12 +1773,12 @@
       var gauge = el('div', 'qs-qte-gauge', stage);
       var zoneEl = el('span', 'qs-qte-zone', gauge), fill = el('span', 'qs-qte-fill', gauge), mark = el('span', 'qs-qte-mark', gauge);
       var pips = el('div', 'qs-qte-pips', stage);
-      if (kind === 'timing' || kind === 'dodge') for (var i = 0; i < rounds; i++) el('span', 'qs-qte-pip', pips);
+      if (kind === 'timing' || arrows) for (var i = 0; i < rounds; i++) el('span', 'qs-qte-pip', pips);
       var keys = el('div', 'qs-qte-keys', stage); keys.setAttribute('aria-hidden', 'true');
       var caps = {};
       function cap(k, label) { var c = el('kbd', 'qs-qte-cap' + (label.length > 1 ? ' is-wide' : ''), keys); c.textContent = label; caps[k] = c; return c; }
       if (kind === 'alternate') { cap('left', '←'); cap('right', '→'); }
-      else if (kind === 'dodge') { var cue = cap('cue', '·'); cue.classList.add('is-cue'); }
+      else if (arrows) { var cue = cap('cue', '·'); cue.classList.add('is-cue'); }
       else cap('one', UI.qte_space);
       var verb = el('p', 'qs-qte-verb', stage); verb.textContent = UI['qte_' + kind] || '';
       el('p', 'qs-qte-touch', stage).textContent = UI.qte_touch;
@@ -1753,12 +1804,18 @@
         if (!reduce) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); }
         flash.className = 'qs-flash is-red is-soft'; void flash.offsetWidth; flash.classList.add('is-on');
       }
-      function strike() { misses++; jolt(); if (timed && misses >= 3) lose(); }
+      function strike() { misses++; if (kind === 'parry') sfx('cut'); jolt(); if (timed && misses >= 3) lose(); }
       // ---- input
       function press(which) {
         if (done) return;
         started = true;
-        if (kind === 'mash') { v = Math.min(1, v + (q.step || 0.07)); press1(caps.one); kick(); strain(v); }
+        if (kind === 'mash') {
+          if (hopeless) {
+            v = Math.min(0.97, v + (q.step || 0.09) * 1.7 * Math.pow(1 - v, 1.6));
+            if (v > 0.7 && !reduce) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); }
+          } else v = Math.min(1, v + (q.step || 0.07));
+          press1(caps.one); kick(); strain(v);
+        }
         else if (kind === 'alternate') {
           if (which !== side) { press1(caps[which]); jolt(); return; }
           press1(caps[side]); v = Math.min(1, v + 0.075); side = side === 'left' ? 'right' : 'left'; kick(); strain(v * 0.7);
@@ -1770,11 +1827,16 @@
             if (round >= rounds) { win(); return; }
             var c = 0.2 + Math.random() * 0.6, w = Math.max(0.1, 0.16 - round * 0.02); zone = [c - w / 2, c + w / 2]; placeZone();
           } else strike();
-        } else if (kind === 'dodge') {
+        } else if (arrows) {
           if (!want) return;
           press1(caps.cue);
           if (which === want) {
-            pips.children[round].classList.add('is-on'); round++; sfx('whoosh'); kick();
+            pips.children[round].classList.add('is-on'); round++; kick();
+            if (kind === 'parry') {
+              sfx('clash');
+              flash.className = 'qs-flash is-white is-soft'; void flash.offsetWidth; flash.classList.add('is-on');
+              if (!reduce) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); }
+            } else sfx('whoosh');
             if (round >= rounds) { win(); return; }
             nextCue();
           } else { strike(); if (!done) nextCue(); }
@@ -1805,7 +1867,7 @@
       function where(e) {
         var r = qteWrap.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
         if (kind === 'alternate') return x < 0.5 ? 'left' : 'right';
-        if (kind === 'dodge') return x < 1 / 3 ? 'left' : x < 2 / 3 ? 'up' : 'right';
+        if (arrows) return x < 1 / 3 ? 'left' : x < 2 / 3 ? 'up' : 'right';
         return null;
       }
       function onDown(e) {
@@ -1825,10 +1887,11 @@
         if (done) return;
         var age = now - t0;
         if (kind === 'mash' || kind === 'alternate') {
-          var drain = hopeless ? 0.3 + age / 1000 * 0.45 : (kind === 'mash' ? 0.2 : 0.12);
+          var T = q.time || 5200, late = age / T;
+          var drain = hopeless ? (late < 0.78 ? 0.1 + 0.3 * late : 2.4) : (kind === 'mash' ? 0.2 : 0.12);
           v = Math.max(0, v - drain * dt);
           if (hopeless) {
-            v = Math.min(v, 0.82);
+            if (late >= 0.78 && now >= nextBeat) { nextBeat = now + 320; sfx('beat'); if (!reduce) { scene.classList.remove('is-shake'); void scene.offsetWidth; scene.classList.add('is-shake'); } }
             stage.style.setProperty('--strain', String(Math.min(1, age / (q.time || 5200))));
             stage.classList.add('is-strain');
           }
@@ -1848,14 +1911,14 @@
             timerFill.style.width = (Math.max(0, wait) * 100) + '%';
             if (wait <= 0) { lose(); return; }
           } else timerFill.style.width = '0%';
-        } else if (kind === 'dodge') {
+        } else if (arrows) {
           if (want) {
             cueLeft -= dt;
             caps.cue.style.setProperty('--left', String(Math.max(0, cueLeft / cueMax)));
             if (cueLeft <= 0) { strike(); if (!done) nextCue(); }
           }
         }
-        fill.style.width = (Math.max(0, Math.min(1, kind === 'timing' || kind === 'dodge' ? round / rounds : v)) * 100) + '%';
+        fill.style.width = (Math.max(0, Math.min(1, kind === 'timing' || arrows ? round / rounds : v)) * 100) + '%';
         if (limit) {
           var leftT = 1 - age / limit;
           timerFill.style.width = (Math.max(0, leftT) * 100) + '%';
@@ -1903,15 +1966,15 @@
           if (e.type === 'keydown') {
             if (e.repeat && !held) return;
             var arrow = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up' }[e.key];
-            if ((kind === 'alternate' && arrow && arrow !== 'up') || (kind === 'dodge' && arrow)) press(arrow);
-            else if (e.key === ' ' || e.key === 'Enter') { if (held) down(); else if (kind !== 'alternate' && kind !== 'dodge') press(null); }
+            if ((kind === 'alternate' && arrow && arrow !== 'up') || (arrows && arrow)) press(arrow);
+            else if (e.key === ' ' || e.key === 'Enter') { if (held) down(); else if (kind !== 'alternate' && !arrows) press(null); }
           } else if (e.type === 'keyup' && (e.key === ' ' || e.key === 'Enter')) up();
         },
         finish: function () { finish('win'); },
       };
       qteWrap.setAttribute('data-next', 'left');
       qteWrap.classList.add('is-on');
-      if (kind === 'dodge') window.setTimeout(function () { if (!done) nextCue(); }, 700);
+      if (arrows) window.setTimeout(function () { if (!done) nextCue(); }, 700);
       raf = window.requestAnimationFrame(frame);
       if (auto && !hopeless) autoT = window.setTimeout(win, 1400);
     });
@@ -1944,14 +2007,14 @@
   function stageSnap() {
     var src = bgFront.getAttribute('src') || '';
     return { black: black.classList.contains('is-on'), tint: tint.className, flashback: dlg.getAttribute('data-flashback'),
-      tremble: dlg.getAttribute('data-tremble'), tears: dlg.hasAttribute('data-tears'), music: Music.current(), amb: Amb.current(),
+      tremble: dlg.getAttribute('data-tremble'), tears: dlg.hasAttribute('data-tears'), glitch: Glitch.kind(), music: Music.current(), amb: Amb.current(),
       heart: Heart.kind(), bg: bgFront.classList.contains('is-on') ? src.replace(/^.*\/bg\//, '').replace(/\.webp$/, '') : null };
   }
   function stageRestore(st) {
     clearText(null);
     Heart.set(st.heart);
     tint.className = st.tint;
-    setFlashback(st.flashback); setTremble(st.tremble); setTears(st.tears);
+    setFlashback(st.flashback); setTremble(st.tremble); setTears(st.tears); Glitch.set(st.glitch);
     Music.play(st.music, 600); Amb.set(st.amb);
     if (st.bg) setBg(st.bg, 'cut');
     setBlack(st.black);

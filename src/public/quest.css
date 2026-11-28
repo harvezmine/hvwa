@@ -210,6 +210,29 @@ html.qs-open { overflow: hidden; }
 .qs-place-time { margin: 0.15rem 0 0; font-family: var(--serif); font-size: 1rem; letter-spacing: 0.04em; color: #d8c49b; text-shadow: 0 2px 8px #000; }
 
 /* The chapter title card. */
+/* { glitch }: a mind coming apart. Above the picture and its CG, under the letterbox and the text. */
+.qs-glitch { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; }
+.qs[data-glitch] .qs-glitch { opacity: 1; }
+.qs-glitch-r, .qs-glitch-c { position: absolute; inset: 0; background-size: cover; background-position: 50% 30%; mix-blend-mode: screen; opacity: 0.55; }
+.qs[data-glitch="hard"] .qs-glitch-r, .qs[data-glitch="hard"] .qs-glitch-c { opacity: 0.75; }
+.qs-glitch-r { background-color: #ff1a2e; background-blend-mode: multiply; }
+.qs-glitch-c { background-color: #12f0ff; background-blend-mode: multiply; }
+.qs-glitch-noise { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: overlay; opacity: 0.05; }
+.qs[data-glitch="hard"] .qs-glitch-noise { opacity: 0.11; }
+.qs-glitch-lines { position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.32) 0 1px, transparent 1px 3px); opacity: 0.22; }
+.qs.is-glitch-flip .qs-scene { filter: invert(1) hue-rotate(180deg) contrast(1.4); }
+@media (prefers-reduced-motion: no-preference) {
+  .qs-glitch-lines { animation: qs-glitch-crawl 0.9s steps(6) infinite; }
+  .qs[data-glitch="hard"] .qs-cam { animation: qs-glitch-skew 0.42s steps(3) infinite; }
+  .qs[data-glitch] .qs-box.is-on .dialogue-text, .qs[data-glitch] .qs-narr.is-on .qs-narr-text { animation: qs-glitch-text 0.3s steps(2) infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qs-glitch-r { transform: translateX(-4px); clip-path: inset(30% 0 55% 0); }
+  .qs-glitch-c { transform: translateX(4px); clip-path: inset(62% 0 20% 0); }
+}
+@keyframes qs-glitch-crawl { to { background-position: 0 12px; } }
+@keyframes qs-glitch-skew { 0%, 100% { transform: none; } 33% { transform: skewX(-1.4deg) translateX(-6px); } 66% { transform: skewX(1deg) translateX(5px); } }
+@keyframes qs-glitch-text { 0% { text-shadow: -2px 0 rgba(255, 30, 50, 0.75), 2px 0 rgba(20, 240, 255, 0.75); translate: 0 0; } 50% { text-shadow: 2px 0 rgba(255, 30, 50, 0.75), -2px 0 rgba(20, 240, 255, 0.75); translate: 1px -1px; } }
 .qs-title { position: absolute; inset: 0; z-index: 8; display: grid; place-content: center; justify-items: center; gap: var(--sp-3); text-align: center; pointer-events: none; opacity: 0; transition: opacity 1000ms ease-in-out; }
 .qs-title.is-on { opacity: 1; }
 .qs-title-orn { width: 0.7rem; height: 0.7rem; rotate: 45deg; border: 1px solid var(--qs-gold); box-shadow: 0 0 12px rgba(201, 155, 69, 0.5); }
@@ -738,7 +761,8 @@ html.qs-open { overflow: hidden; }
 .qs-qte-gauge { position: relative; width: 100%; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1px rgba(243, 217, 138, 0.35), 0 0 22px rgba(0, 0, 0, 0.6); }
 .qs-qte-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 5px; background: linear-gradient(90deg, #7a1010, #d2482a 65%, #ffbb5c); box-shadow: 0 0 14px rgba(240, 110, 50, 0.75); transition: width 70ms linear; }
 .qs-qte[data-kind="still"] .qs-qte-fill { background: linear-gradient(90deg, #1d2a3e, #4b6a8e 70%, #a9c2dc); box-shadow: 0 0 14px rgba(120, 160, 210, 0.6); }
-.qs-qte[data-kind="timing"] .qs-qte-fill, .qs-qte[data-kind="dodge"] .qs-qte-fill { opacity: 0.45; }
+.qs-qte[data-kind="timing"] .qs-qte-fill, .qs-qte[data-kind="dodge"] .qs-qte-fill, .qs-qte[data-kind="parry"] .qs-qte-fill { opacity: 0.45; }
+.qs-qte[data-kind="parry"] .qs-qte-cap.is-cue { border-color: #c9d2dc; box-shadow: 0 0 18px rgba(201, 210, 220, 0.45); }
 .qs-qte-zone { position: absolute; top: -5px; bottom: -5px; z-index: 1; border-radius: 3px; background: rgba(243, 217, 138, 0.18); box-shadow: inset 0 0 0 2px rgba(243, 217, 138, 0.9), 0 0 12px rgba(243, 217, 138, 0.4); }
 .qs-qte-zone[hidden], .qs-qte-mark[hidden], .qs-qte-timer[hidden] { display: none; }
 .qs-qte-mark { position: absolute; top: -8px; bottom: -8px; z-index: 2; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px #fff; }

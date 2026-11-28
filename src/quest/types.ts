@@ -35,6 +35,8 @@ export type Step =
   | { readonly tarot: { readonly n: string; readonly name: Text; readonly sign: string; readonly reversed?: boolean; readonly text?: Text } }
   | { readonly letter: Text }                                              // a parchment letter, read in full
   | { readonly title: Text; readonly sub?: Text }                          // a chapter title card
+  // A mind coming apart over the scene: slices of the picture slide, colours split, static, a flipped frame now and then.
+  | { readonly glitch: 'soft' | 'hard' | null }
   // End credits rolling up over black: one line each; '-' is a gap and a line starting '# ' a heading. A click skips.
   | { readonly credits: readonly Text[] }
   | { readonly accept: { readonly title: Text; readonly reward: number } } // the Grand Quest contract, stamped
@@ -64,9 +66,9 @@ export type Step =
   // A quick-time moment: the player does with his hands what the body on screen does. 'mash' press again and again;
   // 'alternate' left and right in turn; 'hold' hold and let go inside the line; 'timing' press while the mark is in
   // the line, `rounds` times; 'still' hold for `time` ms while danger passes (hiding); 'dodge' press each arrow as it
-  // shows, `rounds` times, `time` ms per arrow (running). Misses only retry. `hopeless`: a struggle that cannot be
+  // shows, `rounds` times, `time` ms per arrow (running); 'parry' the same, each arrow a blow to meet (a sword fight). Misses only retry. `hopeless`: a struggle that cannot be
   // won, over after `time` ms.
-  | { readonly qte: { readonly kind: 'mash' | 'alternate' | 'hold' | 'timing' | 'still' | 'dodge'; readonly prompt: Text; readonly rounds?: number;
+  | { readonly qte: { readonly kind: 'mash' | 'alternate' | 'hold' | 'timing' | 'still' | 'dodge' | 'parry'; readonly prompt: Text; readonly rounds?: number;
       readonly step?: number; readonly hopeless?: boolean; readonly time?: number;
       // With `fail` the moment is timed (`limit` ms; for 'still', the time to get still): lose it and the `fail` steps
       // play as a short bad ending, `end` is its one line, and the player tries the moment again.

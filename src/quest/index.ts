@@ -253,5 +253,5 @@ export const QUEST_UI = [
   'wrong', 'slow', 'solved', 'chapter_done', 'back', 'next_chapter', 'answer', 'grand', 'accepted', 'reward', 'tap',
   'left', 'backlog', 'case', 'error', 'confirm_close', 'gold', 'end', 'resume', 'archive_hint', 'checking', 'sound', 'choose', 'found', 'skip_title', 'skip_go', 'skip_stay', 'clue', 'notes',
   'close_title', 'close_go', 'close_stay', 'text', 'hint', 'counsel_title', 'counsel_intro', 'counsel_more', 'counsel_all', 'counsel_n', 'counsel_have',
-  'counsel_ask', 'counsel_yes', 'counsel_no', 'counsel_need', 'counsel_shop', 'counsel_heard', 'counsel_reading', 'counsel_solved', 'qte_mash', 'qte_alternate', 'qte_hold', 'qte_timing', 'qte_still', 'qte_dodge', 'qte_again', 'qte_space', 'qte_touch', 'qte_end', 'qte_retry',
+  'counsel_ask', 'counsel_yes', 'counsel_no', 'counsel_need', 'counsel_shop', 'counsel_heard', 'counsel_reading', 'counsel_solved', 'qte_mash', 'qte_alternate', 'qte_hold', 'qte_timing', 'qte_still', 'qte_dodge', 'qte_parry', 'qte_again', 'qte_space', 'qte_touch', 'qte_end', 'qte_retry',
 ] as const;

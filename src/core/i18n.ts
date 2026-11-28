@@ -116,6 +116,7 @@ const DICT: Readonly<Record<string, Entry>> = Object.freeze({
   'quest.qte_timing': { id: 'Tekan saat penanda di dalam garis', en: 'Press when the mark is inside the line' },
   'quest.qte_still': { id: 'Tahan, jangan dilepas', en: "Hold it, don't let go" },
   'quest.qte_dodge': { id: 'Tekan arah yang muncul', en: 'Press the arrow that shows' },
+  'quest.qte_parry': { id: 'Tangkis: tekan arah datangnya serangan', en: 'Parry: press the arrow the blow comes from' },
   'quest.qte_again': { id: 'Sekali lagi', en: 'Again' },
   'quest.qte_space': { id: 'SPASI', en: 'SPACE' },
   'quest.qte_touch': { id: 'Layar sentuh: ketuk atau tahan di mana saja (kiri/kanan untuk panah)', en: 'Touch: tap or hold anywhere (left/right for arrows)' },
