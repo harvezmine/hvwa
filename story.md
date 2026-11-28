@@ -2036,7 +2036,7 @@ _Di bawah sana, tenda utama runtuh perlahan diiringi gemuruh percikan api._
 
 **Lucian** _(berbisik)_: Jumat... Itu besok.
 
-**Tobin**: Perjalanannya dua hari, Tuan.
+**Tobin**: Perjalanannya empat hari, Tuan.
 
 **Lucian**: Kalau begitu, berikan kudamu.
 

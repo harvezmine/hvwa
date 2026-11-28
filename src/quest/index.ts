@@ -109,7 +109,9 @@ export function questRoutes(router: Router, ctx: RangeContext): void {
         challenge: c.challenge !== undefined,
       })),
       upcoming: localize(quest.upcoming, lang),
-      ui: Object.fromEntries(QUEST_UI.map((k) => [k, t(`quest.${k}`)])),
+      warning: quest.warning ? localize(quest.warning, lang) : null,
+      censor: quest.censor ?? {},
+      ui:Object.fromEntries(QUEST_UI.map((k) => [k, t(`quest.${k}`)])),
       scrolls: Object.fromEntries(SCROLLS.map((s) => [s.kind, t(`scroll.${s.kind}.name`)])),
     };
   };

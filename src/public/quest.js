@@ -335,6 +335,9 @@
   var bgA = el('img', 'qs-bg-img', bgWrap), bgB = el('img', 'qs-bg-img', bgWrap);
   [bgA, bgB].forEach(function (i) { i.alt = ''; i.decoding = 'async'; });
   var bgFront = bgA;
+  // One censor layer per backdrop picture (boot.censor), above both pictures: see showCensor.
+  var censorA = el('div', 'qs-censor', bgWrap), censorB = el('div', 'qs-censor', bgWrap);
+  censorA.setAttribute('aria-hidden', 'true'); censorB.setAttribute('aria-hidden', 'true');
   var castLayer = el('div', 'qs-cast', cam);
   var tint = el('div', 'qs-tint', scene);
   el('div', 'qs-memory', scene);   // a flashback's soft edge and grain; graded by .qs[data-flashback]
@@ -512,10 +515,65 @@
   var phase = 'pre';    // which recap applies: before the case, or after it
   var fast = function () { return skip || ctrlSkip || skipAll; };
 
+  // A censored picture (boot.censor: the healer on the cross) never shows without its boxes. Each box is laid out in
+  // the picture's own coordinates (the backdrop is object-fit: cover), on a layer the size of the scene that drifts in
+  // step with the picture. The layer is on the moment its picture starts to show, and lets go only in the second half of
+  // the picture's fade out, so a crossfade never uncovers the face.
+  function censorOf(img) { return img === bgA ? censorA : censorB; }
+  function nameOf(img) { return (img.getAttribute('src') || '').replace(/^.*\/bg\//, '').replace(/\.webp$/, ''); }
+  function censored(name) { return !!(boot.censor && boot.censor[name] && boot.censor[name].length); }
+  function layoutCensor(img) {
+    var layer = censorOf(img), boxes = boot.censor && boot.censor[layer.getAttribute('data-for')];
+    layer.innerHTML = '';
+    if (!boxes) return;
+    var W = scene.clientWidth, H = scene.clientHeight;
+    var iw = img.naturalWidth || 1672, ih = img.naturalHeight || 941;
+    var k = Math.max(W / iw, H / ih), dw = iw * k, dh = ih * k, ox = (W - dw) / 2, oy = (H - dh) / 2;
+    boxes.forEach(function (b) {
+      var w = b.size[0] * dw, h = b.size[1] * dh;
+      var box = el('span', 'qs-censor-box is-' + b.kind, layer);
+      box.style.left = (ox + b.at[0] * dw - w / 2).toFixed(1) + 'px';
+      box.style.top = (oy + b.at[1] * dh - h / 2).toFixed(1) + 'px';
+      box.style.width = w.toFixed(1) + 'px';
+      box.style.height = h.toFixed(1) + 'px';
+    });
+  }
+  function driftOf(e) {
+    if (!e.getAnimations) return null;
+    return e.getAnimations().filter(function (a) { return a.animationName === 'qs-drift'; })[0] || null;
+  }
+  function showCensor(img, name) {
+    var layer = censorOf(img);
+    layer.style.transition = 'none';
+    layer.classList.remove('is-on', 'is-drift');
+    layer.innerHTML = '';
+    if (!censored(name)) { layer.removeAttribute('data-for'); return; }
+    layer.setAttribute('data-for', name);
+    layoutCensor(img);
+    if (img.classList.contains('is-drift')) layer.classList.add('is-drift');
+    layer.classList.add('is-on');
+    var a = driftOf(img), b = driftOf(layer);
+    if (a && b && a.currentTime !== null) b.currentTime = a.currentTime;
+  }
+  function hideCensor(img, ms) {
+    var layer = censorOf(img);
+    if (!layer.classList.contains('is-on')) return;
+    var half = Math.round((ms || 0) / 2);
+    layer.style.transition = ms ? 'opacity ' + half + 'ms linear ' + half + 'ms' : 'none';
+    layer.classList.remove('is-on');
+  }
+  [bgA, bgB].forEach(function (img) {
+    img.addEventListener('load', function () { if (censorOf(img).hasAttribute('data-for')) layoutCensor(img); });
+  });
+  window.addEventListener('resize', function () {
+    [bgA, bgB].forEach(function (img) { if (censorOf(img).hasAttribute('data-for')) layoutCensor(img); });
+  });
+
   function setBg(name, fx) {
     if (!name) { // an empty stage: the backdrop fades out to the dark behind it
       bgFront.classList.remove('is-cut', 'is-slow'); bgFront.classList.add(fast() ? 'is-cut' : 'is-fade');
       bgFront.classList.remove('is-on');
+      hideCensor(bgFront, fast() ? 0 : 1000);
       return fast() ? 0 : 600;
     }
     var src = ART + '/bg/' + name + '.webp';
@@ -527,10 +585,12 @@
     var mode = fast() ? 'cut' : (fx || 'fade');
     back.classList.add(mode === 'cut' ? 'is-cut' : mode === 'slow' ? 'is-slow' : 'is-fade');
     back.classList.add('is-on', 'is-drift');
+    showCensor(back, name);
     // The old picture leaves the same way the new one arrives, so a crossfade never flashes the black behind.
     var old = bgFront;
     old.classList.remove('is-slow', 'is-cut', 'is-fade');
     old.classList.add(mode === 'cut' ? 'is-cut' : mode === 'slow' ? 'is-slow' : 'is-fade', 'is-leaving');
+    hideCensor(old, mode === 'cut' ? 0 : mode === 'slow' ? 1900 : 1000);
     window.setTimeout(function () { old.classList.remove('is-on', 'is-leaving'); }, mode === 'cut' ? 0 : mode === 'slow' ? 1900 : 1000);
     bgFront = back;
     return mode === 'cut' ? 0 : mode === 'slow' ? 1100 : 600;
@@ -650,7 +710,12 @@
   var Glitch = (function () {
     var level = null, timer = 0, nctx = null;
     glitchNoise.width = 480; glitchNoise.height = 270;
-    function source() { return cgWrap.classList.contains('is-on') && cgImg.getAttribute('src') ? cgImg.src : bgFront.src; }
+    // The slices copy the picture on screen; a censored backdrop is never copied (its face would show through the
+    // slices), so over it the tear is colour and static only.
+    function source() {
+      if (cgWrap.classList.contains('is-on') && cgImg.getAttribute('src')) return cgImg.src;
+      return censored(nameOf(bgFront)) ? '' : bgFront.src;
+    }
     function slice(e, hard) {
       var top = Math.random() * 92, h = (hard ? 3 : 1.5) + Math.random() * (hard ? 20 : 8);
       e.style.clipPath = 'inset(' + top.toFixed(1) + '% 0 ' + Math.max(0, 100 - top - h).toFixed(1) + '% 0)';
@@ -666,7 +731,7 @@
     function tick() {
       if (!level) return;
       var hard = level === 'hard', src = source();
-      [glitchR, glitchC].forEach(function (e) { if (e.getAttribute('data-src') !== src) { e.style.backgroundImage = 'url("' + src + '")'; e.setAttribute('data-src', src); } });
+      [glitchR, glitchC].forEach(function (e) { if (e.getAttribute('data-src') !== src) { e.style.backgroundImage = src ? 'url("' + src + '")' : 'none'; e.setAttribute('data-src', src); } });
       slice(glitchR, hard); slice(glitchC, hard); noise();
       if (hard && Math.random() < 0.1) {
         dlg.classList.add('is-glitch-flip');
@@ -1618,7 +1683,10 @@
     syncSound();
     var token = {};
     opening = token;
-    askLang().then(function (ok) {
+    askWarning().then(function (ok) {
+      if (!ok || opening !== token || !dlg.open) return false;
+      return askLang();
+    }).then(function (ok) {
       if (!ok || opening !== token || !dlg.open) return;
       play(n, fresh).catch(function () { leave(); });
     });
@@ -2119,6 +2187,40 @@
         relabel();
         changed = true; // the journal behind the stage is still in the old language: reload it on the way out
       });
+  }
+  // A quest's content warning (age, flashing lights, violence) comes first, before the language, once per browser
+  // session. Leaving closes the stage; nothing has started yet.
+  var WARN_KEY = 'hvwa-quest-warned:' + QID;
+  function askWarning() {
+    var w = boot.warning, seen = false;
+    try { seen = window.sessionStorage.getItem(WARN_KEY) === '1'; } catch (e) { /* storage blocked: ask every time */ }
+    if (!w || seen) return Promise.resolve(true);
+    return new Promise(function (done) {
+      var acts = panel('warn', w.title, '', 'qs-warn');
+      hint.classList.add('is-gone');
+      var card = acts.parentNode, text = card.querySelector('.qs-skip-text');
+      var age = el('span', 'qs-warn-age'); age.textContent = w.age; age.setAttribute('aria-hidden', 'true');
+      card.insertBefore(age, card.firstChild);
+      var list = el('ul', 'qs-warn-list'); list.id = 'qs-panel-text';
+      w.items.forEach(function (it) {
+        var li = el('li', 'qs-warn-item', list);
+        el('strong', 'qs-warn-head', li).textContent = it.head;
+        el('span', 'qs-warn-text', li).textContent = it.text;
+      });
+      card.replaceChild(list, text);
+      var out = el('button', 'btn btn-secondary', acts); out.type = 'button'; out.textContent = w.leave;
+      var go = el('button', 'btn btn-primary', acts); go.type = 'button'; go.textContent = w.go;
+      out.addEventListener('click', function () { done(false); leave(); });
+      go.addEventListener('click', function () {
+        try { window.sessionStorage.setItem(WARN_KEY, '1'); } catch (e) { /* storage blocked */ }
+        hidePanel();
+        hint.classList.remove('is-gone');
+        dlg.focus({ preventScroll: true });
+        done(true);
+      });
+      panelEsc = function () { out.click(); };
+      showPanel(go);
+    });
   }
   function askLang() {
     return new Promise(function (done) {

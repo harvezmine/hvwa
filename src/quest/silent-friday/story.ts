@@ -50,8 +50,10 @@ const CAST: Quest['cast'] = {
   crowd: { name: T('Crowd', 'Kerumunan'), voice: 450 },
   neighbour: { name: T('A neighbour', 'Seorang tetangga'), voice: 330 },
   docker: { name: T('A docker', 'Seorang kuli dermaga'), voice: 330 },
-  // Someone the player cannot see clearly yet: a silhouette, and a name that is only question marks.
-  unknown: { name: T('???', '???'), face: 'right', voice: 180, art: { '': `${ART}/shadow-hood.webp` } },
+  // Someone the player cannot see clearly yet: a silhouette, and a name that is only question marks. The hooded man is
+  // drawn half-turned to the right and is shown as drawn (never mirrored): at the carousel he stands on the right,
+  // looking past you at the open horse, not at you.
+  unknown: { name: T('???', '???'), face: 'front', voice: 180, art: { '': `${ART}/shadow-hood.webp` } },
   neighbour2: { name: T('Another neighbour', 'Tetangga lain'), voice: 590 },
   nina: { name: T('Little girl', 'Gadis kecil'), voice: 980 },
   // Chapter IV. The Fool is heard long before he is seen: a voice in the pipes and a hand in the smoke (those lines are
@@ -1502,38 +1504,45 @@ const boy: Chapter = {
     say('rowan', 'I\'ll listen, and then I\'ll judge him. He asked for it himself.', 'Akan kudengarkan, lalu akan kuadili dia. Dia sendiri yang memintanya.'),
     { hide: 'all' },
 
-    // That night: The Fool, on the rooftops, with the kite.
+    // That night: The Fool, on the rooftops, with the kite. He is drawn into the picture itself (no portrait), so when
+    // he goes the picture changes to the empty roof. Nothing here gives the end away: he neither admits to Tobin nor
+    // denies it, and says nothing of Sir Prince's last night.
     { black: true }, { amb: null }, { particles: null }, { music: null, fade: 1500 }, { wait: 800 },
     { sfx: 'bell' }, { wait: 900 },
-    { bg: 'fool-kite-rooftop', fx: 'cut' }, { amb: 'night' }, { tint: null }, { particles: 'dust' }, { music: 'musicbox', fade: 3000 }, { black: false },
-    { place: T('The rooftops of the old quarter', 'Atap-atap kota tua'), time: T('That night', 'Malam itu') },
     narr('A single bell rings somewhere above the guild. By now you know the way up.', 'Sebuah lonceng berdenting di suatu tempat di atas guild. Kamu sudah hafal jalan naiknya.'),
-    narr('He is sitting where he sat before, one leg stretched out stiff. In his lap is a child\'s kite, its purple faded almost to grey, its string knotted and re-knotted many times over.',
-      'Ia duduk di tempat yang sama seperti dulu, dengan satu kaki terjulur kaku. Di pangkuannya ada sebuah layangan anak-anak, ungunya sudah pudar nyaris kelabu, talinya sudah berkali-kali disambung.'),
+    { bg: 'fool-kite-rooftop', fx: 'slow' }, { amb: 'night' }, { tint: null }, { particles: 'dust' }, { music: 'musicbox', fade: 3000 }, { black: false },
+    { place: T('The rooftops of the old quarter', 'Atap-atap kota tua'), time: T('That night', 'Malam itu') },
+    narr('He is sitting where he sat the night the circus burned, one leg stretched out stiff. In his lap is a child\'s kite, its purple faded almost to grey, its string knotted and re-knotted many times over.',
+      'Ia duduk di tempat yang sama seperti malam ketika sirkus terbakar, dengan satu kaki terjulur kaku. Di pangkuannya ada layangan anak-anak yang ungunya sudah pudar nyaris kelabu, dan talinya sudah berkali-kali disambung.'),
+    narr('He doesn\'t turn his head when you sit down beside him.', 'Ia tidak menoleh saat kamu duduk di sampingnya.'),
     { you: T('The Guard is hunting a man called Tobin.', 'Garda sedang memburu seseorang bernama Tobin.') },
-    say('fool', 'Are they.', 'Oh, ya?', { style: 'whisper' }),
+    say('fool', 'So I hear.', 'Aku sudah dengar.', { style: 'whisper' }),
     { you: T('A squire. An arrow took him through the knee, fifteen years ago.', 'Seorang pengawal. Lima belas tahun lalu, lututnya tertembus panah.') },
-    narr('He doesn\'t look at his leg, and he doesn\'t answer.',
-      'Ia tidak melirik kakinya, dan tidak menjawab.'),
+    narr('His thumb runs once along the frame of the kite and stops. He doesn\'t answer.',
+      'Ibu jarinya menyusuri rangka layangan itu sekali, lalu berhenti. Ia tidak menjawab.'),
+    { wait: 900 },
     say('fool', 'Whoever they hang on Friday, the city will sleep better.', 'Siapa pun yang mereka gantung hari Jumat nanti, kota ini akan tidur lebih nyenyak.'),
     { you: T('Rowan means to kill you.', 'Rowan berniat membunuhmu.') },
-    say('fool', 'I know.', 'Aku tahu.'),
+    say('fool', 'I know.', 'Aku tahu.', { style: 'whisper' }),
     { wait: 900 },
     { choice: [
-      { label: T('"Why Friday?"', '"Kenapa harus hari Jumat?"'), then: [
-        { you: T('Why Friday?', 'Kenapa harus hari Jumat?') },
-        say('fool', 'Because on Friday the whole city comes out, and I like a full house.', 'Karena hari Jumat seisi kota keluar rumah, dan aku suka penonton yang penuh.'),
+      { label: T('"Why the gallows?"', '"Kenapa di tiang gantungan?"'), then: [
+        { you: T('Why the old gallows?', 'Kenapa harus di tiang gantungan tua?') },
+        say('fool', 'Because that is where it started.', 'Karena di sanalah semuanya dimulai.'),
       ] },
-      { label: T('"You could still run."', '"Kau masih bisa kabur."'), then: [
-        { you: T('You could still run.', 'Kau masih bisa kabur.') },
-        say('fool', 'I\'ve seen where running gets a man. Backwards across a dark room, and over a chair.', 'Aku sudah lihat ke mana lari membawa orang. Mundur di ruangan yang gelap, lalu terjengkang di atas kursi.'),
+      { label: T('"You could still leave the city."', '"Kau masih bisa pergi dari kota ini."'), then: [
+        { you: T('You could still leave the city.', 'Kau masih bisa pergi dari kota ini.') },
+        say('fool', 'I\'ve been away long enough.', 'Aku sudah terlalu lama pergi.', { style: 'whisper' }),
       ] },
     ] },
-    narr('He gets up slowly, the kite folded against his chest.', 'Ia bangkit perlahan, layangan itu terlipat di dadanya.'),
+    { wait: 700 },
+    narr('He gets up slowly, careful of the stiff leg, and holds the folded kite against his chest.',
+      'Ia bangkit perlahan, berhati-hati dengan kakinya yang kaku, lalu mendekap layangan yang terlipat itu di dadanya.'),
     say('fool', 'On Friday it goes back where I found it.', 'Hari Jumat nanti, layangan ini kukembalikan ke tempat aku menemukannya.', { style: 'whisper' }),
-    { sfx: 'bell' }, { hide: 'fool' },
+    { sfx: 'bell' }, { black: true }, { wait: 700 },
+    { bg: 'rooftop-night', fx: 'cut' }, { particles: null }, { black: false },
     narr('When the bell stops, the roof beside you is empty.', 'Begitu lonceng berhenti, atap di sampingmu sudah kosong.'),
-    { hide: 'all' },
+    { wait: 1200 },
 
     // Friday morning.
     { black: true }, { amb: null }, { particles: null }, { wait: 700 },
@@ -1973,7 +1982,7 @@ const lastRide: Chapter = {
     say('tobin', '...Nobody will say, sir.', '...Tak ada yang mau bilang, Tuan.', { style: 'whisper' }),
     say('tobin', 'The trial is Friday, at the festival.', 'Sidangnya hari Jumat, pas festival.'),
     say('lucian', 'Friday... That\'s tomorrow.', 'Jumat... Itu besok.', { style: 'whisper' }),
-    say('tobin', 'It\'s two days\' ride, sir.', 'Perjalanannya dua hari, Tuan.'),
+    say('tobin', 'It\'s four days\' ride, sir.', 'Perjalanannya empat hari, Tuan.'),
     say('lucian', 'Then give me your horse.', 'Kalau begitu, berikan kudamu.'),
     { heart: null }, { tremble: null },
     { black: true }, { amb: null }, { wait: 1200 },
@@ -2249,4 +2258,38 @@ export const SILENT_FRIDAY: Quest = {
   cast: CAST,
   chapters: [prologue, lantern, park, fire, circus, boy, lastRide],
   upcoming: [],
+  // The healer on the cross is never shown bare: her face is always covered, the rest of her tears in and out.
+  censor: {
+    'pyre-reveal': [
+      { kind: 'body', at: [0.513, 0.438], size: [0.17, 0.32] },
+      { kind: 'face', at: [0.512, 0.342], size: [0.05, 0.085] },
+    ],
+    'cross-distant': [
+      { kind: 'body', at: [0.565, 0.556], size: [0.04, 0.07] },
+      { kind: 'face', at: [0.565, 0.534], size: [0.014, 0.024] },
+    ],
+  },
+  warning: {
+    title: T('Content warning', 'Peringatan konten'),
+    age: '18+',
+    items: [
+      {
+        head: T('For players aged 18 and over', 'Untuk pemain berusia 18 tahun ke atas'),
+        text: T('This story deals with murder, executions, death and the abuse of children.',
+          'Cerita ini memuat pembunuhan, hukuman mati, kematian, dan kekerasan terhadap anak.'),
+      },
+      {
+        head: T('Flashing lights', 'Kilatan cahaya'),
+        text: T('Some scenes use bright flashes, rapid flicker and a shaking screen, which may trigger seizures in people with photosensitive epilepsy. If you feel dizzy or unwell, stop and rest.',
+          'Beberapa adegan memakai kilatan terang, kedipan cepat, dan layar yang berguncang, yang bisa memicu kejang pada penderita epilepsi fotosensitif. Kalau mulai pusing atau tidak nyaman, berhenti dan istirahatlah.'),
+      },
+      {
+        head: T('Violence', 'Kekerasan'),
+        text: T('Killings, blood and cruelty are shown on screen.',
+          'Pembunuhan, darah, dan kekejaman ditampilkan di layar.'),
+      },
+    ],
+    go: T('I understand, continue', 'Saya mengerti, lanjutkan'),
+    leave: T('Leave', 'Keluar'),
+  },
 };

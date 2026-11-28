@@ -139,6 +139,28 @@ export interface Quest {
   readonly chapters: readonly Chapter[];
   /** Chapters planned but not written yet: shown as "coming soon" in the journal. */
   readonly upcoming: readonly { readonly title: Text; readonly sub: Text }[];
+  /**
+   * Backdrops with a body that must stay censored (the healer on the cross), by picture name. Each box is in the
+   * picture's own coordinates: `at` its centre and `size` its width and height, as fractions of the picture. A 'face'
+   * box is always covered; a 'body' box is a glitch that comes and goes. The stage lays them over the picture whenever
+   * it is shown, however it got there (a scene, a resume, a retried moment).
+   */
+  readonly censor?: Readonly<Record<string, readonly {
+    readonly kind: 'face' | 'body';
+    readonly at: readonly [number, number];
+    readonly size: readonly [number, number];
+  }[]>>;
+  /**
+   * A content warning the stage shows before anything else (before the language choice), once per browser session:
+   * an age mark, then one line per warning. Leaving closes the stage.
+   */
+  readonly warning?: {
+    readonly title: Text;
+    readonly age: string;
+    readonly items: readonly { readonly head: Text; readonly text: Text }[];
+    readonly go: Text;
+    readonly leave: Text;
+  };
 }
 
 /** Pick one language out of every Text in a value (a Text is an object with exactly the keys en and id). */

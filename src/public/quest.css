@@ -74,6 +74,33 @@ html.qs-open { overflow: hidden; }
 .qs-bg-img.is-on { opacity: 1; }
 .qs-bg-img.is-leaving { opacity: 0; }
 .qs-bg-img.is-still { animation: none !important; scale: 1; translate: 0 0; }
+/* A censored picture (the healer on the cross): glitch boxes laid over the body (static/quest.js showCensor). The face
+   box is opaque and never lets go; the body box tears and comes and goes, no faster than two blinks a second. */
+.qs-censor { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.qs-censor.is-on { opacity: 1; }
+.qs-censor-box { position: absolute; overflow: hidden; }
+.qs-censor-box.is-face {
+  background: repeating-linear-gradient(180deg, #0a090c 0 3px, #1d1b22 3px 5px, #040405 5px 8px);
+  box-shadow: 0 0 6px 3px rgba(4, 4, 5, 0.85);
+}
+.qs-censor-box.is-body {
+  background: repeating-linear-gradient(180deg, rgba(10, 9, 12, 0.8) 0 4px, rgba(38, 35, 44, 0.66) 4px 7px, rgba(4, 4, 5, 0.84) 7px 11px);
+  -webkit-backdrop-filter: blur(8px) saturate(0.4); backdrop-filter: blur(8px) saturate(0.4);
+}
+.qs-censor-box::after {
+  content: ""; position: absolute; inset: 0; mix-blend-mode: screen;
+  background: linear-gradient(180deg, transparent 0 18%, rgba(255, 30, 70, 0.5) 18% 23%, transparent 23% 56%, rgba(30, 220, 255, 0.45) 56% 60%, transparent 60% 81%, rgba(255, 255, 255, 0.16) 81% 83%, transparent 83%);
+  background-size: 100% 240%;
+}
+@keyframes qs-censor-jitter { 0% { translate: 0 0; } 25% { translate: -3px 0; } 50% { translate: 2px 1px; } 75% { translate: -1px 0; } 100% { translate: 0 0; } }
+@keyframes qs-censor-tear { to { background-position: 0 100%; } }
+@keyframes qs-censor-blink { 0%, 40% { opacity: 1; } 41%, 52% { opacity: 0; } 53%, 76% { opacity: 1; } 77%, 84% { opacity: 0.2; } 85%, 100% { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .qs-censor.is-drift { animation: qs-drift 30s ease-in-out infinite alternate; }
+  .qs-censor-box.is-face { animation: qs-censor-jitter 0.5s steps(4) infinite; }
+  .qs-censor-box.is-body { animation: qs-censor-jitter 0.5s steps(4) infinite, qs-censor-blink 2.4s steps(1) infinite; }
+  .qs-censor-box::after { animation: qs-censor-tear 0.9s steps(5) infinite; }
+}
 .qs-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(0, 0, 0, 0.6) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.25) 0%, transparent 18%, transparent 58%, rgba(0, 0, 0, 0.55) 100%); }
 .qs-black { background: #000; opacity: 0; pointer-events: none; transition: opacity 1000ms ease-in-out; z-index: 6; }
 .qs-black.is-on { opacity: 1; }
@@ -715,6 +742,15 @@ html.qs-open { overflow: hidden; }
 .qs-lang .qs-skip-text { white-space: pre-line; }
 .qs-lang-actions { justify-content: center; }
 .qs-lang-actions .btn { flex: 1 1 11rem; min-height: 2.9rem; }
+/* The content warning before a quest starts: an 18+ wax mark, then one line per warning. */
+.qs-warn { width: min(36rem, 100%); justify-items: center; text-align: center; }
+.qs-warn-age { display: grid; place-items: center; width: 4.2rem; height: 4.2rem; border-radius: 50%; font-family: var(--display); font-weight: 700; font-size: 1.35rem; letter-spacing: 0.02em; color: #f6e7c8; background: radial-gradient(circle at 35% 30%, #a3262a, #6b1014 70%); box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.18), inset 0 0 0 6px rgba(246, 231, 200, 0.25), 0 3px 8px rgba(0, 0, 0, 0.35); }
+.qs-warn-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.75rem; text-align: left; width: 100%; }
+.qs-warn-item { display: grid; gap: 0.15rem; padding-top: 0.75rem; border-top: 1px solid rgba(42, 26, 12, 0.22); }
+.qs-warn-head { font-family: var(--display); font-size: 1rem; letter-spacing: 0.02em; color: #2a1a0c; }
+.qs-warn-text { font-family: var(--serif); font-size: 1rem; line-height: 1.55; color: #2a1a0c; }
+.qs-warn .qs-skip-actions { justify-content: center; width: 100%; }
+.qs-warn .qs-skip-actions .btn { flex: 1 1 12rem; min-height: 2.9rem; }
 
 /* The dark reveal: the edges dim softly like a held breath and let go, the middle of the scene (the speaker, the
    picture) stays readable the whole time. */
